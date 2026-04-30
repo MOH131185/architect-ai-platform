@@ -53,6 +53,8 @@ import {
 import {
   detectA1GlyphIntegrity,
   detectA1RasterGlyphIntegrity,
+  evaluateFinalA1ExportGate,
+  resolveA1RenderContract,
 } from "../a1/a1FinalExportContract.js";
 import {
   buildMaterialPaletteCards,
@@ -6165,6 +6167,97 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     ...(sheetArtifact.metadata || {}),
     ...openaiQaMetadata,
   };
+
+  // -----------------------------------------------------------------------
+  // Phase F: upstream-partial export gate.
+  //
+  // The compose route runs the authoritative gate (scope=compose_final) once
+  // the PDF and post-compose verification are available. Here we run a
+  // partial gate at the slice service so the sheet artifact carries an
+  // upstream view of panel/manifest/material/openai evidence before any
+  // PDF-side checks. PDF/raster/post-compose evidence is intentionally
+  // absent at this scope.
+  // -----------------------------------------------------------------------
+  try {
+    const targetStoreysForGate = Math.max(
+      1,
+      Number(brief?.target_storeys || 1),
+    );
+    const phaseFRequiredPanels =
+      buildRequiredA1PanelTypes(targetStoreysForGate);
+    const visualPanelArtifacts = Object.values(primaryPanelArtifacts).filter(
+      (artifact) =>
+        REQUIRED_3D_A1_PANEL_TYPES.includes(artifact?.panel_type) ||
+        artifact?.metadata?.visualManifestHash,
+    );
+    const visualPanelsForGate = visualPanelArtifacts.map((artifact) => ({
+      type: artifact.panel_type,
+      visualManifestHash:
+        artifact.metadata?.visualManifestHash ||
+        artifact.visualManifestHash ||
+        null,
+      visualIdentityLocked:
+        artifact.metadata?.visualIdentityLocked === true ||
+        artifact.visualIdentityLocked === true,
+    }));
+    const materialPaletteArtifact = Object.values(primaryPanelArtifacts).find(
+      (artifact) => artifact?.panel_type === "material_palette",
+    );
+    const materialPaletteForGate = materialPaletteArtifact
+      ? {
+          cards:
+            materialPaletteArtifact.cardMetadata ||
+            materialPaletteArtifact.metadata?.cardMetadata ||
+            [],
+        }
+      : null;
+    const panelsForGate = (sheetArtifact.panelPlacements || []).map(
+      (placement) => ({
+        type: placement.panelType,
+        status: placement.status,
+        hasSvg: placement.status === "ready",
+      }),
+    );
+    const upstreamRenderContract = resolveA1RenderContract({
+      renderIntent: "final_a1",
+    });
+    const upstreamGate = evaluateFinalA1ExportGate({
+      renderContract: upstreamRenderContract,
+      // PDF/raster/post-compose evidence is owned by the compose route.
+      panels: panelsForGate,
+      panelRegistry: phaseFRequiredPanels,
+      targetStoreys: targetStoreysForGate,
+      visualManifest,
+      visualPanels: visualPanelsForGate,
+      materialPalette: materialPaletteForGate,
+      openaiProvider: openaiQaMetadata,
+      strictPhotoreal: process.env.OPENAI_STRICT_IMAGE_GEN === "true",
+      imageGenEnabled: process.env.PROJECT_GRAPH_IMAGE_GEN_ENABLED === "true",
+      scope: "upstream_partial",
+    });
+    sheetArtifact.quality = {
+      ...(sheetArtifact.quality || {}),
+      exportGate: upstreamGate,
+    };
+  } catch (gateError) {
+    // Never fail the slice on gate evaluation; surface the error in metadata.
+    sheetArtifact.quality = {
+      ...(sheetArtifact.quality || {}),
+      exportGate: {
+        version: "phase-f-a1-export-gate-v1",
+        status: "warning",
+        allowed: true,
+        demotedToPreview: false,
+        scope: "upstream_partial",
+        blockers: [],
+        warnings: [
+          `Upstream export gate evaluation failed: ${gateError?.message || "unknown"}.`,
+        ],
+        error: gateError?.message || "unknown",
+      },
+    };
+  }
+
   const geometrySteps = [
     {
       stepId: "PROJECT_GRAPH",

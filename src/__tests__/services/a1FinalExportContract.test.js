@@ -1,6 +1,7 @@
 import {
   A1_PHYSICAL_SHEET_SIZE_MM,
   FINAL_A1_PNG_DIMENSIONS,
+  PHASE_F_EXPORT_GATE_VERSION,
   buildA1SheetSetPlan,
   buildSheetTextContract,
   detectA1GlyphIntegrity,
@@ -8,6 +9,12 @@ import {
   evaluateFinalA1ExportGate,
   resolveA1RenderContract,
 } from "../../services/a1/a1FinalExportContract.js";
+
+// Phase F changed the gate success vocabulary from "allowed" to
+// "pass" | "warning" | "blocked". The stable contract for downstream callers
+// is `gate.allowed` (true for pass+warning, false for blocked) — `status` is
+// for richer UI messaging. Tests that previously asserted status === "allowed"
+// now assert allowed === true plus the new status string.
 
 describe("a1FinalExportContract", () => {
   test("resolves explicit final A1 exports to print-master dimensions and gates", () => {
@@ -126,7 +133,12 @@ describe("a1FinalExportContract", () => {
       sheetSetPlan: { required: false },
     });
 
-    expect(gate.status).toBe("allowed");
+    // Phase F: legacy minimal inputs (no PDF metadata, no panels, no manifest,
+    // no material palette, no openai provider) → gate degrades to "warning"
+    // because evidence is absent; `allowed` stays true (no hard blocker).
+    expect(gate.allowed).toBe(true);
+    expect(gate.status).toBe("warning");
+    expect(gate.blockers).toEqual([]);
   });
 
   test("defers pre-compose rendered-text blockers to post-compose evidence", () => {
@@ -164,7 +176,9 @@ describe("a1FinalExportContract", () => {
       sheetSetPlan: { required: false },
     });
 
-    expect(gate.status).toBe("allowed");
+    // Phase F: legacy success vocabulary updated; stable contract is `allowed`.
+    expect(gate.allowed).toBe(true);
+    expect(["pass", "warning"]).toContain(gate.status);
     expect(gate.preComposeRegressionPolicy.status).toBe(
       "deferred_to_post_compose",
     );
@@ -231,7 +245,12 @@ describe("a1FinalExportContract", () => {
       },
     });
 
-    expect(gate.status).toBe("allowed");
+    // Phase F: with companion sheet generated the split-status evidence is
+    // pass; absent Phase F evidence keeps overall status at warning. Stable
+    // contract is allowed===true with no blockers.
+    expect(gate.allowed).toBe(true);
+    expect(gate.blockers).toEqual([]);
+    expect(gate.evidence.sheetSplitStatus.status).toBe("pass");
   });
 
   test("marks extreme text density for A1-02 overflow planning", () => {
@@ -249,6 +268,485 @@ describe("a1FinalExportContract", () => {
       "A1-01",
       "A1-02",
     ]);
+  });
+
+  // -------------------------------------------------------------------------
+  // Phase F gate cases
+  //
+  // Each case constructs the smallest set of inputs required to exercise one
+  // policy decision. Optional evidence that is absent is intentionally left
+  // out — the gate must degrade to warning, not block, when evidence simply
+  // wasn't supplied.
+  // -------------------------------------------------------------------------
+  describe("Phase F export gate", () => {
+    const baseRenderContract = () =>
+      resolveA1RenderContract({ renderIntent: "final_a1" });
+
+    const okPostCompose = () => ({
+      publishability: { status: "publishable", blockers: [] },
+      renderedTextZone: {
+        status: "pass",
+        blockers: [],
+        ocr: { available: true },
+        ocrEvidenceQuality: "verified",
+      },
+    });
+
+    const okFinalSheetRegression = () => ({
+      finalSheetRegressionReady: true,
+      blockers: [],
+    });
+
+    const HEALTHY_PDF_METADATA = Object.freeze({
+      pdfRenderMode: "raster_textpaths_300dpi",
+      dpi: 300,
+      textRenderMode: "font_paths",
+      isFinalA1: true,
+      rasterIntegrityStatus: "pass",
+    });
+
+    const HEALTHY_RASTER_INTEGRITY = Object.freeze({
+      status: "pass",
+      passed: true,
+      suspectZones: [],
+      blockers: [],
+      warnings: [],
+    });
+
+    const HEALTHY_PANEL_REGISTRY = Object.freeze([
+      "hero_3d",
+      "interior_3d",
+      "axonometric",
+      "site_diagram",
+      "floor_plan_ground",
+      "floor_plan_first",
+      "elevation_north",
+      "elevation_south",
+      "elevation_east",
+      "elevation_west",
+      "section_AA",
+      "section_BB",
+      "schedules_notes",
+      "material_palette",
+      "climate_card",
+    ]);
+
+    const buildHealthyPanels = () =>
+      HEALTHY_PANEL_REGISTRY.map((type) => ({
+        type,
+        status: "ready",
+        hasSvg: true,
+      }));
+
+    const HEALTHY_VISUAL_MANIFEST = Object.freeze({
+      version: "visual-manifest-v1",
+      manifestId: "visual-manifest-test-001",
+      manifestHash: "manifest-hash-OK",
+      storeyCount: 2,
+    });
+
+    const buildHealthyVisualPanels = () =>
+      ["hero_3d", "interior_3d", "axonometric"].map((type) => ({
+        type,
+        visualManifestHash: "manifest-hash-OK",
+        visualIdentityLocked: true,
+      }));
+
+    const buildHealthyMaterialPalette = () => ({
+      cards: [
+        {
+          materialSignature: "sig-brick",
+          textureKind: "red_multi_brick",
+          source: "procedural_svg_pattern",
+          fallbackAvailable: true,
+          label: "Red Multi Brick",
+        },
+        {
+          materialSignature: "sig-tile",
+          textureKind: "dark_grey_roof_tile",
+          source: "procedural_svg_pattern",
+          fallbackAvailable: true,
+          label: "Dark Grey Roof Tile",
+        },
+      ],
+    });
+
+    const HEALTHY_OPENAI_PROVIDER = Object.freeze({
+      openaiConfigured: true,
+      openaiReasoningUsed: true,
+      openaiImageUsed: true,
+      openaiRequestIds: ["req_abc123"],
+      providerFallbacks: [],
+    });
+
+    test("valid final A1 passes", () => {
+      const gate = evaluateFinalA1ExportGate({
+        renderContract: baseRenderContract(),
+        pdfUrl: "/api/a1/compose-output/a1.pdf",
+        finalSheetRegression: okFinalSheetRegression(),
+        postComposeVerification: okPostCompose(),
+        glyphIntegrity: { status: "pass", blockers: [] },
+        sheetSetPlan: { required: false },
+        pdfMetadata: HEALTHY_PDF_METADATA,
+        rasterGlyphIntegrity: HEALTHY_RASTER_INTEGRITY,
+        panels: buildHealthyPanels(),
+        panelRegistry: HEALTHY_PANEL_REGISTRY,
+        targetStoreys: 2,
+        visualManifest: HEALTHY_VISUAL_MANIFEST,
+        visualPanels: buildHealthyVisualPanels(),
+        materialPalette: buildHealthyMaterialPalette(),
+        openaiProvider: HEALTHY_OPENAI_PROVIDER,
+        strictPhotoreal: false,
+        imageGenEnabled: true,
+      });
+
+      expect(gate.version).toBe(PHASE_F_EXPORT_GATE_VERSION);
+      expect(gate.status).toBe("pass");
+      expect(gate.allowed).toBe(true);
+      expect(gate.demotedToPreview).toBe(false);
+      expect(gate.blockers).toEqual([]);
+      expect(gate.warnings).toEqual([]);
+      expect(gate.evidence.requiredPanelStatus.status).toBe("pass");
+      expect(gate.evidence.visualManifestStatus.status).toBe("pass");
+      expect(gate.evidence.materialPaletteStatus.status).toBe("pass");
+      expect(gate.evidence.openaiProviderStatus.status).toBe("pass");
+    });
+
+    test("tofu/raster integrity blocks", () => {
+      const gate = evaluateFinalA1ExportGate({
+        renderContract: baseRenderContract(),
+        pdfUrl: "/api/a1/compose-output/a1.pdf",
+        finalSheetRegression: okFinalSheetRegression(),
+        postComposeVerification: okPostCompose(),
+        glyphIntegrity: { status: "pass", blockers: [] },
+        sheetSetPlan: { required: false },
+        pdfMetadata: HEALTHY_PDF_METADATA,
+        rasterGlyphIntegrity: {
+          status: "blocked",
+          passed: false,
+          suspectZones: [{ panelType: "floor_plan_ground" }],
+          blockers: [
+            "Rendered PNG has 1 panel label band(s) matching the tofu signature.",
+          ],
+          warnings: [],
+        },
+        panels: buildHealthyPanels(),
+        panelRegistry: HEALTHY_PANEL_REGISTRY,
+        targetStoreys: 2,
+        visualManifest: HEALTHY_VISUAL_MANIFEST,
+        visualPanels: buildHealthyVisualPanels(),
+        materialPalette: buildHealthyMaterialPalette(),
+        openaiProvider: HEALTHY_OPENAI_PROVIDER,
+        imageGenEnabled: true,
+      });
+
+      expect(gate.status).toBe("blocked");
+      expect(gate.allowed).toBe(false);
+      expect(gate.evidence.rasterGlyphIntegrity.status).toBe("blocked");
+      expect(gate.blockers.join(" ")).toMatch(/tofu/i);
+    });
+
+    test("preview DPI in final mode blocks and demotes", () => {
+      const gate = evaluateFinalA1ExportGate({
+        renderContract: baseRenderContract(),
+        pdfUrl: "/api/a1/compose-output/a1.pdf",
+        finalSheetRegression: okFinalSheetRegression(),
+        postComposeVerification: okPostCompose(),
+        glyphIntegrity: { status: "pass", blockers: [] },
+        sheetSetPlan: { required: false },
+        pdfMetadata: {
+          pdfRenderMode: "raster_textpaths_preview_144dpi",
+          dpi: 144,
+          textRenderMode: "font_paths",
+          isFinalA1: true,
+          rasterIntegrityStatus: "pass",
+        },
+        rasterGlyphIntegrity: HEALTHY_RASTER_INTEGRITY,
+        panels: buildHealthyPanels(),
+        panelRegistry: HEALTHY_PANEL_REGISTRY,
+        targetStoreys: 2,
+        visualManifest: HEALTHY_VISUAL_MANIFEST,
+        visualPanels: buildHealthyVisualPanels(),
+        materialPalette: buildHealthyMaterialPalette(),
+        openaiProvider: HEALTHY_OPENAI_PROVIDER,
+        imageGenEnabled: true,
+      });
+
+      expect(gate.status).toBe("blocked");
+      expect(gate.demotedToPreview).toBe(true);
+      expect(gate.evidence.pdfMetadata.status).toBe("blocked");
+      expect(gate.blockers.join(" ")).toMatch(/300 DPI|preview/i);
+    });
+
+    test("missing floor_plan_level2 for 3 storeys blocks", () => {
+      const panels = buildHealthyPanels(); // contains level0 + first, no level2
+      const gate = evaluateFinalA1ExportGate({
+        renderContract: baseRenderContract(),
+        pdfUrl: "/api/a1/compose-output/a1.pdf",
+        finalSheetRegression: okFinalSheetRegression(),
+        postComposeVerification: okPostCompose(),
+        glyphIntegrity: { status: "pass", blockers: [] },
+        sheetSetPlan: { required: false },
+        pdfMetadata: HEALTHY_PDF_METADATA,
+        rasterGlyphIntegrity: HEALTHY_RASTER_INTEGRITY,
+        panels,
+        panelRegistry: [...HEALTHY_PANEL_REGISTRY, "floor_plan_level2"],
+        targetStoreys: 3,
+        visualManifest: HEALTHY_VISUAL_MANIFEST,
+        visualPanels: buildHealthyVisualPanels(),
+        materialPalette: buildHealthyMaterialPalette(),
+        openaiProvider: HEALTHY_OPENAI_PROVIDER,
+        imageGenEnabled: true,
+      });
+
+      expect(gate.status).toBe("blocked");
+      expect(gate.evidence.requiredPanelStatus.level2Required).toBe(true);
+      expect(gate.evidence.requiredPanelStatus.level2Present).toBe(false);
+      expect(gate.evidence.requiredPanelStatus.missing).toContain(
+        "floor_plan_level2",
+      );
+      expect(gate.blockers.join(" ")).toMatch(/floor_plan_level2/);
+    });
+
+    test("deterministic visual fallback warns but does not block (default)", () => {
+      const gate = evaluateFinalA1ExportGate({
+        renderContract: baseRenderContract(),
+        pdfUrl: "/api/a1/compose-output/a1.pdf",
+        finalSheetRegression: okFinalSheetRegression(),
+        postComposeVerification: okPostCompose(),
+        glyphIntegrity: { status: "pass", blockers: [] },
+        sheetSetPlan: { required: false },
+        pdfMetadata: HEALTHY_PDF_METADATA,
+        rasterGlyphIntegrity: HEALTHY_RASTER_INTEGRITY,
+        panels: buildHealthyPanels(),
+        panelRegistry: HEALTHY_PANEL_REGISTRY,
+        targetStoreys: 2,
+        visualManifest: HEALTHY_VISUAL_MANIFEST,
+        visualPanels: buildHealthyVisualPanels(),
+        materialPalette: buildHealthyMaterialPalette(),
+        openaiProvider: {
+          openaiConfigured: true,
+          openaiReasoningUsed: true,
+          openaiImageUsed: false,
+          openaiRequestIds: ["req_abc123"],
+          providerFallbacks: [
+            { stepId: "exterior_render", providerUsed: "deterministic" },
+          ],
+        },
+        strictPhotoreal: false,
+        imageGenEnabled: false,
+      });
+
+      expect(gate.status).toBe("warning");
+      expect(gate.allowed).toBe(true);
+      expect(gate.evidence.openaiProviderStatus.status).toBe("warning");
+      expect(gate.warnings.join(" ")).toMatch(/deterministic/i);
+    });
+
+    test("strict photoreal mode blocks when fallback occurs", () => {
+      const gate = evaluateFinalA1ExportGate({
+        renderContract: baseRenderContract(),
+        pdfUrl: "/api/a1/compose-output/a1.pdf",
+        finalSheetRegression: okFinalSheetRegression(),
+        postComposeVerification: okPostCompose(),
+        glyphIntegrity: { status: "pass", blockers: [] },
+        sheetSetPlan: { required: false },
+        pdfMetadata: HEALTHY_PDF_METADATA,
+        rasterGlyphIntegrity: HEALTHY_RASTER_INTEGRITY,
+        panels: buildHealthyPanels(),
+        panelRegistry: HEALTHY_PANEL_REGISTRY,
+        targetStoreys: 2,
+        visualManifest: HEALTHY_VISUAL_MANIFEST,
+        visualPanels: buildHealthyVisualPanels(),
+        materialPalette: buildHealthyMaterialPalette(),
+        openaiProvider: {
+          openaiConfigured: true,
+          openaiReasoningUsed: true,
+          openaiImageUsed: false,
+          openaiRequestIds: ["req_abc123"],
+          providerFallbacks: [
+            { stepId: "exterior_render", providerUsed: "deterministic" },
+          ],
+        },
+        strictPhotoreal: true,
+        imageGenEnabled: true,
+      });
+
+      expect(gate.status).toBe("blocked");
+      expect(gate.evidence.openaiProviderStatus.status).toBe("blocked");
+      expect(gate.blockers.join(" ")).toMatch(/strict photoreal/i);
+    });
+
+    test("visualManifestHash mismatch blocks", () => {
+      const gate = evaluateFinalA1ExportGate({
+        renderContract: baseRenderContract(),
+        pdfUrl: "/api/a1/compose-output/a1.pdf",
+        finalSheetRegression: okFinalSheetRegression(),
+        postComposeVerification: okPostCompose(),
+        glyphIntegrity: { status: "pass", blockers: [] },
+        sheetSetPlan: { required: false },
+        pdfMetadata: HEALTHY_PDF_METADATA,
+        rasterGlyphIntegrity: HEALTHY_RASTER_INTEGRITY,
+        panels: buildHealthyPanels(),
+        panelRegistry: HEALTHY_PANEL_REGISTRY,
+        targetStoreys: 2,
+        visualManifest: HEALTHY_VISUAL_MANIFEST,
+        visualPanels: [
+          {
+            type: "hero_3d",
+            visualManifestHash: "manifest-hash-OK",
+            visualIdentityLocked: true,
+          },
+          {
+            type: "interior_3d",
+            visualManifestHash: "manifest-hash-DIFFERENT",
+            visualIdentityLocked: true,
+          },
+        ],
+        materialPalette: buildHealthyMaterialPalette(),
+        openaiProvider: HEALTHY_OPENAI_PROVIDER,
+        imageGenEnabled: true,
+      });
+
+      expect(gate.status).toBe("blocked");
+      expect(gate.evidence.visualManifestStatus.mismatched).toContain(
+        "interior_3d",
+      );
+      expect(gate.blockers.join(" ")).toMatch(/visualManifestHash|manifest/);
+    });
+
+    test("missing material provenance warns", () => {
+      const gate = evaluateFinalA1ExportGate({
+        renderContract: baseRenderContract(),
+        pdfUrl: "/api/a1/compose-output/a1.pdf",
+        finalSheetRegression: okFinalSheetRegression(),
+        postComposeVerification: okPostCompose(),
+        glyphIntegrity: { status: "pass", blockers: [] },
+        sheetSetPlan: { required: false },
+        pdfMetadata: HEALTHY_PDF_METADATA,
+        rasterGlyphIntegrity: HEALTHY_RASTER_INTEGRITY,
+        panels: buildHealthyPanels(),
+        panelRegistry: HEALTHY_PANEL_REGISTRY,
+        targetStoreys: 2,
+        visualManifest: HEALTHY_VISUAL_MANIFEST,
+        visualPanels: buildHealthyVisualPanels(),
+        materialPalette: {
+          cards: [
+            {
+              // missing materialSignature, textureKind, source
+              label: "Mystery Material",
+            },
+            {
+              materialSignature: "sig-tile",
+              textureKind: "dark_grey_roof_tile",
+              source: "procedural_svg_pattern",
+              label: "Dark Grey Roof Tile",
+            },
+          ],
+        },
+        openaiProvider: HEALTHY_OPENAI_PROVIDER,
+        imageGenEnabled: true,
+      });
+
+      expect(gate.status).toBe("warning");
+      expect(gate.allowed).toBe(true);
+      expect(gate.evidence.materialPaletteStatus.status).toBe("warning");
+      expect(
+        gate.evidence.materialPaletteStatus.cardsWithoutProvenance,
+      ).toContain("Mystery Material");
+    });
+
+    test("procedural_svg_pattern material cards pass", () => {
+      const gate = evaluateFinalA1ExportGate({
+        renderContract: baseRenderContract(),
+        pdfUrl: "/api/a1/compose-output/a1.pdf",
+        finalSheetRegression: okFinalSheetRegression(),
+        postComposeVerification: okPostCompose(),
+        glyphIntegrity: { status: "pass", blockers: [] },
+        sheetSetPlan: { required: false },
+        pdfMetadata: HEALTHY_PDF_METADATA,
+        rasterGlyphIntegrity: HEALTHY_RASTER_INTEGRITY,
+        panels: buildHealthyPanels(),
+        panelRegistry: HEALTHY_PANEL_REGISTRY,
+        targetStoreys: 2,
+        visualManifest: HEALTHY_VISUAL_MANIFEST,
+        visualPanels: buildHealthyVisualPanels(),
+        materialPalette: buildHealthyMaterialPalette(),
+        openaiProvider: HEALTHY_OPENAI_PROVIDER,
+        imageGenEnabled: true,
+      });
+
+      expect(gate.evidence.materialPaletteStatus.status).toBe("pass");
+      expect(gate.evidence.materialPaletteStatus.proceduralCount).toBe(2);
+      expect(gate.evidence.materialPaletteStatus.aiThumbnailCount).toBe(0);
+      expect(
+        gate.evidence.materialPaletteStatus.cardsWithoutProvenance,
+      ).toEqual([]);
+    });
+
+    test("split-required missing companion blocks (evidence shape)", () => {
+      const gate = evaluateFinalA1ExportGate({
+        renderContract: baseRenderContract(),
+        pdfUrl: "/api/a1/compose-output/a1.pdf",
+        finalSheetRegression: okFinalSheetRegression(),
+        postComposeVerification: okPostCompose(),
+        glyphIntegrity: { status: "pass", blockers: [] },
+        sheetSetPlan: {
+          required: true,
+          generated: false,
+          reason: "A1-01 overflow requires an A1-02 companion sheet artifact.",
+        },
+        pdfMetadata: HEALTHY_PDF_METADATA,
+        rasterGlyphIntegrity: HEALTHY_RASTER_INTEGRITY,
+        panels: buildHealthyPanels(),
+        panelRegistry: HEALTHY_PANEL_REGISTRY,
+        targetStoreys: 2,
+        visualManifest: HEALTHY_VISUAL_MANIFEST,
+        visualPanels: buildHealthyVisualPanels(),
+        materialPalette: buildHealthyMaterialPalette(),
+        openaiProvider: HEALTHY_OPENAI_PROVIDER,
+        imageGenEnabled: true,
+      });
+
+      expect(gate.status).toBe("blocked");
+      expect(gate.evidence.sheetSplitStatus.status).toBe("blocked");
+      expect(gate.evidence.sheetSplitStatus.required).toBe(true);
+      expect(gate.evidence.sheetSplitStatus.generated).toBe(false);
+    });
+
+    test("upstream_partial scope does not block on absent PDF", () => {
+      const gate = evaluateFinalA1ExportGate({
+        renderContract: baseRenderContract(),
+        // no pdfUrl, no PDF metadata, no post-compose verification —
+        // upstream gate runs before the PDF is built
+        scope: "upstream_partial",
+        panels: buildHealthyPanels(),
+        panelRegistry: HEALTHY_PANEL_REGISTRY,
+        targetStoreys: 2,
+        visualManifest: HEALTHY_VISUAL_MANIFEST,
+        visualPanels: buildHealthyVisualPanels(),
+        materialPalette: buildHealthyMaterialPalette(),
+        openaiProvider: HEALTHY_OPENAI_PROVIDER,
+        imageGenEnabled: true,
+      });
+
+      expect(gate.scope).toBe("upstream_partial");
+      expect(gate.allowed).toBe(true);
+      // No hard blockers from absent PDF/regression/post-compose at upstream
+      // scope — those are the compose route's responsibility.
+      expect(gate.blockers.filter((b) => /print-ready PDF/.test(b))).toEqual(
+        [],
+      );
+    });
+
+    test("preview render contract returns not_applicable", () => {
+      const gate = evaluateFinalA1ExportGate({
+        renderContract: resolveA1RenderContract({}),
+      });
+      expect(gate.status).toBe("not_applicable");
+      expect(gate.allowed).toBe(true);
+      expect(gate.demotedToPreview).toBe(false);
+    });
   });
 
   describe("detectA1RasterGlyphIntegrity (Phase A)", () => {
