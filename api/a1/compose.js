@@ -2180,6 +2180,42 @@ async function handleComposeRequest(req, res, trace) {
     });
   }
 
+  // Phase F: assemble extended evidence inputs from already-available locals.
+  // Anything absent from the request body is passed as null/undefined; the
+  // gate degrades to "warning" rather than blocking on missing evidence.
+  const visualManifestFromRequest =
+    requestBody.visualManifest || requestBody.metadata?.visualManifest || null;
+  const visualPanelsFromRequest = Array.isArray(requestBody.visualPanels)
+    ? requestBody.visualPanels
+    : panels.filter(
+        (p) => p && (p.visualManifestHash || p.visualIdentityLocked),
+      );
+  const materialPaletteFromRequest =
+    requestBody.materialPalette ||
+    requestBody.metadata?.materialPalette ||
+    null;
+  const openaiProviderFromRequest =
+    requestBody.openaiProvider ||
+    requestBody.metadata?.openaiProvider ||
+    (requestBody.openaiConfigured !== undefined
+      ? {
+          openaiConfigured: requestBody.openaiConfigured,
+          openaiReasoningUsed: requestBody.openaiReasoningUsed,
+          openaiImageUsed: requestBody.openaiImageUsed,
+          openaiRequestIds: requestBody.openaiRequestIds,
+          providerFallbacks: requestBody.providerFallbacks,
+        }
+      : null);
+  const strictPhotoreal =
+    requestBody.strictPhotoreal === true ||
+    process.env.OPENAI_STRICT_IMAGE_GEN === "true";
+  const imageGenEnabled =
+    process.env.PROJECT_GRAPH_IMAGE_GEN_ENABLED === "true";
+  const phaseFRequiredPanels =
+    registry && typeof registry.getRequiredPanels === "function"
+      ? registry.getRequiredPanels(floorCount)
+      : null;
+
   const finalA1ExportGate = evaluateFinalA1ExportGate({
     renderContract,
     pdfUrl,
@@ -2187,6 +2223,18 @@ async function handleComposeRequest(req, res, trace) {
     postComposeVerification,
     glyphIntegrity,
     sheetSetPlan: resolvedSheetSetPlan,
+    pdfMetadata,
+    rasterGlyphIntegrity,
+    panels,
+    panelRegistry: phaseFRequiredPanels,
+    targetStoreys: floorCount,
+    visualManifest: visualManifestFromRequest,
+    visualPanels: visualPanelsFromRequest,
+    materialPalette: materialPaletteFromRequest,
+    openaiProvider: openaiProviderFromRequest,
+    strictPhotoreal,
+    imageGenEnabled,
+    scope: "compose_final",
   });
 
   if (finalA1ExportGate.status === "blocked") {
@@ -2450,6 +2498,7 @@ async function handleComposeRequest(req, res, trace) {
     sheetSetPlan: resolvedSheetSetPlan,
     sheetSetArtifacts,
     finalA1ExportGate,
+    exportGate: finalA1ExportGate,
     technicalCredibility: postComposeVerification?.technicalCredibility || null,
     publishability: postComposeVerification?.publishability || null,
     authorityReadiness,

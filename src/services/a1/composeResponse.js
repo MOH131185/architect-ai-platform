@@ -80,6 +80,12 @@ export function buildComposeSuccessPayload({
   runId,
   manifestUrl = null,
 }) {
+  // Phase F: surface the export gate result on a stable top-level path so
+  // clients (UI, downstream services) can distinguish Final A1 vs Preview /
+  // Warning / Blocked without parsing the broader metadata object.
+  const exportGate =
+    metadata?.exportGate || metadata?.finalA1ExportGate || null;
+
   return {
     success: true,
     sheetUrl,
@@ -90,6 +96,7 @@ export function buildComposeSuccessPayload({
     panelsByKey,
     qa: normalizeComposeQaResults(qaResults),
     critique: normalizeComposeCritiqueResults(critiqueResults),
+    quality: { exportGate },
     trace: {
       traceId: traceId || null,
       runId: runId || null,
