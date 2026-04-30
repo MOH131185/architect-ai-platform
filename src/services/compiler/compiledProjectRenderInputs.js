@@ -533,6 +533,13 @@ function createProjector(surfaces = [], spec = {}, worldBounds = {}) {
     ),
   );
 
+  if (!transformedPoints.length) {
+    // No surface vertices to anchor projection bounds. Return a no-op
+    // projector so downstream surfaceToSvg simply skips emission rather
+    // than emitting non-finite coordinates from min/max of empty arrays.
+    return () => ({ x: 0, y: 0, depth: 0 });
+  }
+
   const minX = Math.min(...transformedPoints.map((point) => point.x));
   const maxX = Math.max(...transformedPoints.map((point) => point.x));
   const minY = Math.min(...transformedPoints.map((point) => point.y));
@@ -655,6 +662,19 @@ function buildRoofSurfaces(geometry = {}, visibleSides = [], theme = {}) {
       strokeWidth: 2,
       order: 30,
     });
+    // Flat roofs have no ridge; emit perimeter eaves as polylines so the
+    // scene still satisfies MIN_COMPILED_CONTROL_PRIMITIVES (front+back as
+    // separate lines so the count holds even when the camera hides one).
+    ridgeLines.push(
+      [
+        { x: 0, y: geometry.depth, z: eave },
+        { x: geometry.width, y: geometry.depth, z: eave },
+      ],
+      [
+        { x: 0, y: 0, z: eave },
+        { x: geometry.width, y: 0, z: eave },
+      ],
+    );
     return { surfaces, ridgeLines };
   }
 
@@ -1009,6 +1029,46 @@ function buildInteriorSurfaces(compiledProject = {}, spec = {}) {
       strokeWidth: 2,
       order: 11,
     },
+    {
+      // Ceiling at z = ground.height; renders behind floor and side walls.
+      type: "polygon",
+      points: [
+        { x: 0, y: 0, z: ground.height },
+        { x: ground.width, y: 0, z: ground.height },
+        { x: ground.width, y: ground.depth, z: ground.height },
+        { x: 0, y: ground.depth, z: ground.height },
+      ],
+      fill: theme.wallBack,
+      stroke: theme.stroke,
+      strokeWidth: 1.5,
+      order: -1,
+    },
+    {
+      // Far-side cut edge of the cutaway view.
+      type: "polyline",
+      points: [
+        { x: 0, y: ground.depth, z: 0 },
+        { x: 0, y: ground.depth, z: ground.height },
+      ],
+      fill: "none",
+      stroke: theme.cutLine,
+      strokeWidth: 2,
+      order: 25,
+    },
+    {
+      // Front threshold strip on the floor; thin band at y ≈ ground.depth.
+      type: "polygon",
+      points: [
+        { x: 0, y: Math.max(0, ground.depth - 0.15), z: 0 },
+        { x: ground.width, y: Math.max(0, ground.depth - 0.15), z: 0 },
+        { x: ground.width, y: ground.depth, z: 0 },
+        { x: 0, y: ground.depth, z: 0 },
+      ],
+      fill: theme.floor,
+      stroke: theme.stroke,
+      strokeWidth: 1,
+      order: 0.5,
+    },
   ];
 
   openingRecords
@@ -1123,7 +1183,14 @@ function buildInteriorSurfaces(compiledProject = {}, spec = {}) {
 
 function surfaceToSvg(projector, surface) {
   const projected = toArray(surface.points).map((point) => projector(point));
-  const points = projected.map((point) => `${point.x},${point.y}`).join(" ");
+  const finite = projected.filter(
+    (point) => point && Number.isFinite(point.x) && Number.isFinite(point.y),
+  );
+  const isPolyline = surface.type === "polyline";
+  if (finite.length < (isPolyline ? 2 : 3)) {
+    return "";
+  }
+  const points = finite.map((point) => `${point.x},${point.y}`).join(" ");
   const style = [
     `fill="${escapeXml(surface.fill || "none")}"`,
     `stroke="${escapeXml(surface.stroke || "none")}"`,
@@ -1132,7 +1199,7 @@ function surfaceToSvg(projector, surface) {
     `stroke-linecap="round"`,
   ].join(" ");
 
-  if (surface.type === "polyline") {
+  if (isPolyline) {
     return `<polyline points="${points}" ${style} />`;
   }
   return `<polygon points="${points}" ${style} />`;
@@ -1231,6 +1298,7 @@ function renderSceneToSvg(title, surfaces, sceneGeometry, spec) {
 
   const body = ordered
     .map((surface) => surfaceToSvg(projector, surface))
+    .filter((entry) => entry)
     .join("\n");
   return [
     `<?xml version="1.0" encoding="UTF-8"?>`,
@@ -1327,6 +1395,11 @@ function buildRenderInputRecord(
   if (!svgString) return null;
   const svgHash = computeCDSHashSync({ panelType, svg: svgString });
   const primitiveSummary = summarizeScenePrimitives(scene.surfaces || []);
+  if (primitiveSummary.primitiveCount < MIN_COMPILED_CONTROL_PRIMITIVES) {
+    console.warn(
+      `[compiledProjectRenderInputs] panel "${panelType}" produced ${primitiveSummary.primitiveCount} primitives (minimum ${MIN_COMPILED_CONTROL_PRIMITIVES}); compiledProject geometry may be incomplete`,
+    );
+  }
   return {
     panelType,
     viewType: panelType,

@@ -201,15 +201,25 @@ function uppercaseLabel(value, fallback = "ROOM") {
 }
 
 function polygonPath(points = [], project) {
-  if (!Array.isArray(points) || points.length < 2) {
+  if (
+    !Array.isArray(points) ||
+    points.length < 2 ||
+    typeof project !== "function"
+  ) {
     return "";
   }
-
-  return `${points
-    .map((point, index) => {
-      const projected = project(point);
-      return `${index === 0 ? "M" : "L"} ${formatNumber(projected.x)} ${formatNumber(projected.y)}`;
-    })
+  const projected = points.map((point) => project(point));
+  const allFinite = projected.every(
+    (p) => p && Number.isFinite(p.x) && Number.isFinite(p.y),
+  );
+  if (!allFinite) {
+    return "";
+  }
+  return `${projected
+    .map(
+      (p, index) =>
+        `${index === 0 ? "M" : "L"} ${formatNumber(p.x)} ${formatNumber(p.y)}`,
+    )
     .join(" ")} Z`;
 }
 

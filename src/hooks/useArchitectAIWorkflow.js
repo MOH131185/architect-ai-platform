@@ -497,7 +497,23 @@ async function runProjectGraphVerticalSliceWorkflow({
   const verticalSlice = await response.json().catch(() => ({}));
 
   if (!response.ok || !verticalSlice?.success) {
-    const issue = verticalSlice?.qa?.issues?.[0];
+    const issues = Array.isArray(verticalSlice?.qa?.issues)
+      ? verticalSlice.qa.issues
+      : [];
+    const placeholderIssue = issues.find(
+      (entry) => entry?.code === "PLACEHOLDER_3D_RENDER_USED",
+    );
+    if (placeholderIssue?.data?.placeholder3dPanels) {
+      console.error(
+        "[ProjectGraph] PLACEHOLDER_3D_RENDER_USED detail",
+        placeholderIssue.data.placeholder3dPanels,
+      );
+    }
+    const errorIssues = issues.filter((entry) => entry?.severity === "error");
+    if (errorIssues.length) {
+      console.error("[ProjectGraph] vertical slice QA errors", errorIssues);
+    }
+    const issue = issues[0];
     throw new Error(
       verticalSlice?.error ||
         issue?.message ||

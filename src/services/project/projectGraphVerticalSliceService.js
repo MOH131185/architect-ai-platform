@@ -2488,17 +2488,27 @@ function polygonPath(points = [], bbox, width, height, padding = 12) {
   );
   const offsetX = (width - Number(bbox.width || 0) * scale) / 2;
   const offsetY = (height - Number(bbox.height || 0) * scale) / 2;
-  return points
-    .map((point, index) => {
-      const x =
-        offsetX + (Number(point.x || 0) - Number(bbox.min_x || 0)) * scale;
-      const y =
-        height -
-        (offsetY + (Number(point.y || 0) - Number(bbox.min_y || 0)) * scale);
-      return `${index === 0 ? "M" : "L"} ${round(x, 2)} ${round(y, 2)}`;
-    })
-    .join(" ")
-    .concat(" Z");
+  if (
+    !Number.isFinite(scale) ||
+    !Number.isFinite(offsetX) ||
+    !Number.isFinite(offsetY)
+  ) {
+    return "";
+  }
+  const segments = [];
+  for (let index = 0; index < points.length; index += 1) {
+    const point = points[index];
+    const x =
+      offsetX + (Number(point?.x || 0) - Number(bbox.min_x || 0)) * scale;
+    const y =
+      height -
+      (offsetY + (Number(point?.y || 0) - Number(bbox.min_y || 0)) * scale);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      return "";
+    }
+    segments.push(`${index === 0 ? "M" : "L"} ${round(x, 2)} ${round(y, 2)}`);
+  }
+  return `${segments.join(" ")} Z`;
 }
 
 function buildSiteContextPanelArtifact({
@@ -4895,24 +4905,79 @@ function visual3DArtifactHasCompiledControlEvidence(artifact = null) {
   );
 }
 
-function visual3DArtifactTooWeak(artifact = null) {
-  if (!artifact) return true;
+function evaluateVisual3DArtifactStrength(artifact = null) {
+  if (!artifact) {
+    return {
+      ok: false,
+      reason: "missing_artifact",
+      details: {
+        primitiveCount: 0,
+        hasCamera: false,
+        geometryElementCount: 0,
+        hashMatches: false,
+        hasImagePayload: false,
+        isGeometryLockedImage: false,
+      },
+    };
+  }
+  const metadata = artifact.metadata || {};
   const primitiveCount = getVisual3DPrimitiveCount(artifact);
   const hasCamera = visual3DArtifactHasCamera(artifact);
-  if (visual3DArtifactIsGeometryLockedImage(artifact)) {
-    return (
-      !visual3DArtifactHasCompiledControlEvidence(artifact) ||
-      !visual3DArtifactHasImagePayload(artifact)
-    );
-  }
+  const isGeometryLockedImage = visual3DArtifactIsGeometryLockedImage(artifact);
+  const hasImagePayload = visual3DArtifactHasImagePayload(artifact);
+  const sourceGeometryHash =
+    metadata.sourceGeometryHash ||
+    metadata.renderProvenance?.sourceGeometryHash ||
+    null;
+  const artifactGeometryHash =
+    artifact.source_model_hash || artifact.geometryHash || null;
+  const hashMatches =
+    Boolean(sourceGeometryHash) &&
+    (!artifactGeometryHash || sourceGeometryHash === artifactGeometryHash);
   const geometryElementCount = count3DGeometryElements(
     artifact.svgString || "",
   );
-  return (
-    primitiveCount < MIN_3D_PRIMITIVE_COUNT ||
-    !hasCamera ||
-    geometryElementCount < MIN_3D_PRIMITIVE_COUNT
-  );
+  const details = {
+    primitiveCount,
+    hasCamera,
+    geometryElementCount,
+    hashMatches,
+    hasImagePayload,
+    isGeometryLockedImage,
+  };
+
+  if (isGeometryLockedImage) {
+    if (!visual3DArtifactHasCompiledControlEvidence(artifact)) {
+      return {
+        ok: false,
+        reason: "missing_compiled_control_evidence",
+        details,
+      };
+    }
+    if (!hasImagePayload) {
+      return { ok: false, reason: "missing_image_payload", details };
+    }
+    return { ok: true, reason: null, details };
+  }
+
+  if (primitiveCount < MIN_3D_PRIMITIVE_COUNT) {
+    return { ok: false, reason: "primitive_count_below_minimum", details };
+  }
+  if (!hasCamera) {
+    return { ok: false, reason: "missing_camera", details };
+  }
+  if (geometryElementCount < MIN_3D_PRIMITIVE_COUNT) {
+    return {
+      ok: false,
+      reason: "geometry_element_count_below_minimum",
+      details,
+    };
+  }
+  return { ok: true, reason: null, details };
+}
+
+function visual3DArtifactTooWeak(artifact = null) {
+  return !evaluateVisual3DArtifactStrength(artifact).ok;
 }
 
 // RIBA A1 plan §10 scorecard category weights — must total 100.
@@ -5497,20 +5562,43 @@ export function validateProjectGraphVerticalSlice({
       visuals3d[panelType] || findPanelArtifact(panelArtifacts, panelType);
     return artifact && artifact.source_model_hash !== geometryHash;
   });
-  const placeholder3dPanels = REQUIRED_3D_A1_PANEL_TYPES.filter((panelType) => {
+  const placeholder3dPanels = REQUIRED_3D_A1_PANEL_TYPES.map((panelType) => {
     const artifact =
       visuals3d[panelType] || findPanelArtifact(panelArtifacts, panelType);
-    const svg = artifact?.svgString || "";
-    const geometryLockedImage =
-      artifact && visual3DArtifactIsGeometryLockedImage(artifact);
-    return (
-      artifact &&
-      (artifact.metadata?.source === "placeholder" ||
-        (!geometryLockedImage && svg.length < 1200) ||
-        /1x1|placeholder_3d|geometryRenderService/i.test(svg) ||
-        visual3DArtifactTooWeak(artifact))
-    );
-  });
+    if (!artifact) return null;
+    const svg = artifact.svgString || "";
+    const svgLength = svg.length;
+    const strength = evaluateVisual3DArtifactStrength(artifact);
+    const baseDetails = {
+      panelType,
+      svgLength,
+      isGeometryLockedImage: strength.details.isGeometryLockedImage,
+      primitiveCount: strength.details.primitiveCount,
+      hasCamera: strength.details.hasCamera,
+      geometryElementCount: strength.details.geometryElementCount,
+      hasImagePayload: strength.details.hasImagePayload,
+      hashMatches: strength.details.hashMatches,
+      sourceGeometryHash:
+        artifact.metadata?.sourceGeometryHash ||
+        artifact.metadata?.renderProvenance?.sourceGeometryHash ||
+        null,
+      artifactGeometryHash:
+        artifact.source_model_hash || artifact.geometryHash || null,
+    };
+    if (artifact.metadata?.source === "placeholder") {
+      return { ...baseDetails, reason: "metadata_source_placeholder" };
+    }
+    if (!strength.details.isGeometryLockedImage && svgLength < 1200) {
+      return { ...baseDetails, reason: "svg_too_short" };
+    }
+    if (/1x1|placeholder_3d|geometryRenderService/i.test(svg)) {
+      return { ...baseDetails, reason: "regex_match_placeholder" };
+    }
+    if (!strength.ok) {
+      return { ...baseDetails, reason: strength.reason || "too_weak" };
+    }
+    return null;
+  }).filter(Boolean);
   addCheck(
     checks,
     "REQUIRED_3D_PANELS_PRESENT",
