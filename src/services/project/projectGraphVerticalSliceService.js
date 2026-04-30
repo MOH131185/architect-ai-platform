@@ -4368,17 +4368,20 @@ function buildResultPanelMap(panelArtifacts = {}) {
       .filter((artifact) => artifact?.panel_type || artifact?.panelType)
       .map((artifact) => {
         const panelType = artifact.panel_type || artifact.panelType;
+        const safeSvgString = artifact.svgString
+          ? sanitizeSheetSvgFragment(artifact.svgString)
+          : null;
         return [
           panelType,
           {
             panelType,
             label: formatPanelTitle(panelType),
             url:
-              (artifact.svgString ? svgToDataUrl(artifact.svgString) : null) ||
+              (safeSvgString ? svgToDataUrl(safeSvgString) : null) ||
               artifact.dataUrl ||
               artifact.imageUrl,
             dataUrl: artifact.dataUrl || null,
-            svgString: artifact.svgString || null,
+            svgString: safeSvgString || null,
             sourceType: artifact.asset_type || null,
             authoritySource:
               artifact.authoritySource || "project_graph_compiled_geometry",
