@@ -503,19 +503,19 @@ async function runProjectGraphVerticalSliceWorkflow({
     const placeholderIssue = issues.find(
       (entry) => entry?.code === "PLACEHOLDER_3D_RENDER_USED",
     );
-    if (placeholderIssue?.data?.placeholder3dPanels) {
+    if (placeholderIssue?.details?.placeholder3dPanels) {
       console.error(
         "[ProjectGraph] PLACEHOLDER_3D_RENDER_USED detail",
-        placeholderIssue.data.placeholder3dPanels,
+        placeholderIssue.details.placeholder3dPanels,
       );
     }
     const panelContentIssue = issues.find(
       (entry) => entry?.code === "A1_PANEL_CONTENT_MISSING",
     );
-    if (panelContentIssue?.data?.missingRequiredPanels) {
+    if (panelContentIssue?.details?.missingRequiredPanels) {
       console.error(
         "[ProjectGraph] A1_PANEL_CONTENT_MISSING detail",
-        panelContentIssue.data.missingRequiredPanels,
+        panelContentIssue.details.missingRequiredPanels,
       );
     }
     const errorIssues = issues.filter((entry) => entry?.severity === "error");
@@ -525,7 +525,7 @@ async function runProjectGraphVerticalSliceWorkflow({
         console.error(
           `[ProjectGraph] issue ${entry?.code || "UNKNOWN"}:`,
           entry?.message || "",
-          entry?.data || {},
+          entry?.details || {},
         );
       });
     }
