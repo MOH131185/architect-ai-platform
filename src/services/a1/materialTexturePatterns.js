@@ -26,14 +26,43 @@ const CANONICAL_TEXTURE_KINDS = Object.freeze([
 // the broader `timber`/`metal` rules; otherwise "timber front door" would
 // classify as cladding and "metal rainwater downpipe" as a window frame.
 const MATERIAL_KEYWORD_MAP = Object.freeze([
-  { kind: "timber_front_door", pattern: /\b(front|entrance|main)\s*door\b|\b(timber|wood(en)?)\s+door\b|\bdoor\b/i },
-  { kind: "dark_metal_rainwater_goods", pattern: /\brainwater\b|\bgutter(s|ing)?\b|\bdownpipe\b|\bmetal\s+trim\b/i },
-  { kind: "red_multi_brick", pattern: /\b(red\s+|multi[-\s]?)?brick(work)?\b|\bmasonry\b|\bterracotta\b/i },
-  { kind: "dark_grey_roof_tile", pattern: /\broof\b|\bslate\b|\b(roof\s+)?tile\b|\bshingle\b|\bstanding\s+seam\b/i },
-  { kind: "anthracite_aluminium_frame", pattern: /\baluminium\b|\baluminum\b|\banthracite\b|\bwindow(\s+frame)?\b|\bglazing\b|\bglass\b|\bzinc\b/i },
-  { kind: "vertical_timber_cladding", pattern: /\btimber\b|\bwood(en)?\b|\boak\b|\bcedar\b|\bboarding\b|\bcladding\b/i },
-  { kind: "natural_stone_paving", pattern: /\bstone\b|\bpaving\b|\bflagstone\b/i },
-  { kind: "light_render", pattern: /\brender\b|\bstucco\b|\blime\b|\bplaster\b/i },
+  {
+    kind: "timber_front_door",
+    pattern:
+      /\b(front|entrance|main)\s*door\b|\b(timber|wood(en)?)\s+door\b|\bdoor\b/i,
+  },
+  {
+    kind: "dark_metal_rainwater_goods",
+    pattern: /\brainwater\b|\bgutter(s|ing)?\b|\bdownpipe\b|\bmetal\s+trim\b/i,
+  },
+  {
+    kind: "red_multi_brick",
+    pattern:
+      /\b(red\s+|multi[-\s]?)?brick(work)?\b|\bmasonry\b|\bterracotta\b/i,
+  },
+  {
+    kind: "dark_grey_roof_tile",
+    pattern:
+      /\broof\b|\bslate\b|\b(roof\s+)?tile\b|\bshingle\b|\bstanding\s+seam\b/i,
+  },
+  {
+    kind: "anthracite_aluminium_frame",
+    pattern:
+      /\baluminium\b|\baluminum\b|\banthracite\b|\bwindow(\s+frame)?\b|\bglazing\b|\bglass\b|\bzinc\b/i,
+  },
+  {
+    kind: "vertical_timber_cladding",
+    pattern:
+      /\btimber\b|\bwood(en)?\b|\boak\b|\bcedar\b|\bboarding\b|\bcladding\b/i,
+  },
+  {
+    kind: "natural_stone_paving",
+    pattern: /\bstone\b|\bpaving\b|\bflagstone\b/i,
+  },
+  {
+    kind: "light_render",
+    pattern: /\brender\b|\bstucco\b|\blime\b|\bplaster\b/i,
+  },
 ]);
 
 const KIND_HEX = Object.freeze({
@@ -57,6 +86,55 @@ const KIND_APPLICATION = Object.freeze({
   light_render: "external wall",
   natural_stone_paving: "landscape / plinth",
 });
+
+// Phase 2 — high-level category labels that appear above each swatch on the
+// presentation-v3 material palette panel ("EXTERIOR", "ROOF", "OPENINGS",
+// "DETAIL", "LANDSCAPE"). Mapped from the canonical texture kind so callers
+// don't have to guess.
+const KIND_CATEGORY = Object.freeze({
+  red_multi_brick: "EXTERIOR",
+  vertical_timber_cladding: "EXTERIOR",
+  light_render: "EXTERIOR",
+  dark_grey_roof_tile: "ROOF",
+  anthracite_aluminium_frame: "OPENINGS",
+  timber_front_door: "OPENINGS",
+  dark_metal_rainwater_goods: "DETAIL",
+  natural_stone_paving: "LANDSCAPE",
+});
+
+const APPLICATION_CATEGORY_HINTS = Object.freeze([
+  {
+    pattern: /\b(roof|tile|slate|shingle|standing\s+seam)\b/i,
+    category: "ROOF",
+  },
+  { pattern: /\b(window|opening|glaz|frame|door)\b/i, category: "OPENINGS" },
+  {
+    pattern: /\b(rainwater|gutter|downpipe|trim|detail|fitting)\b/i,
+    category: "DETAIL",
+  },
+  {
+    pattern: /\b(landscape|paving|plinth|stone|garden|hard\s*standing)\b/i,
+    category: "LANDSCAPE",
+  },
+  {
+    pattern: /\b(wall|facade|cladding|render|brick|stucco|exterior)\b/i,
+    category: "EXTERIOR",
+  },
+]);
+
+export function inferMaterialCategory(material = {}) {
+  const kind = materialTextureKind(
+    material.name || material,
+    material.application || "",
+  );
+  if (KIND_CATEGORY[kind]) return KIND_CATEGORY[kind];
+  const haystack =
+    `${material.application || ""} ${material.name || ""}`.toLowerCase();
+  for (const hint of APPLICATION_CATEGORY_HINTS) {
+    if (hint.pattern.test(haystack)) return hint.category;
+  }
+  return "DETAIL";
+}
 
 const CANONICAL_FALLBACK_MATERIALS = Object.freeze([
   { name: "Red Multi Brick", kind: "red_multi_brick" },
@@ -116,7 +194,8 @@ function fnv1aHash(str) {
 }
 
 export function materialTextureKind(name = "", application = "") {
-  const haystack = `${String(name ?? "")} ${String(application ?? "")}`.toLowerCase();
+  const haystack =
+    `${String(name ?? "")} ${String(application ?? "")}`.toLowerCase();
   for (const rule of MATERIAL_KEYWORD_MAP) {
     if (rule.pattern.test(haystack)) return rule.kind;
   }
@@ -131,7 +210,8 @@ export function inferMaterialHex(name = "", index = 0, application = "") {
 }
 
 export function inferMaterialApplication(name = "", application = "") {
-  if (application && String(application).trim()) return String(application).trim();
+  if (application && String(application).trim())
+    return String(application).trim();
   const kind = materialTextureKind(name);
   return KIND_APPLICATION[kind] || "finish";
 }
@@ -142,7 +222,8 @@ export function inferMaterialApplication(name = "", application = "") {
  * signatures.
  */
 export function materialSignature(material) {
-  const source = material && typeof material === "object" ? material : { name: material };
+  const source =
+    material && typeof material === "object" ? material : { name: material };
   const name = toAsciiLabel(source.name || source.material || "")
     .toLowerCase()
     .replace(/\s+/g, " ")
@@ -190,7 +271,13 @@ export function buildMaterialTexturePattern(material, options = {}) {
   const id = options.id || patternIdFor(signature);
   const kind = materialTextureKind(material?.name, material?.application);
   const baseHex = escapeXml(
-    material?.hexColor || material?.hex || inferMaterialHex(material?.name, options.index ?? 0, material?.application),
+    material?.hexColor ||
+      material?.hex ||
+      inferMaterialHex(
+        material?.name,
+        options.index ?? 0,
+        material?.application,
+      ),
   );
   const overlay = KIND_OVERLAY[kind] || KIND_OVERLAY.light_render;
   const svg = `<pattern id="${id}" width="72" height="72" patternUnits="userSpaceOnUse" data-material-texture="${kind}" data-material-signature="${signature}"><rect width="72" height="72" fill="${baseHex}"/>${overlay}</pattern>`;
@@ -243,7 +330,14 @@ function pushAll(target, value, source) {
     return;
   }
   if (typeof value === "object") {
-    if (value.name || value.material || value.label || value.type || value.primary || value.finish) {
+    if (
+      value.name ||
+      value.material ||
+      value.label ||
+      value.type ||
+      value.primary ||
+      value.finish
+    ) {
       target.push({ raw: value, source });
       return;
     }
@@ -275,7 +369,11 @@ export function normalizeMaterialPaletteEntries({
 } = {}) {
   const collected = [];
   pushAll(collected, materials, "project_graph");
-  pushAll(collected, localStyle?.material_palette_with_provenance, "local_style");
+  pushAll(
+    collected,
+    localStyle?.material_palette_with_provenance,
+    "local_style",
+  );
   pushAll(collected, localStyle?.material_palette, "local_style");
   pushAll(collected, localStyle?.materials_local, "local_style");
   pushAll(collected, localStyle?.local_materials, "local_style");
@@ -300,7 +398,9 @@ export function normalizeMaterialPaletteEntries({
     CANONICAL_FALLBACK_MATERIALS.forEach((entry, index) => {
       byName.set(entry.name.toLowerCase(), {
         name: entry.name,
-        hexColor: KIND_HEX[entry.kind] || HEX_INDEX_FALLBACKS[index % HEX_INDEX_FALLBACKS.length],
+        hexColor:
+          KIND_HEX[entry.kind] ||
+          HEX_INDEX_FALLBACKS[index % HEX_INDEX_FALLBACKS.length],
         application: KIND_APPLICATION[entry.kind] || "finish",
         source: "deterministic_fallback",
       });
@@ -310,25 +410,88 @@ export function normalizeMaterialPaletteEntries({
   return Array.from(byName.values()).slice(0, 8);
 }
 
+/**
+ * Phase 2 — top up an existing materials list to a target size using the
+ * canonical 8-material fallback set. Used by the presentation-v3 material
+ * palette panel so the 2×4 grid always renders 8 cards even when the
+ * SheetDesignContext / DNA collection is shorter.
+ *
+ * Existing entries are kept verbatim and dedupe against the fallback by
+ * lowercase name. Returns at most `targetSize` entries.
+ */
+export function topUpMaterialPaletteWithCanonical(
+  materials = [],
+  targetSize = 8,
+) {
+  const result = Array.isArray(materials) ? materials.filter(Boolean) : [];
+  if (result.length >= targetSize) return result.slice(0, targetSize);
+  const known = new Set(
+    result.map((entry) => String(entry?.name || "").toLowerCase()),
+  );
+  for (
+    let i = 0;
+    i < CANONICAL_FALLBACK_MATERIALS.length && result.length < targetSize;
+    i += 1
+  ) {
+    const fallback = CANONICAL_FALLBACK_MATERIALS[i];
+    const key = fallback.name.toLowerCase();
+    if (known.has(key)) continue;
+    known.add(key);
+    result.push({
+      name: fallback.name,
+      hexColor:
+        KIND_HEX[fallback.kind] ||
+        HEX_INDEX_FALLBACKS[i % HEX_INDEX_FALLBACKS.length],
+      application: KIND_APPLICATION[fallback.kind] || "finish",
+      source: "deterministic_fallback_topup",
+    });
+  }
+  return result.slice(0, targetSize);
+}
+
 function buildSingleCard({ material, index, layout, sourceTag, thumbnailUrl }) {
   const signature = materialSignature(material);
   const pattern = buildMaterialTexturePattern(material, { signature, index });
   const x = layout.startX + layout.col * (layout.cardWidth + layout.gapX);
   const y = layout.startY + layout.row * (layout.cardHeight + layout.gapY);
   const labelOffset = layout.labelOffset ?? 22;
-  const subLabelOffset = layout.subLabelOffset ?? labelOffset + (layout.subLabelGap ?? 22);
+  const subLabelOffset =
+    layout.subLabelOffset ?? labelOffset + (layout.subLabelGap ?? 22);
   const labelFontSize = layout.labelFontSize ?? 18;
   const subLabelFontSize = layout.subLabelFontSize ?? 14;
   const fontFamily = layout.fontFamily || "Arial, Helvetica, sans-serif";
-  const labelText = clampText(String(material.name || "").toUpperCase(), layout.labelMaxChars ?? 28);
-  const application = clampText(material.application || "", layout.subLabelMaxChars ?? 32);
-  const safeFill = thumbnailUrl
-    ? `url(#${pattern.id})`
-    : `url(#${pattern.id})`;
+  const labelText = clampText(
+    String(material.name || "").toUpperCase(),
+    layout.labelMaxChars ?? 28,
+  );
+  const application = clampText(
+    material.application || "",
+    layout.subLabelMaxChars ?? 32,
+  );
+  const safeFill = thumbnailUrl ? `url(#${pattern.id})` : `url(#${pattern.id})`;
   const overlayImage = thumbnailUrl
     ? `<image href="${escapeXml(thumbnailUrl)}" x="${x}" y="${y}" width="${layout.cardWidth}" height="${layout.cardHeight}" preserveAspectRatio="xMidYMid slice" data-material-thumbnail="true"/>`
     : "";
-  const cardSvg = `<g data-material-index="${index + 1}" data-material-signature="${signature}" data-material-source="${sourceTag}">
+  // Phase 2 — optional small category label rendered above each swatch
+  // ("EXTERIOR" / "ROOF" / "OPENINGS" / "DETAIL" / "LANDSCAPE"). Driven by
+  // either an explicit `material.category` or inferred from kind/application.
+  const showCategoryLabel = layout.showCategoryLabel === true;
+  const categoryFromMaterial = material.category
+    ? String(material.category).trim().toUpperCase()
+    : null;
+  const category =
+    categoryFromMaterial ||
+    (showCategoryLabel ? inferMaterialCategory(material) : null);
+  const categoryFontSize =
+    layout.categoryFontSize ?? Math.max(9, subLabelFontSize - 2);
+  const categoryOffset =
+    layout.categoryOffset ?? Math.max(8, categoryFontSize + 2);
+  const categorySvg =
+    showCategoryLabel && category
+      ? `<text x="${x}" y="${y - categoryOffset / 2}" font-size="${categoryFontSize}" font-family="${fontFamily}" font-weight="700" fill="#666666" letter-spacing="1.5" class="sheet-critical-label" data-text-role="critical">${escapeXml(category)}</text>`
+      : "";
+  const cardSvg = `<g data-material-index="${index + 1}" data-material-signature="${signature}" data-material-source="${sourceTag}"${category ? ` data-material-category="${escapeXml(category)}"` : ""}>
+  ${categorySvg}
   <rect x="${x}" y="${y}" width="${layout.cardWidth}" height="${layout.cardHeight}" fill="${safeFill}" stroke="#111111" stroke-width="${layout.strokeWidth ?? 2}" data-material-texture="${escapeXml(pattern.kind)}"/>
   ${overlayImage}
   <text x="${x}" y="${y + layout.cardHeight + labelOffset}" font-size="${labelFontSize}" font-family="${fontFamily}" font-weight="700" fill="#111111" class="sheet-critical-label" data-text-role="critical">${escapeXml(labelText)}</text>
@@ -341,10 +504,14 @@ function buildSingleCard({ material, index, layout, sourceTag, thumbnailUrl }) {
       materialSignature: signature,
       label: labelText,
       application: application || "",
+      category: category || null,
       textureKind: pattern.kind,
       source: sourceTag,
       fallbackAvailable: true,
-      hex: material.hexColor || material.hex || inferMaterialHex(material.name, index, material.application),
+      hex:
+        material.hexColor ||
+        material.hex ||
+        inferMaterialHex(material.name, index, material.application),
     },
   };
 }
@@ -372,6 +539,10 @@ function resolveLayout(layout = {}) {
     labelMaxChars: layout.labelMaxChars,
     subLabelMaxChars: layout.subLabelMaxChars,
     strokeWidth: layout.strokeWidth,
+    // Phase 2 — optional category label band above each swatch.
+    showCategoryLabel: layout.showCategoryLabel === true,
+    categoryFontSize: layout.categoryFontSize,
+    categoryOffset: layout.categoryOffset,
   };
 }
 
@@ -389,7 +560,10 @@ function resolveLayout(layout = {}) {
  *                           fallbackAvailable: true, hex }>
  *   }
  */
-export function buildMaterialPaletteCards({ materials, layout: layoutInput } = {}) {
+export function buildMaterialPaletteCards({
+  materials,
+  layout: layoutInput,
+} = {}) {
   const layout = resolveLayout(layoutInput);
   const list = (Array.isArray(materials) ? materials : []).slice(0, layout.max);
   const defs = [];
@@ -416,7 +590,12 @@ export function buildMaterialPaletteCards({ materials, layout: layoutInput } = {
 }
 
 function isThumbnailFlagEnabled(env) {
-  const source = env && typeof env === "object" ? env : (typeof process !== "undefined" ? process.env : {});
+  const source =
+    env && typeof env === "object"
+      ? env
+      : typeof process !== "undefined"
+        ? process.env
+        : {};
   const value = source?.MATERIAL_TEXTURE_THUMBNAILS_ENABLED;
   return String(value ?? "").toLowerCase() === "true";
 }
@@ -461,9 +640,17 @@ export async function buildMaterialPaletteCardsAsync({
           label: material.name,
           application: material.application || "",
           textureKind: materialTextureKind(material.name, material.application),
-          hex: material.hexColor || material.hex || inferMaterialHex(material.name, index, material.application),
+          hex:
+            material.hexColor ||
+            material.hex ||
+            inferMaterialHex(material.name, index, material.application),
         });
-        if (result && typeof result === "object" && typeof result.url === "string" && result.url.trim()) {
+        if (
+          result &&
+          typeof result === "object" &&
+          typeof result.url === "string" &&
+          result.url.trim()
+        ) {
           thumbnailUrl = result.url.trim();
           sourceTag = "ai_texture_thumbnail";
         }
@@ -498,4 +685,5 @@ export {
   CANONICAL_FALLBACK_MATERIALS,
   KIND_HEX,
   KIND_APPLICATION,
+  KIND_CATEGORY,
 };

@@ -69,6 +69,7 @@ import {
 import {
   buildMaterialPaletteCards,
   normalizeMaterialPaletteEntries as normalizeMaterialPaletteEntriesShared,
+  topUpMaterialPaletteWithCanonical,
 } from "../a1/materialTexturePatterns.js";
 import {
   buildClimateRenderContext,
@@ -3136,42 +3137,63 @@ function buildSiteContextPanelArtifact({
   };
 }
 
-function buildMaterialPalettePanelArtifact({
+export function buildMaterialPalettePanelArtifact({
   projectGraphId,
   localStyle,
   compiledProject,
   styleDNA,
   brief,
   geometryHash,
+  // Phase 2 — when present, the SheetDesignContext supplies the canonical
+  // materials list (normalized via getCanonicalMaterialPalette + DNA fallback).
+  // We prefer ctx.materials over the localStyle / DNA collection so style +
+  // material + climate stay coherent across panels. When absent, fall back to
+  // the legacy Phase E collection logic.
+  sheetDesignContext = null,
 }) {
   const width = 700;
   const height = 900;
-  const materials = normalizeMaterialPaletteEntriesShared({
-    localStyle,
-    compiledProject,
-    styleDNA,
-    brief,
-  });
+  const ctxMaterials = Array.isArray(sheetDesignContext?.materials)
+    ? sheetDesignContext.materials.filter(
+        (entry) => entry && (entry.name || entry.hexColor || entry.hex),
+      )
+    : [];
+  const baseMaterials =
+    ctxMaterials.length > 0
+      ? ctxMaterials
+      : normalizeMaterialPaletteEntriesShared({
+          localStyle,
+          compiledProject,
+          styleDNA,
+          brief,
+        });
+  // Always render up to 8 cards; if the collection is short, top up from the
+  // canonical 8-material fallback so the 2×4 grid stays visually balanced.
+  const materials = topUpMaterialPaletteWithCanonical(baseMaterials, 8);
   const { defs, cards, cardMetadata } = buildMaterialPaletteCards({
     materials,
     layout: {
+      // Phase 2: 2 cols × 4 rows = 8 cards on the presentation-v3 row-3 slot.
       cols: 2,
-      rows: 3,
-      max: 6,
-      cardWidth: 250,
-      cardHeight: 112,
-      gapX: 54,
-      gapY: 116,
-      startX: 54,
-      startY: 92,
-      labelOffset: 28,
-      subLabelOffset: 54,
-      labelFontSize: 18,
-      subLabelFontSize: 14,
+      rows: 4,
+      max: 8,
+      cardWidth: 270,
+      cardHeight: 120,
+      gapX: 42,
+      gapY: 60,
+      startX: 58,
+      startY: 110,
+      labelOffset: 20,
+      subLabelOffset: 38,
+      labelFontSize: 17,
+      subLabelFontSize: 13,
       fontFamily: "Arial, sans-serif",
-      labelMaxChars: 18,
-      subLabelMaxChars: 24,
+      labelMaxChars: 22,
+      subLabelMaxChars: 26,
       strokeWidth: 2,
+      showCategoryLabel: true,
+      categoryFontSize: 11,
+      categoryOffset: 10,
     },
   });
   const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="material_palette" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}">
@@ -3213,6 +3235,14 @@ function buildMaterialPalettePanelArtifact({
       materialCount: materials.length,
       materials,
       cardMetadata,
+      // Phase 2 surfaces:
+      cardCount: cardMetadata.length,
+      categoryCount: new Set(
+        cardMetadata.map((card) => card.category).filter(Boolean),
+      ).size,
+      categories: cardMetadata.map((card) => card.category || null),
+      sheetDesignContextHash: sheetDesignContext?.contextHash || null,
+      sourceContext: sheetDesignContext ? "sheet_design_context" : "legacy_dna",
     },
   };
 }
@@ -3237,32 +3267,231 @@ function splitNoteLines(note = "", maxChars = 36, maxLines = 3) {
   return lines.slice(0, maxLines);
 }
 
-function buildKeyNoteItems({ brief, site, climate, regulations, localStyle }) {
-  const notes = [
-    `Active programme: ${brief?.target_gia_m2 || "target"} sq m across ${brief?.target_storeys || 1} storey(s).`,
-    brief?.site_input?.address
-      ? `Active site: ${brief.site_input.address}.`
-      : null,
-    site?.area_m2
-      ? `Site area ${site.area_m2} sq m; boundary and context sourced from ProjectGraph site analysis.`
-      : "Site boundary is held in the ProjectGraph site model.",
-    `Sustainability ambition: ${brief?.sustainability_ambition || "low_energy"}.`,
-    climate?.overheating?.risk_level
-      ? `Climate precheck: overheating risk ${climate.overheating.risk_level}.`
-      : "Climate precheck uses deterministic fallback where live data is unavailable.",
-    regulations?.jurisdiction
-      ? `Regulation precheck jurisdiction: ${regulations.jurisdiction}.`
-      : "Regulation checks are preliminary and require professional review.",
-    Array.isArray(localStyle?.material_palette) &&
-    localStyle.material_palette.length
-      ? `Facade palette: ${localStyle.material_palette.slice(0, 3).join(", ")}.`
-      : "Facade palette is derived from local style and user intent.",
-    "All dimensions are in metres unless noted; verify before construction.",
-  ];
-  return notes.filter(Boolean).slice(0, 7);
+// Phase 2 — canonical Key Notes group order. The structure stays stable
+// across runs so the panel order is deterministic regardless of input.
+const KEY_NOTE_GROUP_ORDER = Object.freeze([
+  "external_walls",
+  "roof",
+  "windows_doors",
+  "heating_ventilation",
+  "drainage",
+  "sustainability",
+  "climate_strategy",
+  "dimensions_tolerances",
+  "copyright",
+]);
+
+function pickMaterialByCategory(materials, predicate) {
+  if (!Array.isArray(materials)) return null;
+  return materials.find((m) => m && predicate(m)) || null;
 }
 
-function buildKeyNotesPanelArtifact({
+function describeMaterial(material) {
+  if (!material) return null;
+  const name = String(material.name || "").trim();
+  if (!name) return null;
+  const hex = material.hexColor || material.hex || null;
+  const application = String(material.application || "").trim();
+  const tail = [];
+  if (hex) tail.push(hex);
+  if (application) tail.push(application);
+  return tail.length ? `${name} (${tail.join(" / ")})` : name;
+}
+
+export function buildKeyNoteItems({
+  brief,
+  site,
+  climate,
+  regulations,
+  localStyle,
+  sheetDesignContext = null,
+}) {
+  const ctxMaterials =
+    Array.isArray(sheetDesignContext?.materials) &&
+    sheetDesignContext.materials.length
+      ? sheetDesignContext.materials
+      : null;
+  const localPalette = Array.isArray(localStyle?.material_palette)
+    ? localStyle.material_palette
+    : [];
+  const ctxClimate =
+    sheetDesignContext?.climate ||
+    (climate && typeof climate === "object" ? null : null);
+  const climateZone =
+    sheetDesignContext?.climate?.zone ||
+    climate?.zone ||
+    climate?.koppen ||
+    null;
+  const climateRainfall =
+    sheetDesignContext?.climate?.rainfallBand ||
+    sheetDesignContext?.climate?.rainfallMm ||
+    climate?.rainfall_mm ||
+    climate?.annual_rainfall_mm ||
+    null;
+  const climateStrategy =
+    sheetDesignContext?.climate?.strategy ||
+    climate?.strategy ||
+    climate?.design_strategy ||
+    null;
+  const overheatingFlag =
+    sheetDesignContext?.climate?.overheating === true ||
+    climate?.overheating === true ||
+    climate?.overheating?.risk_level === "high" ||
+    climate?.overheating?.risk_level === "moderate";
+
+  const wallMaterial =
+    pickMaterialByCategory(ctxMaterials, (m) =>
+      /external|wall|brick|render|stone|cladding|facade/i.test(
+        `${m.application} ${m.name}`,
+      ),
+    ) ||
+    (ctxMaterials && ctxMaterials[0]) ||
+    null;
+  const roofMaterial = pickMaterialByCategory(ctxMaterials, (m) =>
+    /roof|tile|slate|standing\s*seam/i.test(`${m.application} ${m.name}`),
+  );
+  const openingMaterial = pickMaterialByCategory(ctxMaterials, (m) =>
+    /window|opening|glaz|frame|aluminium|aluminum/i.test(
+      `${m.application} ${m.name}`,
+    ),
+  );
+  const doorMaterial = pickMaterialByCategory(ctxMaterials, (m) =>
+    /door/i.test(`${m.application} ${m.name}`),
+  );
+
+  const wallPrimaryDesc = describeMaterial(wallMaterial);
+  const roofDesc = describeMaterial(roofMaterial);
+  const openingDesc = describeMaterial(openingMaterial);
+  const doorDesc = describeMaterial(doorMaterial);
+  const facadeFallback = localPalette.length
+    ? localPalette
+        .slice(0, 3)
+        .map((entry) =>
+          typeof entry === "string"
+            ? entry
+            : entry?.name || entry?.material || "",
+        )
+        .filter(Boolean)
+        .join(", ")
+    : null;
+
+  const partL =
+    sheetDesignContext?.sustainability?.partL ||
+    regulations?.partL ||
+    regulations?.part_l ||
+    null;
+  const fabricFirst =
+    sheetDesignContext?.sustainability?.fabricFirst === true ||
+    regulations?.fabric_first === true ||
+    regulations?.fabricFirst === true;
+  const sustainabilityAmbition =
+    brief?.sustainability_ambition || "low energy / fabric-first";
+
+  const region =
+    sheetDesignContext?.region ||
+    site?.region ||
+    site?.country ||
+    brief?.site_input?.region ||
+    "UK";
+  const dateLabel = brief?.brief_date || brief?.date || null;
+
+  const groups = {
+    external_walls: {
+      heading: "External walls",
+      lines: [
+        wallPrimaryDesc
+          ? `Primary wall: ${wallPrimaryDesc}.`
+          : facadeFallback
+            ? `Facade palette: ${facadeFallback}.`
+            : "Primary wall finish per local-style pack.",
+        "Insulated cavity construction; verify U-values against Part L 2021.",
+      ],
+    },
+    roof: {
+      heading: "Roof",
+      lines: [
+        roofDesc
+          ? `Roof: ${roofDesc}.`
+          : "Pitched roof per regional vernacular.",
+        "Concealed gutters; rooflights where indicated on plan.",
+      ],
+    },
+    windows_doors: {
+      heading: "Windows / Doors",
+      lines: [
+        openingDesc
+          ? `Windows: ${openingDesc}.`
+          : "Aluminium-framed double glazing, anthracite finish.",
+        doorDesc
+          ? `Front door: ${doorDesc}.`
+          : "Solid timber front door with weather seal.",
+      ],
+    },
+    heating_ventilation: {
+      heading: "Heating / Ventilation",
+      lines: [
+        "Air-source heat pump with underfloor heating to ground floor.",
+        "MVHR (mechanical ventilation with heat recovery) ducted through ceiling void.",
+      ],
+    },
+    drainage: {
+      heading: "Drainage",
+      lines: [
+        "Foul to public sewer; surface water to soakaway / SuDS where appropriate.",
+        "Verify connections with local water authority before construction.",
+      ],
+    },
+    sustainability: {
+      heading: "Sustainability",
+      lines: [
+        partL
+          ? `Compliance: ${String(partL).slice(0, 80)}.`
+          : `Ambition: ${sustainabilityAmbition}; Part L 2021 fabric performance.`,
+        fabricFirst
+          ? "Fabric-first strategy: airtightness, continuous insulation, thermal bridging mitigation."
+          : "Low-energy strategy with fabric performance prioritised over add-on services.",
+      ],
+    },
+    climate_strategy: {
+      heading: "Climate strategy",
+      lines: [
+        climateZone
+          ? `Climate zone ${climateZone}${climateRainfall ? ` / rainfall ${typeof climateRainfall === "number" ? `${climateRainfall} mm/yr` : climateRainfall}` : ""}.`
+          : "Climate strategy uses deterministic UK temperate defaults.",
+        climateStrategy
+          ? `${climateStrategy}.`
+          : overheatingFlag
+            ? "Overheating risk flagged; specify external solar shading and night purge."
+            : "Passive solar + cross-ventilation; minimise summer gain on south-west glazing.",
+      ],
+    },
+    dimensions_tolerances: {
+      heading: "Dimensions / Tolerances",
+      lines: [
+        "All dimensions in millimetres unless otherwise noted.",
+        "Do not scale from drawing. Verify on site before construction.",
+      ],
+    },
+    copyright: {
+      heading: "Copyright / Disclaimer",
+      lines: [
+        `© Architecture AI Platform${dateLabel ? ` — ${dateLabel}` : ""}. RIBA Stage concept package, ${region}.`,
+        "Drawings issued for early-stage design; require professional architectural / structural / planning review before construction.",
+      ],
+    },
+  };
+
+  return KEY_NOTE_GROUP_ORDER.map((id) => {
+    const group = groups[id];
+    return {
+      id,
+      heading: group.heading,
+      lines: (group.lines || []).filter(Boolean),
+    };
+  });
+}
+
+export function buildKeyNotesPanelArtifact({
   projectGraphId,
   brief,
   site,
@@ -3270,38 +3499,48 @@ function buildKeyNotesPanelArtifact({
   regulations,
   localStyle,
   geometryHash,
+  sheetDesignContext = null,
 }) {
   const width = 560;
   const height = 900;
-  const notes = buildKeyNoteItems({
+  const groups = buildKeyNoteItems({
     brief,
     site,
     climate,
     regulations,
     localStyle,
+    sheetDesignContext,
   });
-  let cursorY = 98;
-  const noteGroups = notes
-    .map((note, index) => {
-      const lines = splitNoteLines(note, 34);
-      const groupY = cursorY;
-      cursorY += 36 + lines.length * 25;
-      return `<g data-key-note="${index + 1}">
-  <text x="34" y="${groupY}" font-size="18" font-family="Arial, sans-serif" font-weight="700" fill="#111111">${index + 1}.</text>
-  ${lines
-    .map(
-      (line, lineIndex) =>
-        `<text x="72" y="${groupY + lineIndex * 25}" font-size="17" font-family="Arial, sans-serif" fill="#222222">${escapeXml(line)}</text>`,
-    )
-    .join("\n  ")}
+  let cursorY = 102;
+  const groupSvg = groups
+    .map((group, index) => {
+      const headingY = cursorY;
+      const headingFontSize = 15;
+      const bodyFontSize = 13;
+      const lineHeight = 18;
+      const bodyLines = group.lines.flatMap((line) =>
+        splitNoteLines(line, 60, 2),
+      );
+      const blockHeight = 22 + bodyLines.length * lineHeight + 12;
+      const bodyTextSvg = bodyLines
+        .map(
+          (line, lineIndex) =>
+            `<text x="48" y="${headingY + 22 + lineIndex * lineHeight}" font-size="${bodyFontSize}" font-family="Arial, sans-serif" fill="#222222">${escapeXml(line)}</text>`,
+        )
+        .join("\n  ");
+      const block = `<g data-key-note-id="${escapeXml(group.id)}" data-key-note-index="${index + 1}">
+  <text x="34" y="${headingY}" font-size="${headingFontSize}" font-family="Arial, sans-serif" font-weight="700" fill="#111111" class="sheet-critical-label" data-text-role="critical">${index + 1}. ${escapeXml(group.heading)}</text>
+  ${bodyTextSvg}
 </g>`;
+      cursorY += blockHeight;
+      return block;
     })
     .join("\n");
   const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="key_notes" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}">
   <rect width="${width}" height="${height}" fill="#ffffff"/>
-  <text x="30" y="48" font-family="Arial, sans-serif" font-size="32" font-weight="700" fill="#111111">KEY NOTES</text>
+  <text x="30" y="48" font-family="Arial, sans-serif" font-size="28" font-weight="700" fill="#111111">KEY NOTES</text>
   <line x1="30" y1="66" x2="530" y2="66" stroke="#111111" stroke-width="2"/>
-  ${noteGroups}
+  ${groupSvg}
 </svg>`;
   const svgHash = computeCDSHashSync({
     panelType: "key_notes",
@@ -3331,21 +3570,62 @@ function buildKeyNotesPanelArtifact({
       source: "project_graph_key_notes",
       panelType: "key_notes",
       geometryHash,
-      noteCount: notes.length,
+      noteCount: groups.length,
+      groupOrder: KEY_NOTE_GROUP_ORDER.slice(),
+      groupIds: groups.map((g) => g.id),
+      groupHeadings: groups.map((g) => g.heading),
+      sheetDesignContextHash: sheetDesignContext?.contextHash || null,
+      sourceContext: sheetDesignContext ? "sheet_design_context" : "legacy_dna",
     },
   };
 }
 
-function buildTitleBlockPanelArtifact({
+// Phase 2 — parse RIBA stage label from brief.user_intent.portfolio_mood,
+// brief.riba_stage, or sheetPlan label fallback.
+function resolveRibaStageLabel(brief, sheetPlan) {
+  const fromBrief =
+    brief?.riba_stage ||
+    brief?.user_intent?.portfolio_mood ||
+    brief?.user_intent?.riba_stage ||
+    null;
+  if (typeof fromBrief === "string") {
+    const match = fromBrief.match(/(?:riba[_\s]*stage[_\s]*)?(\d)\b/i);
+    if (match) return `RIBA Stage ${match[1]}`;
+  }
+  if (typeof fromBrief === "number" && Number.isFinite(fromBrief)) {
+    return `RIBA Stage ${fromBrief}`;
+  }
+  if (sheetPlan?.label) {
+    const match = String(sheetPlan.label).match(/RIBA\s*Stage\s*(\d)/i);
+    if (match) return `RIBA Stage ${match[1]}`;
+  }
+  return "RIBA Stage 2";
+}
+
+function todayIsoDate() {
+  try {
+    return new Date().toISOString().slice(0, 10);
+  } catch {
+    return "";
+  }
+}
+
+export function buildTitleBlockPanelArtifact({
   projectGraphId,
   brief,
   geometryHash,
   sheetPlan,
+  sheetDesignContext = null,
 }) {
   const width = 620;
   const height = 900;
   const location =
-    brief?.site_input?.address || brief?.site_input?.postcode || "Project site";
+    sheetDesignContext?.region && brief?.site_input?.address
+      ? `${brief.site_input.address}, ${sheetDesignContext.region}`
+      : brief?.site_input?.address ||
+        brief?.site_input?.postcode ||
+        sheetDesignContext?.region ||
+        "Project site";
   const drawingNumber = sheetPlan?.sheet_number || "A1-00";
   const sheetLabel = sheetPlan?.label || "RIBA Stage 2 Master";
   const projectTitle = String(brief?.project_name || "ArchiAI Project")
@@ -3356,30 +3636,62 @@ function buildTitleBlockPanelArtifact({
   const programmeLabel = String(brief?.building_type || "architecture")
     .replace(/[_-]+/g, " ")
     .trim();
+  const ribaStageLabel = resolveRibaStageLabel(brief, sheetPlan);
+  const status = String(
+    brief?.status ||
+      brief?.delivery_status ||
+      sheetPlan?.status ||
+      "Draft for review",
+  ).trim();
+  const revision = String(
+    brief?.revision || brief?.rev || sheetPlan?.revision || "P01",
+  ).trim();
+  const dateLabel = String(
+    brief?.brief_date || brief?.date || sheetPlan?.date || todayIsoDate(),
+  ).trim();
+  const architectName = String(
+    brief?.architect ||
+      sheetDesignContext?.architect ||
+      "Architecture AI Platform",
+  ).trim();
+  const studioFooter = String(
+    brief?.studio_footer ||
+      sheetDesignContext?.studio_footer ||
+      "Architecture | Design | Planning",
+  ).trim();
+  // Phase 2 — broader RIBA-style metadata. The first 5 rows preserve the
+  // existing data source (so existing tests and downstream readers continue
+  // working). The new rows surface RIBA Stage / Status / Revision / Date /
+  // Drawing No. so reviewers get the full set on the sheet.
   const rows = [
     ["Project", brief?.project_name || "ArchiAI Project"],
     ["Location", location],
     ["Programme", programmeLabel],
     ["Target GIA", `${round(brief?.target_gia_m2 || 0, 1)} m²`],
     ["Storeys", `${brief?.target_storeys || 1}`],
-    ["Stage", sheetLabel],
+    ["RIBA Stage", ribaStageLabel],
+    ["Status", status],
+    ["Revision", revision],
+    ["Date", dateLabel],
     ["Drawing No.", drawingNumber],
   ];
+  const rowStartY = 232;
+  const rowGap = 50;
   const rowSvg = rows
     .map((row, index) => {
-      const y = 276 + index * 62;
+      const y = rowStartY + index * rowGap;
       const rawValue = String(row[1] || "");
       const valueMaxChars = index <= 1 ? 34 : 28;
       const valueLines = splitNoteLines(rawValue, valueMaxChars, 2);
       const valueFontSize =
-        rawValue.length > 54 ? 13 : rawValue.length > 38 ? 15 : 17;
+        rawValue.length > 54 ? 12 : rawValue.length > 38 ? 14 : 16;
       return `<g>
-  <line x1="34" y1="${y - 28}" x2="586" y2="${y - 28}" stroke="#999999" stroke-width="1"/>
-  <text x="42" y="${y}" font-size="18" font-family="Arial, sans-serif" fill="#222222">${escapeXml(row[0])}</text>
+  <line x1="34" y1="${y - 24}" x2="586" y2="${y - 24}" stroke="#999999" stroke-width="1"/>
+  <text x="42" y="${y}" font-size="15" font-family="Arial, sans-serif" fill="#222222">${escapeXml(row[0])}</text>
   ${valueLines
     .map(
       (line, lineIndex) =>
-        `<text x="236" y="${y + lineIndex * (valueFontSize + 4)}" font-size="${valueFontSize}" font-family="Arial, sans-serif" font-weight="700" fill="#111111">${escapeXml(line)}</text>`,
+        `<text x="220" y="${y + lineIndex * (valueFontSize + 3)}" font-size="${valueFontSize}" font-family="Arial, sans-serif" font-weight="700" fill="#111111">${escapeXml(line)}</text>`,
     )
     .join("\n  ")}
 </g>`;
@@ -3398,8 +3710,11 @@ function buildTitleBlockPanelArtifact({
   <text x="34" y="170" font-family="Arial, sans-serif" font-size="20" fill="#333333">${escapeXml((brief?.building_type || "architecture").replace(/_/g, " ").toUpperCase())}</text>
   <line x1="34" y1="206" x2="586" y2="206" stroke="#111111" stroke-width="2"/>
   ${rowSvg}
-  <text x="34" y="850" font-family="Arial, sans-serif" font-size="15" fill="#555555">source_model_hash ${escapeXml(String(geometryHash || "").slice(0, 16))}</text>
-  <text x="586" y="850" font-family="Arial, sans-serif" font-size="15" text-anchor="end" fill="#555555">ARCHITECT AI PLATFORM</text>
+  <line x1="34" y1="780" x2="586" y2="780" stroke="#111111" stroke-width="1"/>
+  <text x="34" y="808" font-family="Arial, sans-serif" font-size="15" font-weight="700" fill="#222222">${escapeXml(architectName.toUpperCase())}</text>
+  <text x="34" y="828" font-family="Arial, sans-serif" font-size="12" fill="#555555">${escapeXml(studioFooter)}</text>
+  <text x="34" y="862" font-family="Arial, sans-serif" font-size="11" fill="#888888">source_model_hash ${escapeXml(String(geometryHash || "").slice(0, 16))}</text>
+  <text x="586" y="862" font-family="Arial, sans-serif" font-size="11" text-anchor="end" fill="#888888">${escapeXml(`${ribaStageLabel} • Rev ${revision}`)}</text>
 </svg>`;
   const svgHash = computeCDSHashSync({
     panelType: "title_block",
@@ -3438,6 +3753,18 @@ function buildTitleBlockPanelArtifact({
       buildingType: brief?.building_type || null,
       drawingNumber,
       sheetLabel,
+      // Phase 2 — RIBA-style metadata fields
+      ribaStage: ribaStageLabel,
+      status,
+      revision,
+      date: dateLabel,
+      architect: architectName,
+      studioFooter,
+      rowKeys: rows.map((r) => r[0]),
+      sheetDesignContextHash: sheetDesignContext?.contextHash || null,
+      sourceContext: sheetDesignContext
+        ? "sheet_design_context"
+        : "legacy_brief",
     },
   };
 }
@@ -3739,6 +4066,7 @@ async function buildSheetPanelArtifacts({
     styleDNA,
     brief,
     geometryHash,
+    sheetDesignContext,
   });
   const keyNotes = buildKeyNotesPanelArtifact({
     projectGraphId,
@@ -3748,12 +4076,14 @@ async function buildSheetPanelArtifacts({
     regulations,
     localStyle,
     geometryHash,
+    sheetDesignContext,
   });
   const titleBlock = buildTitleBlockPanelArtifact({
     projectGraphId,
     brief,
     geometryHash,
     sheetPlan,
+    sheetDesignContext,
   });
   const visual3d = await buildVisual3DPanelArtifacts({
     compiledProject,
