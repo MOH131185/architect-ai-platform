@@ -9,6 +9,13 @@ import {
   resolveCompiledProjectGeometryInput,
   resolveCompiledProjectStyleDNA,
 } from "./drawingBounds.js";
+import { getSheetTypography } from "./sheetTypographyService.js";
+
+const IDENTITY_TYPOGRAPHY = { fontScale: 1, strokeScale: 1 };
+
+function scaleSize(base, multiplier) {
+  return Math.round(Number(base || 0) * Number(multiplier || 1) * 100) / 100;
+}
 
 function escapeXml(value) {
   return String(value)
@@ -287,9 +294,26 @@ function renderRoof(baseX, topY, widthPx, roofLanguage, theme) {
   `;
 }
 
-function renderLevelDatums(baseX, baseY, widthPx, levelProfiles, scale, theme) {
+function renderLevelDatums(
+  baseX,
+  baseY,
+  widthPx,
+  levelProfiles,
+  scale,
+  theme,
+  typo = IDENTITY_TYPOGRAPHY,
+) {
   const lines = [];
   const labels = [];
+  const datumStroke = scaleSize(1.1, typo.strokeScale);
+  const tickStroke = scaleSize(1, typo.strokeScale);
+  const primarySize = scaleSize(9, typo.fontScale);
+  const secondarySize = scaleSize(8, typo.fontScale);
+  const tickLeft = scaleSize(46, typo.fontScale);
+  const tickInset = scaleSize(6, typo.fontScale);
+  const labelOffset = scaleSize(52, typo.fontScale);
+  const subLabelOffset = scaleSize(10, typo.fontScale);
+  const baseline = scaleSize(4, typo.fontScale);
   levelProfiles.forEach((level) => {
     const topY = baseY - level.top_m * scale;
     const midY =
@@ -299,41 +323,92 @@ function renderLevelDatums(baseX, baseY, widthPx, levelProfiles, scale, theme) {
         topY,
       )}" x2="${formatNumber(baseX + widthPx)}" y2="${formatNumber(
         topY,
-      )}" stroke="${theme.lineMuted}" stroke-width="1.1" />`,
+      )}" stroke="${theme.lineMuted}" stroke-width="${datumStroke}" />`,
     );
     labels.push(`
-      <line x1="${formatNumber(baseX - 46)}" y1="${formatNumber(
+      <line x1="${formatNumber(baseX - tickLeft)}" y1="${formatNumber(
         topY,
-      )}" x2="${formatNumber(baseX - 6)}" y2="${formatNumber(
+      )}" x2="${formatNumber(baseX - tickInset)}" y2="${formatNumber(
         topY,
-      )}" stroke="${theme.lineMuted}" stroke-width="1" />
-      <text x="${formatNumber(baseX - 52)}" y="${formatNumber(
-        topY + 4,
-      )}" font-size="9" font-family="Arial, sans-serif" font-weight="700" text-anchor="end">${escapeXml(
+      )}" stroke="${theme.lineMuted}" stroke-width="${tickStroke}" />
+      <text x="${formatNumber(baseX - labelOffset)}" y="${formatNumber(
+        topY + baseline,
+      )}" font-size="${primarySize}" font-family="Arial, sans-serif" font-weight="700" text-anchor="end">${escapeXml(
         `${level.name || `L${level.level_number}`} +${level.top_m.toFixed(2)}m`,
       )}</text>
-      <text x="${formatNumber(baseX - 10)}" y="${formatNumber(
+      <text x="${formatNumber(baseX - subLabelOffset)}" y="${formatNumber(
         midY,
-      )}" font-size="8" font-family="Arial, sans-serif" text-anchor="end">${escapeXml(
+      )}" font-size="${secondarySize}" font-family="Arial, sans-serif" text-anchor="end">${escapeXml(
         level.name || `L${level.level_number}`,
       )}</text>
     `);
   });
 
   labels.push(`
-    <line x1="${formatNumber(baseX - 46)}" y1="${formatNumber(
+    <line x1="${formatNumber(baseX - tickLeft)}" y1="${formatNumber(
       baseY,
-    )}" x2="${formatNumber(baseX - 6)}" y2="${formatNumber(
+    )}" x2="${formatNumber(baseX - tickInset)}" y2="${formatNumber(
       baseY,
-    )}" stroke="${theme.line}" stroke-width="1.1" />
-    <text x="${formatNumber(baseX - 52)}" y="${formatNumber(
-      baseY + 4,
-    )}" font-size="9" font-family="Arial, sans-serif" font-weight="700" text-anchor="end">FFL +0.00m</text>
+    )}" stroke="${theme.line}" stroke-width="${datumStroke}" />
+    <text x="${formatNumber(baseX - labelOffset)}" y="${formatNumber(
+      baseY + baseline,
+    )}" font-size="${primarySize}" font-family="Arial, sans-serif" font-weight="700" text-anchor="end">FFL +0.00m</text>
   `);
 
   return {
     markup: `<g id="phase8-elevation-datums">${lines.join("")}${labels.join("")}</g>`,
     count: levelProfiles.length + 1,
+  };
+}
+
+function renderSectionCutMarkers(
+  baseX = 0,
+  baseY = 0,
+  widthPx = 0,
+  heightPx = 0,
+  theme,
+  typo = IDENTITY_TYPOGRAPHY,
+) {
+  if (!(widthPx > 0 && heightPx > 0)) {
+    return { markup: "", count: 0 };
+  }
+  const stroke = scaleSize(1.4, typo.strokeScale);
+  const fontSize = scaleSize(11, typo.fontScale);
+  const labelOffsetY = scaleSize(8, typo.fontScale);
+  const arrow = scaleSize(6, typo.fontScale);
+  const positions = [
+    { fraction: 1 / 3, label: "A-A" },
+    { fraction: 2 / 3, label: "B-B" },
+  ];
+  const top = baseY - heightPx;
+  const markup = positions
+    .map(({ fraction, label }) => {
+      const x = baseX + widthPx * fraction;
+      return `
+        <g class="phase8-elevation-cut-marker" data-cut="${label}">
+          <line x1="${formatNumber(x)}" y1="${formatNumber(
+            top - labelOffsetY * 1.5,
+          )}" x2="${formatNumber(x)}" y2="${formatNumber(
+            baseY,
+          )}" stroke="${theme.line}" stroke-width="${stroke}" stroke-dasharray="10 6" />
+          <path d="M ${formatNumber(x - arrow)} ${formatNumber(
+            top - labelOffsetY * 1.5 + arrow,
+          )} L ${formatNumber(x)} ${formatNumber(
+            top - labelOffsetY * 1.5,
+          )} L ${formatNumber(x + arrow)} ${formatNumber(
+            top - labelOffsetY * 1.5 + arrow,
+          )}" fill="none" stroke="${theme.line}" stroke-width="${stroke}" stroke-linejoin="miter"/>
+          <text x="${formatNumber(x)}" y="${formatNumber(
+            top - labelOffsetY * 2.5,
+          )}" font-size="${fontSize}" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">${label}</text>
+        </g>
+      `;
+    })
+    .join("");
+
+  return {
+    markup: `<g id="phase8-elevation-section-markers">${markup}</g>`,
+    count: positions.length,
   };
 }
 
@@ -948,39 +1023,46 @@ function renderOverallDimensions(
   layout = {},
   width = 0,
   theme,
+  typo = IDENTITY_TYPOGRAPHY,
 ) {
   const topY = layout.top - 14;
   const rightX = width - layout.right + 24;
+  const witness = scaleSize(0.9, typo.strokeScale);
+  const dim = scaleSize(1, typo.strokeScale);
+  const tick = scaleSize(3, typo.strokeScale);
+  const fontSize = scaleSize(10, typo.fontScale);
+  const fontOffset = scaleSize(6, typo.fontScale);
+  const labelOffset = scaleSize(14, typo.fontScale);
   return `
     <g id="phase8-elevation-dimensions">
       <line x1="${formatNumber(baseX)}" y1="${formatNumber(
         baseY - heightPx,
       )}" x2="${formatNumber(baseX)}" y2="${formatNumber(
         topY,
-      )}" stroke="${theme.lineMuted}" stroke-width="0.9"/>
+      )}" stroke="${theme.lineMuted}" stroke-width="${witness}"/>
       <line x1="${formatNumber(baseX + widthPx)}" y1="${formatNumber(
         baseY - heightPx,
       )}" x2="${formatNumber(baseX + widthPx)}" y2="${formatNumber(
         topY,
-      )}" stroke="${theme.lineMuted}" stroke-width="0.9"/>
+      )}" stroke="${theme.lineMuted}" stroke-width="${witness}"/>
       <line x1="${formatNumber(baseX)}" y1="${formatNumber(
         topY,
       )}" x2="${formatNumber(baseX + widthPx)}" y2="${formatNumber(
         topY,
-      )}" stroke="${theme.line}" stroke-width="1"/>
+      )}" stroke="${theme.line}" stroke-width="${dim}"/>
       <line x1="${formatNumber(baseX)}" y1="${formatNumber(
-        topY - 3,
+        topY - tick,
       )}" x2="${formatNumber(baseX)}" y2="${formatNumber(
-        topY + 3,
-      )}" stroke="${theme.line}" stroke-width="1"/>
+        topY + tick,
+      )}" stroke="${theme.line}" stroke-width="${dim}"/>
       <line x1="${formatNumber(baseX + widthPx)}" y1="${formatNumber(
-        topY - 3,
+        topY - tick,
       )}" x2="${formatNumber(baseX + widthPx)}" y2="${formatNumber(
-        topY + 3,
-      )}" stroke="${theme.line}" stroke-width="1"/>
+        topY + tick,
+      )}" stroke="${theme.line}" stroke-width="${dim}"/>
       <text x="${formatNumber(baseX + widthPx / 2)}" y="${formatNumber(
-        topY - 6,
-      )}" font-size="10" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">${escapeXml(
+        topY - fontOffset,
+      )}" font-size="${fontSize}" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">${escapeXml(
         formatMeters(metrics.width_m),
       )}</text>
 
@@ -988,31 +1070,31 @@ function renderOverallDimensions(
         baseY - heightPx,
       )}" x2="${formatNumber(rightX)}" y2="${formatNumber(
         baseY - heightPx,
-      )}" stroke="${theme.lineMuted}" stroke-width="0.9"/>
+      )}" stroke="${theme.lineMuted}" stroke-width="${witness}"/>
       <line x1="${formatNumber(baseX + widthPx)}" y1="${formatNumber(
         baseY,
       )}" x2="${formatNumber(rightX)}" y2="${formatNumber(
         baseY,
-      )}" stroke="${theme.lineMuted}" stroke-width="0.9"/>
+      )}" stroke="${theme.lineMuted}" stroke-width="${witness}"/>
       <line x1="${formatNumber(rightX)}" y1="${formatNumber(
         baseY - heightPx,
       )}" x2="${formatNumber(rightX)}" y2="${formatNumber(
         baseY,
-      )}" stroke="${theme.line}" stroke-width="1"/>
-      <line x1="${formatNumber(rightX - 3)}" y1="${formatNumber(
+      )}" stroke="${theme.line}" stroke-width="${dim}"/>
+      <line x1="${formatNumber(rightX - tick)}" y1="${formatNumber(
         baseY - heightPx,
-      )}" x2="${formatNumber(rightX + 3)}" y2="${formatNumber(
+      )}" x2="${formatNumber(rightX + tick)}" y2="${formatNumber(
         baseY - heightPx,
-      )}" stroke="${theme.line}" stroke-width="1"/>
-      <line x1="${formatNumber(rightX - 3)}" y1="${formatNumber(
+      )}" stroke="${theme.line}" stroke-width="${dim}"/>
+      <line x1="${formatNumber(rightX - tick)}" y1="${formatNumber(
         baseY,
-      )}" x2="${formatNumber(rightX + 3)}" y2="${formatNumber(
+      )}" x2="${formatNumber(rightX + tick)}" y2="${formatNumber(
         baseY,
-      )}" stroke="${theme.line}" stroke-width="1"/>
-      <text x="${formatNumber(rightX + 14)}" y="${formatNumber(
+      )}" stroke="${theme.line}" stroke-width="${dim}"/>
+      <text x="${formatNumber(rightX + labelOffset)}" y="${formatNumber(
         baseY - heightPx / 2,
-      )}" font-size="10" font-family="Arial, sans-serif" font-weight="700" transform="rotate(90 ${formatNumber(
-        rightX + 14,
+      )}" font-size="${fontSize}" font-family="Arial, sans-serif" font-weight="700" transform="rotate(90 ${formatNumber(
+        rightX + labelOffset,
       )} ${formatNumber(baseY - heightPx / 2)})" text-anchor="middle">${escapeXml(
         formatMeters(metrics.total_height_m),
       )}</text>
@@ -1027,6 +1109,7 @@ function renderScaleBar(
   layout,
   theme,
   options = {},
+  typo = IDENTITY_TYPOGRAPHY,
 ) {
   const barMeters = chooseScaleBarMeters(scalePxPerMeter);
   const barWidthPx = barMeters * scalePxPerMeter;
@@ -1035,11 +1118,14 @@ function renderScaleBar(
     ? options.y
     : height - layout.bottom + 44;
   const labelYOffset = Number.isFinite(options.labelYOffset)
-    ? options.labelYOffset
-    : 16;
-  const labelFontSize = Number.isFinite(options.fontSize)
-    ? options.fontSize
-    : 10;
+    ? scaleSize(options.labelYOffset, typo.fontScale)
+    : scaleSize(16, typo.fontScale);
+  const labelFontSize = scaleSize(
+    Number.isFinite(options.fontSize) ? options.fontSize : 10,
+    typo.fontScale,
+  );
+  const tick = scaleSize(4, typo.strokeScale);
+  const stroke = scaleSize(1.6, typo.strokeScale);
   return {
     barMeters,
     markup: `
@@ -1048,22 +1134,22 @@ function renderScaleBar(
           y,
         )}" x2="${formatNumber(x + barWidthPx)}" y2="${formatNumber(
           y,
-        )}" stroke="${theme.line}" stroke-width="1.6"/>
+        )}" stroke="${theme.line}" stroke-width="${stroke}"/>
         <line x1="${formatNumber(x)}" y1="${formatNumber(
-          y - 4,
+          y - tick,
         )}" x2="${formatNumber(x)}" y2="${formatNumber(
-          y + 4,
-        )}" stroke="${theme.line}" stroke-width="1.6"/>
+          y + tick,
+        )}" stroke="${theme.line}" stroke-width="${stroke}"/>
         <line x1="${formatNumber(x + barWidthPx / 2)}" y1="${formatNumber(
-          y - 4,
+          y - tick,
         )}" x2="${formatNumber(x + barWidthPx / 2)}" y2="${formatNumber(
-          y + 4,
-        )}" stroke="${theme.line}" stroke-width="1.6"/>
+          y + tick,
+        )}" stroke="${theme.line}" stroke-width="${stroke}"/>
         <line x1="${formatNumber(x + barWidthPx)}" y1="${formatNumber(
-          y - 4,
+          y - tick,
         )}" x2="${formatNumber(x + barWidthPx)}" y2="${formatNumber(
-          y + 4,
-        )}" stroke="${theme.line}" stroke-width="1.6"/>
+          y + tick,
+        )}" stroke="${theme.line}" stroke-width="${stroke}"/>
         <text x="${formatNumber(x + barWidthPx / 2)}" y="${formatNumber(
           y + labelYOffset,
         )}" font-size="${labelFontSize}" font-family="Arial, sans-serif" text-anchor="middle">${escapeXml(
@@ -1081,22 +1167,33 @@ function renderTitleBlock(
   layout,
   theme,
   metadata = {},
+  typo = IDENTITY_TYPOGRAPHY,
 ) {
   const x = layout.left;
   const y = height - layout.bottom + 16;
+  const blockWidth = scaleSize(328, typo.fontScale);
+  const blockHeight = scaleSize(46, typo.fontScale);
+  const stroke = scaleSize(1.1, typo.strokeScale);
+  const padX = scaleSize(12, typo.fontScale);
+  const titleY = scaleSize(17, typo.fontScale);
+  const subY = scaleSize(34, typo.fontScale);
+  const titleSize = scaleSize(14, typo.fontScale);
+  const subSize = scaleSize(10, typo.fontScale);
   return `
     <g id="phase7-elevation-title-block">
       <rect x="${formatNumber(x)}" y="${formatNumber(
         y,
-      )}" width="328" height="46" fill="${theme.paper}" stroke="${theme.line}" stroke-width="1.1"/>
-      <text x="${formatNumber(x + 12)}" y="${formatNumber(
-        y + 17,
-      )}" font-size="14" font-family="Arial, sans-serif" font-weight="700" class="sheet-critical-label" data-text-role="critical">${escapeXml(
+      )}" width="${formatNumber(blockWidth)}" height="${formatNumber(
+        blockHeight,
+      )}" fill="${theme.paper}" stroke="${theme.line}" stroke-width="${stroke}"/>
+      <text x="${formatNumber(x + padX)}" y="${formatNumber(
+        y + titleY,
+      )}" font-size="${titleSize}" font-family="Arial, sans-serif" font-weight="700" class="sheet-critical-label" data-text-role="critical">${escapeXml(
         `ELEVATION - ${String(orientation || "south").toUpperCase()}`,
       )}</text>
-      <text x="${formatNumber(x + 12)}" y="${formatNumber(
-        y + 34,
-      )}" font-size="10" font-family="Arial, sans-serif" class="sheet-critical-label" data-text-role="critical">${escapeXml(
+      <text x="${formatNumber(x + padX)}" y="${formatNumber(
+        y + subY,
+      )}" font-size="${subSize}" font-family="Arial, sans-serif" class="sheet-critical-label" data-text-role="critical">${escapeXml(
         `Bounds ${metadata.boundsSource || "building_derived"} · ${Math.round(
           Number(metadata.slotOccupancyRatio || 0) * 100,
         )}% slot occupancy`,
@@ -1134,6 +1231,7 @@ export function renderElevationSvg(
   const width = options.width || 1200;
   const height = options.height || 760;
   const sheetMode = options.sheetMode === true;
+  const typo = getSheetTypography(sheetMode);
   const showInternalTitleBlock =
     !sheetMode || options.showInternalTitleBlock === true;
   const layout = sheetMode
@@ -1179,6 +1277,15 @@ export function renderElevationSvg(
     levelProfiles,
     scale,
     theme,
+    typo,
+  );
+  const cutMarkers = renderSectionCutMarkers(
+    baseX,
+    baseY,
+    widthPx,
+    heightPx,
+    theme,
+    typo,
   );
   const openings = renderProjectedOpenings(
     sideFacade,
@@ -1348,7 +1455,9 @@ export function renderElevationSvg(
     showInternalTitleBlock
       ? {}
       : { y: height - 34, labelYOffset: 14, fontSize: 9 },
+    typo,
   );
+  const headerFontSize = scaleSize(19, typo.fontScale);
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-theme="${theme.name}" data-bounds-source="${envelope.source}">
   ${buildMaterialPatternDefs(theme)}
@@ -1356,7 +1465,7 @@ export function renderElevationSvg(
   ${
     sheetMode
       ? ""
-      : `<text x="${layout.left}" y="32" font-size="19" font-family="Arial, sans-serif" font-weight="700">${escapeXml(
+      : `<text x="${layout.left}" y="32" font-size="${headerFontSize}" font-family="Arial, sans-serif" font-weight="700">${escapeXml(
           `Elevation - ${orientation.toUpperCase()}`,
         )}</text>`
   }
@@ -1368,6 +1477,7 @@ export function renderElevationSvg(
   ${datums.markup}
   ${openings.markup}
   ${featureMarkup.markup}
+  ${cutMarkers.markup}
   ${renderOverallDimensions(
     metrics,
     baseX,
@@ -1377,13 +1487,22 @@ export function renderElevationSvg(
     layout,
     width,
     theme,
+    typo,
   )}
   ${
     showInternalTitleBlock
-      ? renderTitleBlock(orientation, width, height, layout, theme, {
-          boundsSource: envelope.source,
-          slotOccupancyRatio,
-        })
+      ? renderTitleBlock(
+          orientation,
+          width,
+          height,
+          layout,
+          theme,
+          {
+            boundsSource: envelope.source,
+            slotOccupancyRatio,
+          },
+          typo,
+        )
       : ""
   }
   ${scaleBar.markup}
@@ -1418,6 +1537,7 @@ export function renderElevationSvg(
       material_zone_count: materialZones.count,
       ffl_marker_count: datums.count,
       sill_lintel_count: openings.windowCount * 2 + openings.doorCount,
+      section_cut_marker_count: cutMarkers.count,
       feature_count: featureMarkup.count,
       facade_richness_score: facadeRichnessScore,
       side_facade_score: sideFacade.richnessScore,

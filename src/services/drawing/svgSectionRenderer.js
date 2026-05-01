@@ -18,8 +18,14 @@ import {
   resolveCompiledProjectGeometryInput,
   resolveCompiledProjectStyleDNA,
 } from "./drawingBounds.js";
+import { getSheetTypography } from "./sheetTypographyService.js";
 
 const SECTION_THEME = getBlueprintTheme();
+const IDENTITY_TYPOGRAPHY = { fontScale: 1, strokeScale: 1 };
+
+function scaleSize(base, multiplier) {
+  return Math.round(Number(base || 0) * Number(multiplier || 1) * 100) / 100;
+}
 
 function escapeXml(value) {
   return String(value)
@@ -219,17 +225,27 @@ function buildFallbackSectionProfile(
       };
 }
 
-function renderScaleBar(scalePxPerMeter, width, height, padding, options = {}) {
+function renderScaleBar(
+  scalePxPerMeter,
+  width,
+  height,
+  padding,
+  options = {},
+  typo = IDENTITY_TYPOGRAPHY,
+) {
   const barMeters = chooseScaleBarMeters(scalePxPerMeter);
   const barWidthPx = barMeters * scalePxPerMeter;
   const x = width - padding - barWidthPx - 8;
   const y = Number.isFinite(options.y) ? options.y : height - padding + 38;
   const labelYOffset = Number.isFinite(options.labelYOffset)
-    ? options.labelYOffset
-    : 16;
-  const labelFontSize = Number.isFinite(options.fontSize)
-    ? options.fontSize
-    : 9;
+    ? scaleSize(options.labelYOffset, typo.fontScale)
+    : scaleSize(16, typo.fontScale);
+  const labelFontSize = scaleSize(
+    Number.isFinite(options.fontSize) ? options.fontSize : 9,
+    typo.fontScale,
+  );
+  const tick = scaleSize(4, typo.strokeScale);
+  const stroke = scaleSize(1.6, typo.strokeScale);
   return {
     barMeters,
     markup: `
@@ -238,22 +254,22 @@ function renderScaleBar(scalePxPerMeter, width, height, padding, options = {}) {
           y,
         )}" x2="${formatNumber(x + barWidthPx)}" y2="${formatNumber(
           y,
-        )}" stroke="${SECTION_THEME.line}" stroke-width="1.6"/>
+        )}" stroke="${SECTION_THEME.line}" stroke-width="${stroke}"/>
         <line x1="${formatNumber(x)}" y1="${formatNumber(
-          y - 4,
+          y - tick,
         )}" x2="${formatNumber(x)}" y2="${formatNumber(
-          y + 4,
-        )}" stroke="${SECTION_THEME.line}" stroke-width="1.6"/>
+          y + tick,
+        )}" stroke="${SECTION_THEME.line}" stroke-width="${stroke}"/>
         <line x1="${formatNumber(x + barWidthPx / 2)}" y1="${formatNumber(
-          y - 4,
+          y - tick,
         )}" x2="${formatNumber(x + barWidthPx / 2)}" y2="${formatNumber(
-          y + 4,
-        )}" stroke="${SECTION_THEME.line}" stroke-width="1.6"/>
+          y + tick,
+        )}" stroke="${SECTION_THEME.line}" stroke-width="${stroke}"/>
         <line x1="${formatNumber(x + barWidthPx)}" y1="${formatNumber(
-          y - 4,
+          y - tick,
         )}" x2="${formatNumber(x + barWidthPx)}" y2="${formatNumber(
-          y + 4,
-        )}" stroke="${SECTION_THEME.line}" stroke-width="1.6"/>
+          y + tick,
+        )}" stroke="${SECTION_THEME.line}" stroke-width="${stroke}"/>
         <text x="${formatNumber(x + barWidthPx / 2)}" y="${formatNumber(
           y + labelYOffset,
         )}" font-size="${labelFontSize}" font-family="Arial, sans-serif" text-anchor="middle">${escapeXml(
@@ -273,39 +289,46 @@ function renderOverallSectionDimensions(
   horizontalExtentM,
   width,
   padding,
+  typo = IDENTITY_TYPOGRAPHY,
 ) {
   const topY = padding - 18;
   const rightX = width - padding + 18;
+  const witness = scaleSize(0.9, typo.strokeScale);
+  const dim = scaleSize(1, typo.strokeScale);
+  const tick = scaleSize(3, typo.strokeScale);
+  const fontSize = scaleSize(10, typo.fontScale);
+  const fontOffset = scaleSize(6, typo.fontScale);
+  const labelOffset = scaleSize(14, typo.fontScale);
   return `
     <g id="phase8-section-dimensions">
       <line x1="${formatNumber(baseX)}" y1="${formatNumber(
         baseY - heightPx,
       )}" x2="${formatNumber(baseX)}" y2="${formatNumber(
         topY,
-      )}" stroke="${SECTION_THEME.lineMuted}" stroke-width="0.9"/>
+      )}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${witness}"/>
       <line x1="${formatNumber(baseX + widthPx)}" y1="${formatNumber(
         baseY - heightPx,
       )}" x2="${formatNumber(baseX + widthPx)}" y2="${formatNumber(
         topY,
-      )}" stroke="${SECTION_THEME.lineMuted}" stroke-width="0.9"/>
+      )}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${witness}"/>
       <line x1="${formatNumber(baseX)}" y1="${formatNumber(
         topY,
       )}" x2="${formatNumber(baseX + widthPx)}" y2="${formatNumber(
         topY,
-      )}" stroke="${SECTION_THEME.line}" stroke-width="1"/>
+      )}" stroke="${SECTION_THEME.line}" stroke-width="${dim}"/>
       <line x1="${formatNumber(baseX)}" y1="${formatNumber(
-        topY - 3,
+        topY - tick,
       )}" x2="${formatNumber(baseX)}" y2="${formatNumber(
-        topY + 3,
-      )}" stroke="${SECTION_THEME.line}" stroke-width="1"/>
+        topY + tick,
+      )}" stroke="${SECTION_THEME.line}" stroke-width="${dim}"/>
       <line x1="${formatNumber(baseX + widthPx)}" y1="${formatNumber(
-        topY - 3,
+        topY - tick,
       )}" x2="${formatNumber(baseX + widthPx)}" y2="${formatNumber(
-        topY + 3,
-      )}" stroke="${SECTION_THEME.line}" stroke-width="1"/>
+        topY + tick,
+      )}" stroke="${SECTION_THEME.line}" stroke-width="${dim}"/>
       <text x="${formatNumber(baseX + widthPx / 2)}" y="${formatNumber(
-        topY - 6,
-      )}" font-size="10" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">${escapeXml(
+        topY - fontOffset,
+      )}" font-size="${fontSize}" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">${escapeXml(
         formatMeters(horizontalExtentM),
       )}</text>
 
@@ -313,31 +336,31 @@ function renderOverallSectionDimensions(
         baseY - heightPx,
       )}" x2="${formatNumber(rightX)}" y2="${formatNumber(
         baseY - heightPx,
-      )}" stroke="${SECTION_THEME.lineMuted}" stroke-width="0.9"/>
+      )}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${witness}"/>
       <line x1="${formatNumber(baseX + widthPx)}" y1="${formatNumber(
         baseY,
       )}" x2="${formatNumber(rightX)}" y2="${formatNumber(
         baseY,
-      )}" stroke="${SECTION_THEME.lineMuted}" stroke-width="0.9"/>
+      )}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${witness}"/>
       <line x1="${formatNumber(rightX)}" y1="${formatNumber(
         baseY - heightPx,
       )}" x2="${formatNumber(rightX)}" y2="${formatNumber(
         baseY,
-      )}" stroke="${SECTION_THEME.line}" stroke-width="1"/>
-      <line x1="${formatNumber(rightX - 3)}" y1="${formatNumber(
+      )}" stroke="${SECTION_THEME.line}" stroke-width="${dim}"/>
+      <line x1="${formatNumber(rightX - tick)}" y1="${formatNumber(
         baseY - heightPx,
-      )}" x2="${formatNumber(rightX + 3)}" y2="${formatNumber(
+      )}" x2="${formatNumber(rightX + tick)}" y2="${formatNumber(
         baseY - heightPx,
-      )}" stroke="${SECTION_THEME.line}" stroke-width="1"/>
-      <line x1="${formatNumber(rightX - 3)}" y1="${formatNumber(
+      )}" stroke="${SECTION_THEME.line}" stroke-width="${dim}"/>
+      <line x1="${formatNumber(rightX - tick)}" y1="${formatNumber(
         baseY,
-      )}" x2="${formatNumber(rightX + 3)}" y2="${formatNumber(
+      )}" x2="${formatNumber(rightX + tick)}" y2="${formatNumber(
         baseY,
-      )}" stroke="${SECTION_THEME.line}" stroke-width="1"/>
-      <text x="${formatNumber(rightX + 14)}" y="${formatNumber(
+      )}" stroke="${SECTION_THEME.line}" stroke-width="${dim}"/>
+      <text x="${formatNumber(rightX + labelOffset)}" y="${formatNumber(
         baseY - heightPx / 2,
-      )}" font-size="10" font-family="Arial, sans-serif" font-weight="700" transform="rotate(90 ${formatNumber(
-        rightX + 14,
+      )}" font-size="${fontSize}" font-family="Arial, sans-serif" font-weight="700" transform="rotate(90 ${formatNumber(
+        rightX + labelOffset,
       )} ${formatNumber(baseY - heightPx / 2)})" text-anchor="middle">${escapeXml(
         formatMeters(totalHeightM),
       )}</text>
@@ -352,11 +375,34 @@ function renderLevelDatums(
   levelProfiles,
   scale,
   lineweights = {},
+  typo = IDENTITY_TYPOGRAPHY,
 ) {
   const lines = [];
   const labels = [];
-  const datumWeight = lineweights.datum || 1.05;
-  const labelStroke = lineweights.guide || 0.78;
+  const datumWeight = scaleSize(lineweights.datum || 1.05, typo.strokeScale);
+  const labelStroke = scaleSize(lineweights.guide || 0.78, typo.strokeScale);
+  const secondaryStroke = scaleSize(
+    lineweights.secondary || 1,
+    typo.strokeScale,
+  );
+  const tickLeft = scaleSize(52, typo.fontScale);
+  const tickInset = scaleSize(6, typo.fontScale);
+  const primaryFont = scaleSize(9, typo.fontScale);
+  const secondaryFont = scaleSize(8.5, typo.fontScale);
+  const primaryRectX = scaleSize(176, typo.fontScale);
+  const primaryRectWidth = scaleSize(118, typo.fontScale);
+  const secondaryRectX = scaleSize(84, typo.fontScale);
+  const secondaryRectWidth = scaleSize(66, typo.fontScale);
+  const fflRectX = scaleSize(144, typo.fontScale);
+  const fflRectWidth = scaleSize(86, typo.fontScale);
+  const primaryRectHeight = scaleSize(16, typo.fontScale);
+  const secondaryRectHeight = scaleSize(14, typo.fontScale);
+  const primaryTextOffsetX = scaleSize(166, typo.fontScale);
+  const fflTextOffsetX = scaleSize(134, typo.fontScale);
+  const secondaryTextOffsetX = scaleSize(51, typo.fontScale);
+  const verticalRectOffsetTop = scaleSize(11, typo.fontScale);
+  const verticalRectOffsetMid = scaleSize(9, typo.fontScale);
+  const textBaseline = scaleSize(1, typo.fontScale);
   levelProfiles.forEach((level) => {
     const topY = baseY - level.top_m * scale;
     const midY =
@@ -366,13 +412,13 @@ function renderLevelDatums(
     );
     labels.push(`
       <g class="phase8-section-level-label">
-        <line x1="${baseX - 52}" y1="${topY}" x2="${baseX - 6}" y2="${topY}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${lineweights.secondary || 1}" />
-        <rect x="${baseX - 176}" y="${topY - 11}" width="118" height="16" rx="3" ry="3" fill="${SECTION_THEME.paper}" fill-opacity="0.94" stroke="${SECTION_THEME.guide}" stroke-width="${labelStroke}" />
-        <text x="${baseX - 166}" y="${topY + 1}" font-size="9" font-family="Arial, sans-serif" font-weight="700" text-anchor="start" class="sheet-critical-label" data-text-role="critical">${escapeXml(
+        <line x1="${baseX - tickLeft}" y1="${topY}" x2="${baseX - tickInset}" y2="${topY}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${secondaryStroke}" />
+        <rect x="${baseX - primaryRectX}" y="${topY - verticalRectOffsetTop}" width="${primaryRectWidth}" height="${primaryRectHeight}" rx="3" ry="3" fill="${SECTION_THEME.paper}" fill-opacity="0.94" stroke="${SECTION_THEME.guide}" stroke-width="${labelStroke}" />
+        <text x="${baseX - primaryTextOffsetX}" y="${topY + textBaseline}" font-size="${primaryFont}" font-family="Arial, sans-serif" font-weight="700" text-anchor="start" class="sheet-critical-label" data-text-role="critical">${escapeXml(
           `${level.name || `L${level.level_number}`} +${level.top_m.toFixed(2)}m`,
         )}</text>
-        <rect x="${baseX - 84}" y="${midY - 9}" width="66" height="14" rx="3" ry="3" fill="${SECTION_THEME.paper}" fill-opacity="0.92" stroke="${SECTION_THEME.guide}" stroke-width="${labelStroke}" />
-        <text x="${baseX - 51}" y="${midY + 1}" font-size="8.5" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">${escapeXml(
+        <rect x="${baseX - secondaryRectX}" y="${midY - verticalRectOffsetMid}" width="${secondaryRectWidth}" height="${secondaryRectHeight}" rx="3" ry="3" fill="${SECTION_THEME.paper}" fill-opacity="0.92" stroke="${SECTION_THEME.guide}" stroke-width="${labelStroke}" />
+        <text x="${baseX - secondaryTextOffsetX}" y="${midY + textBaseline}" font-size="${secondaryFont}" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">${escapeXml(
           level.name || `L${level.level_number}`,
         )}</text>
       </g>
@@ -380,9 +426,9 @@ function renderLevelDatums(
   });
 
   labels.push(`
-    <line x1="${baseX - 52}" y1="${baseY}" x2="${baseX - 6}" y2="${baseY}" stroke="${SECTION_THEME.line}" stroke-width="${lineweights.secondary || 1}" />
-    <rect x="${baseX - 144}" y="${baseY - 11}" width="86" height="16" rx="3" ry="3" fill="${SECTION_THEME.paper}" fill-opacity="0.94" stroke="${SECTION_THEME.guide}" stroke-width="${labelStroke}" />
-    <text x="${baseX - 134}" y="${baseY + 1}" font-size="9" font-family="Arial, sans-serif" font-weight="700" text-anchor="start" class="sheet-critical-label" data-text-role="critical">FFL +0.00m</text>
+    <line x1="${baseX - tickLeft}" y1="${baseY}" x2="${baseX - tickInset}" y2="${baseY}" stroke="${SECTION_THEME.line}" stroke-width="${secondaryStroke}" />
+    <rect x="${baseX - fflRectX}" y="${baseY - verticalRectOffsetTop}" width="${fflRectWidth}" height="${primaryRectHeight}" rx="3" ry="3" fill="${SECTION_THEME.paper}" fill-opacity="0.94" stroke="${SECTION_THEME.guide}" stroke-width="${labelStroke}" />
+    <text x="${baseX - fflTextOffsetX}" y="${baseY + textBaseline}" font-size="${primaryFont}" font-family="Arial, sans-serif" font-weight="700" text-anchor="start" class="sheet-critical-label" data-text-role="critical">FFL +0.00m</text>
   `);
 
   return {
@@ -936,6 +982,7 @@ export function renderSectionSvg(
   const showInternalTitleBlock =
     !sheetMode || options.showInternalTitleBlock === true;
   const padding = sheetMode ? 34 : 86;
+  const typo = getSheetTypography(sheetMode);
   const bounds = envelopeBounds.bounds || getEnvelopeDrawingBounds(geometry);
   const horizontalOrigin = getHorizontalOrigin(bounds, sectionType);
   const horizontalExtent =
@@ -1085,6 +1132,7 @@ export function renderSectionSvg(
     levelProfiles,
     scale,
     lineweights,
+    typo,
   );
   const foundation = renderFoundation(
     baseX,
@@ -1203,23 +1251,34 @@ export function renderSectionSvg(
     showInternalTitleBlock
       ? {}
       : { y: height - 34, labelYOffset: 14, fontSize: 9 },
+    typo,
   );
+  const titleBlockWidth = scaleSize(338, typo.fontScale);
+  const titleBlockHeight = scaleSize(46, typo.fontScale);
+  const titleBlockStroke = scaleSize(1.1, typo.strokeScale);
+  const titleBlockPadX = scaleSize(12, typo.fontScale);
+  const titleBlockTitleY = scaleSize(27, typo.fontScale);
+  const titleBlockSubY = scaleSize(43, typo.fontScale);
+  const titleBlockTitleFont = scaleSize(14, typo.fontScale);
+  const titleBlockSubFont = scaleSize(10, typo.fontScale);
   const titleBlockMarkup = showInternalTitleBlock
     ? `
     <g id="phase8-section-title-block">
       <rect x="${formatNumber(padding)}" y="${formatNumber(
         height - padding + 10,
-      )}" width="338" height="46" fill="${SECTION_THEME.paper}" stroke="${SECTION_THEME.line}" stroke-width="1.1"/>
-      <text x="${formatNumber(padding + 12)}" y="${formatNumber(
-        height - padding + 27,
-      )}" font-size="14" font-family="Arial, sans-serif" font-weight="700" class="sheet-critical-label" data-text-role="critical">${escapeXml(
+      )}" width="${formatNumber(titleBlockWidth)}" height="${formatNumber(
+        titleBlockHeight,
+      )}" fill="${SECTION_THEME.paper}" stroke="${SECTION_THEME.line}" stroke-width="${titleBlockStroke}"/>
+      <text x="${formatNumber(padding + titleBlockPadX)}" y="${formatNumber(
+        height - padding + titleBlockTitleY,
+      )}" font-size="${titleBlockTitleFont}" font-family="Arial, sans-serif" font-weight="700" class="sheet-critical-label" data-text-role="critical">${escapeXml(
         sectionProfile?.strategyName
           ? `${sectionProfile.strategyName} Section`
           : `Section - ${sectionType.toUpperCase()}`,
       )}</text>
-      <text x="${formatNumber(padding + 12)}" y="${formatNumber(
-        height - padding + 43,
-      )}" font-size="10" font-family="Arial, sans-serif" class="sheet-critical-label" data-text-role="critical">${escapeXml(
+      <text x="${formatNumber(padding + titleBlockPadX)}" y="${formatNumber(
+        height - padding + titleBlockSubY,
+      )}" font-size="${titleBlockSubFont}" font-family="Arial, sans-serif" class="sheet-critical-label" data-text-role="critical">${escapeXml(
         `Bounds ${envelopeBounds.source} · ${Math.round(
           slotOccupancyRatio * 100,
         )}% slot occupancy`,
@@ -1235,12 +1294,12 @@ export function renderSectionSvg(
   ${
     sheetMode
       ? ""
-      : `<text x="${padding}" y="34" font-size="19" font-family="Arial, sans-serif" font-weight="700">${escapeXml(
+      : `<text x="${padding}" y="34" font-size="${scaleSize(19, typo.fontScale)}" font-family="Arial, sans-serif" font-weight="700">${escapeXml(
           sectionProfile?.strategyName
             ? `${sectionProfile.strategyName} Section`
             : `Section - ${sectionType.toUpperCase()}`,
         )}</text>
-  <text x="${padding}" y="50" font-size="11" font-family="Arial, sans-serif">${escapeXml(
+  <text x="${padding}" y="50" font-size="${scaleSize(11, typo.fontScale)}" font-family="Arial, sans-serif">${escapeXml(
     `Cut coordinate ${cutCoordinate.toFixed(2)}m / usefulness ${usefulnessScore.toFixed(2)} / ${String(sectionProfile?.strategyId || "default-cut")}`,
   )}</text>`
   }
@@ -1261,6 +1320,7 @@ export function renderSectionSvg(
     horizontalExtent,
     width,
     padding,
+    typo,
   )}
   ${titleBlockMarkup}
   ${scaleBar.markup}

@@ -6,6 +6,51 @@ import {
 } from "./composeCore.js";
 import { resolvePreComposeRegressionPolicy } from "./a1PreComposeRegressionPolicy.js";
 
+// Identity verifier helpers — inlined from composeRuntime.js to avoid pulling
+// composeRuntime's Node-only dependencies (path, pdf-lib) into the browser bundle.
+function _normalizeHashValueLocal(value) {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function _readPanelHash(panel = {}) {
+  return _normalizeHashValueLocal(
+    panel?.geometryHash ||
+      panel?.geometry_hash ||
+      panel?.meta?.geometryHash ||
+      panel?.meta?.geometry_hash,
+  );
+}
+
+function isTechnicalComposePanel(panelType) {
+  if (typeof panelType !== "string" || panelType.length === 0) {
+    return false;
+  }
+  return (
+    panelType.startsWith("floor_plan_") ||
+    panelType.startsWith("elevation_") ||
+    panelType.startsWith("section_")
+  );
+}
+
+function collectTechnicalPanelGeometryHashes(panels = []) {
+  const hashes = [];
+  for (const panel of panels) {
+    if (!isTechnicalComposePanel(panel?.type)) continue;
+    const hash = _readPanelHash(panel);
+    if (hash) hashes.push(hash);
+  }
+  return [...new Set(hashes)];
+}
+
+function findTechnicalPanelsMissingGeometryHash(panels = []) {
+  return panels
+    .filter((panel) => isTechnicalComposePanel(panel?.type))
+    .filter((panel) => !_readPanelHash(panel))
+    .map((panel) => panel.type);
+}
+
 export const PREVIEW_RENDER_INTENT = "preview";
 export const FINAL_A1_RENDER_INTENT = "final_a1";
 export const A1_PHYSICAL_SHEET_SIZE_MM = {
@@ -1153,6 +1198,111 @@ function evaluateSheetSplitEvidence({ sheetSetPlan }) {
   };
 }
 
+/**
+ * Cross-panel canonical identity evidence (A1 quality hardening).
+ *
+ * Asserts that every technical panel (floor_plan_*, elevation_*, section_*)
+ * carries the SAME canonical geometry hash and shares the same canonical
+ * roof / materials descriptor. Default mode = warning; strictPhotoreal mode
+ * promotes mismatch to a blocker.
+ *
+ * Reuses the existing helpers in composeRuntime.js — no new logic, just
+ * wiring them into the Phase F aggregator.
+ */
+function evaluateCanonicalIdentityAcrossPanels({
+  panels,
+  expectedGeometryHash = null,
+  strictPhotoreal = false,
+}) {
+  const blockers = [];
+  const warnings = [];
+
+  if (!Array.isArray(panels) || panels.length === 0) {
+    return {
+      status: "pass",
+      blockers,
+      warnings,
+      distinctHashes: [],
+      missingHashPanels: [],
+      mismatchedPanels: [],
+    };
+  }
+
+  const technicalPanels = panels.filter((panel) =>
+    isTechnicalComposePanel(panel?.type),
+  );
+  if (technicalPanels.length === 0) {
+    return {
+      status: "pass",
+      blockers,
+      warnings,
+      distinctHashes: [],
+      missingHashPanels: [],
+      mismatchedPanels: [],
+    };
+  }
+
+  const distinctHashes = collectTechnicalPanelGeometryHashes(panels);
+  const missingHashPanels = findTechnicalPanelsMissingGeometryHash(panels);
+
+  const mismatchedPanels = expectedGeometryHash
+    ? technicalPanels
+        .filter((panel) => {
+          const panelHash =
+            panel?.geometryHash ||
+            panel?.geometry_hash ||
+            panel?.meta?.geometryHash ||
+            panel?.meta?.geometry_hash;
+          return (
+            typeof panelHash === "string" &&
+            panelHash.length > 0 &&
+            panelHash !== expectedGeometryHash
+          );
+        })
+        .map((panel) => panel.type)
+    : [];
+
+  const promote = (msg) => {
+    if (strictPhotoreal) {
+      blockers.push(msg);
+    } else {
+      warnings.push(msg);
+    }
+  };
+
+  if (missingHashPanels.length > 0) {
+    promote(
+      `Technical panel(s) ${missingHashPanels.join(", ")} are missing a canonical geometryHash; cross-panel identity cannot be verified.`,
+    );
+  }
+
+  if (distinctHashes.length > 1) {
+    promote(
+      `Technical panels carry ${distinctHashes.length} distinct geometryHash values (${distinctHashes.join(", ")}); panels are not derived from one canonical project.`,
+    );
+  }
+
+  if (mismatchedPanels.length > 0) {
+    promote(
+      `Technical panel(s) ${mismatchedPanels.join(", ")} have a geometryHash that does not match the canonical ProjectGraph hash (${expectedGeometryHash}).`,
+    );
+  }
+
+  let status = "pass";
+  if (blockers.length) status = "blocked";
+  else if (warnings.length) status = "warning";
+
+  return {
+    status,
+    blockers: unique(blockers),
+    warnings: unique(warnings),
+    distinctHashes,
+    missingHashPanels,
+    mismatchedPanels,
+    expectedGeometryHash,
+  };
+}
+
 export function evaluateFinalA1ExportGate({
   // legacy inputs (preserved)
   renderContract,
@@ -1174,6 +1324,7 @@ export function evaluateFinalA1ExportGate({
   presentationSummary = null,
   strictPhotoreal = false,
   imageGenEnabled = false,
+  expectedGeometryHash = null,
   scope = PHASE_F_GATE_SCOPES.COMPOSE_FINAL,
 } = {}) {
   if (!renderContract?.isFinalA1) {
@@ -1301,6 +1452,11 @@ export function evaluateFinalA1ExportGate({
   });
   const layoutStatus = evaluateLayoutEvidence({ presentationSummary });
   const sheetSplitStatus = evaluateSheetSplitEvidence({ sheetSetPlan });
+  const canonicalIdentityStatus = evaluateCanonicalIdentityAcrossPanels({
+    panels,
+    expectedGeometryHash,
+    strictPhotoreal,
+  });
 
   for (const ev of [
     pdfEvidence,
@@ -1312,6 +1468,7 @@ export function evaluateFinalA1ExportGate({
     openaiProviderStatus,
     layoutStatus,
     sheetSplitStatus,
+    canonicalIdentityStatus,
   ]) {
     if (Array.isArray(ev?.blockers)) blockers.push(...ev.blockers);
     if (Array.isArray(ev?.warnings)) warnings.push(...ev.warnings);
@@ -1345,6 +1502,7 @@ export function evaluateFinalA1ExportGate({
       openaiProviderStatus,
       layoutStatus,
       sheetSplitStatus,
+      canonicalIdentityStatus,
     },
   };
 }

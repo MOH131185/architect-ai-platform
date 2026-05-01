@@ -133,6 +133,7 @@ import {
 } from "./aiLayoutRuntimeService.js";
 import { getClimateData } from "./climateService.js";
 import { generateSiteDiagramSVG } from "./core/DataPanelService.js";
+import { renderSiteSvg } from "./drawing/svgSiteRenderer.js";
 import {
   generateEnhancedFloorPlanSVG,
   generateEnhancedElevationSVG,
@@ -253,7 +254,49 @@ function buildDeterministicPanelAsset(
     throw new Error("Panel job type is required for deterministic rendering");
   }
 
-  if (job.type === "site_diagram" || job.type === "site_plan") {
+  if (job.type === "site_plan") {
+    // A1 quality hardening: site_plan now uses the deterministic UK RIBA-style
+    // site renderer that consumes ProjectGraph site geometry + neighbour context.
+    // Falls back to the legacy site_diagram SVG if canonical site geometry is
+    // unavailable (so the panel never renders blank).
+    const projectGeometry =
+      job?.meta?.projectGeometry ||
+      job?.dnaSnapshot?.projectGeometry ||
+      job?.dnaSnapshot?._projectGeometry ||
+      null;
+    if (projectGeometry) {
+      const result = renderSiteSvg(projectGeometry, {
+        sheetMode: true,
+        width: job?.width || 1200,
+        height: job?.height || 900,
+      });
+      if (result?.svg) {
+        const normalized = normalizeDeterministicSvgOutput(result);
+        if (normalized?.imageUrl) {
+          return {
+            ...normalized,
+            generatorUsed: "deterministic_site_plan_svg",
+            renderer: "deterministic-site-svg",
+            technicalQualityMetadata: result.technical_quality_metadata,
+          };
+        }
+      }
+    }
+    // Fallback: stylised site diagram if canonical geometry is missing.
+    const svg = generateSiteDiagramSVG(job.dnaSnapshot || {}, siteSnapshot);
+    const normalized = normalizeDeterministicSvgOutput(svg);
+    if (!normalized?.imageUrl) {
+      throw new Error(
+        "Deterministic site plan SVG generation returned no image",
+      );
+    }
+    return {
+      ...normalized,
+      generatorUsed: "deterministic_site_diagram_svg_fallback",
+    };
+  }
+
+  if (job.type === "site_diagram") {
     const svg = generateSiteDiagramSVG(job.dnaSnapshot || {}, siteSnapshot);
     const normalized = normalizeDeterministicSvgOutput(svg);
     if (!normalized?.imageUrl) {

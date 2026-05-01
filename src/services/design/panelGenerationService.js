@@ -1955,9 +1955,28 @@ export async function generateA1PanelsSequential(
   // NEW: Extract styleReferenceUrl from options (Hero image for style consistency)
   // This is set by the workflow orchestrator after hero_3d completes
   const { styleReferenceUrl, floorPlanMaskUrl } = options;
-  const strictGeometryRequired =
+  const globalStrictGeometryRequired =
     isFeatureEnabled("requireCompleteGeometryDNA") ||
     isFeatureEnabled("strictNoFallback");
+  // A1 quality hardening: technical panel slots (floor_plan_*, elevation_*,
+  // section_*, site_plan) must NEVER silently fall back to a placeholder /
+  // photoreal substitute. Force strict geometry for these regardless of the
+  // upstream feature flag — the export gate flags the slot as missing and
+  // the QA report surfaces the failure instead.
+  const isTechnicalPanelType = (jobType = "") => {
+    const t = String(jobType || "").toLowerCase();
+    return (
+      t.startsWith("floor_plan_") ||
+      t.startsWith("elevation_") ||
+      t.startsWith("section_") ||
+      t === "site_plan"
+    );
+  };
+  const isStrictGeometryRequired = (jobType) =>
+    globalStrictGeometryRequired || isTechnicalPanelType(jobType);
+  // Backwards-compatible binding for downstream code paths that still
+  // reference the global flag (e.g. 3D control gating).
+  const strictGeometryRequired = globalStrictGeometryRequired;
   const strict3DControlRequired =
     isFeatureEnabled("geometryControlled3D") || strictGeometryRequired;
 
@@ -2469,9 +2488,10 @@ export async function generateA1PanelsSequential(
             `   🔍 Geometry data for floor ${floorLevel}: populatedGeometry=${!!populatedGeometry}, rooms=${hasRooms ? floor.rooms.length : 0}, walls=${hasWalls ? floor.walls.length : 0}`,
           );
 
-          // Fail fast when strict geometry is required to avoid placeholder floor plans
+          // Fail fast when strict geometry is required to avoid placeholder floor plans.
+          // Technical panel slots (floor_plan_*) are always strict — no silent fallback.
           if (
-            strictGeometryRequired &&
+            isStrictGeometryRequired(job.type) &&
             (!floors || floors.length === 0 || !hasRooms || !hasWalls)
           ) {
             throw new Error(
@@ -2510,7 +2530,7 @@ export async function generateA1PanelsSequential(
           );
 
           if (!floorPlanResult) {
-            if (strictGeometryRequired) {
+            if (isStrictGeometryRequired(job.type)) {
               throw new Error(
                 `Deterministic geometry floor plan renderer could not produce ${job.type} without fallback.`,
               );
@@ -2585,9 +2605,10 @@ export async function generateA1PanelsSequential(
             `   🔍 Geometry data for ${orientation}: facade=${!!hasFacade}, wallLines=${hasWallLines}, openings=${hasOpenings}, roofProfiles=${!!roofProfiles}`,
           );
 
-          // Fail fast when strict geometry is required to avoid blank elevations
+          // Fail fast when strict geometry is required to avoid blank elevations.
+          // Technical panel slots (elevation_*) are always strict — no silent fallback.
           if (
-            strictGeometryRequired &&
+            isStrictGeometryRequired(job.type) &&
             (!hasFacade || !hasWallLines || !hasOpenings)
           ) {
             throw new Error(
@@ -2633,7 +2654,7 @@ export async function generateA1PanelsSequential(
           );
 
           if (!elevationResult) {
-            if (strictGeometryRequired) {
+            if (isStrictGeometryRequired(job.type)) {
               throw new Error(
                 `Deterministic geometry elevation renderer could not produce ${job.type} without fallback.`,
               );
@@ -2712,9 +2733,10 @@ export async function generateA1PanelsSequential(
             `   🔍 Geometry data for ${sectionKey}: section=${!!hasSection}, wallCuts=${hasWallCuts}, slabs=${hasSlabs}, roofProfiles=${!!roofProfiles}`,
           );
 
-          // Fail fast when strict geometry is required to avoid blank sections
+          // Fail fast when strict geometry is required to avoid blank sections.
+          // Technical panel slots (section_*) are always strict — no silent fallback.
           if (
-            strictGeometryRequired &&
+            isStrictGeometryRequired(job.type) &&
             (!hasSection || !hasWallCuts || !hasSlabs)
           ) {
             throw new Error(
@@ -2761,7 +2783,7 @@ export async function generateA1PanelsSequential(
           );
 
           if (!sectionResult) {
-            if (strictGeometryRequired) {
+            if (isStrictGeometryRequired(job.type)) {
               throw new Error(
                 `Deterministic geometry section renderer could not produce ${job.type} without fallback.`,
               );

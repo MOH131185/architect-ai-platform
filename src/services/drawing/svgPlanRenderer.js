@@ -5,6 +5,13 @@ import {
   getLevelDrawingBoundsWithSource,
   resolveCompiledProjectGeometryInput,
 } from "./drawingBounds.js";
+import { getSheetTypography } from "./sheetTypographyService.js";
+
+const IDENTITY_TYPOGRAPHY = { fontScale: 1, strokeScale: 1 };
+
+function scaleSize(base, multiplier) {
+  return Math.round(Number(base || 0) * Number(multiplier || 1) * 100) / 100;
+}
 
 function escapeXml(value) {
   return String(value)
@@ -318,37 +325,53 @@ function buildTransform(bounds, width, height, layout = {}) {
   };
 }
 
-function renderRoomLabel(room = {}, project, theme) {
+function renderRoomLabel(
+  room = {},
+  project,
+  theme,
+  typo = IDENTITY_TYPOGRAPHY,
+  roomNumber = "",
+) {
   const bbox = resolveRoomBBox(room);
   const centroid = pointFrom(room.centroid, {
     x: (Number(bbox.min_x) + Number(bbox.max_x)) / 2,
     y: (Number(bbox.min_y) + Number(bbox.max_y)) / 2,
   });
   const labelPoint = project(centroid);
-  const name = escapeXml(uppercaseLabel(room.name, "ROOM"));
+  const rawName = uppercaseLabel(room.name, "ROOM");
+  const name = escapeXml(roomNumber ? `${roomNumber} ${rawName}` : rawName);
   const areaValue = Number(room.actual_area || room.target_area_m2 || 0);
   const areaText = `${Number.isFinite(areaValue) ? areaValue.toFixed(1) : "0.0"} M2`;
   const dimensionText = getRoomDimensionText(room);
   const secondaryLine = dimensionText
     ? `${areaText} · ${dimensionText}`
     : areaText;
+  const nameSize = scaleSize(13, typo.fontScale);
+  const subSize = scaleSize(10, typo.fontScale);
   const labelWidth = Math.max(
-    110,
-    name.length * 8.4,
-    secondaryLine.length * 5.6,
+    scaleSize(110, typo.fontScale),
+    name.length * nameSize * 0.65,
+    secondaryLine.length * subSize * 0.6,
   );
+  const labelHeight = scaleSize(38, typo.fontScale);
+  const halfHeight = labelHeight / 2;
+  const nameOffset = scaleSize(6, typo.fontScale);
+  const subOffset = scaleSize(10, typo.fontScale);
+  const stroke = scaleSize(0.95, typo.strokeScale);
 
   return `
     <g class="plan-room-label">
       <rect x="${formatNumber(labelPoint.x - labelWidth / 2)}" y="${formatNumber(
-        labelPoint.y - 22,
-      )}" width="${formatNumber(labelWidth)}" height="38" fill="${theme.paper}" fill-opacity="0.95" stroke="${theme.guide}" stroke-width="0.95" rx="4" ry="4"/>
+        labelPoint.y - halfHeight,
+      )}" width="${formatNumber(labelWidth)}" height="${formatNumber(
+        labelHeight,
+      )}" fill="${theme.paper}" fill-opacity="0.95" stroke="${theme.guide}" stroke-width="${stroke}" rx="4" ry="4"/>
       <text x="${formatNumber(labelPoint.x)}" y="${formatNumber(
-        labelPoint.y - 6,
-      )}" font-size="13" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">${name}</text>
+        labelPoint.y - nameOffset,
+      )}" font-size="${nameSize}" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">${name}</text>
       <text x="${formatNumber(labelPoint.x)}" y="${formatNumber(
-        labelPoint.y + 10,
-      )}" font-size="10" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">${escapeXml(
+        labelPoint.y + subOffset,
+      )}" font-size="${subSize}" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">${escapeXml(
         secondaryLine,
       )}</text>
     </g>
@@ -424,13 +447,20 @@ function renderFurnitureHints(rooms = [], project, theme) {
   };
 }
 
-function renderWallMarkup(walls = [], project, theme) {
+function renderWallMarkup(
+  walls = [],
+  project,
+  theme,
+  typo = IDENTITY_TYPOGRAPHY,
+) {
   const orderedWalls = [...(walls || [])].sort((left, right) => {
     if (Boolean(right.exterior) !== Boolean(left.exterior)) {
       return Number(Boolean(right.exterior)) - Number(Boolean(left.exterior));
     }
     return String(left.id || "").localeCompare(String(right.id || ""));
   });
+  const exteriorStroke = scaleSize(2.05, typo.strokeScale);
+  const interiorStroke = scaleSize(1.28, typo.strokeScale);
 
   return orderedWalls
     .map((wall) => {
@@ -440,7 +470,7 @@ function renderWallMarkup(walls = [], project, theme) {
       }
       const fill = wall.exterior ? theme.poche : theme.pocheSoft;
       const stroke = wall.exterior ? theme.line : theme.lineMuted;
-      const strokeWidth = wall.exterior ? 2.05 : 1.28;
+      const strokeWidth = wall.exterior ? exteriorStroke : interiorStroke;
       return `<path d="${path}" fill="${fill}" fill-opacity="${wall.exterior ? "0.98" : "0.76"}" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linejoin="miter" data-wall-role="${wall.exterior ? "exterior" : "interior"}"/>`;
     })
     .join("");
@@ -776,96 +806,149 @@ function renderCirculationMarkup(paths = [], project, theme) {
     .join("");
 }
 
-function renderNorthArrow(width, layout, theme, northRotationDeg = 0) {
+function renderNorthArrow(
+  width,
+  layout,
+  theme,
+  northRotationDeg = 0,
+  typo = IDENTITY_TYPOGRAPHY,
+) {
   const x = width - layout.right + 24;
   const y = layout.top - 10;
+  const stroke = scaleSize(2, typo.strokeScale);
+  const fontSize = scaleSize(11, typo.fontScale);
+  const tail = scaleSize(26, typo.fontScale);
+  const head = scaleSize(9, typo.fontScale);
+  const wing = scaleSize(6, typo.fontScale);
+  const flick = scaleSize(4, typo.fontScale);
+  const labelOffset = scaleSize(15, typo.fontScale);
   return `
     <g id="north-arrow" transform="translate(${formatNumber(x)} ${formatNumber(
       y,
     )}) rotate(${formatNumber(northRotationDeg, 0)})">
-      <line x1="0" y1="26" x2="0" y2="0" stroke="${theme.line}" stroke-width="2"/>
-      <path d="M 0 -9 L -6 4 L 6 4 Z" fill="${theme.line}"/>
-      <text x="0" y="-15" font-size="11" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">N</text>
+      <line x1="0" y1="${formatNumber(tail)}" x2="0" y2="0" stroke="${theme.line}" stroke-width="${stroke}"/>
+      <path d="M 0 ${formatNumber(-head)} L ${formatNumber(-wing)} ${formatNumber(flick)} L ${formatNumber(wing)} ${formatNumber(flick)} Z" fill="${theme.line}"/>
+      <text x="0" y="${formatNumber(-labelOffset)}" font-size="${fontSize}" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">N</text>
     </g>
   `;
 }
 
-function renderExternalDimensions(bounds, project, layout, width, theme) {
+function renderExternalDimensions(
+  bounds,
+  project,
+  layout,
+  width,
+  height,
+  theme,
+  typo = IDENTITY_TYPOGRAPHY,
+) {
   if (!bounds?.width || !bounds?.height) {
     return "";
   }
 
   const topLeft = project({ x: bounds.min_x, y: bounds.min_y });
   const topRight = project({ x: bounds.max_x, y: bounds.min_y });
+  const bottomLeft = project({ x: bounds.min_x, y: bounds.max_y });
   const bottomRight = project({ x: bounds.max_x, y: bounds.max_y });
   const topY = layout.top - 16;
   const rightX = width - layout.right + 22;
+  const bottomY = height - layout.bottom + 18;
+  const leftX = layout.left - 22;
+  const fontSize = scaleSize(10, typo.fontScale);
+  const fontOffset = scaleSize(6, typo.fontScale);
+  const tick = scaleSize(3, typo.strokeScale);
+  const witness = scaleSize(0.9, typo.strokeScale);
+  const dim = scaleSize(1.1, typo.strokeScale);
+  const widthText = escapeXml(formatMeters(bounds.width));
+  const heightText = escapeXml(formatMeters(bounds.height));
+
+  const drawHorizontal = (
+    lineY,
+    leftX2,
+    rightX2,
+    leftRefY,
+    rightRefY,
+    text,
+  ) => `
+      <line x1="${formatNumber(leftX2)}" y1="${formatNumber(
+        leftRefY,
+      )}" x2="${formatNumber(leftX2)}" y2="${formatNumber(
+        lineY,
+      )}" stroke="${theme.lineMuted}" stroke-width="${witness}"/>
+      <line x1="${formatNumber(rightX2)}" y1="${formatNumber(
+        rightRefY,
+      )}" x2="${formatNumber(rightX2)}" y2="${formatNumber(
+        lineY,
+      )}" stroke="${theme.lineMuted}" stroke-width="${witness}"/>
+      <line x1="${formatNumber(leftX2)}" y1="${formatNumber(
+        lineY,
+      )}" x2="${formatNumber(rightX2)}" y2="${formatNumber(
+        lineY,
+      )}" stroke="${theme.line}" stroke-width="${dim}"/>
+      <line x1="${formatNumber(leftX2)}" y1="${formatNumber(
+        lineY - tick,
+      )}" x2="${formatNumber(leftX2)}" y2="${formatNumber(
+        lineY + tick,
+      )}" stroke="${theme.line}" stroke-width="${dim}"/>
+      <line x1="${formatNumber(rightX2)}" y1="${formatNumber(
+        lineY - tick,
+      )}" x2="${formatNumber(rightX2)}" y2="${formatNumber(
+        lineY + tick,
+      )}" stroke="${theme.line}" stroke-width="${dim}"/>
+      <text x="${formatNumber((leftX2 + rightX2) / 2)}" y="${formatNumber(
+        lineY - fontOffset,
+      )}" font-size="${fontSize}" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">${text}</text>`;
+
+  const drawVertical = (
+    lineX,
+    topY2,
+    bottomY2,
+    topRefX,
+    bottomRefX,
+    labelOffsetSign,
+    text,
+  ) => {
+    const labelX = lineX + labelOffsetSign * scaleSize(14, typo.fontScale);
+    const midY = (topY2 + bottomY2) / 2;
+    return `
+      <line x1="${formatNumber(topRefX)}" y1="${formatNumber(
+        topY2,
+      )}" x2="${formatNumber(lineX)}" y2="${formatNumber(
+        topY2,
+      )}" stroke="${theme.lineMuted}" stroke-width="${witness}"/>
+      <line x1="${formatNumber(bottomRefX)}" y1="${formatNumber(
+        bottomY2,
+      )}" x2="${formatNumber(lineX)}" y2="${formatNumber(
+        bottomY2,
+      )}" stroke="${theme.lineMuted}" stroke-width="${witness}"/>
+      <line x1="${formatNumber(lineX)}" y1="${formatNumber(
+        topY2,
+      )}" x2="${formatNumber(lineX)}" y2="${formatNumber(
+        bottomY2,
+      )}" stroke="${theme.line}" stroke-width="${dim}"/>
+      <line x1="${formatNumber(lineX - tick)}" y1="${formatNumber(
+        topY2,
+      )}" x2="${formatNumber(lineX + tick)}" y2="${formatNumber(
+        topY2,
+      )}" stroke="${theme.line}" stroke-width="${dim}"/>
+      <line x1="${formatNumber(lineX - tick)}" y1="${formatNumber(
+        bottomY2,
+      )}" x2="${formatNumber(lineX + tick)}" y2="${formatNumber(
+        bottomY2,
+      )}" stroke="${theme.line}" stroke-width="${dim}"/>
+      <text x="${formatNumber(labelX)}" y="${formatNumber(
+        midY,
+      )}" font-size="${fontSize}" font-family="Arial, sans-serif" font-weight="700" transform="rotate(${labelOffsetSign > 0 ? 90 : -90} ${formatNumber(
+        labelX,
+      )} ${formatNumber(midY)})" text-anchor="middle">${text}</text>`;
+  };
 
   return `
     <g id="external-dimensions">
-      <line x1="${formatNumber(topLeft.x)}" y1="${formatNumber(
-        topLeft.y,
-      )}" x2="${formatNumber(topLeft.x)}" y2="${formatNumber(
-        topY,
-      )}" stroke="${theme.lineMuted}" stroke-width="0.9"/>
-      <line x1="${formatNumber(topRight.x)}" y1="${formatNumber(
-        topRight.y,
-      )}" x2="${formatNumber(topRight.x)}" y2="${formatNumber(
-        topY,
-      )}" stroke="${theme.lineMuted}" stroke-width="0.9"/>
-      <line x1="${formatNumber(topLeft.x)}" y1="${formatNumber(
-        topY,
-      )}" x2="${formatNumber(topRight.x)}" y2="${formatNumber(
-        topY,
-      )}" stroke="${theme.line}" stroke-width="1.1"/>
-      <line x1="${formatNumber(topLeft.x)}" y1="${formatNumber(
-        topY - 3,
-      )}" x2="${formatNumber(topLeft.x)}" y2="${formatNumber(
-        topY + 3,
-      )}" stroke="${theme.line}" stroke-width="1.1"/>
-      <line x1="${formatNumber(topRight.x)}" y1="${formatNumber(
-        topY - 3,
-      )}" x2="${formatNumber(topRight.x)}" y2="${formatNumber(
-        topY + 3,
-      )}" stroke="${theme.line}" stroke-width="1.1"/>
-      <text x="${formatNumber((topLeft.x + topRight.x) / 2)}" y="${formatNumber(
-        topY - 6,
-      )}" font-size="10" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">${escapeXml(
-        formatMeters(bounds.width),
-      )}</text>
-
-      <line x1="${formatNumber(topRight.x)}" y1="${formatNumber(
-        topRight.y,
-      )}" x2="${formatNumber(rightX)}" y2="${formatNumber(
-        topRight.y,
-      )}" stroke="${theme.lineMuted}" stroke-width="0.9"/>
-      <line x1="${formatNumber(bottomRight.x)}" y1="${formatNumber(
-        bottomRight.y,
-      )}" x2="${formatNumber(rightX)}" y2="${formatNumber(
-        bottomRight.y,
-      )}" stroke="${theme.lineMuted}" stroke-width="0.9"/>
-      <line x1="${formatNumber(rightX)}" y1="${formatNumber(
-        topRight.y,
-      )}" x2="${formatNumber(rightX)}" y2="${formatNumber(
-        bottomRight.y,
-      )}" stroke="${theme.line}" stroke-width="1.1"/>
-      <line x1="${formatNumber(rightX - 3)}" y1="${formatNumber(
-        topRight.y,
-      )}" x2="${formatNumber(rightX + 3)}" y2="${formatNumber(
-        topRight.y,
-      )}" stroke="${theme.line}" stroke-width="1.1"/>
-      <line x1="${formatNumber(rightX - 3)}" y1="${formatNumber(
-        bottomRight.y,
-      )}" x2="${formatNumber(rightX + 3)}" y2="${formatNumber(
-        bottomRight.y,
-      )}" stroke="${theme.line}" stroke-width="1.1"/>
-      <text x="${formatNumber(rightX + 14)}" y="${formatNumber(
-        (topRight.y + bottomRight.y) / 2,
-      )}" font-size="10" font-family="Arial, sans-serif" font-weight="700" transform="rotate(90 ${formatNumber(
-        rightX + 14,
-      )} ${formatNumber(
-        (topRight.y + bottomRight.y) / 2,
-      )})" text-anchor="middle">${escapeXml(formatMeters(bounds.height))}</text>
+      ${drawHorizontal(topY, topLeft.x, topRight.x, topLeft.y, topRight.y, widthText)}
+      ${drawVertical(rightX, topRight.y, bottomRight.y, topRight.x, bottomRight.x, 1, heightText)}
+      ${drawHorizontal(bottomY, bottomLeft.x, bottomRight.x, bottomLeft.y, bottomRight.y, widthText)}
+      ${drawVertical(leftX, topLeft.y, bottomLeft.y, topLeft.x, bottomLeft.x, -1, heightText)}
     </g>
   `;
 }
@@ -877,6 +960,7 @@ function renderScaleBar(
   layout,
   theme,
   options = {},
+  typo = IDENTITY_TYPOGRAPHY,
 ) {
   const barMeters = chooseScaleBarMeters(scalePxPerMeter);
   const barWidthPx = barMeters * scalePxPerMeter;
@@ -886,11 +970,14 @@ function renderScaleBar(
     : height - layout.bottom + 44;
   const midX = x + barWidthPx / 2;
   const labelYOffset = Number.isFinite(options.labelYOffset)
-    ? options.labelYOffset
-    : 16;
-  const labelFontSize = Number.isFinite(options.fontSize)
-    ? options.fontSize
-    : 10;
+    ? scaleSize(options.labelYOffset, typo.fontScale)
+    : scaleSize(16, typo.fontScale);
+  const labelFontSize = scaleSize(
+    Number.isFinite(options.fontSize) ? options.fontSize : 10,
+    typo.fontScale,
+  );
+  const tickHalf = scaleSize(4, typo.strokeScale);
+  const stroke = scaleSize(1.6, typo.strokeScale);
 
   return {
     markup: `
@@ -899,22 +986,22 @@ function renderScaleBar(
           y,
         )}" x2="${formatNumber(x + barWidthPx)}" y2="${formatNumber(
           y,
-        )}" stroke="${theme.line}" stroke-width="1.6"/>
+        )}" stroke="${theme.line}" stroke-width="${stroke}"/>
         <line x1="${formatNumber(x)}" y1="${formatNumber(
-          y - 4,
+          y - tickHalf,
         )}" x2="${formatNumber(x)}" y2="${formatNumber(
-          y + 4,
-        )}" stroke="${theme.line}" stroke-width="1.6"/>
+          y + tickHalf,
+        )}" stroke="${theme.line}" stroke-width="${stroke}"/>
         <line x1="${formatNumber(midX)}" y1="${formatNumber(
-          y - 4,
+          y - tickHalf,
         )}" x2="${formatNumber(midX)}" y2="${formatNumber(
-          y + 4,
-        )}" stroke="${theme.line}" stroke-width="1.6"/>
+          y + tickHalf,
+        )}" stroke="${theme.line}" stroke-width="${stroke}"/>
         <line x1="${formatNumber(x + barWidthPx)}" y1="${formatNumber(
-          y - 4,
+          y - tickHalf,
         )}" x2="${formatNumber(x + barWidthPx)}" y2="${formatNumber(
-          y + 4,
-        )}" stroke="${theme.line}" stroke-width="1.6"/>
+          y + tickHalf,
+        )}" stroke="${theme.line}" stroke-width="${stroke}"/>
         <text x="${formatNumber(midX)}" y="${formatNumber(
           y + labelYOffset,
         )}" font-size="${labelFontSize}" font-family="Arial, sans-serif" text-anchor="middle">${escapeXml(
@@ -926,26 +1013,44 @@ function renderScaleBar(
   };
 }
 
-function renderTitleBlock(level, width, height, layout, theme, metadata = {}) {
+function renderTitleBlock(
+  level,
+  width,
+  height,
+  layout,
+  theme,
+  metadata = {},
+  typo = IDENTITY_TYPOGRAPHY,
+) {
   const x = layout.left;
   const y = height - layout.bottom + 16;
   const occupancyText = `${Math.round(
     Number(metadata.slotOccupancyRatio || 0) * 100,
   )}% slot occupancy`;
+  const titleSize = scaleSize(14, typo.fontScale);
+  const subSize = scaleSize(10, typo.fontScale);
+  const blockWidth = scaleSize(318, typo.fontScale);
+  const blockHeight = scaleSize(46, typo.fontScale);
+  const stroke = scaleSize(1.1, typo.strokeScale);
+  const padX = scaleSize(12, typo.fontScale);
+  const titleY = scaleSize(17, typo.fontScale);
+  const subY = scaleSize(34, typo.fontScale);
 
   return `
     <g id="title-block">
       <rect x="${formatNumber(x)}" y="${formatNumber(
         y,
-      )}" width="318" height="46" fill="${theme.paper}" stroke="${theme.line}" stroke-width="1.1"/>
-      <text x="${formatNumber(x + 12)}" y="${formatNumber(
-        y + 17,
-      )}" font-size="14" font-family="Arial, sans-serif" font-weight="700" class="sheet-critical-label" data-text-role="critical">${escapeXml(
+      )}" width="${formatNumber(blockWidth)}" height="${formatNumber(
+        blockHeight,
+      )}" fill="${theme.paper}" stroke="${theme.line}" stroke-width="${stroke}"/>
+      <text x="${formatNumber(x + padX)}" y="${formatNumber(
+        y + titleY,
+      )}" font-size="${titleSize}" font-family="Arial, sans-serif" font-weight="700" class="sheet-critical-label" data-text-role="critical">${escapeXml(
         `${level.name || "Plan"} PLAN`,
       )}</text>
-      <text x="${formatNumber(x + 12)}" y="${formatNumber(
-        y + 34,
-      )}" font-size="10" font-family="Arial, sans-serif" class="sheet-critical-label" data-text-role="critical">${escapeXml(
+      <text x="${formatNumber(x + padX)}" y="${formatNumber(
+        y + subY,
+      )}" font-size="${subSize}" font-family="Arial, sans-serif" class="sheet-critical-label" data-text-role="critical">${escapeXml(
         `Bounds ${metadata.boundsSource || "building_derived"} · ${occupancyText}`,
       )}</text>
     </g>
@@ -965,6 +1070,7 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
   const width = options.width || 1200;
   const height = options.height || 900;
   const sheetMode = options.sheetMode === true;
+  const typo = getSheetTypography(sheetMode);
   const showInternalTitleBlock =
     !sheetMode || options.showInternalTitleBlock === true;
   const includeSiteContext = options.includeSiteContext === true && !sheetMode;
@@ -1032,6 +1138,7 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
     ).toFixed(3),
   );
 
+  const roomFillStroke = scaleSize(0.9, typo.strokeScale);
   const roomFillMarkup = levelRooms
     .map((room) => {
       const path = polygonPath(roomPolygon(room), project);
@@ -1039,14 +1146,24 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
         return "";
       }
       return `
-        <path d="${path}" fill="${theme.paper}" stroke="${theme.lineLight}" stroke-width="0.9"/>
+        <path d="${path}" fill="${theme.paper}" stroke="${theme.lineLight}" stroke-width="${roomFillStroke}"/>
       `;
     })
     .join("");
   const roomLabelMarkup = options.hideRoomLabels
     ? ""
-    : levelRooms.map((room) => renderRoomLabel(room, project, theme)).join("");
-  const wallMarkup = renderWallMarkup(levelWalls, project, theme);
+    : levelRooms
+        .map((room, index) =>
+          renderRoomLabel(
+            room,
+            project,
+            theme,
+            typo,
+            `R${String(index + 1).padStart(2, "0")}`,
+          ),
+        )
+        .join("");
+  const wallMarkup = renderWallMarkup(levelWalls, project, theme, typo);
   const doorEntries = (geometry.doors || []).filter(
     (door) => door.level_id === level.id,
   );
@@ -1091,7 +1208,9 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
     project,
     layout,
     width,
+    height,
     theme,
+    typo,
   );
   const scaleBar = renderScaleBar(
     transform.scale,
@@ -1102,12 +1221,21 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
     showInternalTitleBlock
       ? {}
       : { y: height - 34, labelYOffset: 14, fontSize: 9 },
+    typo,
   );
   const titleBlock = showInternalTitleBlock
-    ? renderTitleBlock(level, width, height, layout, theme, {
-        slotOccupancyRatio,
-        boundsSource,
-      })
+    ? renderTitleBlock(
+        level,
+        width,
+        height,
+        layout,
+        theme,
+        {
+          slotOccupancyRatio,
+          boundsSource,
+        },
+        typo,
+      )
     : "";
   const furnitureHints = renderFurnitureHints(levelRooms, project, theme);
   const doorCount = doorEntries.length;
@@ -1124,20 +1252,23 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
     1,
   );
 
+  const siteStroke = scaleSize(1, typo.strokeScale);
+  const buildableStroke = scaleSize(1, typo.strokeScale);
+  const footprintStroke = scaleSize(1.1, typo.strokeScale);
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-theme="${theme.name}" data-bounds-source="${boundsSource}">
   <rect width="${width}" height="${height}" fill="${theme.paper}"/>
   ${
     siteOutline
-      ? `<path d="${siteOutline}" fill="none" stroke="${theme.guide}" stroke-width="1" stroke-dasharray="8 5"/>`
+      ? `<path d="${siteOutline}" fill="none" stroke="${theme.guide}" stroke-width="${siteStroke}" stroke-dasharray="8 5"/>`
       : ""
   }
   ${
     buildableOutline
-      ? `<path d="${buildableOutline}" fill="none" stroke="${theme.lineLight}" stroke-width="1" stroke-dasharray="4 4"/>`
+      ? `<path d="${buildableOutline}" fill="none" stroke="${theme.lineLight}" stroke-width="${buildableStroke}" stroke-dasharray="4 4"/>`
       : ""
   }
-  ${footprintPath ? `<path d="${footprintPath}" fill="none" stroke="${theme.lineMuted}" stroke-width="1.1"/>` : ""}
+  ${footprintPath ? `<path d="${footprintPath}" fill="none" stroke="${theme.lineMuted}" stroke-width="${footprintStroke}"/>` : ""}
   ${roomFillMarkup}
   ${furnitureHints.markup}
   <g id="plan-walls">${wallMarkup}</g>
@@ -1146,7 +1277,7 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
   ${stairMarkup ? `<g id="plan-stairs">${stairMarkup}</g>` : ""}
   ${roomLabelMarkup ? `<g id="plan-room-labels">${roomLabelMarkup}</g>` : ""}
   ${dimensionMarkup}
-  ${!sheetMode ? renderNorthArrow(width, layout, theme, geometry.site?.north_orientation_deg || 0) : ""}
+  ${!sheetMode ? renderNorthArrow(width, layout, theme, geometry.site?.north_orientation_deg || 0, typo) : ""}
   ${titleBlock}
   ${scaleBar.markup}
   ${options.overlayMarkup || ""}

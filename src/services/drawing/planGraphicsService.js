@@ -7,6 +7,11 @@ import {
   getLevelDrawingBounds,
   resolveCompiledProjectGeometryInput,
 } from "./drawingBounds.js";
+import { getSheetTypography } from "./sheetTypographyService.js";
+
+function scaleSize(base, multiplier) {
+  return Math.round(Number(base || 0) * Number(multiplier || 1) * 100) / 100;
+}
 
 function escapeXml(value) {
   return String(value)
@@ -54,7 +59,15 @@ function renderPlacements(placements = []) {
   `;
 }
 
-function renderSectionMarkers(sectionPlan = {}, project = (point) => point) {
+function renderSectionMarkers(
+  sectionPlan = {},
+  project = (point) => point,
+  typo = { fontScale: 1, strokeScale: 1 },
+) {
+  const stroke = scaleSize(1.4, typo.strokeScale);
+  const fontSize = scaleSize(11, typo.fontScale);
+  const labelOffsetX = scaleSize(8, typo.fontScale);
+  const labelOffsetY = scaleSize(8, typo.fontScale);
   return `
     <g id="phase7-section-markers">
       ${(sectionPlan.candidates || [])
@@ -64,8 +77,8 @@ function renderSectionMarkers(sectionPlan = {}, project = (point) => point) {
           const to = project(candidate.cutLine.to);
           const label = index === 0 ? "A-A" : "B-B";
           return `
-            <line x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}" stroke="#111" stroke-width="1.4" stroke-dasharray="10 6"/>
-            <text x="${from.x + 8}" y="${from.y - 8}" font-size="11" font-family="Arial, sans-serif" fill="#111">${label}</text>
+            <line x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}" stroke="#111" stroke-width="${stroke}" stroke-dasharray="10 6"/>
+            <text x="${from.x + labelOffsetX}" y="${from.y - labelOffsetY}" font-size="${fontSize}" font-family="Arial, sans-serif" font-weight="700" fill="#111">${label}</text>
           `;
         })
         .join("")}
@@ -130,11 +143,12 @@ export function buildPlanGraphic(geometryInput = {}, options = {}) {
   const annotationValidation = validateAnnotationPlacements(
     annotationLayout.placements,
   );
+  const typo = getSheetTypography(options.sheetMode === true);
   const svg = replaceSvgTail(
     drawing.svg,
     [
       renderPlacements(annotationLayout.placements),
-      renderSectionMarkers(sectionPlan, project),
+      renderSectionMarkers(sectionPlan, project, typo),
     ].join(""),
   );
 

@@ -52,24 +52,35 @@ const RENDER_STYLE_SUFFIX = [
 const ANTI_3D_CORE =
   "(shadows:1.5), (shading:1.5), (ambient occlusion:1.5), (depth:1.5), (volume:1.5), (gradient:1.4), (lighting effects:1.3), (glossy:1.3), (reflection:1.3)";
 const ANTI_PHOTOREALISM =
-  "(photorealistic:1.5), (photograph:1.4), (render:1.3)";
+  "(photorealistic:1.5), (photograph:1.4), (render:1.3), (photoreal:1.6), (rendered shading:1.4)";
 const BASE_QUALITY_NEGATIVE =
   "(low quality:1.4), (worst quality:1.4), (blurry:1.3), watermark, signature";
+// Orthographic enforcement — appended to every technical 2D negative.
+// Targets perspective drift, vanishing points, foreshortening, lens warp,
+// and rendered shading that turn flat technical drawings into perspective views.
+const ANTI_PERSPECTIVE_ORTHO =
+  "(vanishing point:1.6), (foreshortening:1.6), (camera tilt:1.5), (lens distortion:1.5), (fisheye:1.5), (converging lines:1.4), (tilted view:1.4)";
 
-export const FLOOR_PLAN_NEGATIVE = `${BASE_QUALITY_NEGATIVE}, (perspective:1.5), (3D:1.5), (isometric:1.5), (axonometric:1.5), ${ANTI_3D_CORE}, ${ANTI_PHOTOREALISM}`;
-export const ELEVATION_NEGATIVE = `${BASE_QUALITY_NEGATIVE}, (perspective:1.5), (3D:1.5), (angled view:1.4), ${ANTI_3D_CORE}, ${ANTI_PHOTOREALISM}`;
-export const SECTION_NEGATIVE = `${BASE_QUALITY_NEGATIVE}, (perspective:1.5), (3D:1.5), ${ANTI_3D_CORE}, ${ANTI_PHOTOREALISM}`;
-export const SITE_PLAN_NEGATIVE = `${BASE_QUALITY_NEGATIVE}, (3D:1.5), (perspective:1.5), ${ANTI_3D_CORE}, ${ANTI_PHOTOREALISM}`;
+export const FLOOR_PLAN_NEGATIVE = `${BASE_QUALITY_NEGATIVE}, (perspective:1.5), (3D:1.5), (isometric:1.5), (axonometric:1.5), ${ANTI_PERSPECTIVE_ORTHO}, ${ANTI_3D_CORE}, ${ANTI_PHOTOREALISM}`;
+export const ELEVATION_NEGATIVE = `${BASE_QUALITY_NEGATIVE}, (perspective:1.5), (3D:1.5), (angled view:1.4), ${ANTI_PERSPECTIVE_ORTHO}, ${ANTI_3D_CORE}, ${ANTI_PHOTOREALISM}`;
+export const SECTION_NEGATIVE = `${BASE_QUALITY_NEGATIVE}, (perspective:1.5), (3D:1.5), ${ANTI_PERSPECTIVE_ORTHO}, ${ANTI_3D_CORE}, ${ANTI_PHOTOREALISM}`;
+export const SITE_PLAN_NEGATIVE = `${BASE_QUALITY_NEGATIVE}, (3D:1.5), (perspective:1.5), ${ANTI_PERSPECTIVE_ORTHO}, ${ANTI_3D_CORE}, ${ANTI_PHOTOREALISM}`;
 
 /**
  * Build fingerprint constraint clause for prompt injection
- * This is the core mechanism for ensuring all panels show THE SAME building
+ * This is the core mechanism for ensuring all panels show THE SAME building.
+ *
+ * Always returns a non-empty constraint when a fingerprint is supplied.
+ * The feature flag previously gating this function was removed in the
+ * A1 quality hardening pass — every panel must receive identity language
+ * regardless of upstream flag state.
  *
  * @param {Object} fingerprint - Design fingerprint extracted from hero_3d
+ *                               or derived from masterDNA
  * @returns {string} Constraint clause to inject into prompts
  */
 export function buildFingerprintConstraint(fingerprint) {
-  if (!fingerprint || !isFeatureEnabled("extractDesignFingerprint")) {
+  if (!fingerprint) {
     return "";
   }
 
@@ -97,17 +108,53 @@ DO NOT generate a different building. All architectural elements must match exac
 }
 
 /**
- * Inject fingerprint constraint into prompt context if available
+ * Inject fingerprint constraint into prompt context.
+ *
+ * Strategy (in priority order):
+ *   1. Use explicit constraint string (context.fingerprintConstraint).
+ *   2. Use explicit fingerprint object (context.designFingerprint).
+ *   3. Derive a fingerprint from masterDNA + ProjectGraph as a fallback,
+ *      so every panel still receives identity language even when the
+ *      hero-extraction step has not run.
+ *
  * @private
  */
 function injectFingerprintConstraint(context) {
+  const explicitConstraint =
+    context?.fingerprintConstraint ||
+    context?.projectContext?.fingerprintConstraint;
+  if (explicitConstraint) {
+    return explicitConstraint;
+  }
+
   const fingerprint =
     context?.designFingerprint || context?.projectContext?.designFingerprint;
-  const fingerprintConstraint =
-    context?.fingerprintConstraint ||
-    context?.projectContext?.fingerprintConstraint ||
-    buildFingerprintConstraint(fingerprint);
-  return fingerprintConstraint;
+  if (fingerprint) {
+    const constraint = buildFingerprintConstraint(fingerprint);
+    if (constraint) {
+      return constraint;
+    }
+  }
+
+  const masterDNA = context?.masterDNA || context?.dna || null;
+  if (masterDNA) {
+    try {
+      const derived = buildFingerprintFromDNA(masterDNA, {
+        projectGeometry: context?.projectContext?.projectGeometry || null,
+        facadeGrammar: context?.projectContext?.facadeGrammar || null,
+        portfolioStyle: context?.projectContext?.portfolioStyle || null,
+      });
+      if (derived) {
+        return buildFingerprintConstraint(derived);
+      }
+    } catch (error) {
+      logger?.debug?.(
+        `[panelPromptBuilders] DNA-derived fingerprint fallback failed: ${error?.message || error}`,
+      );
+    }
+  }
+
+  return "";
 }
 
 /**
@@ -649,6 +696,59 @@ REQUIREMENTS:
 - Context landscaping (trees, parking)
 - Site dimensions and setbacks labeled
 - Clean technical drawing style
+
+${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}
+STYLE: ${DRAWING_STYLE_SUFFIX}`;
+
+  return {
+    prompt,
+    negativePrompt: `${SITE_PLAN_NEGATIVE}, noisy background, cluttered annotations, ${buildFloorCountNegatives(dims.floors)}`,
+  };
+}
+
+/**
+ * Build UK RIBA-style site plan prompt (fallback for the AI image-model path
+ * when the deterministic svgSiteRenderer cannot produce output). The
+ * deterministic renderer is the authoritative path for site_plan.
+ */
+export function buildSitePlanPrompt({
+  masterDNA,
+  locationData,
+  projectContext,
+  consistencyLock,
+}) {
+  const dims = normalizeDimensions(masterDNA);
+  const style = masterDNA?.architecturalStyle || "Contemporary";
+  const footprint = `${dims.length}m × ${dims.width}m`;
+  const address = locationData?.address || "Site location";
+  const identity = buildBuildingIdentityBlock(masterDNA, projectContext);
+  const fingerprintConstraint = injectFingerprintConstraint({
+    masterDNA,
+    projectContext,
+  });
+
+  const prompt = `${identity}
+
+UK RIBA-style SITE PLAN - top-down orthographic technical drawing (NOT perspective)
+Location: ${address}
+Building footprint: ${footprint}
+Style: ${style}
+
+${fingerprintConstraint ? `DESIGN FINGERPRINT (match building identity):\n${fingerprintConstraint}\n` : ""}
+REQUIREMENTS (UK RIBA Stage 2/3 site plan conventions):
+- TRUE TOP-DOWN ORTHOGRAPHIC VIEW (no perspective, no axonometric)
+- Site boundary drawn as a thick continuous line
+- Buildable envelope / setback shown as a dashed line inside the boundary
+- Proposed building footprint filled as solid black poche
+- Adjacent / neighbouring building footprints shown as light grey outlines for context
+- Access road / driveway / pedestrian access annotated
+- Existing vegetation (trees, hedges) and landscape features keyed
+- North arrow at top-right (large, labelled "N")
+- Graphical scale bar (1:500 or 1:200) at bottom-right
+- Site area, buildable area, footprint area, and proposed coverage ratio annotated bottom-left
+- Setback dimensions to each boundary annotated in metres
+- Drainage / utility easements shown if present
+- Pure 2D technical line drawing — no shading, no rendered textures, no photoreal
 
 ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}
 STYLE: ${DRAWING_STYLE_SUFFIX}`;
@@ -1216,7 +1316,7 @@ export function buildElevationPrompt(orientation) {
       facadeDetails += `\n- Balcony on this facade`;
     }
 
-    // Build materials string with hex colors for precision
+    // Build materials string with hex colors for precision (legacy fallback)
     const rawMats = masterDNA?.materials || [];
     const materialsWithHex = (Array.isArray(rawMats) ? rawMats : [])
       .slice(0, 4)
@@ -1229,15 +1329,31 @@ export function buildElevationPrompt(orientation) {
       materialsWithHex.length > 0
         ? materialsWithHex.join(", ")
         : materials.join(", ");
+    const elevationMaterialSpec = buildMaterialSpecSheet({
+      dna: masterDNA,
+      projectGeometry: projectContext?.projectGeometry || null,
+      facadeGrammar: projectContext?.facadeGrammar || null,
+    });
+    const elevationMaterialsBlock = (elevationMaterialSpec.lines || []).join(
+      "\n",
+    );
+    const floorHeightsLine = dims.floorHeights
+      .map((h, i) => `Floor ${i}: ${h}m`)
+      .join(", ");
 
     const prompt = `${identity}
 
 ${dirUpper} elevation - flat orthographic facade view
 Style: ${style}
 Height: ${dims.height}m (${dims.floors} floor(s))
+Footprint: ${dims.length}m x ${dims.width}m
+Floor heights: ${floorHeightsLine}
 Materials: ${materialStr}
 Roof type: ${roofType} (MUST match hero 3D render exactly)
 ${canonicalIdentityBlock}
+
+CANONICAL MATERIAL SPEC (MUST match elevations on other orientations and sections):
+${elevationMaterialsBlock || materialStr}
 
 ${fingerprintConstraint ? `DESIGN FINGERPRINT - MATCH HERO 3D EXACTLY:\n${fingerprintConstraint}\n` : ""}
 CRITICAL CONSISTENCY RULES:
@@ -1290,7 +1406,6 @@ export function buildSectionAAPrompt({
   consistencyLock,
 }) {
   const dims = normalizeDimensions(masterDNA);
-  const materials = normalizeMaterials(masterDNA);
   const floorHeights = dims.floorHeights
     .map((h, i) => `Floor ${i}: ${h}m`)
     .join(", ");
@@ -1303,25 +1418,35 @@ export function buildSectionAAPrompt({
     projectContext,
   });
   const identity = buildBuildingIdentityBlock(masterDNA, projectContext);
+  const materialSpec = buildMaterialSpecSheet({
+    dna: masterDNA,
+    projectGeometry: projectContext?.projectGeometry || null,
+    facadeGrammar: projectContext?.facadeGrammar || null,
+  });
+  const materialsBlock = (materialSpec.lines || []).join("\n");
+  const fallbackMaterials = normalizeMaterials(masterDNA).join(", ");
 
   const prompt = `${identity}
 
 Section A-A (longitudinal) - orthographic building section
 Total height: ${dims.height}m (${dims.floors} floor(s))
+Footprint: ${dims.length}m x ${dims.width}m
 Floor heights: ${floorHeights}
-Materials: ${materials.join(", ")}
 Roof type: ${roofType}
+Materials (canonical, MUST match elevations and hero 3D):
+${materialsBlock || fallbackMaterials}
 
 ${fingerprintConstraint ? `DESIGN FINGERPRINT (match building identity):\n${fingerprintConstraint}\n` : ""}
 REQUIREMENTS:
 - TRUE ORTHOGRAPHIC SECTION (NOT perspective)
 - Cut through entrance and main circulation
-- Show all floor levels with slab thickness
+- Show all floor levels with slab thickness at the heights listed above
 - Staircase visible in section
-- Ceiling heights labeled
+- Ceiling heights labeled in mm
 - Foundation and roof structure (${roofType} - MUST match hero)
-- Material indications
-- Dimension lines for floor-to-floor heights
+- Material poche / hatch keyed to the canonical hex colours above
+- Dimension lines for floor-to-floor heights and overall height
+- Window head and sill heights aligned with elevations
 - Interior spaces visible in section
 - Clean technical drawing style
 
@@ -1343,7 +1468,9 @@ export function buildSectionBBPrompt({
   consistencyLock,
 }) {
   const dims = normalizeDimensions(masterDNA);
-  const materials = normalizeMaterials(masterDNA);
+  const floorHeights = dims.floorHeights
+    .map((h, i) => `Floor ${i}: ${h}m`)
+    .join(", ");
   const roofType =
     masterDNA?.roof?.type ||
     masterDNA?._structured?.geometry_rules?.roof_type ||
@@ -1353,14 +1480,24 @@ export function buildSectionBBPrompt({
     projectContext,
   });
   const identity = buildBuildingIdentityBlock(masterDNA, projectContext);
+  const materialSpec = buildMaterialSpecSheet({
+    dna: masterDNA,
+    projectGeometry: projectContext?.projectGeometry || null,
+    facadeGrammar: projectContext?.facadeGrammar || null,
+  });
+  const materialsBlock = (materialSpec.lines || []).join("\n");
+  const fallbackMaterials = normalizeMaterials(masterDNA).join(", ");
 
   const prompt = `${identity}
 
 Section B-B (transverse/cross section) - orthographic building section
 Width: ${dims.width}m
 Total height: ${dims.height}m (${dims.floors} floor(s))
-Materials: ${materials.join(", ")}
+Footprint: ${dims.length}m x ${dims.width}m
+Floor heights: ${floorHeights}
 Roof type: ${roofType}
+Materials (canonical, MUST match Section A-A and elevations):
+${materialsBlock || fallbackMaterials}
 
 ${fingerprintConstraint ? `DESIGN FINGERPRINT (match building identity):\n${fingerprintConstraint}\n` : ""}
 REQUIREMENTS:
@@ -1368,12 +1505,12 @@ REQUIREMENTS:
 - Cut perpendicular to Section A-A
 - Building profile MUST match Section A-A (same roof height, same floor levels)
 - Show structural grid if applicable
-- All floor levels with slab thickness
-- Window openings in section
-- Ceiling heights labeled
+- All floor levels with slab thickness at the heights listed above
+- Window openings in section, head/sill heights aligned with elevations
+- Ceiling heights labeled in mm
 - Foundation and roof structure (${roofType} - MUST match hero)
-- Material indications
-- Dimension lines
+- Material poche / hatch keyed to the canonical hex colours above
+- Dimension lines for floor-to-floor heights and overall height
 - Align with elevations (window positions match)
 
 ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}`;
@@ -1620,6 +1757,7 @@ STYLE: ${DRAWING_STYLE_SUFFIX}`;
  */
 export const PANEL_PROMPT_BUILDERS = {
   site_diagram: buildSiteDiagramPrompt,
+  site_plan: buildSitePlanPrompt,
   hero_3d: buildHero3DPrompt,
   interior_3d: buildInterior3DPrompt,
   axonometric: buildAxonometricPrompt,
@@ -1663,6 +1801,7 @@ export default {
   buildPanelPrompt,
   buildFingerprintConstraint,
   buildSiteDiagramPrompt,
+  buildSitePlanPrompt,
   buildHero3DPrompt,
   buildInterior3DPrompt,
   buildAxonometricPrompt,
