@@ -614,6 +614,16 @@ function normalizeBrief(input = {}) {
         {
           ...projectDetails,
           floorCount: projectFloorCount,
+          area: targetGiaM2,
+          targetAreaM2: targetGiaM2,
+          target_gia_m2: targetGiaM2,
+          buildingType,
+          subType:
+            projectDetails.subType ||
+            projectDetails.buildingSubType ||
+            sourceBrief.subType ||
+            sourceBrief.buildingSubType ||
+            buildingType,
         },
         {
           fallback: briefRequestedStoreys,
@@ -2603,6 +2613,7 @@ function buildPanelReferenceMetrics({
   placement = null,
   geometryHash = null,
   briefInputHash = null,
+  layoutTemplate = "board-v2",
 } = {}) {
   const bounds = getTechnicalContentBounds(artifact);
   const technicalQualityMetadata = getTechnicalQualityMetadata(artifact);
@@ -2619,6 +2630,12 @@ function buildPanelReferenceMetrics({
     ),
     4,
   );
+  const finalSlotFit = computePanelSlotFitMetrics({
+    panelType,
+    artifact,
+    placement,
+    layoutTemplate: placement?.layoutTemplate || layoutTemplate,
+  });
   const sourceGeometryHash =
     artifact?.source_model_hash ||
     artifact?.geometryHash ||
@@ -2642,6 +2659,8 @@ function buildPanelReferenceMetrics({
   });
   return {
     slotOccupancy,
+    finalSlotOccupancy: finalSlotFit?.occupancyRatio ?? null,
+    finalSlotFit,
     contentBBoxRatio,
     sourceGeometryHash,
     panelIdentityHash,
@@ -2780,8 +2799,8 @@ function buildMaterialPalettePanelArtifact({
   brief,
   geometryHash,
 }) {
-  const width = 900;
-  const height = 620;
+  const width = 700;
+  const height = 900;
   const materials = normalizeMaterialPaletteEntriesShared({
     localStyle,
     compiledProject,
@@ -2791,19 +2810,19 @@ function buildMaterialPalettePanelArtifact({
   const { defs, cards, cardMetadata } = buildMaterialPaletteCards({
     materials,
     layout: {
-      cols: 3,
-      rows: 2,
+      cols: 2,
+      rows: 3,
       max: 6,
-      cardWidth: 180,
-      cardHeight: 96,
-      gapX: 32,
-      gapY: 78,
-      startX: 44,
-      startY: 86,
-      labelOffset: 24,
-      subLabelOffset: 48,
-      labelFontSize: 15,
-      subLabelFontSize: 12,
+      cardWidth: 250,
+      cardHeight: 112,
+      gapX: 54,
+      gapY: 116,
+      startX: 54,
+      startY: 92,
+      labelOffset: 28,
+      subLabelOffset: 54,
+      labelFontSize: 18,
+      subLabelFontSize: 14,
       fontFamily: "Arial, sans-serif",
       labelMaxChars: 18,
       subLabelMaxChars: 24,
@@ -2813,8 +2832,8 @@ function buildMaterialPalettePanelArtifact({
   const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="material_palette" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}">
   <defs>${defs}</defs>
   <rect width="${width}" height="${height}" fill="#ffffff"/>
-  <text x="32" y="42" font-family="Arial, sans-serif" font-size="30" font-weight="700" fill="#111111">MATERIAL PALETTE</text>
-  <line x1="32" y1="58" x2="868" y2="58" stroke="#111111" stroke-width="2"/>
+  <text x="34" y="48" font-family="Arial, sans-serif" font-size="32" font-weight="700" fill="#111111">MATERIAL PALETTE</text>
+  <line x1="34" y1="66" x2="666" y2="66" stroke="#111111" stroke-width="2"/>
   ${cards}
 </svg>`;
   const svgHash = computeCDSHashSync({
@@ -2907,8 +2926,8 @@ function buildKeyNotesPanelArtifact({
   localStyle,
   geometryHash,
 }) {
-  const width = 620;
-  const height = 620;
+  const width = 560;
+  const height = 900;
   const notes = buildKeyNoteItems({
     brief,
     site,
@@ -2916,18 +2935,18 @@ function buildKeyNotesPanelArtifact({
     regulations,
     localStyle,
   });
-  let cursorY = 92;
+  let cursorY = 98;
   const noteGroups = notes
     .map((note, index) => {
-      const lines = splitNoteLines(note, 42);
+      const lines = splitNoteLines(note, 34);
       const groupY = cursorY;
-      cursorY += 34 + lines.length * 22;
+      cursorY += 36 + lines.length * 25;
       return `<g data-key-note="${index + 1}">
   <text x="34" y="${groupY}" font-size="18" font-family="Arial, sans-serif" font-weight="700" fill="#111111">${index + 1}.</text>
   ${lines
     .map(
       (line, lineIndex) =>
-        `<text x="72" y="${groupY + lineIndex * 22}" font-size="17" font-family="Arial, sans-serif" fill="#222222">${escapeXml(line)}</text>`,
+        `<text x="72" y="${groupY + lineIndex * 25}" font-size="17" font-family="Arial, sans-serif" fill="#222222">${escapeXml(line)}</text>`,
     )
     .join("\n  ")}
 </g>`;
@@ -2935,8 +2954,8 @@ function buildKeyNotesPanelArtifact({
     .join("\n");
   const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="key_notes" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}">
   <rect width="${width}" height="${height}" fill="#ffffff"/>
-  <text x="30" y="44" font-family="Arial, sans-serif" font-size="30" font-weight="700" fill="#111111">KEY NOTES</text>
-  <line x1="30" y1="60" x2="590" y2="60" stroke="#111111" stroke-width="2"/>
+  <text x="30" y="48" font-family="Arial, sans-serif" font-size="32" font-weight="700" fill="#111111">KEY NOTES</text>
+  <line x1="30" y1="66" x2="530" y2="66" stroke="#111111" stroke-width="2"/>
   ${noteGroups}
 </svg>`;
   const svgHash = computeCDSHashSync({
@@ -2979,7 +2998,7 @@ function buildTitleBlockPanelArtifact({
   sheetPlan,
 }) {
   const width = 620;
-  const height = 620;
+  const height = 900;
   const location =
     brief?.site_input?.address || brief?.site_input?.postcode || "Project site";
   const drawingNumber = sheetPlan?.sheet_number || "A1-00";
@@ -3003,7 +3022,7 @@ function buildTitleBlockPanelArtifact({
   ];
   const rowSvg = rows
     .map((row, index) => {
-      const y = 206 + index * 43;
+      const y = 276 + index * 62;
       const rawValue = String(row[1] || "");
       const valueMaxChars = index <= 1 ? 34 : 28;
       const valueLines = splitNoteLines(rawValue, valueMaxChars, 2);
@@ -3024,18 +3043,18 @@ function buildTitleBlockPanelArtifact({
   const titleSvg = titleLines
     .map(
       (line, index) =>
-        `<text x="34" y="${62 + index * 32}" font-family="Arial, sans-serif" font-size="28" font-weight="700" fill="#111111">${escapeXml(line)}</text>`,
+        `<text x="34" y="${76 + index * 40}" font-family="Arial, sans-serif" font-size="32" font-weight="700" fill="#111111">${escapeXml(line)}</text>`,
     )
     .join("\n  ");
   const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="title_block" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-brief-input-hash="${escapeXml(brief?.brief_input_hash || "")}">
   <rect width="${width}" height="${height}" fill="#ffffff"/>
-  <rect x="18" y="18" width="584" height="584" fill="none" stroke="#111111" stroke-width="3"/>
+  <rect x="18" y="18" width="584" height="864" fill="none" stroke="#111111" stroke-width="3"/>
   ${titleSvg}
-  <text x="34" y="126" font-family="Arial, sans-serif" font-size="20" fill="#333333">${escapeXml((brief?.building_type || "architecture").replace(/_/g, " ").toUpperCase())}</text>
-  <line x1="34" y1="156" x2="586" y2="156" stroke="#111111" stroke-width="2"/>
+  <text x="34" y="170" font-family="Arial, sans-serif" font-size="20" fill="#333333">${escapeXml((brief?.building_type || "architecture").replace(/_/g, " ").toUpperCase())}</text>
+  <line x1="34" y1="206" x2="586" y2="206" stroke="#111111" stroke-width="2"/>
   ${rowSvg}
-  <text x="34" y="560" font-family="Arial, sans-serif" font-size="15" fill="#555555">source_model_hash ${escapeXml(String(geometryHash || "").slice(0, 16))}</text>
-  <text x="586" y="560" font-family="Arial, sans-serif" font-size="15" text-anchor="end" fill="#555555">ARCHITECT AI PLATFORM</text>
+  <text x="34" y="850" font-family="Arial, sans-serif" font-size="15" fill="#555555">source_model_hash ${escapeXml(String(geometryHash || "").slice(0, 16))}</text>
+  <text x="586" y="850" font-family="Arial, sans-serif" font-size="15" text-anchor="end" fill="#555555">ARCHITECT AI PLATFORM</text>
 </svg>`;
   const svgHash = computeCDSHashSync({
     panelType: "title_block",
@@ -3446,21 +3465,22 @@ export function resolvePresentationLayoutTemplate(brief = {}) {
 // Phase B closeout v3: presentation-v3 row 1 metrics depend on storey count.
 // For 3-storey residential (the only multi-plan case that fits on one A1
 // after sheetSplitter forces 4+ to A1-002), shrink row 1 to 130mm and
-// widen the plans column so each plan slot becomes landscape (aspect ≥1.2)
-// and the floor plan SVG actually fills the slot. The recovered 58mm goes
-// to row 2 so sections + axonometric have more vertical room. 1-/2-storey
-// keep the existing 188mm row 1 (their plans already fill well).
+// widen the plans column so each plan slot becomes landscape (aspect >=1.2).
+// Standard 1-/2-storey boards use a tighter 180/178/200mm row stack so
+// sections stop floating in oversized frames and bottom data panels fill
+// the reference-board title/material area.
 export function buildPresentationV3SheetPanelSpecs(targetStoreys = 1) {
   const storeyCount = Math.max(1, Number(targetStoreys) || 1);
   const isMultiStorey = storeyCount >= 3;
 
   // Row geometry (mm; A1 landscape = 841×594mm with 10mm side margins).
+  const ROW_GAP = 8;
   const ROW1_Y = 10;
-  const ROW1_H = isMultiStorey ? 130 : 188;
-  const ROW2_Y = ROW1_Y + ROW1_H + 10;
-  const ROW2_H = isMultiStorey ? 246 : 188;
-  const ROW3_Y = ROW2_Y + ROW2_H + 10;
-  const ROW3_H = 178;
+  const ROW1_H = isMultiStorey ? 130 : 180;
+  const ROW2_Y = ROW1_Y + ROW1_H + ROW_GAP;
+  const ROW2_H = isMultiStorey ? 246 : 178;
+  const ROW3_Y = ROW2_Y + ROW2_H + ROW_GAP;
+  const ROW3_H = isMultiStorey ? 178 : 200;
 
   // Top-row column ranges. For 3-storey we trade 40mm of site width and
   // 100mm of elevation width for a wider plans column (510mm vs 370mm)
@@ -3471,7 +3491,7 @@ export function buildPresentationV3SheetPanelSpecs(targetStoreys = 1) {
   const PLANS_W_TOTAL = isMultiStorey ? 510 : 370;
   const ELEV_X = PLANS_X + PLANS_W_TOTAL + 10;
   const ELEV_W = isMultiStorey ? 151 : 251;
-  const ELEV_HALF_H = isMultiStorey ? 62 : 92;
+  const ELEV_HALF_H = isMultiStorey ? 62 : 88;
 
   // Row 1 right-column N/S elevations (stacked).
   const elevationsRow1 = [
@@ -3498,7 +3518,7 @@ export function buildPresentationV3SheetPanelSpecs(targetStoreys = 1) {
   // Row 2 right-column E/W elevations. In multi-storey row 2 is 246mm
   // tall, so each elevation gets ~121mm height (still a comfortable
   // 2:1+ aspect). Standard rows keep 92mm halves.
-  const ELEV_R2_HALF_H = isMultiStorey ? 121 : 92;
+  const ELEV_R2_HALF_H = isMultiStorey ? 121 : 87;
   const ELEV_R2_X = isMultiStorey ? 580 : ELEV_X;
   const ELEV_R2_W = isMultiStorey ? 251 : ELEV_W;
   const elevationsRow2 = [
@@ -3851,9 +3871,19 @@ function buildPanelPlacements({
       if (!artifact && !slot.required) {
         return null;
       }
+      const title = formatPanelTitle(slot.panelType);
+      const scale = drawing?.scale || slot.scale;
+      const metricPlacement = {
+        ...slot,
+        title,
+        scale,
+        layoutTemplate,
+      };
       const referenceMetrics = buildPanelReferenceMetrics({
         panelType: slot.panelType,
         artifact,
+        placement: metricPlacement,
+        layoutTemplate,
         geometryHash,
         briefInputHash,
       });
@@ -3861,12 +3891,13 @@ function buildPanelPlacements({
         slotIndex: index,
         panelType: slot.panelType,
         panelId: createStableId("sheet-panel", slot.panelType, index),
-        title: formatPanelTitle(slot.panelType),
-        scale: drawing?.scale || slot.scale,
+        title,
+        scale,
         x: slot.x,
         y: slot.y,
         width: slot.width,
         height: slot.height,
+        layoutTemplate,
         required: slot.required,
         sourcePanelAssetId: artifact?.asset_id || assetId,
         sourceDrawingId: drawing?.drawing_id || null,
@@ -3874,6 +3905,8 @@ function buildPanelPlacements({
         geometryHash: artifact?.source_model_hash || null,
         svgHash: artifact?.svgHash || null,
         slotOccupancy: referenceMetrics.slotOccupancy,
+        finalSlotOccupancy: referenceMetrics.finalSlotOccupancy,
+        finalSlotFit: referenceMetrics.finalSlotFit,
         contentBBoxRatio: referenceMetrics.contentBBoxRatio,
         sourceGeometryHash: referenceMetrics.sourceGeometryHash,
         panelIdentityHash: referenceMetrics.panelIdentityHash,
@@ -4247,6 +4280,85 @@ export function computePanelCaptionLayout({
   };
 }
 
+function parseViewBoxTuple(viewBox = "") {
+  const values = String(viewBox || "")
+    .trim()
+    .split(/[\s,]+/)
+    .map(Number);
+  if (values.length < 4 || values.some((value) => !Number.isFinite(value))) {
+    return null;
+  }
+  const [, , width, height] = values;
+  if (!(width > 0) || !(height > 0)) {
+    return null;
+  }
+  return {
+    x: values[0],
+    y: values[1],
+    width,
+    height,
+  };
+}
+
+export function computePanelSlotFitMetrics({
+  panelType,
+  artifact,
+  placement = null,
+  layoutTemplate = "board-v2",
+} = {}) {
+  if (
+    !placement ||
+    !(Number(placement.width) > 0) ||
+    !(Number(placement.height) > 0)
+  ) {
+    return null;
+  }
+  const caption = computePanelCaptionLayout({
+    title: placement.title || formatPanelTitle(panelType),
+    scale: placement.scale || "",
+    panelWidth: Number(placement.width),
+    layoutTemplate,
+  });
+  const slotContentWidth =
+    Number(placement.width) - CAPTION_HORIZONTAL_PADDING_MM * 2;
+  const slotContentHeight =
+    Number(placement.height) -
+    caption.contentTopOffset -
+    caption.contentBottomPadding;
+  const viewBox = selectPanelContentViewBox({
+    panelType,
+    artifact,
+    layoutTemplate,
+  });
+  const parsedViewBox = parseViewBoxTuple(viewBox);
+  if (!parsedViewBox || !(slotContentWidth > 0) || !(slotContentHeight > 0)) {
+    return null;
+  }
+
+  const contentAspect = parsedViewBox.width / parsedViewBox.height;
+  const slotAspect = slotContentWidth / slotContentHeight;
+  let widthRatio = 1;
+  let heightRatio = 1;
+  if (contentAspect > slotAspect) {
+    heightRatio = slotAspect / contentAspect;
+  } else {
+    widthRatio = contentAspect / slotAspect;
+  }
+
+  return {
+    occupancyRatio: round(widthRatio * heightRatio, 4),
+    widthRatio: round(widthRatio, 4),
+    heightRatio: round(heightRatio, 4),
+    slotContentWidth: round(slotContentWidth, 2),
+    slotContentHeight: round(slotContentHeight, 2),
+    contentAspect: round(contentAspect, 4),
+    slotAspect: round(slotAspect, 4),
+    viewBox,
+    captionLayout: caption.layout,
+    preserveAspectRatio: "xMidYMid meet",
+  };
+}
+
 function renderSheetPanel({
   placement,
   artifact,
@@ -4449,6 +4561,8 @@ async function buildA1Sheet({
       placement.panelType,
       placement.referenceMetrics || {
         slotOccupancy: placement.slotOccupancy || 0,
+        finalSlotOccupancy: placement.finalSlotOccupancy || null,
+        finalSlotFit: placement.finalSlotFit || null,
         contentBBoxRatio: placement.contentBBoxRatio || null,
         sourceGeometryHash: placement.sourceGeometryHash || null,
         panelIdentityHash: placement.panelIdentityHash || null,
@@ -4602,6 +4716,8 @@ function buildPanelRenderSummary(sheetArtifact = {}) {
     sourceModelHash: placement.source_model_hash || null,
     geometryHash: placement.geometryHash || null,
     slotOccupancy: placement.slotOccupancy || 0,
+    finalSlotOccupancy: placement.finalSlotOccupancy || null,
+    finalSlotFit: placement.finalSlotFit || null,
     contentBBoxRatio: placement.contentBBoxRatio || null,
     panelIdentityHash: placement.panelIdentityHash || null,
     briefInputHash: placement.briefInputHash || null,
@@ -5104,6 +5220,7 @@ function referenceMatchTechnicalThresholds(panelType = "") {
   if (String(panelType).startsWith("floor_plan_")) {
     return {
       slotOccupancy: REFERENCE_MATCH_PLAN_MIN_SLOT_OCCUPANCY,
+      finalSlotOccupancy: 0.5,
       widthRatio: 0.42,
       heightRatio: 0.28,
     };
@@ -5111,6 +5228,7 @@ function referenceMatchTechnicalThresholds(panelType = "") {
   if (String(panelType).startsWith("section_")) {
     return {
       slotOccupancy: REFERENCE_MATCH_SECTION_MIN_SLOT_OCCUPANCY,
+      finalSlotOccupancy: 0.28,
       widthRatio: 0.4,
       heightRatio: 0.2,
       sectionUsefulness: REFERENCE_MATCH_MIN_SECTION_USEFULNESS,
@@ -5120,6 +5238,7 @@ function referenceMatchTechnicalThresholds(panelType = "") {
   if (String(panelType).startsWith("elevation_")) {
     return {
       slotOccupancy: REFERENCE_MATCH_ELEVATION_MIN_SLOT_OCCUPANCY,
+      finalSlotOccupancy: 0.35,
       widthRatio: 0.38,
       heightRatio: 0.14,
       facadeRichness: REFERENCE_MATCH_MIN_ELEVATION_RICHNESS,
@@ -5127,6 +5246,7 @@ function referenceMatchTechnicalThresholds(panelType = "") {
   }
   return {
     slotOccupancy: MIN_TECHNICAL_CONTENT_OCCUPANCY_RATIO,
+    finalSlotOccupancy: 0.3,
     widthRatio: MIN_TECHNICAL_CONTENT_WIDTH_RATIO,
     heightRatio: MIN_TECHNICAL_CONTENT_HEIGHT_RATIO,
   };
@@ -5157,6 +5277,12 @@ function evaluateReferenceMatchTechnicalPanel({
   }
   if (metrics.slotOccupancy < thresholds.slotOccupancy) {
     failures.push("slot_occupancy_low");
+  }
+  if (
+    Number(metrics.finalSlotOccupancy || 0) > 0 &&
+    Number(metrics.finalSlotOccupancy || 0) < thresholds.finalSlotOccupancy
+  ) {
+    failures.push("final_slot_fit_low");
   }
   if (
     Number(metrics.contentBBoxRatio?.widthRatio || 0) < thresholds.widthRatio
@@ -5758,6 +5884,8 @@ export function validateProjectGraphVerticalSlice({
       drawingType:
         artifact?.drawingType || artifact?.metadata?.drawingType || null,
       slotOccupancy: referenceMetrics.slotOccupancy,
+      finalSlotOccupancy: referenceMetrics.finalSlotOccupancy,
+      finalSlotFit: referenceMetrics.finalSlotFit,
       contentBBoxRatio: referenceMetrics.contentBBoxRatio,
       sourceGeometryHash: referenceMetrics.sourceGeometryHash,
       panelIdentityHash: referenceMetrics.panelIdentityHash,
@@ -5901,6 +6029,7 @@ export function validateProjectGraphVerticalSlice({
       return (
         !record.ok ||
         Number(record.slotOccupancy || 0) <= 0 ||
+        Number(record.finalSlotOccupancy || 0) <= 0 ||
         Number(record.contentBBoxRatio?.widthRatio || 0) <= 0 ||
         Number(record.contentBBoxRatio?.heightRatio || 0) <= 0
       );
@@ -6139,6 +6268,9 @@ export function validateProjectGraphVerticalSlice({
           planSlotOccupancy: REFERENCE_MATCH_PLAN_MIN_SLOT_OCCUPANCY,
           sectionSlotOccupancy: REFERENCE_MATCH_SECTION_MIN_SLOT_OCCUPANCY,
           elevationSlotOccupancy: REFERENCE_MATCH_ELEVATION_MIN_SLOT_OCCUPANCY,
+          planFinalSlotOccupancy: 0.5,
+          sectionFinalSlotOccupancy: 0.28,
+          elevationFinalSlotOccupancy: 0.35,
           sectionUsefulness: REFERENCE_MATCH_MIN_SECTION_USEFULNESS,
           elevationRichness: REFERENCE_MATCH_MIN_ELEVATION_RICHNESS,
         },
@@ -6173,6 +6305,8 @@ export function validateProjectGraphVerticalSlice({
         panelType: entry.panelType,
         panelIdentityHash: entry.metrics.panelIdentityHash,
         slotOccupancy: entry.metrics.slotOccupancy,
+        finalSlotOccupancy: entry.metrics.finalSlotOccupancy,
+        finalSlotFit: entry.metrics.finalSlotFit,
         contentBBoxRatio: entry.metrics.contentBBoxRatio,
       }));
     const distinctElevationIdentities = new Set(

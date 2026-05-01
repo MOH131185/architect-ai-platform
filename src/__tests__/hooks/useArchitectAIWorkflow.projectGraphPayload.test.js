@@ -109,6 +109,25 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
     });
   });
 
+  test("raises unlocked 250 sqm detached-house payloads to two storeys", () => {
+    const request = buildProjectGraphVerticalSliceRequest({
+      designSpec: {
+        buildingCategory: "residential",
+        buildingSubType: "detached-house",
+        buildingType: "detached-house",
+        area: 250,
+        targetAreaM2: 250,
+        floorCount: 1,
+        autoDetectedFloorCount: 1,
+        floorCountLocked: false,
+      },
+    });
+
+    expect(request.projectDetails.floorCount).toBe(2);
+    expect(request.brief.target_storeys).toBe(2);
+    expect(request.brief.targetStoreys).toBe(2);
+  });
+
   test("preserves a compact provided site map data URL for ProjectGraph site context", () => {
     const mapDataUrl =
       "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR42mNk+M9Qz0AEYBxVSFIAAAeSAi8BTyQ1AAAAAElFTkSuQmCC";

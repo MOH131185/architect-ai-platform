@@ -356,6 +356,32 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
         designSpec.floorCount ??
         designSpec.floors ??
         designSpec.targetStoreys,
+      area:
+        projectDetails.area ??
+        projectDetails.targetAreaM2 ??
+        designSpec.targetAreaM2 ??
+        designSpec.area ??
+        designSpec.floorArea,
+      targetAreaM2:
+        projectDetails.targetAreaM2 ??
+        designSpec.targetAreaM2 ??
+        projectDetails.area ??
+        designSpec.area,
+      buildingType:
+        projectDetails.buildingType ||
+        projectDetails.subType ||
+        designSpec.buildingType ||
+        designSpec.buildingSubType ||
+        designSpec.buildingProgram ||
+        projectDetails.category,
+      subType:
+        projectDetails.subType ||
+        projectDetails.buildingSubType ||
+        designSpec.buildingSubType,
+      program:
+        projectDetails.program ||
+        designSpec.buildingProgram ||
+        designSpec.buildingSubType,
       autoDetectedFloorCount:
         projectDetails.autoDetectedFloorCount ??
         designSpec.autoDetectedFloorCount,
@@ -409,6 +435,7 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
           designSpec.area ??
           180,
         target_storeys: resolvedFloorCount,
+        targetStoreys: resolvedFloorCount,
         building_type:
           projectDetails.buildingType ||
           projectDetails.subType ||

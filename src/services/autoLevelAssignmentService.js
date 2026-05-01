@@ -12,6 +12,7 @@
  */
 
 import logger from "../utils/logger.js";
+import { resolveResidentialFloorCountPolicy } from "./project/residentialFloorPolicy.js";
 
 /**
  * Sub-type specific coverage ratios
@@ -266,10 +267,27 @@ class AutoLevelAssignmentService {
     }
 
     // Step 6: Determine optimal floor count
-    const optimalFloors = Math.min(
+    let optimalFloors = Math.min(
       Math.max(minFloorsNeeded, 1),
       maxFloorsAllowed,
     );
+    const floorPolicy = resolveResidentialFloorCountPolicy(
+      {
+        buildingType,
+        subType,
+        area: totalProgramArea,
+        targetAreaM2: totalProgramArea,
+        floorCountLocked: options.floorCountLocked === true,
+      },
+      optimalFloors,
+      { maxFloors: maxFloorsAllowed },
+    );
+    if (floorPolicy.applied) {
+      optimalFloors = floorPolicy.floorCount;
+      logger.info(
+        `   Residential floor policy: ${floorPolicy.reason} -> ${optimalFloors} floors`,
+      );
+    }
 
     // Step 7: Calculate actual footprint needed
     const actualFootprint = totalAreaWithCirculation / optimalFloors;
@@ -295,6 +313,7 @@ class AutoLevelAssignmentService {
       totalHeight: optimalFloors * typicalFloorHeight,
       coverageRatio: adjustedCoverage, // Include for UI display
       subType, // Include for reference
+      floorPolicy,
       reasoning: this._generateFloorCountReasoning(
         optimalFloors,
         totalProgramArea,
