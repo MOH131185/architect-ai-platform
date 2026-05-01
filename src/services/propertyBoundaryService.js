@@ -30,6 +30,31 @@ export function buildEstimatedBoundaryMetadata({
   };
 }
 
+export function isEstimatedBoundaryResult(result = {}) {
+  const source = String(
+    result?.boundarySource ||
+      result?.source ||
+      result?.metadata?.boundarySource ||
+      result?.metadata?.source ||
+      "",
+  );
+  const confidence = Number(
+    result?.boundaryConfidence ??
+      result?.confidence ??
+      result?.metadata?.boundaryConfidence,
+  );
+  const lowConfidence = Number.isFinite(confidence) && confidence < 0.6;
+
+  return (
+    result?.boundaryAuthoritative === false ||
+    result?.metadata?.boundaryAuthoritative === false ||
+    result?.estimatedOnly === true ||
+    result?.metadata?.estimatedOnly === true ||
+    /intelligent fallback|fallback/i.test(source) ||
+    lowConfidence
+  );
+}
+
 function isBrowserRuntime() {
   return (
     typeof window !== "undefined" && typeof window.document !== "undefined"
@@ -90,13 +115,26 @@ export async function detectPropertyBoundary(coordinates, address) {
       try {
         const result = await method();
         if (result && result.polygon && result.polygon.length >= 3) {
-          console.log(
-            "✅ Boundary detected:",
-            result.shapeType,
-            "with",
-            result.polygon.length,
-            "points",
-          );
+          const estimatedBoundary = isEstimatedBoundaryResult(result);
+
+          if (estimatedBoundary) {
+            console.warn(
+              "⚠️ Estimated boundary generated:",
+              result.shapeType,
+              "with",
+              result.polygon.length,
+              "points",
+            );
+          } else {
+            console.log(
+              "✅ Boundary detected:",
+              result.shapeType,
+              "with",
+              result.polygon.length,
+              "points",
+            );
+          }
+
           return result;
         }
       } catch (error) {

@@ -1,10 +1,12 @@
 import {
   buildEstimatedBoundaryMetadata,
   detectPropertyBoundary,
+  isEstimatedBoundaryResult,
   INTELLIGENT_FALLBACK_BOUNDARY_CONFIDENCE,
   INTELLIGENT_FALLBACK_BOUNDARY_SOURCE,
 } from "../../services/propertyBoundaryService.js";
 import { assessSiteBoundaryAuthority } from "../../services/siteAnalysisService.js";
+import { shouldEnableBoundaryAutoDetect } from "../../services/siteBoundaryAutoDetectPolicy.js";
 
 const samplePolygon = [
   { lat: 53.79215, lng: -1.7554 },
@@ -52,6 +54,34 @@ describe("site boundary authority", () => {
     );
     expect(assessment.authoritativeAreaM2).toBeNull();
     expect(assessment.estimatedAreaM2).toBe(119408);
+  });
+
+  test("classifies Intelligent Fallback as estimated for detection logs and UI auto-detect", () => {
+    const fallbackResult = {
+      polygon: samplePolygon,
+      source: INTELLIGENT_FALLBACK_BOUNDARY_SOURCE,
+      confidence: INTELLIGENT_FALLBACK_BOUNDARY_CONFIDENCE,
+      boundaryAuthoritative: false,
+      estimatedOnly: true,
+      metadata: buildEstimatedBoundaryMetadata(),
+    };
+
+    expect(isEstimatedBoundaryResult(fallbackResult)).toBe(true);
+    expect(shouldEnableBoundaryAutoDetect(fallbackResult)).toBe(false);
+    expect(
+      shouldEnableBoundaryAutoDetect({
+        boundarySource: "Google Places",
+        boundaryConfidence: 0.4,
+        boundaryAuthoritative: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldEnableBoundaryAutoDetect({
+        boundarySource: "OpenStreetMap",
+        boundaryConfidence: 0.92,
+        boundaryAuthoritative: true,
+      }),
+    ).toBe(true);
   });
 
   test("keeps normal high-confidence boundaries authoritative", () => {

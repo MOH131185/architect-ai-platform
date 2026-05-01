@@ -50,6 +50,9 @@ export function SiteBoundaryEditorV2({
   onBoundaryChange,
   apiKey,
   center = { lat: 37.7749, lng: -122.4194 },
+  autoDetectEnabled = true,
+  autoDetectOnLoad = true,
+  autoDetectDisabledMessage = "Automatic boundary detection is unavailable for this address. Draw or enter a verified boundary manually.",
 }) {
   // Refs
   const mapContainerRef = useRef(null);
@@ -64,6 +67,12 @@ export function SiteBoundaryEditorV2({
   const [showDiagnostics, setShowDiagnostics] = useState(true);
   const [showTableEditor, setShowTableEditor] = useState(false);
   const [validationWarning, setValidationWarning] = useState(null);
+  const [mapContainerElement, setMapContainerElement] = useState(null);
+
+  const handleMapContainerRef = useCallback((element) => {
+    mapContainerRef.current = element;
+    setMapContainerElement(element);
+  }, []);
 
   // Google Maps hook
   const {
@@ -75,7 +84,7 @@ export function SiteBoundaryEditorV2({
     geocodeAddress,
   } = useGoogleMap({
     apiKey,
-    mapContainer: mapContainerRef.current,
+    mapContainer: mapContainerElement,
     center,
     zoom: 18,
   });
@@ -101,6 +110,12 @@ export function SiteBoundaryEditorV2({
   const polygonLength = polygon.length;
 
   const handleAutoDetect = useCallback(async () => {
+    if (!autoDetectEnabled) {
+      setValidationWarning(autoDetectDisabledMessage);
+      setTimeout(() => setValidationWarning(null), 5000);
+      return;
+    }
+
     setIsLoadingBoundary(true);
 
     try {
@@ -136,7 +151,16 @@ export function SiteBoundaryEditorV2({
     } finally {
       setIsLoadingBoundary(false);
     }
-  }, [center, geocodeAddress, google, map, setPolygon, siteAddress]);
+  }, [
+    autoDetectDisabledMessage,
+    autoDetectEnabled,
+    center,
+    geocodeAddress,
+    google,
+    map,
+    setPolygon,
+    siteAddress,
+  ]);
 
   // ============================================================
   // INITIALIZATION
@@ -159,12 +183,16 @@ export function SiteBoundaryEditorV2({
       isLoaded &&
       map &&
       google &&
+      autoDetectOnLoad &&
+      autoDetectEnabled &&
       polygonLength === 0 &&
       !isLoadingBoundary
     ) {
       handleAutoDetect();
     }
   }, [
+    autoDetectEnabled,
+    autoDetectOnLoad,
     google,
     handleAutoDetect,
     isLoaded,
@@ -485,8 +513,13 @@ export function SiteBoundaryEditorV2({
           {/* Auto-detect */}
           <button
             onClick={handleAutoDetect}
-            disabled={isLoadingBoundary}
+            disabled={isLoadingBoundary || !autoDetectEnabled}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-300 transition-colors font-medium text-sm"
+            title={
+              autoDetectEnabled
+                ? "Auto-detect boundary"
+                : autoDetectDisabledMessage
+            }
           >
             {isLoadingBoundary ? "Detecting..." : "🔍 Auto-Detect"}
           </button>
@@ -635,7 +668,7 @@ export function SiteBoundaryEditorV2({
       {/* Main Content Grid */}
       <div className={`grid gap-4 ${showTableEditor ? "lg:grid-cols-2" : ""}`}>
         {/* Map Container */}
-        <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+        <div className="relative bg-white rounded-lg shadow-lg overflow-hidden">
           {/* Loading Overlay */}
           {(isLoading || !isLoaded) && (
             <div className="absolute inset-0 z-10 flex items-center justify-center bg-white bg-opacity-90">
@@ -669,7 +702,7 @@ export function SiteBoundaryEditorV2({
 
           {/* Map Container */}
           <div
-            ref={mapContainerRef}
+            ref={handleMapContainerRef}
             className="w-full h-[450px] bg-slate-100"
             style={{ minHeight: "450px" }}
           />
