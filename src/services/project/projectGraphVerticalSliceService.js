@@ -134,11 +134,20 @@ const TECHNICAL_A1_PANEL_TYPES_BASE = [
   "section_BB",
 ];
 
-function buildRequiredA1PanelTypes(targetStoreys = 1) {
+export function buildRequiredA1PanelTypes(
+  targetStoreys = 1,
+  layoutTemplate = "board-v2",
+) {
   const dynamicFloorPlans = floorPlanPanelTypes(targetStoreys).filter(
     (type) => type !== "floor_plan_ground",
   );
-  return [...REQUIRED_A1_PANEL_TYPES_BASE, ...dynamicFloorPlans];
+  const basePanelTypes =
+    layoutTemplate === "presentation-v3"
+      ? REQUIRED_A1_PANEL_TYPES_BASE.filter(
+          (panelType) => panelType !== "exterior_render",
+        )
+      : REQUIRED_A1_PANEL_TYPES_BASE;
+  return [...basePanelTypes, ...dynamicFloorPlans];
 }
 
 function buildTechnicalA1PanelTypes(targetStoreys = 1) {
@@ -1420,11 +1429,43 @@ function insetRectFromBbox(bbox, inset = 2) {
   );
 }
 
-function buildSiteContext({ brief, sitePolygon = [], siteMetrics = {} } = {}) {
-  const geoBoundary =
+const SITE_BOUNDARY_AUTHORITY_CONFIDENCE_THRESHOLD = 0.6;
+const SITE_BOUNDARY_ESTIMATED_WARNING_CODE =
+  "SITE_BOUNDARY_ESTIMATED_NOT_AUTHORITATIVE";
+
+function toFiniteMetric(value, fallback = null) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function boundarySourceLooksEstimated(source) {
+  return /intelligent fallback|fallback/i.test(String(source || ""));
+}
+
+function siteAreaOutlierLimitForBrief(brief = {}) {
+  const targetGia = Math.max(0, Number(brief.target_gia_m2 || 0));
+  return Math.max(2500, targetGia * 24);
+}
+
+function isSiteAreaOutlierForBrief(areaM2, brief = {}) {
+  const numericArea = Number(areaM2 || 0);
+  return numericArea > 0 && numericArea > siteAreaOutlierLimitForBrief(brief);
+}
+
+function buildSiteContext({
+  brief,
+  sitePolygon = [],
+  siteMetrics = {},
+  siteBoundarySanity = null,
+} = {}) {
+  const boundarySanity = siteBoundarySanity || {};
+  const authoritativeBoundaryAllowed =
+    boundarySanity.boundaryAuthoritative !== false;
+  const suppliedGeoBoundary =
     Array.isArray(sitePolygon) && sitePolygon.length >= 3
       ? sitePolygon
       : polygonFromGeoJson(brief.site_input.boundary_geojson);
+  const geoBoundary = authoritativeBoundaryAllowed ? suppliedGeoBoundary : [];
   const hasGeoBoundary =
     geoBoundary.length >= 3 &&
     Number.isFinite(Number(geoBoundary[0]?.lat)) &&
@@ -1432,34 +1473,100 @@ function buildSiteContext({ brief, sitePolygon = [], siteMetrics = {} } = {}) {
   const origin = hasGeoBoundary
     ? computeGeoCentroid(geoBoundary)
     : { lat: brief.site_input.lat, lng: brief.site_input.lon };
+  const fallbackAreaM2 = Math.max(brief.target_gia_m2 * 2.2, 320);
   const localBoundary = hasGeoBoundary
     ? polygonToLocalXY(geoBoundary, origin).map((point) => ({
         x: roundMetric(point.x),
         y: roundMetric(point.y),
       }))
-    : buildFallbackSitePolygon(Math.max(brief.target_gia_m2 * 2.2, 320));
+    : buildFallbackSitePolygon(fallbackAreaM2);
   const boundaryBbox = buildBoundingBoxFromPolygon(localBoundary);
   const buildablePolygon = insetRectFromBbox(boundaryBbox, 2);
+  const metricAreaM2 = authoritativeBoundaryAllowed
+    ? Number(siteMetrics.areaM2 || 0)
+    : 0;
   const areaM2 =
-    Number(siteMetrics.areaM2 || 0) ||
-    computePolygonArea(localBoundary) ||
-    Math.max(brief.target_gia_m2 * 2.2, 320);
+    metricAreaM2 || computePolygonArea(localBoundary) || fallbackAreaM2;
+  const boundaryAuthoritative = hasGeoBoundary && authoritativeBoundaryAllowed;
+  const boundaryConfidence =
+    toFiniteMetric(boundarySanity.boundaryConfidence, null) ??
+    (boundaryAuthoritative ? 1 : 0.4);
+  const boundarySource =
+    boundarySanity.boundarySource ||
+    (boundaryAuthoritative ? "site_polygon" : "deterministic_context");
+  const estimatedAreaM2 =
+    boundarySanity.estimatedAreaM2 ||
+    (!boundaryAuthoritative && Number(boundarySanity.sourceAreaM2 || 0) > 0
+      ? Number(boundarySanity.sourceAreaM2)
+      : null);
+  const fallbackReason =
+    boundarySanity.fallbackReason ||
+    (!boundaryAuthoritative
+      ? "No authoritative site boundary was supplied; using deterministic context geometry."
+      : null);
+  const dataQuality = boundaryAuthoritative
+    ? [
+        {
+          code: "SITE_BOUNDARY_PROVIDED",
+          severity: "info",
+          message: "Site boundary was supplied by the request.",
+        },
+      ]
+    : [
+        {
+          code: SITE_BOUNDARY_ESTIMATED_WARNING_CODE,
+          severity: "warning",
+          message:
+            "Site boundary is estimated and is not treated as an authoritative parcel boundary or plot area.",
+          details: {
+            boundarySource,
+            boundaryConfidence,
+            fallbackReason,
+            estimatedAreaM2,
+            areaOutlier: boundarySanity.areaOutlier === true,
+          },
+        },
+        {
+          code: "SITE_BOUNDARY_FALLBACK",
+          severity: "warning",
+          message:
+            "No authoritative site boundary was supplied; deterministic fallback boundary used for contextual rendering only.",
+        },
+      ];
 
   return {
     site_id: createStableId("site", brief.project_name, origin.lat, origin.lng),
     address_normalised: brief.site_input.address || null,
     lat: round(origin.lat, 6),
     lon: round(origin.lng ?? origin.lon, 6),
-    boundary: brief.site_input.boundary_geojson || null,
+    boundary: boundaryAuthoritative
+      ? brief.site_input.boundary_geojson || null
+      : null,
     local_boundary_polygon: localBoundary,
     buildable_polygon: buildablePolygon,
     north_angle_degrees: Number(siteMetrics.orientationDeg || 0),
     area_m2: round(areaM2, 2),
+    authoritative_area_m2: boundaryAuthoritative ? round(areaM2, 2) : null,
+    estimated_area_m2:
+      Number(estimatedAreaM2 || 0) > 0 ? round(estimatedAreaM2, 2) : null,
+    boundary_authoritative: boundaryAuthoritative,
+    boundary_confidence: round(boundaryConfidence, 3),
+    boundary_source: boundarySource,
+    boundary_estimated: !boundaryAuthoritative,
+    estimated_only: !boundaryAuthoritative,
+    fallback_reason: fallbackReason,
+    boundary_warning_code: boundaryAuthoritative
+      ? null
+      : SITE_BOUNDARY_ESTIMATED_WARNING_CODE,
+    estimated_geo_boundary: boundaryAuthoritative
+      ? []
+      : boundarySanity.estimatedGeoBoundary || [],
+    boundary_authority_reasons: boundarySanity.reasons || [],
     access_edges: [
       {
         edge_id: "street-edge-primary",
         label: "Assumed primary street edge",
-        source: hasGeoBoundary ? "site_polygon" : "fallback",
+        source: boundaryAuthoritative ? "site_polygon" : "estimated_context",
       },
     ],
     adjacent_roads: [],
@@ -1473,17 +1580,7 @@ function buildSiteContext({ brief, sitePolygon = [], siteMetrics = {} } = {}) {
     },
     heritage_flags: [],
     planning_policy_refs: [],
-    data_quality: [
-      {
-        code: hasGeoBoundary
-          ? "SITE_BOUNDARY_PROVIDED"
-          : "SITE_BOUNDARY_FALLBACK",
-        severity: hasGeoBoundary ? "info" : "warning",
-        message: hasGeoBoundary
-          ? "Site boundary was supplied by the request."
-          : "No authoritative site boundary was supplied; deterministic fallback boundary used.",
-      },
-    ],
+    data_quality: dataQuality,
   };
 }
 
@@ -1497,6 +1594,117 @@ function normalizeGeoPolygonForMap(input = null) {
     .filter(
       (point) => Number.isFinite(point.lat) && Number.isFinite(point.lng),
     );
+}
+
+function resolveSiteBoundarySanity(input = {}, brief = {}) {
+  const siteAnalysis =
+    input.siteAnalysis ||
+    input.locationData?.siteAnalysis ||
+    input.siteSnapshot?.metadata?.siteAnalysis ||
+    {};
+  const siteMetrics = {
+    ...(input.siteSnapshot?.metadata?.siteMetrics || {}),
+    ...(input.sitePolygonMetrics || {}),
+    ...(input.siteMetrics || {}),
+  };
+  const submittedGeoBoundary = normalizeGeoPolygonForMap(
+    input.sitePolygon ||
+      input.site_boundary ||
+      brief.site_input?.boundary_geojson,
+  );
+  const estimatedGeoBoundary = normalizeGeoPolygonForMap(
+    siteAnalysis.estimatedSiteBoundary ||
+      siteAnalysis.contextualSiteBoundary ||
+      siteAnalysis.siteBoundary ||
+      input.locationData?.estimatedSiteBoundary ||
+      input.locationData?.contextualSiteBoundary ||
+      input.siteSnapshot?.polygon ||
+      input.siteSnapshot?.sitePolygon,
+  );
+  const boundarySource =
+    siteAnalysis.boundarySource ||
+    siteMetrics.boundarySource ||
+    input.locationData?.boundarySource ||
+    (submittedGeoBoundary.length >= 3
+      ? "site_polygon"
+      : "deterministic_context");
+  const boundaryConfidence =
+    toFiniteMetric(
+      siteAnalysis.boundaryConfidence ??
+        siteMetrics.boundaryConfidence ??
+        input.locationData?.boundaryConfidence,
+      null,
+    ) ?? (submittedGeoBoundary.length >= 3 ? 1 : 0.4);
+  const sourceAreaM2 = toFiniteMetric(
+    siteMetrics.areaM2 ??
+      siteAnalysis.surfaceArea ??
+      siteAnalysis.estimatedSurfaceArea ??
+      input.locationData?.surfaceArea,
+    null,
+  );
+  const explicitNonAuthoritative =
+    siteAnalysis.boundaryAuthoritative === false ||
+    siteMetrics.boundaryAuthoritative === false ||
+    input.locationData?.boundaryAuthoritative === false ||
+    siteAnalysis.boundaryEstimated === true ||
+    siteAnalysis.estimatedOnly === true ||
+    input.locationData?.boundaryEstimated === true;
+  const lowConfidence =
+    boundaryConfidence < SITE_BOUNDARY_AUTHORITY_CONFIDENCE_THRESHOLD;
+  const fallbackSource = boundarySourceLooksEstimated(boundarySource);
+  const areaOutlier = isSiteAreaOutlierForBrief(sourceAreaM2, brief);
+  const hasSubmittedBoundary = submittedGeoBoundary.length >= 3;
+  const reasons = [];
+
+  if (!hasSubmittedBoundary) reasons.push("missing_boundary_polygon");
+  if (explicitNonAuthoritative) reasons.push("explicitly_estimated");
+  if (fallbackSource) reasons.push("fallback_source");
+  if (lowConfidence) reasons.push("low_confidence");
+  if (areaOutlier) reasons.push("area_outlier");
+
+  const boundaryAuthoritative =
+    hasSubmittedBoundary &&
+    !explicitNonAuthoritative &&
+    !fallbackSource &&
+    !lowConfidence &&
+    !areaOutlier;
+  const sanitizedSiteMetrics = { ...siteMetrics };
+  if (!boundaryAuthoritative) {
+    delete sanitizedSiteMetrics.areaM2;
+  }
+  sanitizedSiteMetrics.boundaryAuthoritative = boundaryAuthoritative;
+  sanitizedSiteMetrics.boundaryConfidence = boundaryConfidence;
+  sanitizedSiteMetrics.boundarySource = boundarySource;
+
+  return {
+    boundaryAuthoritative,
+    boundaryConfidence,
+    boundarySource,
+    fallbackReason:
+      siteAnalysis.fallbackReason ||
+      siteMetrics.fallbackReason ||
+      input.locationData?.fallbackReason ||
+      (boundaryAuthoritative
+        ? null
+        : "Boundary is estimated and must be verified by survey."),
+    estimatedOnly: !boundaryAuthoritative,
+    areaOutlier,
+    reasons,
+    sourceAreaM2,
+    estimatedAreaM2:
+      !boundaryAuthoritative && Number(sourceAreaM2 || 0) > 0
+        ? sourceAreaM2
+        : null,
+    authoritativeAreaM2:
+      boundaryAuthoritative && Number(sourceAreaM2 || 0) > 0
+        ? sourceAreaM2
+        : null,
+    estimatedGeoBoundary:
+      !boundaryAuthoritative && estimatedGeoBoundary.length >= 3
+        ? estimatedGeoBoundary
+        : [],
+    siteMetrics: sanitizedSiteMetrics,
+  };
 }
 
 function normalizeProvidedSiteSnapshot(siteSnapshot = null) {
@@ -1554,11 +1762,13 @@ async function resolveSiteMapSnapshot({ input = {}, brief, site }) {
   }
 
   const polygon = normalizeGeoPolygonForMap(
-    input.sitePolygon ||
-      input.site_boundary ||
-      input.siteSnapshot?.sitePolygon ||
-      input.siteSnapshot?.polygon ||
-      brief.site_input.boundary_geojson,
+    site?.boundary_authoritative === false
+      ? null
+      : input.sitePolygon ||
+          input.site_boundary ||
+          input.siteSnapshot?.sitePolygon ||
+          input.siteSnapshot?.polygon ||
+          brief.site_input.boundary_geojson,
   );
   const center = input.siteSnapshot?.center ||
     input.siteSnapshot?.coordinates ||
@@ -2722,6 +2932,21 @@ function buildSiteContextPanelArtifact({
   const bbox = buildBoundingBoxFromPolygon(site.local_boundary_polygon || []);
   const sitePath = polygonPath(site.local_boundary_polygon, bbox, 812, 646);
   const buildablePath = polygonPath(site.buildable_polygon, bbox, 812, 646);
+  const buildableBbox = buildBoundingBoxFromPolygon(
+    site.buildable_polygon || site.local_boundary_polygon || [],
+  );
+  const proposedFootprint = rectangleToPolygon(
+    Number(buildableBbox.min_x || 0) + Number(buildableBbox.width || 0) * 0.24,
+    Number(buildableBbox.min_y || 0) + Number(buildableBbox.height || 0) * 0.3,
+    Math.max(8, Number(buildableBbox.width || 0) * 0.52),
+    Math.max(8, Number(buildableBbox.height || 0) * 0.36),
+  );
+  const proposedFootprintPath = polygonPath(proposedFootprint, bbox, 812, 646);
+  const boundaryEstimated =
+    site?.boundary_authoritative === false || site?.boundary_estimated === true;
+  const sitePlanMode = boundaryEstimated
+    ? "contextual_estimated_boundary"
+    : "authoritative_boundary";
   const hasMapImage = Boolean(siteSnapshot?.dataUrl);
   const mapSource = hasMapImage
     ? siteSnapshot.sourceUrl || siteSnapshot.source || "provided-site-snapshot"
@@ -2735,29 +2960,46 @@ function buildSiteContextPanelArtifact({
   const attribution = hasMapImage
     ? siteSnapshot.attribution || "Map image supplied by request"
     : "No map snapshot available";
-  const mapLayer = hasMapImage
-    ? `<image x="28" y="52" width="844" height="676" href="${escapeXml(siteSnapshot.dataUrl)}" preserveAspectRatio="xMidYMid slice"/>
+  const mapLayer = boundaryEstimated
+    ? `${hasMapImage ? `<image x="28" y="52" width="844" height="676" href="${escapeXml(siteSnapshot.dataUrl)}" preserveAspectRatio="xMidYMid slice" opacity="0.38"/>` : `<rect x="28" y="52" width="844" height="676" fill="#f7f6f0"/>`}
+  <rect x="28" y="52" width="844" height="676" fill="none" stroke="#111111" stroke-width="3"/>
+  <path d="M 78 636 C 186 586 272 612 354 562 C 456 500 584 520 824 462" fill="none" stroke="#d7d7d7" stroke-width="34" opacity="0.8"/>
+  <path d="M 78 636 C 186 586 272 612 354 562 C 456 500 584 520 824 462" fill="none" stroke="#ffffff" stroke-width="22" opacity="0.96"/>
+  <path d="M 112 142 L 196 186 L 282 152 L 372 206 L 470 166 L 590 222 L 770 190" fill="none" stroke="#c7cfbf" stroke-width="14" opacity="0.7"/>
+  <path d="M 130 506 L 246 452 L 372 474 L 520 424 L 712 444" fill="none" stroke="#c7cfbf" stroke-width="12" opacity="0.6"/>
+  <g transform="translate(44 66)">
+    <path d="${sitePath}" fill="#f9fbf7" stroke="#5d6657" stroke-width="4" stroke-dasharray="16 10"/>
+    <path d="${buildablePath}" fill="none" stroke="#29332a" stroke-width="3" stroke-dasharray="8 8"/>
+    <path d="${proposedFootprintPath}" fill="#11111122" stroke="#111111" stroke-width="4"/>
+  </g>
+  <text x="450" y="104" font-family="Arial, sans-serif" font-size="26" font-weight="700" text-anchor="middle" fill="#111111">CONTEXTUAL SITE PLAN</text>
+  <text x="450" y="136" font-family="Arial, sans-serif" font-size="16" text-anchor="middle" fill="#555555">Boundary estimated - verify with measured survey before planning submission</text>`
+    : hasMapImage
+      ? `<image x="28" y="52" width="844" height="676" href="${escapeXml(siteSnapshot.dataUrl)}" preserveAspectRatio="xMidYMid slice"/>
   <rect x="28" y="52" width="844" height="676" fill="none" stroke="#111111" stroke-width="3"/>
   <g transform="translate(44 66)" opacity="0.88">
     <path d="${sitePath}" fill="#a9c58d66" stroke="#d64d35" stroke-width="5" stroke-dasharray="18 10"/>
     <path d="${buildablePath}" fill="none" stroke="#111111" stroke-width="3"/>
   </g>`
-    : `<rect x="28" y="52" width="844" height="676" fill="#f3efe4" stroke="#111111" stroke-width="3"/>
+      : `<rect x="28" y="52" width="844" height="676" fill="#f3efe4" stroke="#111111" stroke-width="3"/>
   <g transform="translate(44 66)">
     <path d="${sitePath}" fill="#dfe8d0" stroke="#d64d35" stroke-width="5" stroke-dasharray="18 10"/>
     <path d="${buildablePath}" fill="none" stroke="#111111" stroke-width="3"/>
   </g>
   <path d="M 64 642 C 186 600 272 620 354 574 C 440 526 552 540 806 488" fill="none" stroke="#c8c8c8" stroke-width="28" opacity="0.55"/>
   <path d="M 64 642 C 186 600 272 620 354 574 C 440 526 552 540 806 488" fill="none" stroke="#ffffff" stroke-width="18" opacity="0.85"/>`;
+  const areaLabel = boundaryEstimated
+    ? `Context area ${site.area_m2} m2; parcel area not authoritative`
+    : `Area ${site.area_m2} m2`;
   const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="site_context" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-site-map-source="${escapeXml(mapSource)}" data-site-map-image="${hasMapImage ? "true" : "false"}">
   <rect width="${width}" height="${height}" fill="#ffffff"/>
   ${mapLayer}
   <path d="M 806 142 L 806 70 L 784 116 M 806 70 L 828 116" fill="none" stroke="#111111" stroke-width="5" stroke-linecap="round"/>
   <circle cx="806" cy="112" r="46" fill="none" stroke="#111111" stroke-width="2"/>
   <text x="806" y="58" font-family="Arial, sans-serif" font-size="32" font-weight="700" text-anchor="middle" fill="#111111">N</text>
-  <text x="450" y="342" font-family="Arial, sans-serif" font-size="24" text-anchor="middle" fill="#333333">Rear Garden</text>
-  <text x="450" y="682" font-family="Arial, sans-serif" font-size="24" text-anchor="middle" fill="#333333">Front Garden</text>
-  <text x="82" y="690" font-family="Arial, sans-serif" font-size="20" fill="#333333">Driveway</text>
+  <text x="450" y="342" font-family="Arial, sans-serif" font-size="24" text-anchor="middle" fill="#333333">${boundaryEstimated ? "Proposed Footprint" : "Rear Garden"}</text>
+  <text x="450" y="682" font-family="Arial, sans-serif" font-size="24" text-anchor="middle" fill="#333333">${boundaryEstimated ? "Estimated Boundary" : "Front Garden"}</text>
+  <text x="82" y="690" font-family="Arial, sans-serif" font-size="20" fill="#333333">${boundaryEstimated ? "Context Street" : "Driveway"}</text>
   <line x1="48" y1="790" x2="348" y2="790" stroke="#111111" stroke-width="5"/>
   <line x1="48" y1="780" x2="48" y2="800" stroke="#111111" stroke-width="3"/>
   <line x1="168" y1="780" x2="168" y2="800" stroke="#111111" stroke-width="3"/>
@@ -2768,7 +3010,7 @@ function buildSiteContextPanelArtifact({
   <text x="48" y="860" font-family="Arial, sans-serif" font-size="17" fill="#333333">Scale 1:500</text>
   <text x="852" y="824" font-family="Arial, sans-serif" font-size="15" text-anchor="end" fill="#555555">${escapeXml(mapLabel)}</text>
   <text x="852" y="852" font-family="Arial, sans-serif" font-size="13" text-anchor="end" fill="#777777">${escapeXml(attribution)}</text>
-  <text x="852" y="878" font-family="Arial, sans-serif" font-size="13" text-anchor="end" fill="#777777">Area ${escapeXml(site.area_m2)} m2 | ${escapeXml(geometryHash.slice(0, 12))}</text>
+  <text x="852" y="878" font-family="Arial, sans-serif" font-size="13" text-anchor="end" fill="#777777">${escapeXml(areaLabel)} | ${escapeXml(geometryHash.slice(0, 12))}</text>
 </svg>`;
   const svgHash = computeCDSHashSync({ panelType: "site_context", svgString });
   const assetId = createStableId(
@@ -2795,6 +3037,15 @@ function buildSiteContextPanelArtifact({
       siteMapSource: mapSource,
       hasMapImage,
       attribution,
+      sitePlanMode,
+      boundaryAuthoritative: site.boundary_authoritative === true,
+      boundaryEstimated,
+      boundaryConfidence: site.boundary_confidence ?? null,
+      boundarySource: site.boundary_source || null,
+      boundaryWarningCode: site.boundary_warning_code || null,
+      fallbackReason: site.fallback_reason || null,
+      authoritativeAreaM2: site.authoritative_area_m2 || null,
+      estimatedAreaM2: site.estimated_area_m2 || null,
       svgHash,
     },
   };
@@ -4577,7 +4828,10 @@ async function buildA1Sheet({
   const presentationSummary = summarizePresentationMode(panelArtifacts);
   const svgHash = computeCDSHashSync({ svg: svgString });
   const sheetAssetId = createStableId("asset-a1-svg", sheetId, svgHash);
-  const requiredPlacementTypes = buildRequiredA1PanelTypes(targetStoreys);
+  const requiredPlacementTypes = buildRequiredA1PanelTypes(
+    targetStoreys,
+    layoutTemplate,
+  );
   const requiredPlacements = panelPlacements.filter((placement) =>
     requiredPlacementTypes.includes(placement.panelType),
   );
@@ -5142,8 +5396,11 @@ function addCheck(
   });
 }
 
-function expectedRequiredPanelTypes(targetStoreys = 1) {
-  return buildRequiredA1PanelTypes(targetStoreys);
+function expectedRequiredPanelTypes(
+  targetStoreys = 1,
+  layoutTemplate = "board-v2",
+) {
+  return buildRequiredA1PanelTypes(targetStoreys, layoutTemplate);
 }
 
 function artifactArray(artifacts = {}) {
@@ -5914,6 +6171,8 @@ export function validateProjectGraphVerticalSlice({
   );
   const expectedPanels = expectedRequiredPanelTypes(
     projectGraph?.brief?.target_storeys || 1,
+    artifacts.a1Sheet?.layoutTemplate ||
+      resolvePresentationLayoutTemplate(projectGraph?.brief || {}),
   );
   const panelRenderabilityRecords = expectedPanels.map((panelType) => {
     const artifact = findPanelArtifact(panelArtifacts, panelType);
@@ -6274,6 +6533,23 @@ export function validateProjectGraphVerticalSlice({
         "warning",
         "No Google/provided site map snapshot was available; deterministic site diagram fallback was used.",
         { siteMapSource },
+      ),
+    );
+  }
+  if (siteMapArtifact?.metadata?.boundaryAuthoritative === false) {
+    issues.push(
+      buildIssue(
+        SITE_BOUNDARY_ESTIMATED_WARNING_CODE,
+        "warning",
+        "Site boundary is estimated only and was not treated as authoritative plot area.",
+        {
+          boundarySource: siteMapArtifact.metadata.boundarySource || null,
+          boundaryConfidence:
+            siteMapArtifact.metadata.boundaryConfidence ?? null,
+          fallbackReason: siteMapArtifact.metadata.fallbackReason || null,
+          estimatedAreaM2: siteMapArtifact.metadata.estimatedAreaM2 || null,
+          sitePlanMode: siteMapArtifact.metadata.sitePlanMode || null,
+        },
       ),
     );
   }
@@ -6928,10 +7204,14 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       };
     }
   }
+  const siteBoundarySanity = resolveSiteBoundarySanity(input, brief);
   const deterministicSite = buildSiteContext({
     brief,
-    sitePolygon: input.sitePolygon || input.site_boundary || [],
-    siteMetrics: input.siteMetrics || {},
+    sitePolygon: siteBoundarySanity.boundaryAuthoritative
+      ? input.sitePolygon || input.site_boundary || []
+      : [],
+    siteMetrics: siteBoundarySanity.siteMetrics,
+    siteBoundarySanity,
   });
   // Plan §6.2 / §14: opt-in enrichment via Planning Data, EA flood, OSM. The
   // slice stays offline-safe by default; callers pass fetchImpl or
@@ -7268,8 +7548,10 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       1,
       Number(brief?.target_storeys || 1),
     );
-    const phaseFRequiredPanels =
-      buildRequiredA1PanelTypes(targetStoreysForGate);
+    const phaseFRequiredPanels = buildRequiredA1PanelTypes(
+      targetStoreysForGate,
+      sheetArtifact.layoutTemplate || resolvePresentationLayoutTemplate(brief),
+    );
     const visualPanelArtifacts = Object.values(primaryPanelArtifacts).filter(
       (artifact) =>
         REQUIRED_3D_A1_PANEL_TYPES.includes(artifact?.panel_type) ||

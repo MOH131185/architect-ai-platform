@@ -114,6 +114,64 @@ function createKensingtonReferenceMatchBrief() {
   };
 }
 
+function createLowConfidenceBradfordBoundaryBrief() {
+  const estimatedBoundary = [
+    { lat: 53.79224, lng: -1.75556 },
+    { lat: 53.79224, lng: -1.75474 },
+    { lat: 53.79162, lng: -1.75474 },
+    { lat: 53.79162, lng: -1.75556 },
+  ];
+  const fallbackArea = 119408;
+
+  return {
+    projectDetails: {
+      projectName: "Cherish Bradford Street",
+      address: "97 Bradford Street, Bradford",
+      area: 250,
+      floorCount: 2,
+      subType: "detached-house",
+    },
+    brief: {
+      project_name: "Cherish Bradford Street",
+      building_type: "dwelling",
+      site_input: {
+        address: "97 Bradford Street, Bradford",
+        postcode: "BD1",
+        lat: 53.79203,
+        lon: -1.75524,
+      },
+      target_gia_m2: 250,
+      target_storeys: 2,
+      client_goals: ["family dwelling", "RIBA A1 site plan"],
+      style_keywords: ["contextual brick", "residential"],
+      sustainability_ambition: "low_energy",
+    },
+    sitePolygon: estimatedBoundary,
+    siteMetrics: {
+      areaM2: fallbackArea,
+      orientationDeg: 10,
+      boundaryAuthoritative: false,
+      boundarySource: "Intelligent Fallback",
+      boundaryConfidence: 0.4,
+    },
+    locationData: {
+      coordinates: { lat: 53.79203, lng: -1.75524 },
+      siteAnalysis: {
+        siteBoundary: null,
+        estimatedSiteBoundary: estimatedBoundary,
+        surfaceArea: fallbackArea,
+        estimatedSurfaceArea: fallbackArea,
+        boundaryAuthoritative: false,
+        boundaryEstimated: true,
+        estimatedOnly: true,
+        boundarySource: "Intelligent Fallback",
+        boundaryConfidence: 0.4,
+        fallbackReason: "No real boundary data available",
+      },
+    },
+  };
+}
+
 function cloneForTest(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -864,6 +922,66 @@ describe("projectGraphVerticalSliceService", () => {
     );
     expect(result.qa.issues.map((issue) => issue.code)).toContain(
       "SITE_MAP_FALLBACK_USED",
+    );
+  });
+
+  test("does not propagate low-confidence fallback boundary area into ProjectGraph site authority", async () => {
+    const result = await buildArchitectureProjectVerticalSlice(
+      createLowConfidenceBradfordBoundaryBrief(),
+    );
+    const issueCodes = result.qa.issues.map((issue) => issue.code);
+
+    expect(result.success).toBe(true);
+    expect(result.projectGraph.site.boundary_authoritative).toBe(false);
+    expect(result.projectGraph.site.boundary_source).toBe(
+      "Intelligent Fallback",
+    );
+    expect(result.projectGraph.site.boundary_confidence).toBe(0.4);
+    expect(result.projectGraph.site.estimated_area_m2).toBe(119408);
+    expect(result.projectGraph.site.area_m2).toBeLessThan(1000);
+    expect(result.projectGraph.site.area_m2).not.toBe(119408);
+    expect(result.artifacts.projectGeometry.site.area_m2).toBe(
+      result.projectGraph.site.area_m2,
+    );
+    expect(
+      result.projectGraph.site.data_quality.map((issue) => issue.code),
+    ).toContain("SITE_BOUNDARY_ESTIMATED_NOT_AUTHORITATIVE");
+    expect(issueCodes).toContain("SITE_BOUNDARY_ESTIMATED_NOT_AUTHORITATIVE");
+    expect(result.artifacts.siteMap.metadata.boundaryAuthoritative).toBe(false);
+    expect(result.artifacts.siteMap.metadata.sitePlanMode).toBe(
+      "contextual_estimated_boundary",
+    );
+    expect(result.artifacts.siteMap.svgString).toContain(
+      "CONTEXTUAL SITE PLAN",
+    );
+    expect(result.artifacts.siteMap.svgString).toContain("Boundary estimated");
+    expect(result.artifacts.siteMap.svgString).toContain(
+      "parcel area not authoritative",
+    );
+  });
+
+  test("preserves high-confidence boundary behavior", async () => {
+    const briefInput = createReadingRoomBrief();
+    briefInput.locationData = {
+      siteAnalysis: {
+        siteBoundary: briefInput.sitePolygon,
+        surfaceArea: 1040,
+        boundaryAuthoritative: true,
+        boundarySource: "OpenStreetMap",
+        boundaryConfidence: 0.92,
+      },
+    };
+
+    const result = await buildArchitectureProjectVerticalSlice(briefInput);
+
+    expect(result.success).toBe(true);
+    expect(result.projectGraph.site.boundary_authoritative).toBe(true);
+    expect(result.projectGraph.site.area_m2).toBe(1040);
+    expect(result.artifacts.siteMap.metadata.sitePlanMode).toBe(
+      "authoritative_boundary",
+    );
+    expect(result.qa.issues.map((issue) => issue.code)).not.toContain(
+      "SITE_BOUNDARY_ESTIMATED_NOT_AUTHORITATIVE",
     );
   });
 

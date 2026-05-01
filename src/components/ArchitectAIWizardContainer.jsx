@@ -771,14 +771,41 @@ const ArchitectAIWizardContainer = () => {
       const normalizedAnalysisBoundary = normalizeSitePolygonForUi(
         siteAnalysis.siteBoundary,
       );
+      const normalizedEstimatedBoundary = normalizeSitePolygonForUi(
+        siteAnalysis.estimatedSiteBoundary ||
+          siteAnalysis.contextualSiteBoundary,
+      );
       const normalizedExistingPolygon = normalizeSitePolygonForUi(sitePolygon);
+      const boundaryConfidence = Number(siteAnalysis?.boundaryConfidence);
+      const analysisBoundaryEstimated =
+        siteAnalysis?.boundaryAuthoritative === false ||
+        siteAnalysis?.boundaryEstimated === true ||
+        siteAnalysis?.estimatedOnly === true ||
+        /intelligent fallback|fallback/i.test(
+          String(siteAnalysis?.boundarySource || ""),
+        ) ||
+        (Number.isFinite(boundaryConfidence) && boundaryConfidence < 0.6);
+      const authoritativeAnalysisBoundary = analysisBoundaryEstimated
+        ? []
+        : normalizedAnalysisBoundary;
+      const contextualEstimatedBoundary = analysisBoundaryEstimated
+        ? normalizedEstimatedBoundary.length >= 3
+          ? normalizedEstimatedBoundary
+          : normalizedAnalysisBoundary
+        : [];
 
       // Select best polygon: footprint -> analysis boundary -> existing
       const polygon =
         detectedFootprint ||
-        (normalizedAnalysisBoundary.length >= 3
-          ? normalizedAnalysisBoundary
+        (authoritativeAnalysisBoundary.length >= 3
+          ? authoritativeAnalysisBoundary
           : normalizedExistingPolygon);
+      const siteBoundaryWarning =
+        analysisBoundaryEstimated && siteAnalysis?.boundaryWarning
+          ? siteAnalysis.boundaryWarning
+          : analysisBoundaryEstimated
+            ? "Site boundary is estimated only; verify the parcel boundary by survey before treating area or setbacks as authoritative."
+            : null;
 
       const siteDNA = buildSiteContext({
         location: { address, coordinates },
@@ -790,15 +817,32 @@ const ArchitectAIWizardContainer = () => {
         streetContext: siteAnalysis?.streetContext,
       });
 
-      if (polygon && polygon.length > 0) {
+      const hasAuthoritativePolygon =
+        Array.isArray(polygon) && polygon.length >= 3;
+      if (hasAuthoritativePolygon) {
         setSitePolygon(polygon);
+      } else {
+        setSitePolygon([]);
       }
       const derivedMetrics =
-        siteDNA?.metrics || (polygon ? computeSiteMetrics(polygon) : null);
+        siteDNA?.metrics ||
+        (hasAuthoritativePolygon ? computeSiteMetrics(polygon) : null);
       if (derivedMetrics) {
         setSiteMetrics(derivedMetrics);
-      } else if (!polygon) {
+      } else if (!hasAuthoritativePolygon) {
         setSiteMetrics(null);
+      }
+      if (siteBoundaryWarning) {
+        logger.warn(siteBoundaryWarning, {
+          boundarySource: siteAnalysis?.boundarySource,
+          boundaryConfidence: siteAnalysis?.boundaryConfidence,
+          fallbackReason: siteAnalysis?.fallbackReason,
+        });
+        setProgramWarnings((prev) =>
+          prev.includes(siteBoundaryWarning)
+            ? prev
+            : [...prev, siteBoundaryWarning],
+        );
       }
 
       const styleRecommendations =
@@ -822,6 +866,14 @@ const ArchitectAIWizardContainer = () => {
         siteAnalysis,
         buildingFootprint: detectedFootprint,
         detectedShape,
+        boundaryAuthoritative:
+          hasAuthoritativePolygon && !analysisBoundaryEstimated,
+        boundaryEstimated: analysisBoundaryEstimated,
+        boundaryWarning: siteBoundaryWarning,
+        boundaryWarningCode: siteAnalysis?.boundaryWarningCode || null,
+        estimatedSiteBoundary: contextualEstimatedBoundary,
+        contextualSiteBoundary: contextualEstimatedBoundary,
+        estimatedSurfaceArea: siteAnalysis.estimatedSurfaceArea || null,
         recommendedStyle: styleRecommendations.recommendedStyle,
         localStyles: styleRecommendations.localStyles || [],
         localMaterials: styleRecommendations.materials || [],
@@ -853,6 +905,7 @@ const ArchitectAIWizardContainer = () => {
     fetchClimateWindSun,
     setIsDetectingLocation,
     setLocationData,
+    setProgramWarnings,
     setSiteMetrics,
     setSitePolygon,
     sitePolygon,

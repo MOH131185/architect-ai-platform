@@ -9,6 +9,27 @@ const API_ENDPOINTS = {
   NOMINATIM: "https://nominatim.openstreetmap.org/search",
 };
 
+export const INTELLIGENT_FALLBACK_BOUNDARY_SOURCE = "Intelligent Fallback";
+export const INTELLIGENT_FALLBACK_BOUNDARY_CONFIDENCE = 0.4;
+
+export function buildEstimatedBoundaryMetadata({
+  source = INTELLIGENT_FALLBACK_BOUNDARY_SOURCE,
+  confidence = INTELLIGENT_FALLBACK_BOUNDARY_CONFIDENCE,
+  reason = "No real boundary data available",
+  extra = {},
+  ...rest
+} = {}) {
+  return {
+    ...rest,
+    ...extra,
+    boundaryAuthoritative: false,
+    boundaryConfidence: confidence,
+    boundarySource: source,
+    fallbackReason: reason,
+    estimatedOnly: true,
+  };
+}
+
 function isBrowserRuntime() {
   return (
     typeof window !== "undefined" && typeof window.document !== "undefined"
@@ -315,13 +336,18 @@ function generateIntelligentFallback(coordinates, address) {
   return {
     polygon,
     shapeType,
-    source: "Intelligent Fallback",
-    confidence: 0.4,
+    source: INTELLIGENT_FALLBACK_BOUNDARY_SOURCE,
+    confidence: INTELLIGENT_FALLBACK_BOUNDARY_CONFIDENCE,
+    boundaryAuthoritative: false,
+    boundaryConfidence: INTELLIGENT_FALLBACK_BOUNDARY_CONFIDENCE,
+    boundarySource: INTELLIGENT_FALLBACK_BOUNDARY_SOURCE,
+    fallbackReason: "No real boundary data available",
+    estimatedOnly: true,
     area: calculatePolygonArea(polygon),
-    metadata: {
+    metadata: buildEstimatedBoundaryMetadata({
       reason: "No real boundary data available",
       addressAnalysis: { isUrban, isCorner },
-    },
+    }),
   };
 }
 
