@@ -35,6 +35,7 @@ import {
   sanitizeDimensionInput,
 } from "../utils/promptSanitizer.js";
 import buildingFootprintService from "../services/buildingFootprintService.js";
+import { resolveUiSiteBoundaryAuthority } from "../services/siteBoundaryUiAuthority.js";
 import { buildSiteContext } from "../rings/ring1-site/siteContextBuilder.js";
 import { captureSnapshotForPersistence } from "../services/siteMapSnapshotService.js";
 import { buildProjectPipelineV2Bundle } from "../services/project/projectPipelineV2Service.js";
@@ -776,36 +777,17 @@ const ArchitectAIWizardContainer = () => {
           siteAnalysis.contextualSiteBoundary,
       );
       const normalizedExistingPolygon = normalizeSitePolygonForUi(sitePolygon);
-      const boundaryConfidence = Number(siteAnalysis?.boundaryConfidence);
-      const analysisBoundaryEstimated =
-        siteAnalysis?.boundaryAuthoritative === false ||
-        siteAnalysis?.boundaryEstimated === true ||
-        siteAnalysis?.estimatedOnly === true ||
-        /intelligent fallback|fallback/i.test(
-          String(siteAnalysis?.boundarySource || ""),
-        ) ||
-        (Number.isFinite(boundaryConfidence) && boundaryConfidence < 0.6);
-      const authoritativeAnalysisBoundary = analysisBoundaryEstimated
-        ? []
-        : normalizedAnalysisBoundary;
-      const contextualEstimatedBoundary = analysisBoundaryEstimated
-        ? normalizedEstimatedBoundary.length >= 3
-          ? normalizedEstimatedBoundary
-          : normalizedAnalysisBoundary
-        : [];
-
-      // Select best polygon: footprint -> analysis boundary -> existing
-      const polygon =
-        detectedFootprint ||
-        (authoritativeAnalysisBoundary.length >= 3
-          ? authoritativeAnalysisBoundary
-          : normalizedExistingPolygon);
-      const siteBoundaryWarning =
-        analysisBoundaryEstimated && siteAnalysis?.boundaryWarning
-          ? siteAnalysis.boundaryWarning
-          : analysisBoundaryEstimated
-            ? "Site boundary is estimated only; verify the parcel boundary by survey before treating area or setbacks as authoritative."
-            : null;
+      const boundaryResolution = resolveUiSiteBoundaryAuthority({
+        siteAnalysis,
+        analysisBoundary: normalizedAnalysisBoundary,
+        estimatedBoundary: normalizedEstimatedBoundary,
+        existingPolygon: normalizedExistingPolygon,
+        detectedBuildingFootprint: detectedFootprint,
+      });
+      const polygon = boundaryResolution.sitePolygon;
+      const contextualEstimatedBoundary =
+        boundaryResolution.contextualEstimatedBoundary;
+      const siteBoundaryWarning = boundaryResolution.siteBoundaryWarning;
 
       const siteDNA = buildSiteContext({
         location: { address, coordinates },
@@ -815,18 +797,21 @@ const ArchitectAIWizardContainer = () => {
         climate: climateBundle.climate,
         seasonalClimate: climateBundle,
         streetContext: siteAnalysis?.streetContext,
+        allowBuildingFootprintAsSitePolygon: false,
       });
 
       const hasAuthoritativePolygon =
-        Array.isArray(polygon) && polygon.length >= 3;
+        boundaryResolution.boundaryAuthoritative &&
+        Array.isArray(polygon) &&
+        polygon.length >= 3;
       if (hasAuthoritativePolygon) {
         setSitePolygon(polygon);
       } else {
         setSitePolygon([]);
       }
-      const derivedMetrics =
-        siteDNA?.metrics ||
-        (hasAuthoritativePolygon ? computeSiteMetrics(polygon) : null);
+      const derivedMetrics = hasAuthoritativePolygon
+        ? siteDNA?.metrics || computeSiteMetrics(polygon)
+        : null;
       if (derivedMetrics) {
         setSiteMetrics(derivedMetrics);
       } else if (!hasAuthoritativePolygon) {
@@ -866,9 +851,8 @@ const ArchitectAIWizardContainer = () => {
         siteAnalysis,
         buildingFootprint: detectedFootprint,
         detectedShape,
-        boundaryAuthoritative:
-          hasAuthoritativePolygon && !analysisBoundaryEstimated,
-        boundaryEstimated: analysisBoundaryEstimated,
+        boundaryAuthoritative: boundaryResolution.boundaryAuthoritative,
+        boundaryEstimated: boundaryResolution.boundaryEstimated,
         boundaryWarning: siteBoundaryWarning,
         boundaryWarningCode: siteAnalysis?.boundaryWarningCode || null,
         estimatedSiteBoundary: contextualEstimatedBoundary,
@@ -880,7 +864,9 @@ const ArchitectAIWizardContainer = () => {
         materialContext: styleRecommendations.materialContext || {},
         zoning: siteAnalysis.constraints || {},
         siteBoundary: polygon,
-        surfaceArea: siteAnalysis.surfaceArea,
+        surfaceArea: boundaryResolution.boundaryAuthoritative
+          ? siteAnalysis.surfaceArea
+          : null,
         climateSummary: {
           prevailingWind: climateBundle.wind.direction,
           avgSummerTemp: climateBundle.climate?.seasonal?.summer?.avgTemp || "",

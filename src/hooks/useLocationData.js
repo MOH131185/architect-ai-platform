@@ -5,6 +5,7 @@ import { locationIntelligence } from "../services/locationIntelligence.js";
 import siteAnalysisService from "../services/siteAnalysisService.js";
 import logger from "../utils/logger.js";
 import { buildSiteContext } from "../rings/ring1-site/siteContextBuilder.js";
+import { resolveUiSiteBoundaryAuthority } from "../services/siteBoundaryUiAuthority.js";
 
 /**
  * useLocationData - Location Analysis Hook
@@ -331,19 +332,6 @@ export const useLocationData = () => {
 
         detectedBuildingFootprint = footprintResult.polygon;
         detectedShapeType = footprintResult.shape;
-
-        // Auto-populate site polygon
-        setSitePolygon(footprintResult.polygon);
-        setSiteMetrics({
-          areaM2: footprintResult.area,
-          shapeType: footprintResult.shape.name,
-          shapeDescription: footprintResult.shape.description,
-          vertexCount: footprintResult.shape.vertexCount,
-          isConvex: footprintResult.shape.isConvex,
-          source: "google_building_outline",
-          confidence: 0.95, // High confidence for Google Building API
-          detectedAt: footprintResult.metadata.detectedAt,
-        });
       } else {
         logger.warn("Building footprint not available, trying site analysis");
       }
@@ -355,26 +343,47 @@ export const useLocationData = () => {
         { lat, lng },
       );
 
-      if (siteAnalysisResult.success && !detectedBuildingFootprint) {
-        logger.info(
-          "Site analysis complete (fallback)",
-          siteAnalysisResult.siteAnalysis,
-        );
-
-        if (siteAnalysisResult.siteAnalysis.siteBoundary) {
-          setSitePolygon(siteAnalysisResult.siteAnalysis.siteBoundary);
-          setSiteMetrics({
-            areaM2: siteAnalysisResult.siteAnalysis.surfaceArea,
-            unit: siteAnalysisResult.siteAnalysis.surfaceAreaUnit,
-            source: siteAnalysisResult.siteAnalysis.boundarySource,
-            shapeType: siteAnalysisResult.siteAnalysis.boundaryShapeType,
-            confidence:
-              siteAnalysisResult.siteAnalysis.boundaryConfidence || 0.4,
-            vertexCount: siteAnalysisResult.siteAnalysis.siteBoundary?.length,
-          });
-        }
+      if (siteAnalysisResult.success) {
+        logger.info("Site analysis complete", siteAnalysisResult.siteAnalysis);
       } else if (!siteAnalysisResult.success && !detectedBuildingFootprint) {
         logger.warn("Both building footprint and site analysis failed");
+      }
+
+      const siteAnalysis = siteAnalysisResult.success
+        ? siteAnalysisResult.siteAnalysis
+        : {};
+      const boundaryResolution = resolveUiSiteBoundaryAuthority({
+        siteAnalysis,
+        analysisBoundary: siteAnalysis?.siteBoundary || [],
+        estimatedBoundary:
+          siteAnalysis?.estimatedSiteBoundary ||
+          siteAnalysis?.contextualSiteBoundary ||
+          [],
+        existingPolygon: sitePolygon || [],
+        detectedBuildingFootprint,
+      });
+      const authoritativeSitePolygon = boundaryResolution.sitePolygon;
+
+      if (boundaryResolution.boundaryAuthoritative) {
+        setSitePolygon(authoritativeSitePolygon);
+        setSiteMetrics({
+          areaM2: siteAnalysis.surfaceArea,
+          unit: siteAnalysis.surfaceAreaUnit,
+          source: siteAnalysis.boundarySource,
+          shapeType: siteAnalysis.boundaryShapeType,
+          confidence: siteAnalysis.boundaryConfidence || 0.4,
+          vertexCount: siteAnalysis.siteBoundary?.length,
+          boundaryAuthoritative: true,
+        });
+      } else {
+        setSitePolygon([]);
+        setSiteMetrics(null);
+        if (boundaryResolution.siteBoundaryWarning) {
+          logger.warn(boundaryResolution.siteBoundaryWarning, {
+            boundarySource: siteAnalysis?.boundarySource,
+            boundaryConfidence: siteAnalysis?.boundaryConfidence,
+          });
+        }
       }
 
       // Step 8: Generate site map snapshot
@@ -388,8 +397,9 @@ export const useLocationData = () => {
         const { getSiteSnapshotWithMetadata } =
           await import("../services/siteMapSnapshotService");
 
-        const sitePolygonForMap =
-          sitePolygon || detectedBuildingFootprint || null;
+        const sitePolygonForMap = boundaryResolution.boundaryAuthoritative
+          ? authoritativeSitePolygon
+          : null;
 
         const snapshotResult = await getSiteSnapshotWithMetadata({
           coordinates: { lat, lng },
@@ -412,20 +422,19 @@ export const useLocationData = () => {
       }
 
       // Step 9: Save location data and advance to next step
-      const sitePolygonForMap =
-        sitePolygon ||
-        detectedBuildingFootprint ||
-        siteAnalysisResult?.siteAnalysis?.siteBoundary ||
-        null;
+      const sitePolygonForMap = boundaryResolution.boundaryAuthoritative
+        ? authoritativeSitePolygon
+        : null;
 
       const siteDNA = buildSiteContext({
         location: { address: formattedAddress, coordinates: { lat, lng } },
         sitePolygon: sitePolygonForMap,
         detectedBuildingFootprint,
-        siteAnalysis: siteAnalysisResult.siteAnalysis,
+        siteAnalysis,
         climate: seasonalClimateData.climate,
         seasonalClimate: seasonalClimateData,
-        streetContext: siteAnalysisResult.siteAnalysis?.streetContext,
+        streetContext: siteAnalysis?.streetContext,
+        allowBuildingFootprintAsSitePolygon: false,
       });
 
       const newLocationData = {
@@ -440,11 +449,20 @@ export const useLocationData = () => {
         sustainabilityScore: 85,
         marketContext: marketContext,
         architecturalProfile: architecturalStyle,
-        siteAnalysis: siteAnalysisResult.success
-          ? siteAnalysisResult.siteAnalysis
-          : null,
+        siteAnalysis: siteAnalysisResult.success ? siteAnalysis : null,
         buildingFootprint: detectedBuildingFootprint,
         detectedShape: detectedShapeType,
+        boundaryAuthoritative: boundaryResolution.boundaryAuthoritative,
+        boundaryEstimated: boundaryResolution.boundaryEstimated,
+        boundaryWarning: boundaryResolution.siteBoundaryWarning,
+        boundaryWarningCode: siteAnalysis?.boundaryWarningCode || null,
+        estimatedSiteBoundary: boundaryResolution.contextualEstimatedBoundary,
+        contextualSiteBoundary: boundaryResolution.contextualEstimatedBoundary,
+        estimatedSurfaceArea: siteAnalysis?.estimatedSurfaceArea || null,
+        siteBoundary: authoritativeSitePolygon,
+        surfaceArea: boundaryResolution.boundaryAuthoritative
+          ? siteAnalysis?.surfaceArea
+          : null,
         siteMapUrl: siteMapUrl,
         mapImageUrl: siteMapUrl,
         siteDNA,

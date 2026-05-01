@@ -1,17 +1,22 @@
-import { computeSunPath, deriveFacadeOrientation } from './solarEngine.js';
-import { buildBoundaryContext } from './boundaryValidator.js';
-import { getClimateDesignRules } from './climateRules.js';
-import { computeSiteMetrics } from '../../utils/geometry.js';
+import { computeSunPath, deriveFacadeOrientation } from "./solarEngine.js";
+import { buildBoundaryContext } from "./boundaryValidator.js";
+import { getClimateDesignRules } from "./climateRules.js";
+import { computeSiteMetrics } from "../../utils/geometry.js";
 
 function resolveSitePolygon({
   sitePolygon,
   detectedBuildingFootprint,
-  siteAnalysis
+  siteAnalysis,
+  allowBuildingFootprintAsSitePolygon = true,
 }) {
   if (sitePolygon && sitePolygon.length >= 3) {
     return sitePolygon;
   }
-  if (detectedBuildingFootprint && detectedBuildingFootprint.length >= 3) {
+  if (
+    allowBuildingFootprintAsSitePolygon &&
+    detectedBuildingFootprint &&
+    detectedBuildingFootprint.length >= 3
+  ) {
     return detectedBuildingFootprint;
   }
   if (siteAnalysis?.siteBoundary && siteAnalysis.siteBoundary.length >= 3) {
@@ -27,7 +32,8 @@ export function buildSiteContext({
   siteAnalysis,
   climate,
   seasonalClimate,
-  streetContext
+  streetContext,
+  allowBuildingFootprintAsSitePolygon = true,
 } = {}) {
   if (!location?.coordinates) {
     return null;
@@ -37,7 +43,8 @@ export function buildSiteContext({
   const polygon = resolveSitePolygon({
     sitePolygon,
     detectedBuildingFootprint,
-    siteAnalysis
+    siteAnalysis,
+    allowBuildingFootprintAsSitePolygon,
   });
 
   const boundaryContext = buildBoundaryContext({
@@ -45,44 +52,39 @@ export function buildSiteContext({
     coordinates,
     siteAnalysis,
     setbacks: siteAnalysis?.constraints,
-    orientationDeg: siteAnalysis?.orientationDeg
+    orientationDeg: siteAnalysis?.orientationDeg,
   });
 
-  const solar = computeSunPath(
-    coordinates.lat,
-    coordinates.lng,
-    {
-      preferredOrientationDeg: siteAnalysis?.optimalBuildingOrientation
-    }
-  );
+  const solar = computeSunPath(coordinates.lat, coordinates.lng, {
+    preferredOrientationDeg: siteAnalysis?.optimalBuildingOrientation,
+  });
 
   const climateRules = getClimateDesignRules(climate?.type, {
     solar,
-    boundaryContext
+    boundaryContext,
   });
 
   const computedMetrics = polygon ? computeSiteMetrics(polygon) : null;
   const facadeOrientation = deriveFacadeOrientation({
     solar,
-    streetContext
+    streetContext,
   });
 
   return {
     location: {
       address: location.address,
-      coordinates
+      coordinates,
     },
     boundaries: boundaryContext,
     solar,
     climate: {
-      type: climate?.type || 'Temperate Oceanic',
+      type: climate?.type || "Temperate Oceanic",
       seasonal: seasonalClimate?.seasonal || climate?.seasonal || {},
-      rules: climateRules
+      rules: climateRules,
     },
     street: streetContext || null,
     metrics: computedMetrics,
     facadeOrientation,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   };
 }
-
