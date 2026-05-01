@@ -361,12 +361,13 @@ function renderLevelDatums(
   };
 }
 
-// Section cut markers were originally too heavy. Reduce stroke / label /
-// arrow size and apply a translucent stroke so the markers read as
-// reference annotations, not primary linework.
-const CUT_MARKER_STROKE_DAMP = 0.65;
-const CUT_MARKER_FONT_DAMP = 0.72;
-const CUT_MARKER_OPACITY = 0.6;
+// Section cut markers were still cluttering the elevation after the first
+// damp pass. Tighten further so the markers read as faint reference
+// annotations, not primary linework. Cumulative reductions vs the baseline:
+//   stroke ≈ 58% lighter, font ≈ 50% smaller, opacity ≈ 55% transparent.
+const CUT_MARKER_STROKE_DAMP = 0.42;
+const CUT_MARKER_FONT_DAMP = 0.5;
+const CUT_MARKER_OPACITY = 0.45;
 
 function renderSectionCutMarkers(
   baseX = 0,

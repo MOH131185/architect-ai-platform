@@ -325,9 +325,10 @@ function buildTransform(bounds, width, height, layout = {}) {
   };
 }
 
-// Room labels were too crowded at the original sheet-mode font scale.
-// Damp them by 18% so they remain legible without dominating the plan.
-const ROOM_LABEL_FONT_DAMP = 0.82;
+// Room labels were still overpowering the drawing after the first damp.
+// Tighten further so they remain legible without dominating the plan
+// (cumulative ~35% smaller than the original sheet-mode size).
+const ROOM_LABEL_FONT_DAMP = 0.65;
 
 function renderRoomLabel(
   room = {},
