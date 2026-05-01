@@ -202,6 +202,62 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
     ]);
   });
 
+  test("keeps building footprint contextual when site boundary is estimated", () => {
+    const estimatedBoundary = [
+      { lat: 53.591, lng: -0.689 },
+      { lat: 53.591, lng: -0.687 },
+      { lat: 53.59, lng: -0.687 },
+    ];
+    const buildingFootprint = [
+      { lat: 53.5908, lng: -0.6886 },
+      { lat: 53.5908, lng: -0.6882 },
+      { lat: 53.5905, lng: -0.6882 },
+    ];
+
+    const request = buildProjectGraphVerticalSliceRequest({
+      designSpec: {
+        buildingCategory: "residential",
+        buildingSubType: "detached-house",
+        area: 250,
+        floorCount: 2,
+        location: {
+          address: "17 Kensington Road",
+          coordinates: { lat: 53.591237, lng: -0.688325 },
+          boundaryAuthoritative: false,
+          boundaryEstimated: true,
+          estimatedSiteBoundary: estimatedBoundary,
+          buildingFootprint,
+          siteAnalysis: {
+            boundarySource: "Intelligent Fallback",
+            boundaryConfidence: 0.4,
+            boundaryAuthoritative: false,
+            boundaryEstimated: true,
+            estimatedOnly: true,
+            estimatedSiteBoundary: estimatedBoundary,
+          },
+        },
+        sitePolygon: buildingFootprint,
+        siteMetrics: {
+          areaM2: 65,
+          source: "google_building_outline",
+        },
+      },
+    });
+
+    expect(request.sitePolygon).toEqual([]);
+    expect(request.siteMetrics.areaM2).toBeUndefined();
+    expect(request.siteMetrics.boundaryAuthoritative).toBe(false);
+    expect(request.locationData.boundaryAuthoritative).toBe(false);
+    expect(request.locationData.boundaryEstimated).toBe(true);
+    expect(request.locationData.estimatedSiteBoundary).toEqual(
+      estimatedBoundary,
+    );
+    expect(request.locationData.buildingFootprint).toEqual(buildingFootprint);
+    expect(request.locationData.siteAnalysis.boundarySource).toBe(
+      "Intelligent Fallback",
+    );
+  });
+
   test("normalizes ProjectGraph drawing artifact maps before panel mapping", () => {
     const drawingMap = {
       "asset-ground": {

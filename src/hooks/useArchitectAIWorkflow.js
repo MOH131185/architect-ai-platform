@@ -246,12 +246,60 @@ function compactLocationDataForRequest(locationData = {}) {
     wind: locationData.wind || null,
     recommendedStyle: locationData.recommendedStyle || null,
     localMaterials: locationData.localMaterials || [],
+    boundaryAuthoritative:
+      locationData.boundaryAuthoritative === true
+        ? true
+        : locationData.boundaryAuthoritative === false
+          ? false
+          : null,
+    boundaryEstimated: locationData.boundaryEstimated === true,
+    boundaryWarningCode: locationData.boundaryWarningCode || null,
+    boundarySource:
+      locationData.boundarySource ||
+      locationData.siteAnalysis?.boundarySource ||
+      null,
+    boundaryConfidence:
+      locationData.boundaryConfidence ??
+      locationData.siteAnalysis?.boundaryConfidence ??
+      null,
+    estimatedSiteBoundary: compactLatLngPolygon(
+      locationData.estimatedSiteBoundary || [],
+    ),
+    contextualSiteBoundary: compactLatLngPolygon(
+      locationData.contextualSiteBoundary || [],
+    ),
+    buildingFootprint: compactLatLngPolygon(
+      locationData.buildingFootprint || [],
+    ),
     siteAnalysis: locationData.siteAnalysis
       ? {
           area: locationData.siteAnalysis.area || null,
           shape: locationData.siteAnalysis.shape || null,
           confidence: locationData.siteAnalysis.confidence || null,
           source: locationData.siteAnalysis.source || null,
+          boundarySource: locationData.siteAnalysis.boundarySource || null,
+          boundaryConfidence:
+            locationData.siteAnalysis.boundaryConfidence ?? null,
+          boundaryAuthoritative:
+            locationData.siteAnalysis.boundaryAuthoritative === true
+              ? true
+              : locationData.siteAnalysis.boundaryAuthoritative === false
+                ? false
+                : null,
+          boundaryEstimated:
+            locationData.siteAnalysis.boundaryEstimated === true ||
+            locationData.siteAnalysis.estimatedOnly === true,
+          estimatedOnly: locationData.siteAnalysis.estimatedOnly === true,
+          fallbackReason: locationData.siteAnalysis.fallbackReason || null,
+          surfaceArea: locationData.siteAnalysis.surfaceArea || null,
+          estimatedSurfaceArea:
+            locationData.siteAnalysis.estimatedSurfaceArea || null,
+          estimatedSiteBoundary: compactLatLngPolygon(
+            locationData.siteAnalysis.estimatedSiteBoundary || [],
+          ),
+          contextualSiteBoundary: compactLatLngPolygon(
+            locationData.siteAnalysis.contextualSiteBoundary || [],
+          ),
         }
       : null,
   };
@@ -451,6 +499,27 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
         reference_match: referenceMatch,
         renderIntent: referenceMatch ? "reference_match_a1" : undefined,
       };
+  const rawSiteMetrics =
+    designSpec.siteMetrics ||
+    designSpec.sitePolygonMetrics ||
+    compactSiteSnapshot?.metadata?.siteMetrics ||
+    {};
+  const siteMetricsNonAuthoritative =
+    rawSiteMetrics?.boundaryAuthoritative === false ||
+    rawSiteMetrics?.estimatedOnly === true ||
+    rawSiteMetrics?.source === "google_building_outline";
+  const requestSiteMetrics = siteMetricsNonAuthoritative
+    ? {
+        ...rawSiteMetrics,
+        areaM2: undefined,
+        boundaryAuthoritative: false,
+      }
+    : rawSiteMetrics;
+  const requestSitePolygon = siteMetricsNonAuthoritative
+    ? []
+    : compactSitePolygon.length >= 3
+      ? compactSitePolygon
+      : compactSiteSnapshot?.sitePolygon || [];
 
   return {
     referenceMatch,
@@ -488,15 +557,8 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
     },
     locationData: compactLocationDataForRequest(locationData),
     siteSnapshot: compactSiteSnapshot,
-    sitePolygon:
-      compactSitePolygon.length >= 3
-        ? compactSitePolygon
-        : compactSiteSnapshot?.sitePolygon || [],
-    siteMetrics:
-      designSpec.siteMetrics ||
-      designSpec.sitePolygonMetrics ||
-      compactSiteSnapshot?.metadata?.siteMetrics ||
-      {},
+    sitePolygon: requestSitePolygon,
+    siteMetrics: requestSiteMetrics,
     programSpaces: compactProgramSpacesForRequest(
       programSpaces,
       resolvedFloorCount,
