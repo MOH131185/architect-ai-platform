@@ -10,6 +10,11 @@ import {
   resolveCompiledProjectStyleDNA,
 } from "./drawingBounds.js";
 
+const SHEET_ELEVATION_POLISH = Object.freeze({
+  fontScale: 1.1,
+  strokeScale: 1.12,
+});
+
 function escapeXml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -42,6 +47,14 @@ function formatMeters(value) {
     return "0.0 m";
   }
   return `${numeric.toFixed(1)} m`;
+}
+
+function resolveElevationPolish(sheetMode = false) {
+  return sheetMode ? SHEET_ELEVATION_POLISH : { fontScale: 1, strokeScale: 1 };
+}
+
+function polishSize(value, scale = 1) {
+  return formatNumber(Number(value || 0) * Number(scale || 1), 1);
 }
 
 function orientationToSide(orientation = "south") {
@@ -287,9 +300,23 @@ function renderRoof(baseX, topY, widthPx, roofLanguage, theme) {
   `;
 }
 
-function renderLevelDatums(baseX, baseY, widthPx, levelProfiles, scale, theme) {
+function renderLevelDatums(
+  baseX,
+  baseY,
+  widthPx,
+  levelProfiles,
+  scale,
+  theme,
+  polish = {},
+) {
   const lines = [];
   const labels = [];
+  const fontScale = polish.fontScale || 1;
+  const strokeScale = polish.strokeScale || 1;
+  const datumStroke = polishSize(1.1, strokeScale);
+  const guideStroke = polishSize(1, strokeScale);
+  const primaryLabelFont = polishSize(9, fontScale);
+  const secondaryLabelFont = polishSize(8, fontScale);
   levelProfiles.forEach((level) => {
     const topY = baseY - level.top_m * scale;
     const midY =
@@ -299,22 +326,22 @@ function renderLevelDatums(baseX, baseY, widthPx, levelProfiles, scale, theme) {
         topY,
       )}" x2="${formatNumber(baseX + widthPx)}" y2="${formatNumber(
         topY,
-      )}" stroke="${theme.lineMuted}" stroke-width="1.1" />`,
+      )}" stroke="${theme.lineMuted}" stroke-width="${datumStroke}" />`,
     );
     labels.push(`
       <line x1="${formatNumber(baseX - 46)}" y1="${formatNumber(
         topY,
       )}" x2="${formatNumber(baseX - 6)}" y2="${formatNumber(
         topY,
-      )}" stroke="${theme.lineMuted}" stroke-width="1" />
+      )}" stroke="${theme.lineMuted}" stroke-width="${guideStroke}" />
       <text x="${formatNumber(baseX - 52)}" y="${formatNumber(
         topY + 4,
-      )}" font-size="9" font-family="Arial, sans-serif" font-weight="700" text-anchor="end">${escapeXml(
+      )}" font-size="${primaryLabelFont}" font-family="Arial, sans-serif" font-weight="700" text-anchor="end">${escapeXml(
         `${level.name || `L${level.level_number}`} +${level.top_m.toFixed(2)}m`,
       )}</text>
       <text x="${formatNumber(baseX - 10)}" y="${formatNumber(
         midY,
-      )}" font-size="8" font-family="Arial, sans-serif" text-anchor="end">${escapeXml(
+      )}" font-size="${secondaryLabelFont}" font-family="Arial, sans-serif" text-anchor="end">${escapeXml(
         level.name || `L${level.level_number}`,
       )}</text>
     `);
@@ -325,10 +352,10 @@ function renderLevelDatums(baseX, baseY, widthPx, levelProfiles, scale, theme) {
       baseY,
     )}" x2="${formatNumber(baseX - 6)}" y2="${formatNumber(
       baseY,
-    )}" stroke="${theme.line}" stroke-width="1.1" />
+    )}" stroke="${theme.line}" stroke-width="${datumStroke}" />
     <text x="${formatNumber(baseX - 52)}" y="${formatNumber(
       baseY + 4,
-    )}" font-size="9" font-family="Arial, sans-serif" font-weight="700" text-anchor="end">FFL +0.00m</text>
+    )}" font-size="${primaryLabelFont}" font-family="Arial, sans-serif" font-weight="700" text-anchor="end">FFL +0.00m</text>
   `);
 
   return {
@@ -948,39 +975,43 @@ function renderOverallDimensions(
   layout = {},
   width = 0,
   theme,
+  polish = {},
 ) {
   const topY = layout.top - 14;
   const rightX = width - layout.right + 24;
+  const fontSize = polishSize(10, polish.fontScale || 1);
+  const guideStroke = polishSize(0.9, polish.strokeScale || 1);
+  const primaryStroke = polishSize(1, polish.strokeScale || 1);
   return `
     <g id="phase8-elevation-dimensions">
       <line x1="${formatNumber(baseX)}" y1="${formatNumber(
         baseY - heightPx,
       )}" x2="${formatNumber(baseX)}" y2="${formatNumber(
         topY,
-      )}" stroke="${theme.lineMuted}" stroke-width="0.9"/>
+      )}" stroke="${theme.lineMuted}" stroke-width="${guideStroke}"/>
       <line x1="${formatNumber(baseX + widthPx)}" y1="${formatNumber(
         baseY - heightPx,
       )}" x2="${formatNumber(baseX + widthPx)}" y2="${formatNumber(
         topY,
-      )}" stroke="${theme.lineMuted}" stroke-width="0.9"/>
+      )}" stroke="${theme.lineMuted}" stroke-width="${guideStroke}"/>
       <line x1="${formatNumber(baseX)}" y1="${formatNumber(
         topY,
       )}" x2="${formatNumber(baseX + widthPx)}" y2="${formatNumber(
         topY,
-      )}" stroke="${theme.line}" stroke-width="1"/>
+      )}" stroke="${theme.line}" stroke-width="${primaryStroke}"/>
       <line x1="${formatNumber(baseX)}" y1="${formatNumber(
         topY - 3,
       )}" x2="${formatNumber(baseX)}" y2="${formatNumber(
         topY + 3,
-      )}" stroke="${theme.line}" stroke-width="1"/>
+      )}" stroke="${theme.line}" stroke-width="${primaryStroke}"/>
       <line x1="${formatNumber(baseX + widthPx)}" y1="${formatNumber(
         topY - 3,
       )}" x2="${formatNumber(baseX + widthPx)}" y2="${formatNumber(
         topY + 3,
-      )}" stroke="${theme.line}" stroke-width="1"/>
+      )}" stroke="${theme.line}" stroke-width="${primaryStroke}"/>
       <text x="${formatNumber(baseX + widthPx / 2)}" y="${formatNumber(
         topY - 6,
-      )}" font-size="10" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">${escapeXml(
+      )}" font-size="${fontSize}" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">${escapeXml(
         formatMeters(metrics.width_m),
       )}</text>
 
@@ -988,30 +1019,30 @@ function renderOverallDimensions(
         baseY - heightPx,
       )}" x2="${formatNumber(rightX)}" y2="${formatNumber(
         baseY - heightPx,
-      )}" stroke="${theme.lineMuted}" stroke-width="0.9"/>
+      )}" stroke="${theme.lineMuted}" stroke-width="${guideStroke}"/>
       <line x1="${formatNumber(baseX + widthPx)}" y1="${formatNumber(
         baseY,
       )}" x2="${formatNumber(rightX)}" y2="${formatNumber(
         baseY,
-      )}" stroke="${theme.lineMuted}" stroke-width="0.9"/>
+      )}" stroke="${theme.lineMuted}" stroke-width="${guideStroke}"/>
       <line x1="${formatNumber(rightX)}" y1="${formatNumber(
         baseY - heightPx,
       )}" x2="${formatNumber(rightX)}" y2="${formatNumber(
         baseY,
-      )}" stroke="${theme.line}" stroke-width="1"/>
+      )}" stroke="${theme.line}" stroke-width="${primaryStroke}"/>
       <line x1="${formatNumber(rightX - 3)}" y1="${formatNumber(
         baseY - heightPx,
       )}" x2="${formatNumber(rightX + 3)}" y2="${formatNumber(
         baseY - heightPx,
-      )}" stroke="${theme.line}" stroke-width="1"/>
+      )}" stroke="${theme.line}" stroke-width="${primaryStroke}"/>
       <line x1="${formatNumber(rightX - 3)}" y1="${formatNumber(
         baseY,
       )}" x2="${formatNumber(rightX + 3)}" y2="${formatNumber(
         baseY,
-      )}" stroke="${theme.line}" stroke-width="1"/>
+      )}" stroke="${theme.line}" stroke-width="${primaryStroke}"/>
       <text x="${formatNumber(rightX + 14)}" y="${formatNumber(
         baseY - heightPx / 2,
-      )}" font-size="10" font-family="Arial, sans-serif" font-weight="700" transform="rotate(90 ${formatNumber(
+      )}" font-size="${fontSize}" font-family="Arial, sans-serif" font-weight="700" transform="rotate(90 ${formatNumber(
         rightX + 14,
       )} ${formatNumber(baseY - heightPx / 2)})" text-anchor="middle">${escapeXml(
         formatMeters(metrics.total_height_m),
@@ -1034,12 +1065,15 @@ function renderScaleBar(
   const y = Number.isFinite(options.y)
     ? options.y
     : height - layout.bottom + 44;
+  const fontScale = options.fontScale || 1;
+  const strokeScale = options.strokeScale || 1;
   const labelYOffset = Number.isFinite(options.labelYOffset)
     ? options.labelYOffset
     : 16;
   const labelFontSize = Number.isFinite(options.fontSize)
     ? options.fontSize
-    : 10;
+    : 10 * fontScale;
+  const strokeWidth = polishSize(1.6, strokeScale);
   return {
     barMeters,
     markup: `
@@ -1048,25 +1082,25 @@ function renderScaleBar(
           y,
         )}" x2="${formatNumber(x + barWidthPx)}" y2="${formatNumber(
           y,
-        )}" stroke="${theme.line}" stroke-width="1.6"/>
+        )}" stroke="${theme.line}" stroke-width="${strokeWidth}"/>
         <line x1="${formatNumber(x)}" y1="${formatNumber(
           y - 4,
         )}" x2="${formatNumber(x)}" y2="${formatNumber(
           y + 4,
-        )}" stroke="${theme.line}" stroke-width="1.6"/>
+        )}" stroke="${theme.line}" stroke-width="${strokeWidth}"/>
         <line x1="${formatNumber(x + barWidthPx / 2)}" y1="${formatNumber(
           y - 4,
         )}" x2="${formatNumber(x + barWidthPx / 2)}" y2="${formatNumber(
           y + 4,
-        )}" stroke="${theme.line}" stroke-width="1.6"/>
+        )}" stroke="${theme.line}" stroke-width="${strokeWidth}"/>
         <line x1="${formatNumber(x + barWidthPx)}" y1="${formatNumber(
           y - 4,
         )}" x2="${formatNumber(x + barWidthPx)}" y2="${formatNumber(
           y + 4,
-        )}" stroke="${theme.line}" stroke-width="1.6"/>
+        )}" stroke="${theme.line}" stroke-width="${strokeWidth}"/>
         <text x="${formatNumber(x + barWidthPx / 2)}" y="${formatNumber(
           y + labelYOffset,
-        )}" font-size="${labelFontSize}" font-family="Arial, sans-serif" text-anchor="middle">${escapeXml(
+        )}" font-size="${formatNumber(labelFontSize, 1)}" font-family="Arial, sans-serif" text-anchor="middle">${escapeXml(
           `${barMeters} m`,
         )}</text>
       </g>
@@ -1084,19 +1118,23 @@ function renderTitleBlock(
 ) {
   const x = layout.left;
   const y = height - layout.bottom + 16;
+  const polish = metadata.polish || {};
+  const titleFont = polishSize(14, polish.fontScale || 1);
+  const metaFont = polishSize(10, polish.fontScale || 1);
+  const titleStroke = polishSize(1.1, polish.strokeScale || 1);
   return `
     <g id="phase7-elevation-title-block">
       <rect x="${formatNumber(x)}" y="${formatNumber(
         y,
-      )}" width="328" height="46" fill="${theme.paper}" stroke="${theme.line}" stroke-width="1.1"/>
+      )}" width="328" height="46" fill="${theme.paper}" stroke="${theme.line}" stroke-width="${titleStroke}"/>
       <text x="${formatNumber(x + 12)}" y="${formatNumber(
         y + 17,
-      )}" font-size="14" font-family="Arial, sans-serif" font-weight="700" class="sheet-critical-label" data-text-role="critical">${escapeXml(
+      )}" font-size="${titleFont}" font-family="Arial, sans-serif" font-weight="700" class="sheet-critical-label" data-text-role="critical">${escapeXml(
         `ELEVATION - ${String(orientation || "south").toUpperCase()}`,
       )}</text>
       <text x="${formatNumber(x + 12)}" y="${formatNumber(
         y + 34,
-      )}" font-size="10" font-family="Arial, sans-serif" class="sheet-critical-label" data-text-role="critical">${escapeXml(
+      )}" font-size="${metaFont}" font-family="Arial, sans-serif" class="sheet-critical-label" data-text-role="critical">${escapeXml(
         `Bounds ${metadata.boundsSource || "building_derived"} · ${Math.round(
           Number(metadata.slotOccupancyRatio || 0) * 100,
         )}% slot occupancy`,
@@ -1134,6 +1172,7 @@ export function renderElevationSvg(
   const width = options.width || 1200;
   const height = options.height || 760;
   const sheetMode = options.sheetMode === true;
+  const sheetPolish = resolveElevationPolish(sheetMode);
   const showInternalTitleBlock =
     !sheetMode || options.showInternalTitleBlock === true;
   const layout = sheetMode
@@ -1179,6 +1218,7 @@ export function renderElevationSvg(
     levelProfiles,
     scale,
     theme,
+    sheetPolish,
   );
   const openings = renderProjectedOpenings(
     sideFacade,
@@ -1346,8 +1386,13 @@ export function renderElevationSvg(
     layout,
     theme,
     showInternalTitleBlock
-      ? {}
-      : { y: height - 34, labelYOffset: 14, fontSize: 9 },
+      ? { ...sheetPolish }
+      : {
+          y: height - 34,
+          labelYOffset: 14,
+          fontSize: 9,
+          ...sheetPolish,
+        },
   );
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-theme="${theme.name}" data-bounds-source="${envelope.source}">
@@ -1377,12 +1422,14 @@ export function renderElevationSvg(
     layout,
     width,
     theme,
+    sheetPolish,
   )}
   ${
     showInternalTitleBlock
       ? renderTitleBlock(orientation, width, height, layout, theme, {
           boundsSource: envelope.source,
           slotOccupancyRatio,
+          polish: sheetPolish,
         })
       : ""
   }
@@ -1440,6 +1487,7 @@ export function renderElevationSvg(
         facadeOrientation?.opening_rhythm?.opening_count ||
         openings.windowCount,
       blueprint_theme: theme.name,
+      a1_quality_polish: sheetMode ? "elevation_datums_dimensions_v1" : null,
       slot_occupancy_ratio: slotOccupancyRatio,
       scale_bar_meters: scaleBar.barMeters,
     },

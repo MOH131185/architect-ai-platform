@@ -20,6 +20,10 @@ import {
 } from "./drawingBounds.js";
 
 const SECTION_THEME = getBlueprintTheme();
+const SHEET_SECTION_POLISH = Object.freeze({
+  fontScale: 1.12,
+  strokeScale: 1.12,
+});
 
 function escapeXml(value) {
   return String(value)
@@ -72,6 +76,14 @@ function chooseScaleBarMeters(scalePxPerMeter = 1) {
     (entry) => entry * Math.max(scalePxPerMeter, 1) <= 160,
   );
   return eligible[eligible.length - 1] || 1;
+}
+
+function resolveSectionPolish(sheetMode = false) {
+  return sheetMode ? SHEET_SECTION_POLISH : { fontScale: 1, strokeScale: 1 };
+}
+
+function polishSize(value, scale = 1) {
+  return formatNumber(Number(value || 0) * Number(scale || 1), 1);
 }
 
 function getLevelProfiles(geometry = {}) {
@@ -224,12 +236,15 @@ function renderScaleBar(scalePxPerMeter, width, height, padding, options = {}) {
   const barWidthPx = barMeters * scalePxPerMeter;
   const x = width - padding - barWidthPx - 8;
   const y = Number.isFinite(options.y) ? options.y : height - padding + 38;
+  const fontScale = options.fontScale || 1;
+  const strokeScale = options.strokeScale || 1;
   const labelYOffset = Number.isFinite(options.labelYOffset)
     ? options.labelYOffset
     : 16;
   const labelFontSize = Number.isFinite(options.fontSize)
     ? options.fontSize
-    : 9;
+    : 9 * fontScale;
+  const strokeWidth = polishSize(1.6, strokeScale);
   return {
     barMeters,
     markup: `
@@ -238,25 +253,25 @@ function renderScaleBar(scalePxPerMeter, width, height, padding, options = {}) {
           y,
         )}" x2="${formatNumber(x + barWidthPx)}" y2="${formatNumber(
           y,
-        )}" stroke="${SECTION_THEME.line}" stroke-width="1.6"/>
+        )}" stroke="${SECTION_THEME.line}" stroke-width="${strokeWidth}"/>
         <line x1="${formatNumber(x)}" y1="${formatNumber(
           y - 4,
         )}" x2="${formatNumber(x)}" y2="${formatNumber(
           y + 4,
-        )}" stroke="${SECTION_THEME.line}" stroke-width="1.6"/>
+        )}" stroke="${SECTION_THEME.line}" stroke-width="${strokeWidth}"/>
         <line x1="${formatNumber(x + barWidthPx / 2)}" y1="${formatNumber(
           y - 4,
         )}" x2="${formatNumber(x + barWidthPx / 2)}" y2="${formatNumber(
           y + 4,
-        )}" stroke="${SECTION_THEME.line}" stroke-width="1.6"/>
+        )}" stroke="${SECTION_THEME.line}" stroke-width="${strokeWidth}"/>
         <line x1="${formatNumber(x + barWidthPx)}" y1="${formatNumber(
           y - 4,
         )}" x2="${formatNumber(x + barWidthPx)}" y2="${formatNumber(
           y + 4,
-        )}" stroke="${SECTION_THEME.line}" stroke-width="1.6"/>
+        )}" stroke="${SECTION_THEME.line}" stroke-width="${strokeWidth}"/>
         <text x="${formatNumber(x + barWidthPx / 2)}" y="${formatNumber(
           y + labelYOffset,
-        )}" font-size="${labelFontSize}" font-family="Arial, sans-serif" text-anchor="middle">${escapeXml(
+        )}" font-size="${formatNumber(labelFontSize, 1)}" font-family="Arial, sans-serif" text-anchor="middle">${escapeXml(
           `${barMeters} m`,
         )}</text>
       </g>
@@ -273,39 +288,43 @@ function renderOverallSectionDimensions(
   horizontalExtentM,
   width,
   padding,
+  polish = {},
 ) {
   const topY = padding - 18;
   const rightX = width - padding + 18;
+  const fontSize = polishSize(10, polish.fontScale || 1);
+  const guideStroke = polishSize(0.9, polish.strokeScale || 1);
+  const primaryStroke = polishSize(1, polish.strokeScale || 1);
   return `
     <g id="phase8-section-dimensions">
       <line x1="${formatNumber(baseX)}" y1="${formatNumber(
         baseY - heightPx,
       )}" x2="${formatNumber(baseX)}" y2="${formatNumber(
         topY,
-      )}" stroke="${SECTION_THEME.lineMuted}" stroke-width="0.9"/>
+      )}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${guideStroke}"/>
       <line x1="${formatNumber(baseX + widthPx)}" y1="${formatNumber(
         baseY - heightPx,
       )}" x2="${formatNumber(baseX + widthPx)}" y2="${formatNumber(
         topY,
-      )}" stroke="${SECTION_THEME.lineMuted}" stroke-width="0.9"/>
+      )}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${guideStroke}"/>
       <line x1="${formatNumber(baseX)}" y1="${formatNumber(
         topY,
       )}" x2="${formatNumber(baseX + widthPx)}" y2="${formatNumber(
         topY,
-      )}" stroke="${SECTION_THEME.line}" stroke-width="1"/>
+      )}" stroke="${SECTION_THEME.line}" stroke-width="${primaryStroke}"/>
       <line x1="${formatNumber(baseX)}" y1="${formatNumber(
         topY - 3,
       )}" x2="${formatNumber(baseX)}" y2="${formatNumber(
         topY + 3,
-      )}" stroke="${SECTION_THEME.line}" stroke-width="1"/>
+      )}" stroke="${SECTION_THEME.line}" stroke-width="${primaryStroke}"/>
       <line x1="${formatNumber(baseX + widthPx)}" y1="${formatNumber(
         topY - 3,
       )}" x2="${formatNumber(baseX + widthPx)}" y2="${formatNumber(
         topY + 3,
-      )}" stroke="${SECTION_THEME.line}" stroke-width="1"/>
+      )}" stroke="${SECTION_THEME.line}" stroke-width="${primaryStroke}"/>
       <text x="${formatNumber(baseX + widthPx / 2)}" y="${formatNumber(
         topY - 6,
-      )}" font-size="10" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">${escapeXml(
+      )}" font-size="${fontSize}" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">${escapeXml(
         formatMeters(horizontalExtentM),
       )}</text>
 
@@ -313,30 +332,30 @@ function renderOverallSectionDimensions(
         baseY - heightPx,
       )}" x2="${formatNumber(rightX)}" y2="${formatNumber(
         baseY - heightPx,
-      )}" stroke="${SECTION_THEME.lineMuted}" stroke-width="0.9"/>
+      )}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${guideStroke}"/>
       <line x1="${formatNumber(baseX + widthPx)}" y1="${formatNumber(
         baseY,
       )}" x2="${formatNumber(rightX)}" y2="${formatNumber(
         baseY,
-      )}" stroke="${SECTION_THEME.lineMuted}" stroke-width="0.9"/>
+      )}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${guideStroke}"/>
       <line x1="${formatNumber(rightX)}" y1="${formatNumber(
         baseY - heightPx,
       )}" x2="${formatNumber(rightX)}" y2="${formatNumber(
         baseY,
-      )}" stroke="${SECTION_THEME.line}" stroke-width="1"/>
+      )}" stroke="${SECTION_THEME.line}" stroke-width="${primaryStroke}"/>
       <line x1="${formatNumber(rightX - 3)}" y1="${formatNumber(
         baseY - heightPx,
       )}" x2="${formatNumber(rightX + 3)}" y2="${formatNumber(
         baseY - heightPx,
-      )}" stroke="${SECTION_THEME.line}" stroke-width="1"/>
+      )}" stroke="${SECTION_THEME.line}" stroke-width="${primaryStroke}"/>
       <line x1="${formatNumber(rightX - 3)}" y1="${formatNumber(
         baseY,
       )}" x2="${formatNumber(rightX + 3)}" y2="${formatNumber(
         baseY,
-      )}" stroke="${SECTION_THEME.line}" stroke-width="1"/>
+      )}" stroke="${SECTION_THEME.line}" stroke-width="${primaryStroke}"/>
       <text x="${formatNumber(rightX + 14)}" y="${formatNumber(
         baseY - heightPx / 2,
-      )}" font-size="10" font-family="Arial, sans-serif" font-weight="700" transform="rotate(90 ${formatNumber(
+      )}" font-size="${fontSize}" font-family="Arial, sans-serif" font-weight="700" transform="rotate(90 ${formatNumber(
         rightX + 14,
       )} ${formatNumber(baseY - heightPx / 2)})" text-anchor="middle">${escapeXml(
         formatMeters(totalHeightM),
@@ -352,11 +371,17 @@ function renderLevelDatums(
   levelProfiles,
   scale,
   lineweights = {},
+  polish = {},
 ) {
   const lines = [];
   const labels = [];
-  const datumWeight = lineweights.datum || 1.05;
-  const labelStroke = lineweights.guide || 0.78;
+  const fontScale = polish.fontScale || 1;
+  const strokeScale = polish.strokeScale || 1;
+  const datumWeight = polishSize(lineweights.datum || 1.05, strokeScale);
+  const labelStroke = polishSize(lineweights.guide || 0.78, strokeScale);
+  const secondaryStroke = polishSize(lineweights.secondary || 1, strokeScale);
+  const primaryLabelFont = polishSize(9, fontScale);
+  const secondaryLabelFont = polishSize(8.5, fontScale);
   levelProfiles.forEach((level) => {
     const topY = baseY - level.top_m * scale;
     const midY =
@@ -366,13 +391,13 @@ function renderLevelDatums(
     );
     labels.push(`
       <g class="phase8-section-level-label">
-        <line x1="${baseX - 52}" y1="${topY}" x2="${baseX - 6}" y2="${topY}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${lineweights.secondary || 1}" />
+        <line x1="${baseX - 52}" y1="${topY}" x2="${baseX - 6}" y2="${topY}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${secondaryStroke}" />
         <rect x="${baseX - 176}" y="${topY - 11}" width="118" height="16" rx="3" ry="3" fill="${SECTION_THEME.paper}" fill-opacity="0.94" stroke="${SECTION_THEME.guide}" stroke-width="${labelStroke}" />
-        <text x="${baseX - 166}" y="${topY + 1}" font-size="9" font-family="Arial, sans-serif" font-weight="700" text-anchor="start" class="sheet-critical-label" data-text-role="critical">${escapeXml(
+        <text x="${baseX - 166}" y="${topY + 1}" font-size="${primaryLabelFont}" font-family="Arial, sans-serif" font-weight="700" text-anchor="start" class="sheet-critical-label" data-text-role="critical">${escapeXml(
           `${level.name || `L${level.level_number}`} +${level.top_m.toFixed(2)}m`,
         )}</text>
         <rect x="${baseX - 84}" y="${midY - 9}" width="66" height="14" rx="3" ry="3" fill="${SECTION_THEME.paper}" fill-opacity="0.92" stroke="${SECTION_THEME.guide}" stroke-width="${labelStroke}" />
-        <text x="${baseX - 51}" y="${midY + 1}" font-size="8.5" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">${escapeXml(
+        <text x="${baseX - 51}" y="${midY + 1}" font-size="${secondaryLabelFont}" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">${escapeXml(
           level.name || `L${level.level_number}`,
         )}</text>
       </g>
@@ -380,9 +405,9 @@ function renderLevelDatums(
   });
 
   labels.push(`
-    <line x1="${baseX - 52}" y1="${baseY}" x2="${baseX - 6}" y2="${baseY}" stroke="${SECTION_THEME.line}" stroke-width="${lineweights.secondary || 1}" />
+    <line x1="${baseX - 52}" y1="${baseY}" x2="${baseX - 6}" y2="${baseY}" stroke="${SECTION_THEME.line}" stroke-width="${secondaryStroke}" />
     <rect x="${baseX - 144}" y="${baseY - 11}" width="86" height="16" rx="3" ry="3" fill="${SECTION_THEME.paper}" fill-opacity="0.94" stroke="${SECTION_THEME.guide}" stroke-width="${labelStroke}" />
-    <text x="${baseX - 134}" y="${baseY + 1}" font-size="9" font-family="Arial, sans-serif" font-weight="700" text-anchor="start" class="sheet-critical-label" data-text-role="critical">FFL +0.00m</text>
+    <text x="${baseX - 134}" y="${baseY + 1}" font-size="${primaryLabelFont}" font-family="Arial, sans-serif" font-weight="700" text-anchor="start" class="sheet-critical-label" data-text-role="critical">FFL +0.00m</text>
   `);
 
   return {
@@ -933,6 +958,7 @@ export function renderSectionSvg(
   const width = options.width || 1200;
   const height = options.height || 760;
   const sheetMode = options.sheetMode === true;
+  const sheetPolish = resolveSectionPolish(sheetMode);
   const showInternalTitleBlock =
     !sheetMode || options.showInternalTitleBlock === true;
   const padding = sheetMode ? 34 : 86;
@@ -1085,6 +1111,7 @@ export function renderSectionSvg(
     levelProfiles,
     scale,
     lineweights,
+    sheetPolish,
   );
   const foundation = renderFoundation(
     baseX,
@@ -1201,25 +1228,33 @@ export function renderSectionSvg(
     height,
     padding,
     showInternalTitleBlock
-      ? {}
-      : { y: height - 34, labelYOffset: 14, fontSize: 9 },
+      ? { ...sheetPolish }
+      : {
+          y: height - 34,
+          labelYOffset: 14,
+          fontSize: 9,
+          ...sheetPolish,
+        },
   );
+  const titleBlockStroke = polishSize(1.1, sheetPolish.strokeScale);
+  const titleBlockTitleFont = polishSize(14, sheetPolish.fontScale);
+  const titleBlockMetaFont = polishSize(10, sheetPolish.fontScale);
   const titleBlockMarkup = showInternalTitleBlock
     ? `
     <g id="phase8-section-title-block">
       <rect x="${formatNumber(padding)}" y="${formatNumber(
         height - padding + 10,
-      )}" width="338" height="46" fill="${SECTION_THEME.paper}" stroke="${SECTION_THEME.line}" stroke-width="1.1"/>
+      )}" width="338" height="46" fill="${SECTION_THEME.paper}" stroke="${SECTION_THEME.line}" stroke-width="${titleBlockStroke}"/>
       <text x="${formatNumber(padding + 12)}" y="${formatNumber(
         height - padding + 27,
-      )}" font-size="14" font-family="Arial, sans-serif" font-weight="700" class="sheet-critical-label" data-text-role="critical">${escapeXml(
+      )}" font-size="${titleBlockTitleFont}" font-family="Arial, sans-serif" font-weight="700" class="sheet-critical-label" data-text-role="critical">${escapeXml(
         sectionProfile?.strategyName
           ? `${sectionProfile.strategyName} Section`
           : `Section - ${sectionType.toUpperCase()}`,
       )}</text>
       <text x="${formatNumber(padding + 12)}" y="${formatNumber(
         height - padding + 43,
-      )}" font-size="10" font-family="Arial, sans-serif" class="sheet-critical-label" data-text-role="critical">${escapeXml(
+      )}" font-size="${titleBlockMetaFont}" font-family="Arial, sans-serif" class="sheet-critical-label" data-text-role="critical">${escapeXml(
         `Bounds ${envelopeBounds.source} · ${Math.round(
           slotOccupancyRatio * 100,
         )}% slot occupancy`,
@@ -1261,6 +1296,7 @@ export function renderSectionSvg(
     horizontalExtent,
     width,
     padding,
+    sheetPolish,
   )}
   ${titleBlockMarkup}
   ${scaleBar.markup}
@@ -1310,6 +1346,7 @@ export function renderSectionSvg(
       cut_coordinate_m: cutCoordinate,
       bounds_source: envelopeBounds.source,
       blueprint_theme: SECTION_THEME.name,
+      a1_quality_polish: sheetMode ? "section_datums_dimensions_v1" : null,
       slot_occupancy_ratio: slotOccupancyRatio,
       scale_bar_meters: scaleBar.barMeters,
       section_evidence_quality:
