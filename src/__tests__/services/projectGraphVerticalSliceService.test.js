@@ -58,6 +58,112 @@ function createReadingRoomBrief() {
   };
 }
 
+function createKensingtonReferenceMatchBrief() {
+  const siteMapDataUrl =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR42mNk+M9Qz0AEYBxVSFIAAAeSAi8BTyQ1AAAAAElFTkSuQmCC";
+  return {
+    referenceMatch: true,
+    projectDetails: {
+      projectName: "Stale Cherry House",
+      address: "97 Bradford Street, Birmingham",
+      area: 250,
+      floorCount: 1,
+      autoDetectedFloorCount: 1,
+      floorCountLocked: false,
+      subType: "detached-house",
+    },
+    brief: {
+      project_name: "17 Kensington Road House",
+      building_type: "dwelling",
+      site_input: {
+        address: "17 Kensington Rd, DN15 8BQ, UK",
+        postcode: "DN15 8BQ",
+        lat: 53.5912182,
+        lon: -0.6883197,
+      },
+      target_gia_m2: 75,
+      client_goals: [
+        "compact two-storey family house",
+        "reference-match RIBA A1 board",
+        "local UK brick and timber material palette",
+      ],
+      style_keywords: ["red brick", "timber accent", "contemporary UK house"],
+      sustainability_ambition: "low_energy",
+    },
+    sitePolygon: [
+      { lat: 53.59131, lng: -0.68847 },
+      { lat: 53.59131, lng: -0.68817 },
+      { lat: 53.59112, lng: -0.68817 },
+      { lat: 53.59112, lng: -0.68847 },
+    ],
+    siteMetrics: {
+      areaM2: 2380,
+      orientationDeg: 12,
+    },
+    siteSnapshot: {
+      dataUrl: siteMapDataUrl,
+      sourceUrl: "provided-site-snapshot",
+      attribution: "Provided site map",
+      polygon: [
+        { lat: 53.59131, lng: -0.68847 },
+        { lat: 53.59131, lng: -0.68817 },
+        { lat: 53.59112, lng: -0.68817 },
+        { lat: 53.59112, lng: -0.68847 },
+      ],
+    },
+  };
+}
+
+function cloneForTest(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+let kensingtonReferenceMatchBuildPromise = null;
+
+async function getKensingtonReferenceMatchResult() {
+  if (!kensingtonReferenceMatchBuildPromise) {
+    kensingtonReferenceMatchBuildPromise =
+      buildArchitectureProjectVerticalSlice(
+        createKensingtonReferenceMatchBrief(),
+      );
+  }
+  return cloneForTest(await kensingtonReferenceMatchBuildPromise);
+}
+
+function wrapVisualsAsGeometryLockedImages(result) {
+  const pngPayload =
+    "AAA1x1BBBplaceholder_3dCCCgeometryRenderService" + "a".repeat(1600);
+  return Object.fromEntries(
+    Object.entries(result.artifacts.visuals3d).map(([panelType, artifact]) => [
+      panelType,
+      {
+        ...artifact,
+        asset_type: "geometry_locked_presentation_svg",
+        svgString: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${artifact.width} ${artifact.height}" width="${artifact.width}" height="${artifact.height}"><image href="data:image/png;base64,${pngPayload}" x="0" y="0" width="${artifact.width}" height="${artifact.height}" preserveAspectRatio="xMidYMid slice"/></svg>`,
+        metadata: {
+          ...artifact.metadata,
+          source: "project_graph_image_renderer",
+          imageRenderFallback: false,
+          imageRenderFallbackReason: null,
+          imageRenderByteLength: 1200,
+          imageProviderUsed: "openai",
+          openaiImageUsed: true,
+          hasPngImagePayload: true,
+          openaiRequestId: `req_${panelType}`,
+          presentationMode: "geometry_locked_image_render",
+          visualFidelityStatus: "photoreal_geometry_locked",
+          visualRenderMode: "photoreal_image_gen",
+          renderProvenance: {
+            sourceGeometryHash: result.geometryHash,
+            referenceSource: "compiled_3d_control_svg",
+            requestId: `req_${panelType}`,
+          },
+        },
+      },
+    ]),
+  );
+}
+
 function expectPanelPlacementsDoNotOverlap(placements) {
   for (let i = 0; i < placements.length; i += 1) {
     for (let j = i + 1; j < placements.length; j += 1) {
@@ -1023,6 +1129,125 @@ describe("projectGraphVerticalSliceService", () => {
           status: "pass",
         }),
       ]),
+    );
+  });
+
+  test("reference-match export uses active Kensington brief data and blocks deterministic image fallback", async () => {
+    const result = await getKensingtonReferenceMatchResult();
+
+    expect(result.projectGraph.brief.reference_match).toBe(true);
+    expect(result.projectGraph.brief.project_name).toBe(
+      "17 Kensington Road House",
+    );
+    expect(result.projectGraph.brief.site_input.address).toBe(
+      "17 Kensington Rd, DN15 8BQ, UK",
+    );
+    expect(result.projectGraph.brief.target_gia_m2).toBe(75);
+    expect(result.projectGraph.brief.target_storeys).toBe(2);
+    expect(result.success).toBe(false);
+    expect(result.qa.status).toBe("fail");
+
+    const titleBlock = Object.values(result.artifacts.panelArtifacts).find(
+      (artifact) => artifact.panel_type === "title_block",
+    );
+    expect(titleBlock.metadata).toEqual(
+      expect.objectContaining({
+        briefInputHash: result.projectGraph.brief.brief_input_hash,
+        projectName: "17 Kensington Road House",
+        location: "17 Kensington Rd, DN15 8BQ, UK",
+        targetGiaM2: 75,
+        targetStoreys: 2,
+      }),
+    );
+    expect(titleBlock.svgString).toContain("17 Kensington Road House");
+    expect(titleBlock.svgString).toContain("17 Kensington Rd, DN15 8BQ, UK");
+    expect(titleBlock.svgString).not.toContain("Stale Cherry House");
+    expect(titleBlock.svgString).not.toContain("97 Bradford Street");
+
+    const issueCodes = result.qa.issues.map((issue) => issue.code);
+    expect(issueCodes).toContain("REFERENCE_MATCH_PHOTOREAL_FALLBACK_USED");
+    expect(issueCodes).not.toContain("REFERENCE_MATCH_STALE_BRIEF_DATA");
+    expect(issueCodes).not.toContain("REFERENCE_MATCH_UPPER_FLOOR_MISSING");
+    expect(result.artifacts.a1Sheet.referenceMatch).toBe(true);
+    expect(
+      result.artifacts.a1Sheet.quality.panelReferenceMetrics.floor_plan_ground,
+    ).toEqual(
+      expect.objectContaining({
+        slotOccupancy: expect.any(Number),
+        sourceGeometryHash: result.geometryHash,
+        briefInputHash: result.projectGraph.brief.brief_input_hash,
+        renderMode: "compiled_technical_svg",
+      }),
+    );
+    expect(result.artifacts.a1Sheet.quality.exportGate.allowed).toBe(false);
+  });
+
+  test("reference-match QA passes when visual panels are geometry-locked image renders", async () => {
+    const result = await getKensingtonReferenceMatchResult();
+    const qa = validateProjectGraphVerticalSlice({
+      projectGraph: result.projectGraph,
+      artifacts: {
+        ...result.artifacts,
+        visuals3d: wrapVisualsAsGeometryLockedImages(result),
+      },
+    });
+
+    expect(qa.status).toBe("pass");
+    expect(qa.referenceMatch).toBe(true);
+    expect(qa.issues.map((issue) => issue.code)).not.toContain(
+      "REFERENCE_MATCH_PHOTOREAL_FALLBACK_USED",
+    );
+    expect(qa.issues.map((issue) => issue.code)).not.toContain(
+      "REFERENCE_MATCH_LOW_PANEL_OCCUPANCY",
+    );
+    expect(qa.panelRenderabilityRecords).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          panelType: "floor_plan_ground",
+          slotOccupancy: expect.any(Number),
+          sourceGeometryHash: result.geometryHash,
+          renderMode: "compiled_technical_svg",
+        }),
+      ]),
+    );
+  });
+
+  test("reference-match QA rejects repeated elevation identity hashes", async () => {
+    const result = await getKensingtonReferenceMatchResult();
+    const drawings = cloneForTest(result.artifacts.drawings);
+    const north = Object.values(drawings).find(
+      (artifact) => artifact.panel_type === "elevation_north",
+    );
+    const southEntry = Object.entries(drawings).find(
+      ([, artifact]) => artifact.panel_type === "elevation_south",
+    );
+    drawings[southEntry[0]] = {
+      ...drawings[southEntry[0]],
+      svgString: north.svgString,
+      svgHash: north.svgHash,
+      contentBounds: north.contentBounds,
+      normalizedViewBox: north.normalizedViewBox,
+      technicalQualityMetadata: north.technicalQualityMetadata,
+      metadata: {
+        ...drawings[southEntry[0]].metadata,
+        contentBounds: north.contentBounds,
+        normalizedViewBox: north.normalizedViewBox,
+        technicalQualityMetadata: north.technicalQualityMetadata,
+      },
+    };
+
+    const qa = validateProjectGraphVerticalSlice({
+      projectGraph: result.projectGraph,
+      artifacts: {
+        ...result.artifacts,
+        drawings,
+        visuals3d: wrapVisualsAsGeometryLockedImages(result),
+      },
+    });
+
+    expect(qa.status).toBe("fail");
+    expect(qa.issues.map((issue) => issue.code)).toContain(
+      "REFERENCE_MATCH_REPEATED_ELEVATION_IDENTITY",
     );
   });
 

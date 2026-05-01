@@ -106,6 +106,45 @@ function projectRoomForSection(room = {}, sectionType = "longitudinal") {
       };
 }
 
+function buildContextualSectionRooms(
+  geometry = {},
+  sectionType = "longitudinal",
+  levelProfiles = [],
+) {
+  const roomsByLevel = new Map();
+  for (const room of geometry.rooms || []) {
+    const levelId = room.level_id || room.levelId || room.actual_level_id;
+    if (!levelId) continue;
+    if (!roomsByLevel.has(levelId)) roomsByLevel.set(levelId, []);
+    roomsByLevel.get(levelId).push(room);
+  }
+  const contextualRooms = [];
+  for (const level of levelProfiles) {
+    const levelRooms = roomsByLevel.get(level.id) || [];
+    levelRooms
+      .slice()
+      .sort(
+        (left, right) =>
+          Number(right.actual_area || right.actual_area_m2 || 0) -
+          Number(left.actual_area || left.actual_area_m2 || 0),
+      )
+      .slice(0, 2)
+      .forEach((room) => {
+        contextualRooms.push({
+          ...room,
+          level,
+          level_id: level.id,
+          range: sectionDisplayRange(room, sectionType),
+          truthState: "derived",
+          name: room.name || room.function || room.id || "Room",
+          actual_area:
+            room.actual_area || room.actual_area_m2 || room.target_area_m2 || 0,
+        });
+      });
+  }
+  return contextualRooms;
+}
+
 function sectionDisplayRange(entry = {}, sectionType = "longitudinal") {
   const sectionRange = entry.clipGeometry?.sectionRange;
   if (
@@ -914,7 +953,12 @@ export function renderSectionSvg(
       Math.max(totalHeight + (sheetMode ? 0.82 : 1.4), 1),
   );
   const baseX = (width - horizontalExtent * scale) / 2;
-  const baseY = height - padding;
+  const sectionHeightPx = totalHeight * scale;
+  const availableHeightPx = Math.max(1, height - padding * 2);
+  const centeredBaseY = padding + (availableHeightPx + sectionHeightPx) / 2;
+  const baseY = sheetMode
+    ? Math.min(height - padding, centeredBaseY)
+    : height - padding;
   const sectionEvidence =
     options.sectionEvidence || buildSectionEvidence(geometry, sectionProfile);
   const sectionTruthModel = sectionEvidence.sectionTruthModel || null;
@@ -988,6 +1032,18 @@ export function renderSectionSvg(
     scale,
     levelProfiles,
   });
+  const contextualSectionRooms =
+    constructionGeometry.rooms.length || cutRooms.length
+      ? []
+      : buildContextualSectionRooms(geometry, sectionType, levelProfiles);
+  const renderedSectionRooms = constructionGeometry.rooms.length
+    ? constructionGeometry.rooms
+    : cutRooms.length
+      ? cutRooms
+      : contextualSectionRooms;
+  const renderedCutRoomCount = renderedSectionRooms.length;
+  const renderedStairCount =
+    constructionGeometry.stairs.length || intersectedStairs.length;
 
   if (
     isFeatureEnabled("useSectionRendererUpgradePhase8") &&
@@ -1039,7 +1095,7 @@ export function renderSectionSvg(
     constructionGeometry.foundation,
   );
   const cutRoomMarkup = renderCutRooms(
-    constructionGeometry.rooms.length ? constructionGeometry.rooms : cutRooms,
+    renderedSectionRooms,
     sectionType,
     levelProfiles,
     baseX,
@@ -1120,16 +1176,16 @@ export function renderSectionSvg(
     roofTruthQuality,
     constructionGeometry.roof,
   );
+  const evidenceUsefulnessScore = Math.max(
+    Number(sectionSemantics?.scores?.usefulness || 0),
+    Number(sectionEvidence.summary?.usefulnessScore || 0),
+  );
+  const renderedUsefulnessScore =
+    (renderedCutRoomCount > 0 ? 0.62 : 0.2) +
+    (renderedStairCount > 0 ? 0.18 : 0) +
+    (levelProfiles.length > 1 ? 0.12 : 0.04);
   const usefulnessScore = roundMetric(
-    clamp(
-      Number(sectionSemantics?.scores?.usefulness || 0) ||
-        Number(sectionEvidence.summary?.usefulnessScore || 0) ||
-        (cutRooms.length > 0 ? 0.62 : 0.2) +
-          (intersectedStairs.length > 0 ? 0.18 : 0) +
-          (levelProfiles.length > 1 ? 0.12 : 0.04),
-      0,
-      1,
-    ),
+    clamp(Math.max(evidenceUsefulnessScore, renderedUsefulnessScore), 0, 1),
   );
   const slotOccupancyRatio = Number(
     clamp(
@@ -1225,12 +1281,12 @@ export function renderSectionSvg(
       has_scale_bar: true,
       has_overall_dimensions: true,
       geometry_complete: geometryComplete,
-      stair_count: intersectedStairs.length,
-      room_label_count: options.hideRoomLabels ? 0 : cutRooms.length,
+      stair_count: renderedStairCount,
+      room_label_count: options.hideRoomLabels ? 0 : renderedCutRoomCount,
       wall_cut_count: cutWalls.length,
       slab_line_count: levelProfiles.length,
       level_label_count: levelProfiles.length,
-      cut_room_count: cutRooms.length,
+      cut_room_count: renderedCutRoomCount,
       cut_opening_count: cutOpenings.length,
       foundation_marker_count: 1,
       stair_tread_count: stairMarkup.treadCount,

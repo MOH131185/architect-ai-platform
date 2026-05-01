@@ -50,6 +50,19 @@ const PROJECT_GRAPH_SITE_SNAPSHOT_DATA_URL_MAX_CHARS = 600_000;
 const SITE_SNAPSHOT_IMAGE_DATA_URL_RE =
   /^data:image\/(?:png|jpe?g|webp);base64,[a-z0-9+/=\s]+$/i;
 
+function isTruthyRequestFlag(value) {
+  if (value === true) return true;
+  if (value === false || value == null) return false;
+  return [
+    "1",
+    "true",
+    "yes",
+    "on",
+    "reference_match",
+    "reference-match",
+  ].includes(String(value).trim().toLowerCase());
+}
+
 const getStageForStep = (step) =>
   STAGES[Math.max(0, Math.min(STAGES.length - 1, Number(step || 0) - 1))] ||
   "analysis";
@@ -359,11 +372,29 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
   ).floorCount;
   const sourceProjectBrief =
     designSpec.brief || designSpec.projectBrief || null;
+  const referenceMatch =
+    isTruthyRequestFlag(params.referenceMatch) ||
+    isTruthyRequestFlag(params.reference_match) ||
+    isTruthyRequestFlag(params.a1ReferenceMatch) ||
+    isTruthyRequestFlag(designSpec.referenceMatch) ||
+    isTruthyRequestFlag(designSpec.reference_match) ||
+    isTruthyRequestFlag(designSpec.a1ReferenceMatch) ||
+    String(params.renderIntent || designSpec.renderIntent || "")
+      .trim()
+      .toLowerCase() === "reference_match_a1" ||
+    String(params.qualityTarget || designSpec.qualityTarget || "")
+      .trim()
+      .toLowerCase() === "reference_match";
   const resolvedBrief = sourceProjectBrief
     ? {
         ...sourceProjectBrief,
         target_storeys: resolvedFloorCount,
         targetStoreys: resolvedFloorCount,
+        referenceMatch,
+        reference_match: referenceMatch,
+        renderIntent: referenceMatch
+          ? "reference_match_a1"
+          : sourceProjectBrief.renderIntent,
       }
     : {
         project_name:
@@ -389,9 +420,20 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
           "",
         constraints_text:
           projectDetails.constraintsText || designSpec.constraintsText || "",
+        referenceMatch,
+        reference_match: referenceMatch,
+        renderIntent: referenceMatch ? "reference_match_a1" : undefined,
       };
 
   return {
+    referenceMatch,
+    reference_match: referenceMatch,
+    renderIntent: referenceMatch
+      ? "reference_match_a1"
+      : params.renderIntent || designSpec.renderIntent || "final_a1",
+    qualityTarget: referenceMatch
+      ? "reference_match"
+      : params.qualityTarget || designSpec.qualityTarget || null,
     projectDetails: {
       category: projectDetails.category || designSpec.buildingCategory || null,
       subType: projectDetails.subType || designSpec.buildingSubType || null,
@@ -402,6 +444,10 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
         null,
       area: projectDetails.area ?? designSpec.area ?? designSpec.floorArea,
       floorCount: resolvedFloorCount,
+      autoDetectedFloorCount:
+        projectDetails.autoDetectedFloorCount ??
+        designSpec.autoDetectedFloorCount ??
+        null,
       floorCountLocked: Boolean(
         projectDetails.floorCountLocked ?? designSpec.floorCountLocked,
       ),

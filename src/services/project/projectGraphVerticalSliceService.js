@@ -160,6 +160,52 @@ const MIN_TECHNICAL_CONTENT_OCCUPANCY_RATIO = 0.08;
 const MIN_TECHNICAL_CONTENT_WIDTH_RATIO = 0.22;
 const MIN_TECHNICAL_CONTENT_HEIGHT_RATIO = 0.14;
 const MIN_3D_PRIMITIVE_COUNT = 5;
+const REFERENCE_MATCH_PLAN_MIN_SLOT_OCCUPANCY = 0.22;
+const REFERENCE_MATCH_SECTION_MIN_SLOT_OCCUPANCY = 0.12;
+const REFERENCE_MATCH_ELEVATION_MIN_SLOT_OCCUPANCY = 0.08;
+const REFERENCE_MATCH_MIN_SECTION_USEFULNESS = 0.45;
+const REFERENCE_MATCH_MIN_ELEVATION_RICHNESS = 0.18;
+
+function isTruthyFlag(value) {
+  if (value === true) return true;
+  if (value === false || value == null) return false;
+  return [
+    "1",
+    "true",
+    "yes",
+    "on",
+    "reference_match",
+    "reference-match",
+  ].includes(String(value).trim().toLowerCase());
+}
+
+function isReferenceMatchRequested(input = {}, sourceBrief = {}) {
+  return (
+    isTruthyFlag(input.referenceMatch) ||
+    isTruthyFlag(input.reference_match) ||
+    isTruthyFlag(input.a1ReferenceMatch) ||
+    isTruthyFlag(input.finalA1ReferenceMatch) ||
+    isTruthyFlag(sourceBrief.referenceMatch) ||
+    isTruthyFlag(sourceBrief.reference_match) ||
+    String(input.renderIntent || sourceBrief.renderIntent || "")
+      .trim()
+      .toLowerCase() === "reference_match_a1" ||
+    String(input.qualityTarget || sourceBrief.qualityTarget || "")
+      .trim()
+      .toLowerCase() === "reference_match"
+  );
+}
+
+function hasLockedFloorAuthority(projectDetails = {}) {
+  return (
+    Boolean(projectDetails.floorCountLocked) &&
+    Number(
+      projectDetails.floorCount ??
+        projectDetails.floors ??
+        projectDetails.targetStoreys,
+    ) > 0
+  );
+}
 
 function cloneData(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
@@ -506,6 +552,7 @@ function normalizeBrief(input = {}) {
   const sourceBrief = input.brief || input.projectBrief || input;
   const projectDetails = input.projectDetails || {};
   const locationData = input.locationData || {};
+  const referenceMatch = isReferenceMatchRequested(input, sourceBrief);
   const portfolioBlend =
     input.portfolioBlend || sourceBrief.portfolioBlend || {};
   const portfolioMaterialWeight = Number(portfolioBlend.materialWeight);
@@ -540,6 +587,9 @@ function normalizeBrief(input = {}) {
       sourceBrief.target_gia_m2 ??
         sourceBrief.targetAreaM2 ??
         sourceBrief.area ??
+        input.target_gia_m2 ??
+        input.targetAreaM2 ??
+        input.area ??
         projectDetails.area ??
         180,
     ) || 180,
@@ -571,16 +621,59 @@ function normalizeBrief(input = {}) {
         },
       ).floorCount
     : briefRequestedStoreys;
+  const residentialReferenceMinStoreys =
+    referenceMatch &&
+    isResidentialBuildingType(buildingType) &&
+    !hasLockedFloorAuthority(projectDetails)
+      ? 2
+      : 1;
   const targetStoreys = Math.max(
+    residentialReferenceMinStoreys,
     1,
     Math.min(MAX_TARGET_STOREYS, requestedStoreys),
   );
   const projectName =
     sourceBrief.project_name ||
     sourceBrief.projectName ||
+    input.project_name ||
+    input.projectName ||
+    input.name ||
     projectDetails.projectName ||
     projectDetails.name ||
     "ArchiAI Project";
+  const activeAddress =
+    siteInput.address ||
+    input.address ||
+    input.siteAddress ||
+    locationData.address ||
+    projectDetails.address ||
+    null;
+  const requiredSpacesText =
+    sourceBrief.required_spaces_text ||
+    sourceBrief.requiredSpacesText ||
+    input.required_spaces_text ||
+    input.requiredSpacesText ||
+    projectDetails.requiredSpacesText ||
+    "";
+  const constraintsText =
+    sourceBrief.constraints_text ||
+    sourceBrief.constraintsText ||
+    input.constraints_text ||
+    input.constraintsText ||
+    projectDetails.constraintsText ||
+    "";
+  const briefInputHash = computeCDSHashSync({
+    source: "active_generation_input",
+    project_name: projectName,
+    building_type: buildingType,
+    address: activeAddress,
+    postcode: siteInput.postcode || locationData.postcode || null,
+    target_gia_m2: round(targetGiaM2, 2),
+    target_storeys: targetStoreys,
+    required_spaces_text: requiredSpacesText,
+    constraints_text: constraintsText,
+    reference_match: referenceMatch,
+  });
 
   return {
     project_name: projectName,
@@ -593,11 +686,7 @@ function normalizeBrief(input = {}) {
         [],
     ),
     site_input: {
-      address:
-        siteInput.address ||
-        locationData.address ||
-        projectDetails.address ||
-        null,
+      address: activeAddress,
       postcode: siteInput.postcode || locationData.postcode || null,
       lat: Number(coordinates?.lat ?? siteInput.lat ?? 51.5074),
       lon: Number(
@@ -607,21 +696,22 @@ function normalizeBrief(input = {}) {
     },
     target_gia_m2: round(targetGiaM2, 2),
     target_storeys: targetStoreys,
+    referenceMatch,
+    reference_match: referenceMatch,
+    brief_input_hash: briefInputHash,
+    request_authority: {
+      source: "active_generation_input",
+      briefInputHash,
+      floorCountLocked: Boolean(projectDetails.floorCountLocked),
+      residentialReferenceMinStoreys,
+    },
     budget_band: sourceBrief.budget_band || "unknown",
     sustainability_ambition:
       sourceBrief.sustainability_ambition ||
       projectDetails.sustainabilityAmbition ||
       "low_energy",
-    required_spaces_text:
-      sourceBrief.required_spaces_text ||
-      sourceBrief.requiredSpacesText ||
-      projectDetails.requiredSpacesText ||
-      "",
-    constraints_text:
-      sourceBrief.constraints_text ||
-      sourceBrief.constraintsText ||
-      projectDetails.constraintsText ||
-      "",
+    required_spaces_text: requiredSpacesText,
+    constraints_text: constraintsText,
     user_intent: {
       style_keywords: toArray(
         sourceBrief.style_keywords ||
@@ -2478,6 +2568,88 @@ function buildPanelArtifactIndex(drawingArtifacts = {}) {
   return { byPanelType, byAssetId };
 }
 
+function getTechnicalQualityMetadata(artifact = null) {
+  return (
+    artifact?.technicalQualityMetadata ||
+    artifact?.metadata?.technicalQualityMetadata ||
+    {}
+  );
+}
+
+function resolvePanelRenderMode(panelType, artifact = null) {
+  const metadata = artifact?.metadata || {};
+  if (REQUIRED_3D_A1_PANEL_TYPES.includes(panelType)) {
+    if (
+      metadata.source === "project_graph_image_renderer" &&
+      metadata.imageRenderFallback === false
+    ) {
+      return metadata.visualRenderMode || "geometry_locked_image_render";
+    }
+    return metadata.visualRenderMode || "deterministic_control";
+  }
+  if (
+    String(panelType || "").startsWith("floor_plan_") ||
+    String(panelType || "").startsWith("section_") ||
+    String(panelType || "").startsWith("elevation_")
+  ) {
+    return "compiled_technical_svg";
+  }
+  return metadata.source || artifact?.asset_type || "project_graph_data_panel";
+}
+
+function buildPanelReferenceMetrics({
+  panelType,
+  artifact = null,
+  placement = null,
+  geometryHash = null,
+  briefInputHash = null,
+} = {}) {
+  const bounds = getTechnicalContentBounds(artifact);
+  const technicalQualityMetadata = getTechnicalQualityMetadata(artifact);
+  const contentBBoxRatio = {
+    occupancyRatio: round(Number(bounds?.occupancyRatio || 0), 4),
+    widthRatio: round(Number(bounds?.widthRatio || 0), 4),
+    heightRatio: round(Number(bounds?.heightRatio || 0), 4),
+  };
+  const slotOccupancy = round(
+    Number(
+      technicalQualityMetadata.slot_occupancy_ratio ??
+        technicalQualityMetadata.slotOccupancyRatio ??
+        contentBBoxRatio.occupancyRatio,
+    ),
+    4,
+  );
+  const sourceGeometryHash =
+    artifact?.source_model_hash ||
+    artifact?.geometryHash ||
+    artifact?.metadata?.sourceGeometryHash ||
+    artifact?.metadata?.renderProvenance?.sourceGeometryHash ||
+    placement?.source_model_hash ||
+    geometryHash ||
+    null;
+  const renderMode = resolvePanelRenderMode(panelType, artifact);
+  const panelIdentityHash = computeCDSHashSync({
+    sourceGeometryHash,
+    svgHash: artifact?.svgHash || placement?.svgHash || null,
+    normalizedViewBox: getTechnicalNormalizedViewBox(artifact),
+    contentBBoxRatio,
+    renderMode,
+    drawingType:
+      artifact?.drawingType ||
+      artifact?.metadata?.drawingType ||
+      technicalQualityMetadata.drawing_type ||
+      null,
+  });
+  return {
+    slotOccupancy,
+    contentBBoxRatio,
+    sourceGeometryHash,
+    panelIdentityHash,
+    briefInputHash: briefInputHash || null,
+    renderMode,
+  };
+}
+
 function polygonPath(points = [], bbox, width, height, padding = 12) {
   if (!Array.isArray(points) || points.length < 3 || !bbox) {
     return "";
@@ -2703,7 +2875,10 @@ function splitNoteLines(note = "", maxChars = 36, maxLines = 3) {
 
 function buildKeyNoteItems({ brief, site, climate, regulations, localStyle }) {
   const notes = [
-    `${brief?.building_type || "Building"} brief: ${brief?.target_gia_m2 || "target"} sq m across ${brief?.target_storeys || 1} storeys.`,
+    `Active programme: ${brief?.target_gia_m2 || "target"} sq m across ${brief?.target_storeys || 1} storey(s).`,
+    brief?.site_input?.address
+      ? `Active site: ${brief.site_input.address}.`
+      : null,
     site?.area_m2
       ? `Site area ${site.area_m2} sq m; boundary and context sourced from ProjectGraph site analysis.`
       : "Site boundary is held in the ProjectGraph site model.",
@@ -2814,17 +2989,21 @@ function buildTitleBlockPanelArtifact({
     .trim()
     .toUpperCase();
   const titleLines = splitNoteLines(projectTitle, 22, 2);
+  const programmeLabel = String(brief?.building_type || "architecture")
+    .replace(/[_-]+/g, " ")
+    .trim();
   const rows = [
     ["Project", brief?.project_name || "ArchiAI Project"],
     ["Location", location],
+    ["Programme", programmeLabel],
+    ["Target GIA", `${round(brief?.target_gia_m2 || 0, 1)} m²`],
+    ["Storeys", `${brief?.target_storeys || 1}`],
     ["Stage", sheetLabel],
-    ["Scale", "As shown"],
-    ["Date", "Generated"],
     ["Drawing No.", drawingNumber],
   ];
   const rowSvg = rows
     .map((row, index) => {
-      const y = 230 + index * 48;
+      const y = 206 + index * 43;
       const rawValue = String(row[1] || "");
       const valueMaxChars = index <= 1 ? 34 : 28;
       const valueLines = splitNoteLines(rawValue, valueMaxChars, 2);
@@ -2848,7 +3027,7 @@ function buildTitleBlockPanelArtifact({
         `<text x="34" y="${62 + index * 32}" font-family="Arial, sans-serif" font-size="28" font-weight="700" fill="#111111">${escapeXml(line)}</text>`,
     )
     .join("\n  ");
-  const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="title_block" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}">
+  const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="title_block" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-brief-input-hash="${escapeXml(brief?.brief_input_hash || "")}">
   <rect width="${width}" height="${height}" fill="#ffffff"/>
   <rect x="18" y="18" width="584" height="584" fill="none" stroke="#111111" stroke-width="3"/>
   ${titleSvg}
@@ -2886,6 +3065,13 @@ function buildTitleBlockPanelArtifact({
       source: "project_graph_title_block",
       panelType: "title_block",
       geometryHash,
+      briefInputHash: brief?.brief_input_hash || null,
+      referenceMatch: brief?.reference_match === true,
+      projectName: brief?.project_name || null,
+      location,
+      targetGiaM2: Number(brief?.target_gia_m2 || 0),
+      targetStoreys: Number(brief?.target_storeys || 1),
+      buildingType: brief?.building_type || null,
       drawingNumber,
       sheetLabel,
     },
@@ -3637,6 +3823,8 @@ function buildPanelPlacements({
   targetStoreys,
   allowedPanelTypes = null,
   layoutTemplate = "board-v2",
+  geometryHash = null,
+  briefInputHash = null,
 }) {
   const artifactIndex = buildPanelArtifactIndex(panelArtifacts);
   const allowed = allowedPanelTypes ? new Set(allowedPanelTypes) : null;
@@ -3663,6 +3851,12 @@ function buildPanelPlacements({
       if (!artifact && !slot.required) {
         return null;
       }
+      const referenceMetrics = buildPanelReferenceMetrics({
+        panelType: slot.panelType,
+        artifact,
+        geometryHash,
+        briefInputHash,
+      });
       return {
         slotIndex: index,
         panelType: slot.panelType,
@@ -3679,6 +3873,13 @@ function buildPanelPlacements({
         source_model_hash: artifact?.source_model_hash || null,
         geometryHash: artifact?.source_model_hash || null,
         svgHash: artifact?.svgHash || null,
+        slotOccupancy: referenceMetrics.slotOccupancy,
+        contentBBoxRatio: referenceMetrics.contentBBoxRatio,
+        sourceGeometryHash: referenceMetrics.sourceGeometryHash,
+        panelIdentityHash: referenceMetrics.panelIdentityHash,
+        briefInputHash: referenceMetrics.briefInputHash,
+        renderMode: referenceMetrics.renderMode,
+        referenceMetrics,
         status: artifact?.svgString ? "ready" : "missing",
         empty: !artifact?.svgString,
       };
@@ -4116,7 +4317,7 @@ function buildSheetSvg({
     .map((placement) => placement.sourcePanelAssetId)
     .filter(Boolean);
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${A1_SHEET_SIZE_MM.width}mm" height="${A1_SHEET_SIZE_MM.height}mm" viewBox="0 0 ${A1_SHEET_SIZE_MM.width} ${A1_SHEET_SIZE_MM.height}" data-layout-version="${A1_SHEET_LAYOUT_VERSION}" data-layout-template="${escapeXml(layoutTemplate)}" data-placeholder-only="false" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-sheet-number="${escapeXml(sheetNumber)}" data-sheet-label="${escapeXml(sheetLabel)}" data-qa-status="${escapeXml(qaStatus || "pending")}">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${A1_SHEET_SIZE_MM.width}mm" height="${A1_SHEET_SIZE_MM.height}mm" viewBox="0 0 ${A1_SHEET_SIZE_MM.width} ${A1_SHEET_SIZE_MM.height}" data-layout-version="${A1_SHEET_LAYOUT_VERSION}" data-layout-template="${escapeXml(layoutTemplate)}" data-placeholder-only="false" data-reference-match="${brief?.reference_match === true ? "true" : "false"}" data-brief-input-hash="${escapeXml(brief?.brief_input_hash || "")}" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-sheet-number="${escapeXml(sheetNumber)}" data-sheet-label="${escapeXml(sheetLabel)}" data-qa-status="${escapeXml(qaStatus || "pending")}">
   <rect width="${A1_SHEET_SIZE_MM.width}" height="${A1_SHEET_SIZE_MM.height}" fill="#ffffff"/>
   <rect x="5" y="5" width="831" height="584" fill="none" stroke="#111111" stroke-width="0.7"/>
   <desc>Reference board A1 package for ${escapeXml(brief.project_name)}. Panels ${sourcePanelAssetIds.length}. Geometry hash ${escapeXml(geometryHash)}.</desc>
@@ -4182,6 +4383,8 @@ async function buildA1Sheet({
     targetStoreys,
     allowedPanelTypes: sheetPlan?.panel_types || null,
     layoutTemplate,
+    geometryHash,
+    briefInputHash: brief?.brief_input_hash || null,
   });
   const drawingIds = drawingSet.drawings.map((drawing) => drawing.drawing_id);
   const sourcePanelAssetIds = panelPlacements
@@ -4241,6 +4444,19 @@ async function buildA1Sheet({
   const requiredPlacements = panelPlacements.filter((placement) =>
     requiredPlacementTypes.includes(placement.panelType),
   );
+  const panelReferenceMetrics = Object.fromEntries(
+    panelPlacements.map((placement) => [
+      placement.panelType,
+      placement.referenceMetrics || {
+        slotOccupancy: placement.slotOccupancy || 0,
+        contentBBoxRatio: placement.contentBBoxRatio || null,
+        sourceGeometryHash: placement.sourceGeometryHash || null,
+        panelIdentityHash: placement.panelIdentityHash || null,
+        briefInputHash: placement.briefInputHash || null,
+        renderMode: placement.renderMode || null,
+      },
+    ]),
+  );
   return {
     sheetSet: {
       sheets: [
@@ -4283,6 +4499,8 @@ async function buildA1Sheet({
       source_model_hash: geometryHash,
       drawing_number: drawingNumber,
       sheet_label: sheetLabel,
+      referenceMatch: brief?.reference_match === true,
+      briefInputHash: brief?.brief_input_hash || null,
       quality: {
         placeholderOnly: false,
         requiredPanelCount: sheetPlan
@@ -4290,6 +4508,9 @@ async function buildA1Sheet({
           : requiredPlacementTypes.length,
         requiredPanelsPlaced: requiredPlacements.length,
         totalPanelsPlaced: panelPlacements.length,
+        referenceMatch: brief?.reference_match === true,
+        briefInputHash: brief?.brief_input_hash || null,
+        panelReferenceMetrics,
       },
       svgHash,
       svgString,
@@ -4301,6 +4522,9 @@ async function buildA1Sheet({
         presentationSummary.visualPanelsFallbackReasons,
       metadata: {
         textRenderStatus,
+        referenceMatch: brief?.reference_match === true,
+        briefInputHash: brief?.brief_input_hash || null,
+        panelReferenceMetrics,
         presentationMode: presentationSummary.presentationMode,
         visualFidelityStatus: presentationSummary.visualFidelityStatus,
         visualPanelsRenderMode: presentationSummary.visualPanelsRenderMode,
@@ -4377,6 +4601,11 @@ function buildPanelRenderSummary(sheetArtifact = {}) {
     svgHash: placement.svgHash || null,
     sourceModelHash: placement.source_model_hash || null,
     geometryHash: placement.geometryHash || null,
+    slotOccupancy: placement.slotOccupancy || 0,
+    contentBBoxRatio: placement.contentBBoxRatio || null,
+    panelIdentityHash: placement.panelIdentityHash || null,
+    briefInputHash: placement.briefInputHash || null,
+    renderMode: placement.renderMode || null,
     hasSvg: placement.status === "ready" && Boolean(placement.svgHash),
   }));
 }
@@ -4871,6 +5100,115 @@ function technicalContentBoundsTooSmall(artifact = null) {
   );
 }
 
+function referenceMatchTechnicalThresholds(panelType = "") {
+  if (String(panelType).startsWith("floor_plan_")) {
+    return {
+      slotOccupancy: REFERENCE_MATCH_PLAN_MIN_SLOT_OCCUPANCY,
+      widthRatio: 0.42,
+      heightRatio: 0.28,
+    };
+  }
+  if (String(panelType).startsWith("section_")) {
+    return {
+      slotOccupancy: REFERENCE_MATCH_SECTION_MIN_SLOT_OCCUPANCY,
+      widthRatio: 0.4,
+      heightRatio: 0.2,
+      sectionUsefulness: REFERENCE_MATCH_MIN_SECTION_USEFULNESS,
+      cutRoomCount: 1,
+    };
+  }
+  if (String(panelType).startsWith("elevation_")) {
+    return {
+      slotOccupancy: REFERENCE_MATCH_ELEVATION_MIN_SLOT_OCCUPANCY,
+      widthRatio: 0.38,
+      heightRatio: 0.14,
+      facadeRichness: REFERENCE_MATCH_MIN_ELEVATION_RICHNESS,
+    };
+  }
+  return {
+    slotOccupancy: MIN_TECHNICAL_CONTENT_OCCUPANCY_RATIO,
+    widthRatio: MIN_TECHNICAL_CONTENT_WIDTH_RATIO,
+    heightRatio: MIN_TECHNICAL_CONTENT_HEIGHT_RATIO,
+  };
+}
+
+function evaluateReferenceMatchTechnicalPanel({
+  panelType,
+  artifact,
+  placement = null,
+  geometryHash = null,
+  briefInputHash = null,
+} = {}) {
+  const metrics = buildPanelReferenceMetrics({
+    panelType,
+    artifact,
+    placement,
+    geometryHash,
+    briefInputHash,
+  });
+  const thresholds = referenceMatchTechnicalThresholds(panelType);
+  const technicalQualityMetadata = getTechnicalQualityMetadata(artifact);
+  const failures = [];
+  if (!artifact) {
+    failures.push("missing_artifact");
+  }
+  if (!svgLooksRenderable(artifact?.svgString || "")) {
+    failures.push("not_renderable");
+  }
+  if (metrics.slotOccupancy < thresholds.slotOccupancy) {
+    failures.push("slot_occupancy_low");
+  }
+  if (
+    Number(metrics.contentBBoxRatio?.widthRatio || 0) < thresholds.widthRatio
+  ) {
+    failures.push("content_width_low");
+  }
+  if (
+    Number(metrics.contentBBoxRatio?.heightRatio || 0) < thresholds.heightRatio
+  ) {
+    failures.push("content_height_low");
+  }
+  if (
+    thresholds.sectionUsefulness &&
+    Number(technicalQualityMetadata.section_usefulness_score || 0) <
+      thresholds.sectionUsefulness
+  ) {
+    failures.push("section_usefulness_low");
+  }
+  if (
+    thresholds.cutRoomCount &&
+    Number(technicalQualityMetadata.cut_room_count || 0) <
+      thresholds.cutRoomCount
+  ) {
+    failures.push("section_cut_room_missing");
+  }
+  if (
+    thresholds.facadeRichness &&
+    Number(technicalQualityMetadata.facade_richness_score || 0) <
+      thresholds.facadeRichness
+  ) {
+    failures.push("facade_richness_low");
+  }
+  return {
+    panelType,
+    ok: failures.length === 0,
+    failures,
+    thresholds,
+    metrics,
+    technicalQualityMetadata: {
+      slot_occupancy_ratio:
+        technicalQualityMetadata.slot_occupancy_ratio || null,
+      section_usefulness_score:
+        technicalQualityMetadata.section_usefulness_score || null,
+      cut_room_count: technicalQualityMetadata.cut_room_count || null,
+      facade_richness_score:
+        technicalQualityMetadata.facade_richness_score || null,
+      window_count: technicalQualityMetadata.window_count || null,
+      door_count: technicalQualityMetadata.door_count || null,
+    },
+  };
+}
+
 function count3DGeometryElements(svgString = "") {
   return (String(svgString || "").match(/<(?:polygon|polyline|path)\b/gi) || [])
     .length;
@@ -5078,6 +5416,17 @@ export function validateProjectGraphVerticalSlice({
   const checks = [];
   const issues = [];
   const geometryHash = projectGraph?.selected_design?.source_model_hash;
+  const referenceMatch =
+    projectGraph?.brief?.reference_match === true ||
+    projectGraph?.brief?.referenceMatch === true ||
+    artifacts?.referenceMatch === true ||
+    artifacts?.a1Sheet?.referenceMatch === true ||
+    artifacts?.a1Sheet?.metadata?.referenceMatch === true;
+  const briefInputHash =
+    projectGraph?.brief?.brief_input_hash ||
+    artifacts?.a1Sheet?.briefInputHash ||
+    artifacts?.a1Sheet?.metadata?.briefInputHash ||
+    null;
   const programmeIds = new Set(
     (projectGraph?.programme?.spaces || []).map((space) => space.space_id),
   );
@@ -5380,12 +5729,26 @@ export function validateProjectGraphVerticalSlice({
     ...(artifacts.drawings || {}),
     ...(artifacts.panelArtifacts || {}),
   };
+  const placementByPanelType = new Map(
+    (artifacts.a1Sheet?.panelPlacements || []).map((placement) => [
+      placement.panelType,
+      placement,
+    ]),
+  );
   const expectedPanels = expectedRequiredPanelTypes(
     projectGraph?.brief?.target_storeys || 1,
   );
   const panelRenderabilityRecords = expectedPanels.map((panelType) => {
     const artifact = findPanelArtifact(panelArtifacts, panelType);
     const evaluation = evaluatePanelRenderability(artifact);
+    const placement = placementByPanelType.get(panelType) || null;
+    const referenceMetrics = buildPanelReferenceMetrics({
+      panelType,
+      artifact,
+      placement,
+      geometryHash,
+      briefInputHash,
+    });
     return {
       panelType,
       ...evaluation,
@@ -5394,6 +5757,12 @@ export function validateProjectGraphVerticalSlice({
       source: artifact?.metadata?.source || null,
       drawingType:
         artifact?.drawingType || artifact?.metadata?.drawingType || null,
+      slotOccupancy: referenceMetrics.slotOccupancy,
+      contentBBoxRatio: referenceMetrics.contentBBoxRatio,
+      sourceGeometryHash: referenceMetrics.sourceGeometryHash,
+      panelIdentityHash: referenceMetrics.panelIdentityHash,
+      briefInputHash: referenceMetrics.briefInputHash,
+      renderMode: referenceMetrics.renderMode,
     };
   });
   const missingRequiredPanels = panelRenderabilityRecords.filter(
@@ -5426,6 +5795,134 @@ export function validateProjectGraphVerticalSlice({
         },
       ),
     );
+  }
+
+  if (referenceMatch) {
+    const activeBrief = projectGraph?.brief || {};
+    const titleBlockArtifact = findPanelArtifact(panelArtifacts, "title_block");
+    const titleMetadata = titleBlockArtifact?.metadata || {};
+    const titleBriefMatches =
+      titleMetadata.briefInputHash === briefInputHash &&
+      titleMetadata.projectName === activeBrief.project_name &&
+      Number(titleMetadata.targetGiaM2 || 0) ===
+        Number(activeBrief.target_gia_m2 || 0) &&
+      Number(titleMetadata.targetStoreys || 0) ===
+        Number(activeBrief.target_storeys || 0) &&
+      String(titleMetadata.location || "") ===
+        String(
+          activeBrief.site_input?.address ||
+            activeBrief.site_input?.postcode ||
+            "",
+        );
+    addCheck(
+      checks,
+      "REFERENCE_MATCH_BRIEF_AUTHORITY_CURRENT",
+      titleBriefMatches,
+      {
+        titleBlock: {
+          briefInputHash: titleMetadata.briefInputHash || null,
+          projectName: titleMetadata.projectName || null,
+          location: titleMetadata.location || null,
+          targetGiaM2: titleMetadata.targetGiaM2 || null,
+          targetStoreys: titleMetadata.targetStoreys || null,
+        },
+        activeBrief: {
+          briefInputHash,
+          projectName: activeBrief.project_name || null,
+          location:
+            activeBrief.site_input?.address ||
+            activeBrief.site_input?.postcode ||
+            null,
+          targetGiaM2: activeBrief.target_gia_m2 || null,
+          targetStoreys: activeBrief.target_storeys || null,
+        },
+      },
+      "graphic",
+      0,
+    );
+    if (!titleBriefMatches) {
+      issues.push(
+        buildIssue(
+          "REFERENCE_MATCH_STALE_BRIEF_DATA",
+          "error",
+          "Reference-match A1 title block does not match the active generation brief.",
+          {
+            titleMetadata,
+            activeBrief: {
+              briefInputHash,
+              projectName: activeBrief.project_name || null,
+              siteInput: activeBrief.site_input || null,
+              targetGiaM2: activeBrief.target_gia_m2 || null,
+              targetStoreys: activeBrief.target_storeys || null,
+            },
+          },
+        ),
+      );
+    }
+
+    const expectedUpperFloorPanels = floorPlanPanelTypes(
+      activeBrief.target_storeys || 1,
+    ).slice(1);
+    const missingUpperFloorPanels = expectedUpperFloorPanels.filter(
+      (panelType) => {
+        const record = panelRenderabilityRecords.find(
+          (entry) => entry.panelType === panelType,
+        );
+        return !record?.ok;
+      },
+    );
+    addCheck(
+      checks,
+      "REFERENCE_MATCH_UPPER_FLOORS_PRESENT",
+      missingUpperFloorPanels.length === 0,
+      { expectedUpperFloorPanels, missingUpperFloorPanels },
+      "graphic",
+      0,
+    );
+    if (missingUpperFloorPanels.length) {
+      issues.push(
+        buildIssue(
+          "REFERENCE_MATCH_UPPER_FLOOR_MISSING",
+          "error",
+          "Reference-match residential board is missing a requested upper-floor plan.",
+          { expectedUpperFloorPanels, missingUpperFloorPanels },
+        ),
+      );
+    }
+
+    const blankTechnicalPanels = panelRenderabilityRecords.filter((record) => {
+      if (
+        !String(record.panelType || "").startsWith("floor_plan_") &&
+        !String(record.panelType || "").startsWith("section_") &&
+        !String(record.panelType || "").startsWith("elevation_")
+      ) {
+        return false;
+      }
+      return (
+        !record.ok ||
+        Number(record.slotOccupancy || 0) <= 0 ||
+        Number(record.contentBBoxRatio?.widthRatio || 0) <= 0 ||
+        Number(record.contentBBoxRatio?.heightRatio || 0) <= 0
+      );
+    });
+    addCheck(
+      checks,
+      "REFERENCE_MATCH_NO_BLANK_PANEL_AREA",
+      blankTechnicalPanels.length === 0,
+      { blankTechnicalPanels },
+      "graphic",
+      0,
+    );
+    if (blankTechnicalPanels.length) {
+      issues.push(
+        buildIssue(
+          "REFERENCE_MATCH_BLANK_PANEL_AREA",
+          "error",
+          "Reference-match A1 contains a technical panel with blank or unmeasured content area.",
+          { blankTechnicalPanels },
+        ),
+      );
+    }
   }
 
   const technicalPanelTypesForStoreys = buildTechnicalA1PanelTypes(
@@ -5615,6 +6112,95 @@ export function validateProjectGraphVerticalSlice({
     0,
   );
 
+  if (referenceMatch) {
+    const referenceTechnicalEvaluations = technicalPanelTypesForStoreys.map(
+      (panelType) =>
+        evaluateReferenceMatchTechnicalPanel({
+          panelType,
+          artifact: findPanelArtifact(artifacts.drawings || {}, panelType),
+          placement: placementByPanelType.get(panelType) || null,
+          geometryHash,
+          briefInputHash,
+        }),
+    );
+    const referenceTechnicalFailures = referenceTechnicalEvaluations.filter(
+      (entry) => !entry.ok,
+    );
+    const weakSectionCuts = referenceTechnicalFailures.filter((entry) =>
+      String(entry.panelType || "").startsWith("section_"),
+    );
+    addCheck(
+      checks,
+      "REFERENCE_MATCH_TECHNICAL_PANEL_READABILITY",
+      referenceTechnicalFailures.length === 0,
+      {
+        referenceTechnicalFailures,
+        thresholds: {
+          planSlotOccupancy: REFERENCE_MATCH_PLAN_MIN_SLOT_OCCUPANCY,
+          sectionSlotOccupancy: REFERENCE_MATCH_SECTION_MIN_SLOT_OCCUPANCY,
+          elevationSlotOccupancy: REFERENCE_MATCH_ELEVATION_MIN_SLOT_OCCUPANCY,
+          sectionUsefulness: REFERENCE_MATCH_MIN_SECTION_USEFULNESS,
+          elevationRichness: REFERENCE_MATCH_MIN_ELEVATION_RICHNESS,
+        },
+      },
+      "graphic",
+      0,
+    );
+    if (referenceTechnicalFailures.length) {
+      issues.push(
+        buildIssue(
+          "REFERENCE_MATCH_LOW_PANEL_OCCUPANCY",
+          "error",
+          "Reference-match technical panels do not meet the stricter A1 readability thresholds.",
+          { referenceTechnicalFailures },
+        ),
+      );
+    }
+    if (weakSectionCuts.length) {
+      issues.push(
+        buildIssue(
+          "REFERENCE_MATCH_WEAK_SECTION_CUT",
+          "error",
+          "Reference-match section cuts are too weak for a professional A1 board.",
+          { weakSectionCuts },
+        ),
+      );
+    }
+
+    const elevationIdentityRecords = referenceTechnicalEvaluations
+      .filter((entry) => String(entry.panelType || "").startsWith("elevation_"))
+      .map((entry) => ({
+        panelType: entry.panelType,
+        panelIdentityHash: entry.metrics.panelIdentityHash,
+        slotOccupancy: entry.metrics.slotOccupancy,
+        contentBBoxRatio: entry.metrics.contentBBoxRatio,
+      }));
+    const distinctElevationIdentities = new Set(
+      elevationIdentityRecords.map((entry) => entry.panelIdentityHash),
+    );
+    const elevationsDistinct =
+      elevationIdentityRecords.length === 4 &&
+      distinctElevationIdentities.size === elevationIdentityRecords.length;
+    addCheck(
+      checks,
+      "REFERENCE_MATCH_ELEVATION_IDENTITIES_DISTINCT",
+      elevationsDistinct,
+      { elevationIdentityRecords },
+      "graphic",
+      0,
+    );
+    if (!elevationsDistinct) {
+      issues.push(
+        buildIssue(
+          "REFERENCE_MATCH_REPEATED_ELEVATION_IDENTITY",
+          "error",
+          "North, south, east and west elevations must be side-specific in reference-match exports.",
+          { elevationIdentityRecords },
+        ),
+      );
+    }
+  }
+
   const visuals3d = artifacts.visuals3d || {};
   const missing3dPanels = REQUIRED_3D_A1_PANEL_TYPES.filter((panelType) => {
     const artifact =
@@ -5735,11 +6321,21 @@ export function validateProjectGraphVerticalSlice({
     issues.push(
       buildIssue(
         "PRESENTATION_RENDER_FALLBACK_USED",
-        "warning",
+        referenceMatch ? "error" : "warning",
         "Photoreal presentation image rendering was unavailable; deterministic ProjectGraph control renders were used instead.",
-        { fallbackPresentationPanels },
+        { fallbackPresentationPanels, referenceMatch },
       ),
     );
+    if (referenceMatch) {
+      issues.push(
+        buildIssue(
+          "REFERENCE_MATCH_PHOTOREAL_FALLBACK_USED",
+          "error",
+          "Reference-match A1 export requires geometry-locked photoreal image panels; deterministic fallback is not publishable.",
+          { fallbackPresentationPanels },
+        ),
+      );
+    }
   }
 
   // Plan §10 site/context category (15 pts)
@@ -5997,6 +6593,9 @@ export function validateProjectGraphVerticalSlice({
     totalScore,
     categoryScores,
     source_model_hash: geometryHash,
+    referenceMatch,
+    briefInputHash,
+    panelRenderabilityRecords,
     checks,
     issues,
     constraint_conflicts: constraintConflicts,
@@ -6488,13 +7087,16 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       visualPanels: visualPanelsForGate,
       materialPalette: materialPaletteForGate,
       openaiProvider: openaiQaMetadata,
-      strictPhotoreal: process.env.OPENAI_STRICT_IMAGE_GEN === "true",
+      strictPhotoreal:
+        brief?.reference_match === true ||
+        process.env.OPENAI_STRICT_IMAGE_GEN === "true",
       imageGenEnabled: process.env.PROJECT_GRAPH_IMAGE_GEN_ENABLED === "true",
       scope: "upstream_partial",
     });
     sheetArtifact.quality = {
       ...(sheetArtifact.quality || {}),
       exportGate: upstreamGate,
+      referenceMatch: brief?.reference_match === true,
     };
   } catch (gateError) {
     // Never fail the slice on gate evaluation; surface the error in metadata.
@@ -6604,6 +7206,8 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     textRenderStatus: pdfArtifact.renderedProof?.textRenderStatus,
     presentationMode: sheetArtifact.presentationMode,
     visualFidelityStatus: sheetArtifact.visualFidelityStatus,
+    referenceMatch: brief?.reference_match === true,
+    briefInputHash: brief?.brief_input_hash || null,
     openai: openaiQaMetadata,
     openaiConfigured: openaiQaMetadata.openaiConfigured,
     openaiReasoningUsed: openaiQaMetadata.openaiReasoningUsed,

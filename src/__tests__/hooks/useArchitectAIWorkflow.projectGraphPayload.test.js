@@ -133,6 +133,27 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
     expect(JSON.stringify(request).length).toBeLessThan(20_000);
   });
 
+  test("propagates reference-match A1 intent through the ProjectGraph POST payload", () => {
+    const request = buildProjectGraphVerticalSliceRequest({
+      referenceMatch: true,
+      designSpec: {
+        buildingCategory: "residential",
+        buildingSubType: "detached-house",
+        projectName: "17 Kensington Road House",
+        area: 75,
+        autoDetectedFloorCount: 1,
+        floorCountLocked: false,
+      },
+    });
+
+    expect(request.referenceMatch).toBe(true);
+    expect(request.reference_match).toBe(true);
+    expect(request.renderIntent).toBe("reference_match_a1");
+    expect(request.qualityTarget).toBe("reference_match");
+    expect(request.brief.reference_match).toBe(true);
+    expect(request.projectDetails.autoDetectedFloorCount).toBe(1);
+  });
+
   test("drops malformed site polygon coordinates before ProjectGraph POST", () => {
     const request = buildProjectGraphVerticalSliceRequest({
       designSpec: {
