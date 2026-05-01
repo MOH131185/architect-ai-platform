@@ -4876,6 +4876,18 @@ function count3DGeometryElements(svgString = "") {
     .length;
 }
 
+function stripEmbeddedImageDataForPlaceholderScan(svg = "") {
+  return String(svg || "")
+    .replace(
+      /\b(xlink:href|href)=["']data:image\/[a-zA-Z0-9.+-]+;base64,[^"']+["']/g,
+      '$1="data:image/<redacted>;base64,<redacted>"',
+    )
+    .replace(
+      /data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+/g,
+      "data:image/<redacted>;base64,<redacted>",
+    );
+}
+
 function getVisual3DPrimitiveCount(artifact = null) {
   const metadata = artifact?.metadata || {};
   return Number(
@@ -5643,7 +5655,8 @@ export function validateProjectGraphVerticalSlice({
     if (!strength.details.isGeometryLockedImage && svgLength < 1200) {
       return { ...baseDetails, reason: "svg_too_short" };
     }
-    if (/1x1|placeholder_3d|geometryRenderService/i.test(svg)) {
+    const placeholderScanSvg = stripEmbeddedImageDataForPlaceholderScan(svg);
+    if (/1x1|placeholder_3d|geometryRenderService/i.test(placeholderScanSvg)) {
       return { ...baseDetails, reason: "regex_match_placeholder" };
     }
     if (!strength.ok) {

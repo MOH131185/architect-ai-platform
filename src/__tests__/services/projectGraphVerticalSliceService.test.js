@@ -970,7 +970,8 @@ describe("projectGraphVerticalSliceService", () => {
     const result = await buildArchitectureProjectVerticalSlice(
       createReadingRoomBrief(),
     );
-    const pngPayload = "a".repeat(1600);
+    const pngPayload =
+      "AAA1x1BBBplaceholder_3dCCCgeometryRenderService" + "a".repeat(1600);
     const imageWrappedVisuals = Object.fromEntries(
       Object.entries(result.artifacts.visuals3d).map(
         ([panelType, artifact]) => [
@@ -987,6 +988,7 @@ describe("projectGraphVerticalSliceService", () => {
               imageRenderByteLength: 1200,
               imageProviderUsed: "openai",
               openaiImageUsed: true,
+              hasPngImagePayload: true,
               openaiRequestId: `req_${panelType}`,
               presentationMode: "geometry_locked_image_render",
               visualFidelityStatus: "photoreal_geometry_locked",
@@ -1019,6 +1021,63 @@ describe("projectGraphVerticalSliceService", () => {
         expect.objectContaining({
           code: "REQUIRED_3D_PANELS_PRESENT",
           status: "pass",
+        }),
+      ]),
+    );
+  });
+
+  test("QA still catches visible 3D placeholder tokens outside embedded image data", async () => {
+    const result = await buildArchitectureProjectVerticalSlice(
+      createReadingRoomBrief(),
+    );
+    const artifact = result.artifacts.visuals3d.hero_3d;
+    const visiblePlaceholderHero = {
+      ...artifact,
+      asset_type: "geometry_locked_presentation_svg",
+      svgString: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${artifact.width} ${artifact.height}" width="${artifact.width}" height="${artifact.height}"><metadata>geometryRenderService placeholder_3d</metadata><image href="data:image/png;base64,${"a".repeat(1600)}" x="0" y="0" width="${artifact.width}" height="${artifact.height}" preserveAspectRatio="xMidYMid slice"/></svg>`,
+      metadata: {
+        ...artifact.metadata,
+        source: "project_graph_image_renderer",
+        imageRenderFallback: false,
+        imageRenderFallbackReason: null,
+        imageRenderByteLength: 1200,
+        imageProviderUsed: "openai",
+        openaiImageUsed: true,
+        hasPngImagePayload: true,
+        openaiRequestId: "req_visible_placeholder",
+        presentationMode: "geometry_locked_image_render",
+        visualFidelityStatus: "photoreal_geometry_locked",
+        visualRenderMode: "photoreal_image_gen",
+        renderProvenance: {
+          sourceGeometryHash: result.geometryHash,
+          referenceSource: "compiled_3d_control_svg",
+          requestId: "req_visible_placeholder",
+        },
+      },
+    };
+
+    const qa = validateProjectGraphVerticalSlice({
+      projectGraph: result.projectGraph,
+      artifacts: {
+        ...result.artifacts,
+        visuals3d: {
+          ...result.artifacts.visuals3d,
+          hero_3d: visiblePlaceholderHero,
+        },
+      },
+    });
+
+    const placeholderIssue = qa.issues.find(
+      (issue) => issue.code === "PLACEHOLDER_3D_RENDER_USED",
+    );
+
+    expect(qa.status).toBe("fail");
+    expect(placeholderIssue).toBeTruthy();
+    expect(placeholderIssue.details.placeholder3dPanels).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          panelType: "hero_3d",
+          reason: "regex_match_placeholder",
         }),
       ]),
     );
