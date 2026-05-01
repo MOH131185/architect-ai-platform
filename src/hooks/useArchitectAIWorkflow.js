@@ -509,9 +509,25 @@ async function runProjectGraphVerticalSliceWorkflow({
         placeholderIssue.data.placeholder3dPanels,
       );
     }
+    const panelContentIssue = issues.find(
+      (entry) => entry?.code === "A1_PANEL_CONTENT_MISSING",
+    );
+    if (panelContentIssue?.data?.missingRequiredPanels) {
+      console.error(
+        "[ProjectGraph] A1_PANEL_CONTENT_MISSING detail",
+        panelContentIssue.data.missingRequiredPanels,
+      );
+    }
     const errorIssues = issues.filter((entry) => entry?.severity === "error");
     if (errorIssues.length) {
       console.error("[ProjectGraph] vertical slice QA errors", errorIssues);
+      errorIssues.forEach((entry) => {
+        console.error(
+          `[ProjectGraph] issue ${entry?.code || "UNKNOWN"}:`,
+          entry?.message || "",
+          entry?.data || {},
+        );
+      });
     }
     const issue = issues[0];
     throw new Error(

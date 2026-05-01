@@ -4777,6 +4777,36 @@ function svgLooksRenderable(svgString = "") {
   );
 }
 
+function evaluatePanelRenderability(artifact = null) {
+  const svg = String(artifact?.svgString || "");
+  const length = svg.length;
+  const hasInvalidTokens = svgHasInvalidTokens(svg);
+  const hasRenderableElement =
+    /<(?:path|rect|line|polyline|polygon|circle|ellipse|image|text)\b/i.test(
+      svg,
+    );
+  let reason = null;
+  if (!artifact) {
+    reason = "missing_artifact";
+  } else if (length === 0) {
+    reason = "empty_svg_string";
+  } else if (length < 200) {
+    reason = "svg_too_short";
+  } else if (hasInvalidTokens) {
+    reason = "has_invalid_tokens";
+  } else if (!hasRenderableElement) {
+    reason = "no_renderable_element";
+  }
+  return {
+    present: Boolean(artifact),
+    length,
+    hasInvalidTokens,
+    hasRenderableElement,
+    reason,
+    ok: reason === null,
+  };
+}
+
 function expectedDrawingTypeForPanel(panelType = "") {
   if (String(panelType).startsWith("floor_plan_")) return "plan";
   if (String(panelType).startsWith("elevation_")) return "elevation";
@@ -5341,15 +5371,34 @@ export function validateProjectGraphVerticalSlice({
   const expectedPanels = expectedRequiredPanelTypes(
     projectGraph?.brief?.target_storeys || 1,
   );
-  const missingRequiredPanels = expectedPanels.filter((panelType) => {
+  const panelRenderabilityRecords = expectedPanels.map((panelType) => {
     const artifact = findPanelArtifact(panelArtifacts, panelType);
-    return !svgLooksRenderable(artifact?.svgString || "");
+    const evaluation = evaluatePanelRenderability(artifact);
+    return {
+      panelType,
+      ...evaluation,
+      assetId: artifact?.asset_id || null,
+      assetType: artifact?.asset_type || null,
+      source: artifact?.metadata?.source || null,
+      drawingType:
+        artifact?.drawingType || artifact?.metadata?.drawingType || null,
+    };
   });
+  const missingRequiredPanels = panelRenderabilityRecords.filter(
+    (record) => !record.ok,
+  );
+  const missingRequiredPanelTypes = missingRequiredPanels.map(
+    (record) => record.panelType,
+  );
   addCheck(
     checks,
     "A1_REQUIRED_PANEL_CONTENT_PRESENT",
     missingRequiredPanels.length === 0,
-    { missingRequiredPanels, expectedPanels },
+    {
+      missingRequiredPanels,
+      missingRequiredPanelTypes,
+      expectedPanels,
+    },
     "graphic",
     0,
   );
@@ -5359,7 +5408,10 @@ export function validateProjectGraphVerticalSlice({
         "A1_PANEL_CONTENT_MISSING",
         "error",
         "One or more required A1 panels are missing renderable source content.",
-        { missingRequiredPanels },
+        {
+          missingRequiredPanels,
+          missingRequiredPanelTypes,
+        },
       ),
     );
   }
