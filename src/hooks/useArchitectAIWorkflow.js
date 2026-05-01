@@ -205,6 +205,7 @@ function compactSiteSnapshotForRequest(siteSnapshot = null) {
     center: siteSnapshot.center || siteSnapshot.coordinates || null,
     zoom: siteSnapshot.zoom || null,
     mapType: siteSnapshot.mapType || null,
+    drawPolygonOverlay: siteSnapshot.drawPolygonOverlay !== false,
     size: siteSnapshot.size || null,
     sha256: siteSnapshot.sha256 || null,
     dataUrl,

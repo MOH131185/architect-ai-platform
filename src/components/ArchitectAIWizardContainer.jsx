@@ -1754,14 +1754,29 @@ const ArchitectAIWizardContainer = () => {
         : siteSnapshotDisplayPolygon.length >= 3
           ? "contextual_estimated_boundary"
           : "context_only";
+      const siteSnapshotMapType = "roadmap";
 
       let capturedSnapshot = null;
       try {
         capturedSnapshot = await captureSnapshotForPersistence({
           coordinates: locationData?.coordinates,
           polygon: siteSnapshotDisplayPolygon,
+          drawPolygonOverlay: siteSnapshotBoundaryAuthoritative,
+          polygonStyle: siteSnapshotBoundaryAuthoritative
+            ? {
+                strokeColor: "#d64d35",
+                strokeWeight: 3,
+                fillColor: "#b7d7a8",
+                fillOpacity: 0.18,
+              }
+            : {
+                strokeColor: "#e87524",
+                strokeWeight: 3,
+                fillColor: "#b7d7a8",
+                fillOpacity: 0.18,
+              },
           zoom: locationData?.mapZoom || 17,
-          mapType: "hybrid",
+          mapType: siteSnapshotMapType,
           size: { width: 640, height: 400 },
         });
       } catch (snapshotError) {
@@ -1780,8 +1795,11 @@ const ArchitectAIWizardContainer = () => {
         dataUrl: capturedSnapshot?.dataUrl || null,
         center: capturedSnapshot?.center || locationData.coordinates,
         zoom: capturedSnapshot?.zoom || locationData?.mapZoom || 17,
-        mapType: capturedSnapshot?.mapType || "hybrid",
+        mapType: capturedSnapshot?.mapType || siteSnapshotMapType,
         size: capturedSnapshot?.size || { width: 640, height: 400 },
+        drawPolygonOverlay:
+          capturedSnapshot?.drawPolygonOverlay ??
+          siteSnapshotBoundaryAuthoritative,
         sha256: capturedSnapshot?.sha256 || null,
         source: capturedSnapshot?.source || "google-static-maps-api",
         sourceUrl: capturedSnapshot?.source || "google-static-maps-api",

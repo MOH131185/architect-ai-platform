@@ -244,6 +244,8 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
       },
       siteSnapshot: {
         sitePolygon: estimatedBoundary,
+        mapType: "roadmap",
+        drawPolygonOverlay: false,
         metadata: {
           sitePlanMode: "contextual_estimated_boundary",
           boundaryAuthoritative: false,
@@ -256,6 +258,8 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
 
     expect(request.sitePolygon).toEqual([]);
     expect(request.siteSnapshot.sitePolygon).toEqual(estimatedBoundary);
+    expect(request.siteSnapshot.mapType).toBe("roadmap");
+    expect(request.siteSnapshot.drawPolygonOverlay).toBe(false);
     expect(request.siteSnapshot.metadata.sitePlanMode).toBe(
       "contextual_estimated_boundary",
     );

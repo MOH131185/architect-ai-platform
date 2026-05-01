@@ -388,6 +388,7 @@ export function normalizeSiteSnapshot(snapshot) {
     source: snapshot.source || snapshot.sourceUrl || null,
     sourceUrl: snapshot.sourceUrl || snapshot.source || null,
     attribution: snapshot.attribution || null,
+    drawPolygonOverlay: snapshot.drawPolygonOverlay !== false,
     sitePolygon: Array.isArray(snapshot.sitePolygon)
       ? snapshot.sitePolygon
       : Array.isArray(snapshot.polygon)

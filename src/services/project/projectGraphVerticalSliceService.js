@@ -1739,6 +1739,8 @@ function normalizeProvidedSiteSnapshot(siteSnapshot = null) {
         ? "Map data © Google"
         : "Provided site map"),
     sourceUrl: normalizedSource,
+    mapType: siteSnapshot.mapType || siteSnapshot.metadata?.mapType || null,
+    drawPolygonOverlay: siteSnapshot.drawPolygonOverlay !== false,
     hasPolygon: Boolean(
       (Array.isArray(siteSnapshot.polygon) && siteSnapshot.polygon.length) ||
       (Array.isArray(siteSnapshot.sitePolygon) &&
@@ -1791,10 +1793,16 @@ function resolveSiteMapDisplayPolygon({ input = {}, brief = {}, site = {} }) {
 }
 
 async function resolveSiteMapSnapshot({ input = {}, brief, site }) {
-  const provided = normalizeProvidedSiteSnapshot(
-    input.siteSnapshot || input.siteMapSnapshot || input.siteMap || null,
-  );
-  if (provided) {
+  const boundaryAuthoritative = site?.boundary_authoritative !== false;
+  const providedSnapshot =
+    input.siteSnapshot || input.siteMapSnapshot || input.siteMap || null;
+  const provided = normalizeProvidedSiteSnapshot(providedSnapshot);
+  const providedMapType = String(
+    provided?.mapType || providedSnapshot?.mapType || "",
+  ).toLowerCase();
+  const requiresRoadmapRecapture =
+    provided && ["hybrid", "satellite"].includes(providedMapType);
+  if (provided && !requiresRoadmapRecapture) {
     return {
       ...provided,
       sourceUrl: provided.sourceUrl || "provided-site-snapshot",
@@ -1802,7 +1810,6 @@ async function resolveSiteMapSnapshot({ input = {}, brief, site }) {
     };
   }
 
-  const boundaryAuthoritative = site?.boundary_authoritative !== false;
   const polygon = resolveSiteMapDisplayPolygon({ input, brief, site });
   const center = input.siteSnapshot?.center ||
     input.siteSnapshot?.coordinates ||
@@ -1820,9 +1827,23 @@ async function resolveSiteMapSnapshot({ input = {}, brief, site }) {
         lng: Number(center?.lng ?? center?.lon ?? site.lon),
       },
       polygon: polygon.length >= 3 ? polygon : null,
+      drawPolygonOverlay: boundaryAuthoritative,
+      polygonStyle: boundaryAuthoritative
+        ? {
+            strokeColor: "#d64d35",
+            strokeWeight: 3,
+            fillColor: "#b7d7a8",
+            fillOpacity: 0.18,
+          }
+        : {
+            strokeColor: "#e87524",
+            strokeWeight: 3,
+            fillColor: "#b7d7a8",
+            fillOpacity: 0.18,
+          },
       zoom: Number(input.siteSnapshot?.zoom || 18),
       size: [1200, 780],
-      mapType: input.siteSnapshot?.mapType || "roadmap",
+      mapType: "roadmap",
     });
     return snapshot
       ? {
@@ -3013,9 +3034,9 @@ function buildSiteContextPanelArtifact({
       ? `<image x="28" y="52" width="844" height="676" href="${escapeXml(siteSnapshot.dataUrl)}" preserveAspectRatio="xMidYMid slice"/>
   <rect x="28" y="52" width="844" height="676" fill="none" stroke="#111111" stroke-width="3"/>
   <g transform="translate(44 66)">
-    <path d="${sitePath}" fill="none" stroke="#f59e0b" stroke-width="5" stroke-dasharray="16 10"/>
+    <path d="${sitePath}" fill="#b7d7a833" stroke="#e87524" stroke-width="4" stroke-dasharray="16 10"/>
     <path d="${buildablePath}" fill="none" stroke="#111111" stroke-width="3" stroke-dasharray="8 8"/>
-    <path d="${proposedFootprintPath}" fill="#11111118" stroke="#111111" stroke-width="4"/>
+    <path d="${proposedFootprintPath}" fill="#facc1533" stroke="#d9a300" stroke-width="4"/>
   </g>
   <text x="450" y="104" font-family="Arial, sans-serif" font-size="26" font-weight="700" text-anchor="middle" fill="#111111">CONTEXTUAL SITE PLAN</text>
   <text x="450" y="136" font-family="Arial, sans-serif" font-size="16" text-anchor="middle" fill="#555555">Boundary estimated - verify with measured survey before planning submission</text>`
@@ -3094,6 +3115,7 @@ function buildSiteContextPanelArtifact({
       source: hasMapImage ? mapSource : "deterministic_site_context_fallback",
       siteMapSource: mapSource,
       hasMapImage,
+      mapType: siteSnapshot?.mapType || null,
       attribution,
       sitePlanMode,
       boundaryAuthoritative: site.boundary_authoritative === true,
