@@ -325,6 +325,10 @@ function buildTransform(bounds, width, height, layout = {}) {
   };
 }
 
+// Room labels were too crowded at the original sheet-mode font scale.
+// Damp them by 18% so they remain legible without dominating the plan.
+const ROOM_LABEL_FONT_DAMP = 0.82;
+
 function renderRoomLabel(
   room = {},
   project,
@@ -346,17 +350,18 @@ function renderRoomLabel(
   const secondaryLine = dimensionText
     ? `${areaText} · ${dimensionText}`
     : areaText;
-  const nameSize = scaleSize(13, typo.fontScale);
-  const subSize = scaleSize(10, typo.fontScale);
+  const labelFontScale = typo.fontScale * ROOM_LABEL_FONT_DAMP;
+  const nameSize = scaleSize(13, labelFontScale);
+  const subSize = scaleSize(10, labelFontScale);
   const labelWidth = Math.max(
-    scaleSize(110, typo.fontScale),
+    scaleSize(110, labelFontScale),
     name.length * nameSize * 0.65,
     secondaryLine.length * subSize * 0.6,
   );
-  const labelHeight = scaleSize(38, typo.fontScale);
+  const labelHeight = scaleSize(38, labelFontScale);
   const halfHeight = labelHeight / 2;
-  const nameOffset = scaleSize(6, typo.fontScale);
-  const subOffset = scaleSize(10, typo.fontScale);
+  const nameOffset = scaleSize(6, labelFontScale);
+  const subOffset = scaleSize(10, labelFontScale);
   const stroke = scaleSize(0.95, typo.strokeScale);
 
   return `

@@ -361,6 +361,13 @@ function renderLevelDatums(
   };
 }
 
+// Section cut markers were originally too heavy. Reduce stroke / label /
+// arrow size and apply a translucent stroke so the markers read as
+// reference annotations, not primary linework.
+const CUT_MARKER_STROKE_DAMP = 0.65;
+const CUT_MARKER_FONT_DAMP = 0.72;
+const CUT_MARKER_OPACITY = 0.6;
+
 function renderSectionCutMarkers(
   baseX = 0,
   baseY = 0,
@@ -372,10 +379,10 @@ function renderSectionCutMarkers(
   if (!(widthPx > 0 && heightPx > 0)) {
     return { markup: "", count: 0 };
   }
-  const stroke = scaleSize(1.4, typo.strokeScale);
-  const fontSize = scaleSize(11, typo.fontScale);
+  const stroke = scaleSize(1.4 * CUT_MARKER_STROKE_DAMP, typo.strokeScale);
+  const fontSize = scaleSize(11 * CUT_MARKER_FONT_DAMP, typo.fontScale);
   const labelOffsetY = scaleSize(8, typo.fontScale);
-  const arrow = scaleSize(6, typo.fontScale);
+  const arrow = scaleSize(6 * CUT_MARKER_FONT_DAMP, typo.fontScale);
   const positions = [
     { fraction: 1 / 3, label: "A-A" },
     { fraction: 2 / 3, label: "B-B" },
@@ -385,19 +392,19 @@ function renderSectionCutMarkers(
     .map(({ fraction, label }) => {
       const x = baseX + widthPx * fraction;
       return `
-        <g class="phase8-elevation-cut-marker" data-cut="${label}">
+        <g class="phase8-elevation-cut-marker" data-cut="${label}" opacity="${CUT_MARKER_OPACITY}">
           <line x1="${formatNumber(x)}" y1="${formatNumber(
             top - labelOffsetY * 1.5,
           )}" x2="${formatNumber(x)}" y2="${formatNumber(
             baseY,
-          )}" stroke="${theme.line}" stroke-width="${stroke}" stroke-dasharray="10 6" />
+          )}" stroke="${theme.lineMuted}" stroke-width="${stroke}" stroke-dasharray="10 6" />
           <path d="M ${formatNumber(x - arrow)} ${formatNumber(
             top - labelOffsetY * 1.5 + arrow,
           )} L ${formatNumber(x)} ${formatNumber(
             top - labelOffsetY * 1.5,
           )} L ${formatNumber(x + arrow)} ${formatNumber(
             top - labelOffsetY * 1.5 + arrow,
-          )}" fill="none" stroke="${theme.line}" stroke-width="${stroke}" stroke-linejoin="miter"/>
+          )}" fill="none" stroke="${theme.lineMuted}" stroke-width="${stroke}" stroke-linejoin="miter"/>
           <text x="${formatNumber(x)}" y="${formatNumber(
             top - labelOffsetY * 2.5,
           )}" font-size="${fontSize}" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">${label}</text>
