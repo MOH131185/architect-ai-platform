@@ -2340,8 +2340,17 @@ function drawingTypeForPanel(panelType) {
   return "diagram";
 }
 
-function buildDrawingSet(compiledProject) {
-  const technicalBuild = buildCompiledProjectTechnicalPanels(compiledProject);
+function buildDrawingSet(compiledProject, options = {}) {
+  // Pass layoutTemplate through so the technical pack renders at the slot
+  // aspect of the active sheet template (presentation-v3 for residential,
+  // board-v2 otherwise). Caller resolves via resolvePresentationLayoutTemplate.
+  const layoutTemplate =
+    typeof options.layoutTemplate === "string" && options.layoutTemplate
+      ? options.layoutTemplate
+      : "board-v2";
+  const technicalBuild = buildCompiledProjectTechnicalPanels(compiledProject, {
+    layoutTemplate,
+  });
   const technicalPanels = technicalBuild.technicalPanels || {};
   const drawingViews = Object.entries(technicalPanels).map(
     ([panelType, panel]) => {
@@ -7030,8 +7039,16 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     };
   }
   const selectedDesign = buildSelectedDesign(compiledProject, programme);
-  const { drawingSet, drawingArtifacts, technicalBuild } =
-    buildDrawingSet(compiledProject);
+  // Resolve the active sheet template for this brief (presentation-v3 for
+  // residential, board-v2 otherwise) BEFORE the technical pack runs so floor
+  // plans and sections render at the slot aspect of the layout that will
+  // ultimately receive them. Sheet-split overrides on individual sheetPlan
+  // entries continue to apply downstream in buildA1Sheet.
+  const drawingSetLayoutTemplate = resolvePresentationLayoutTemplate(brief);
+  const { drawingSet, drawingArtifacts, technicalBuild } = buildDrawingSet(
+    compiledProject,
+    { layoutTemplate: drawingSetLayoutTemplate },
+  );
   __vsMark = __vsLog(
     "build_drawing_set",
     __vsMark,
