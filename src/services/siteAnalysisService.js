@@ -27,6 +27,106 @@ import {
 import runtimeEnv from "../utils/runtimeEnv.js";
 import logger from "../utils/logger.js";
 
+const BOUNDARY_AUTHORITY_CONFIDENCE_THRESHOLD = 0.6;
+const SITE_BOUNDARY_ESTIMATED_WARNING_CODE =
+  "SITE_BOUNDARY_ESTIMATED_NOT_AUTHORITATIVE";
+
+function toFiniteNumber(value, fallback = null) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function normaliseBoundarySource(boundary = {}) {
+  return (
+    boundary?.boundarySource ||
+    boundary?.source ||
+    boundary?.metadata?.boundarySource ||
+    boundary?.metadata?.source ||
+    "estimated"
+  );
+}
+
+function isFallbackBoundarySource(source) {
+  return /intelligent fallback|fallback/i.test(String(source || ""));
+}
+
+export function assessSiteBoundaryAuthority(boundary = null, options = {}) {
+  const source = normaliseBoundarySource(boundary || {});
+  const confidence = toFiniteNumber(
+    boundary?.boundaryConfidence ??
+      boundary?.confidence ??
+      boundary?.metadata?.boundaryConfidence,
+    0.4,
+  );
+  const areaM2 = toFiniteNumber(
+    boundary?.area ?? boundary?.surfaceArea ?? boundary?.areaM2,
+    null,
+  );
+  const plotAreaEstimateM2 = toFiniteNumber(options.plotAreaM2, null);
+  const areaOutlierLimit = Math.max(
+    10000,
+    Number(plotAreaEstimateM2 || 0) > 0 ? plotAreaEstimateM2 * 25 : 0,
+  );
+  const areaOutlier =
+    Number(areaM2 || 0) > 0 && Number(areaM2) > areaOutlierLimit;
+  const explicitNonAuthoritative =
+    boundary?.boundaryAuthoritative === false ||
+    boundary?.metadata?.boundaryAuthoritative === false ||
+    boundary?.estimatedOnly === true ||
+    boundary?.metadata?.estimatedOnly === true;
+  const fallbackSource = isFallbackBoundarySource(source);
+  const lowConfidence =
+    Number(confidence || 0) < BOUNDARY_AUTHORITY_CONFIDENCE_THRESHOLD;
+  const hasPolygon =
+    Array.isArray(boundary?.polygon) && boundary.polygon.length >= 3;
+  const reasons = [];
+
+  if (!hasPolygon) reasons.push("missing_boundary_polygon");
+  if (explicitNonAuthoritative) reasons.push("explicitly_estimated");
+  if (fallbackSource) reasons.push("fallback_source");
+  if (lowConfidence) reasons.push("low_confidence");
+  if (areaOutlier) reasons.push("area_outlier");
+
+  const boundaryAuthoritative =
+    hasPolygon &&
+    !explicitNonAuthoritative &&
+    !fallbackSource &&
+    !lowConfidence &&
+    !areaOutlier;
+
+  const fallbackReason =
+    boundary?.fallbackReason ||
+    boundary?.metadata?.fallbackReason ||
+    boundary?.metadata?.reason ||
+    (boundaryAuthoritative
+      ? null
+      : "Boundary is estimated and must be verified by survey.");
+
+  return {
+    boundaryAuthoritative,
+    boundaryConfidence: confidence,
+    boundarySource: source,
+    fallbackReason,
+    estimatedOnly: !boundaryAuthoritative,
+    boundaryEstimated: !boundaryAuthoritative,
+    boundaryWarningCode: boundaryAuthoritative
+      ? null
+      : SITE_BOUNDARY_ESTIMATED_WARNING_CODE,
+    boundaryWarning: boundaryAuthoritative
+      ? null
+      : "Site boundary is estimated only; verify the parcel boundary by survey before treating area or setbacks as authoritative.",
+    lowConfidence,
+    fallbackSource,
+    areaOutlier,
+    reasons,
+    authoritativeAreaM2:
+      boundaryAuthoritative && Number(areaM2 || 0) > 0 ? areaM2 : null,
+    estimatedAreaM2:
+      !boundaryAuthoritative && Number(areaM2 || 0) > 0 ? areaM2 : null,
+    areaOutlierLimit,
+  };
+}
+
 function getGooglePlacesProxyBaseUrl() {
   const explicitBase = (process.env.REACT_APP_API_PROXY_URL || "").trim();
 
@@ -160,12 +260,38 @@ class SiteAnalysisService {
       // Analyze street view and orientation
       const streetContext = await this.analyzeStreetContext(coordinates);
 
-      // Determine plot characteristics (enhanced with actual boundary data)
-      const plotAnalysis = this.analyzePlotCharacteristics(
+      const estimatedPlotAnalysis = this.analyzePlotCharacteristics(
         geocodeData,
         streetContext,
-        propertyBoundary,
+        null,
       );
+      const estimatedPlotArea =
+        estimatedPlotAnalysis.dimensions.width *
+        estimatedPlotAnalysis.dimensions.depth;
+      const boundaryAuthority = assessSiteBoundaryAuthority(propertyBoundary, {
+        plotAreaM2: estimatedPlotArea,
+      });
+
+      // Determine plot characteristics. Only surveyed/high-confidence boundary
+      // geometry is allowed to override the estimate used by programme logic.
+      const authoritativeBoundary = boundaryAuthority.boundaryAuthoritative
+        ? propertyBoundary
+        : null;
+      const plotAnalysis = authoritativeBoundary
+        ? this.analyzePlotCharacteristics(
+            geocodeData,
+            streetContext,
+            authoritativeBoundary,
+          )
+        : estimatedPlotAnalysis;
+      const plotArea =
+        plotAnalysis.dimensions.width * plotAnalysis.dimensions.depth;
+      const surfaceArea =
+        boundaryAuthority.authoritativeAreaM2 || plotArea || estimatedPlotArea;
+      const estimatedBoundary =
+        !boundaryAuthority.boundaryAuthoritative && propertyBoundary?.polygon
+          ? propertyBoundary.polygon
+          : null;
 
       // Generate site-specific design constraints
       const designConstraints = this.generateDesignConstraints(
@@ -186,18 +312,30 @@ class SiteAnalysisService {
           coordinates: coordinates,
 
           // NEW: Actual site boundary data with enhanced shape detection
-          siteBoundary: propertyBoundary?.polygon || null,
-          surfaceArea:
-            propertyBoundary?.area ||
-            plotAnalysis.dimensions.width * plotAnalysis.dimensions.depth,
+          siteBoundary: authoritativeBoundary?.polygon || null,
+          authoritativeSiteBoundary: authoritativeBoundary?.polygon || null,
+          estimatedSiteBoundary: estimatedBoundary,
+          surfaceArea,
+          authoritativeSurfaceArea: boundaryAuthority.boundaryAuthoritative
+            ? surfaceArea
+            : null,
+          estimatedSurfaceArea: boundaryAuthority.estimatedAreaM2,
           surfaceAreaUnit: propertyBoundary?.unit || "m²",
-          boundarySource: propertyBoundary?.source || "estimated",
+          boundaryAuthoritative: boundaryAuthority.boundaryAuthoritative,
+          boundaryEstimated: boundaryAuthority.boundaryEstimated,
+          estimatedOnly: boundaryAuthority.estimatedOnly,
+          boundarySource: boundaryAuthority.boundarySource,
           boundaryShapeType:
-            propertyBoundary?.shapeType || plotAnalysis.plotShape,
-          boundaryConfidence: propertyBoundary?.confidence || 0.4,
+            authoritativeBoundary?.shapeType || plotAnalysis.plotShape,
+          boundaryConfidence: boundaryAuthority.boundaryConfidence,
+          fallbackReason: boundaryAuthority.fallbackReason,
+          boundaryWarningCode: boundaryAuthority.boundaryWarningCode,
+          boundaryWarning: boundaryAuthority.boundaryWarning,
+          boundaryAreaOutlier: boundaryAuthority.areaOutlier,
+          boundaryAuthorityReasons: boundaryAuthority.reasons,
 
           plotType: plotAnalysis.plotType,
-          plotShape: propertyBoundary?.shapeType || plotAnalysis.plotShape, // Use detected shape
+          plotShape: authoritativeBoundary?.shapeType || plotAnalysis.plotShape,
           plotDimensions: plotAnalysis.dimensions,
           streetOrientation: streetContext.orientation,
           roadType: streetContext.roadType,
@@ -215,27 +353,26 @@ class SiteAnalysisService {
 
           // 🆕 plotGeometry - formatted for locationAwareDNAModifier compatibility
           plotGeometry: {
-            shape: propertyBoundary?.shapeType || plotAnalysis.plotShape,
+            shape: authoritativeBoundary?.shapeType || plotAnalysis.plotShape,
             dimensions: {
               width: plotAnalysis.dimensions.width,
               length: plotAnalysis.dimensions.depth, // depth is same as length
-              area:
-                propertyBoundary?.area ||
-                plotAnalysis.dimensions.width * plotAnalysis.dimensions.depth,
+              area: surfaceArea,
             },
             slope: 0, // TODO: Add slope detection from elevation API
             orientation: optimalOrientation,
-            shapeType: propertyBoundary?.shapeType,
-            confidence: propertyBoundary?.confidence,
+            shapeType: authoritativeBoundary?.shapeType,
+            confidence: boundaryAuthority.boundaryConfidence,
+            boundaryAuthoritative: boundaryAuthority.boundaryAuthoritative,
           },
 
           // 🆕 PlanJSON-compatible site geometry
           siteGeometry: this.convertToSiteGeometry(
-            propertyBoundary?.polygon || null,
+            authoritativeBoundary?.polygon || null,
             plotAnalysis,
             streetContext,
-            propertyBoundary?.area,
-            propertyBoundary?.shapeType,
+            surfaceArea,
+            authoritativeBoundary?.shapeType,
           ),
         },
       };
@@ -323,6 +460,20 @@ class SiteAnalysisService {
           source: enhancedBoundary.source,
           shapeType: enhancedBoundary.shapeType,
           confidence: enhancedBoundary.confidence,
+          boundaryAuthoritative:
+            enhancedBoundary.boundaryAuthoritative ??
+            enhancedBoundary.metadata?.boundaryAuthoritative,
+          boundaryConfidence:
+            enhancedBoundary.boundaryConfidence ?? enhancedBoundary.confidence,
+          boundarySource:
+            enhancedBoundary.boundarySource ?? enhancedBoundary.source,
+          fallbackReason:
+            enhancedBoundary.fallbackReason ??
+            enhancedBoundary.metadata?.fallbackReason ??
+            enhancedBoundary.metadata?.reason,
+          estimatedOnly:
+            enhancedBoundary.estimatedOnly ??
+            enhancedBoundary.metadata?.estimatedOnly,
           metadata: enhancedBoundary.metadata || {},
         };
       }
@@ -359,6 +510,10 @@ class SiteAnalysisService {
           ...osmBoundary,
           shapeType,
           confidence: 0.9,
+          boundaryAuthoritative: true,
+          boundaryConfidence: 0.9,
+          boundarySource: osmBoundary.source || "OpenStreetMap",
+          estimatedOnly: false,
         };
       }
 
@@ -376,6 +531,10 @@ class SiteAnalysisService {
           ...placesBoundary,
           shapeType,
           confidence: 0.6,
+          boundaryAuthoritative: true,
+          boundaryConfidence: 0.6,
+          boundarySource: placesBoundary.source || "Google Places",
+          estimatedOnly: false,
         };
       }
 
@@ -1412,6 +1571,22 @@ class SiteAnalysisService {
       plotType: "suburban_residential",
       plotShape: "rectangular",
       plotDimensions: { width: 15, depth: 30 },
+      siteBoundary: null,
+      authoritativeSiteBoundary: null,
+      estimatedSiteBoundary: null,
+      surfaceArea: 450,
+      authoritativeSurfaceArea: null,
+      estimatedSurfaceArea: 450,
+      surfaceAreaUnit: "m²",
+      boundaryAuthoritative: false,
+      boundaryEstimated: true,
+      estimatedOnly: true,
+      boundarySource: "Fallback Site Analysis",
+      boundaryConfidence: 0.4,
+      fallbackReason: "Site analysis API failed; using estimated context.",
+      boundaryWarningCode: SITE_BOUNDARY_ESTIMATED_WARNING_CODE,
+      boundaryWarning:
+        "Site boundary is estimated only; verify the parcel boundary by survey before treating area or setbacks as authoritative.",
       streetOrientation: "north_south",
       roadType: "local_street",
       roadCurvature: "straight",
