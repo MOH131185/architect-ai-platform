@@ -222,6 +222,21 @@ function compactSiteSnapshotForRequest(siteSnapshot = null) {
           ? sourceLabel
           : null,
       siteMetrics: siteSnapshot.metadata?.siteMetrics || null,
+      sitePlanMode: siteSnapshot.metadata?.sitePlanMode || null,
+      boundaryAuthoritative:
+        siteSnapshot.metadata?.boundaryAuthoritative === true
+          ? true
+          : siteSnapshot.metadata?.boundaryAuthoritative === false
+            ? false
+            : null,
+      boundaryEstimated: siteSnapshot.metadata?.boundaryEstimated === true,
+      siteSnapshotPolygonRole:
+        siteSnapshot.metadata?.siteSnapshotPolygonRole || null,
+      contextualBoundaryOverlayUsed:
+        siteSnapshot.metadata?.contextualBoundaryOverlayUsed === true,
+      contextualBoundaryPolygon: compactLatLngPolygon(
+        siteSnapshot.metadata?.contextualBoundaryPolygon || [],
+      ),
       sunPath: siteSnapshot.metadata?.sunPath || null,
       wind: siteSnapshot.metadata?.wind || null,
       climateSummary: siteSnapshot.metadata?.climateSummary || null,

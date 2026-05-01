@@ -36,6 +36,7 @@ import {
 } from "../utils/promptSanitizer.js";
 import buildingFootprintService from "../services/buildingFootprintService.js";
 import { resolveUiSiteBoundaryAuthority } from "../services/siteBoundaryUiAuthority.js";
+import { selectContextualBoundaryPolygon } from "../services/siteBoundaryAutoDetectPolicy.js";
 import { buildSiteContext } from "../rings/ring1-site/siteContextBuilder.js";
 import { captureSnapshotForPersistence } from "../services/siteMapSnapshotService.js";
 import { buildProjectPipelineV2Bundle } from "../services/project/projectPipelineV2Service.js";
@@ -1737,11 +1738,28 @@ const ArchitectAIWizardContainer = () => {
 
       logger.info("Starting generation workflow", null, "🚀");
 
+      const authoritativeSnapshotPolygon =
+        normalizeSitePolygonForUi(sitePolygon);
+      const contextualSnapshotPolygon = normalizeSitePolygonForUi(
+        selectContextualBoundaryPolygon(locationData),
+      );
+      const hasAuthoritativeSnapshotPolygon =
+        authoritativeSnapshotPolygon.length >= 3;
+      const siteSnapshotDisplayPolygon = hasAuthoritativeSnapshotPolygon
+        ? authoritativeSnapshotPolygon
+        : contextualSnapshotPolygon;
+      const siteSnapshotBoundaryAuthoritative = hasAuthoritativeSnapshotPolygon;
+      const siteSnapshotMode = siteSnapshotBoundaryAuthoritative
+        ? "authoritative_boundary"
+        : siteSnapshotDisplayPolygon.length >= 3
+          ? "contextual_estimated_boundary"
+          : "context_only";
+
       let capturedSnapshot = null;
       try {
         capturedSnapshot = await captureSnapshotForPersistence({
           coordinates: locationData?.coordinates,
-          polygon: sitePolygon,
+          polygon: siteSnapshotDisplayPolygon,
           zoom: locationData?.mapZoom || 17,
           mapType: "hybrid",
           size: { width: 640, height: 400 },
@@ -1756,7 +1774,7 @@ const ArchitectAIWizardContainer = () => {
       const siteSnapshot = normalizeSiteSnapshot({
         address: locationData.address,
         coordinates: locationData.coordinates,
-        sitePolygon,
+        sitePolygon: siteSnapshotDisplayPolygon,
         climate: locationData.climate,
         zoning: locationData.zoning,
         dataUrl: capturedSnapshot?.dataUrl || null,
@@ -1765,8 +1783,24 @@ const ArchitectAIWizardContainer = () => {
         mapType: capturedSnapshot?.mapType || "hybrid",
         size: capturedSnapshot?.size || { width: 640, height: 400 },
         sha256: capturedSnapshot?.sha256 || null,
+        source: capturedSnapshot?.source || "google-static-maps-api",
+        sourceUrl: capturedSnapshot?.source || "google-static-maps-api",
+        attribution: "Map data © Google",
         metadata: {
           siteMetrics,
+          sitePlanMode: siteSnapshotMode,
+          boundaryAuthoritative: siteSnapshotBoundaryAuthoritative,
+          boundaryEstimated:
+            !siteSnapshotBoundaryAuthoritative &&
+            siteSnapshotDisplayPolygon.length >= 3,
+          siteSnapshotPolygonRole: siteSnapshotMode,
+          contextualBoundaryOverlayUsed:
+            !siteSnapshotBoundaryAuthoritative &&
+            siteSnapshotDisplayPolygon.length >= 3,
+          contextualBoundaryPolygon: contextualSnapshotPolygon,
+          source: capturedSnapshot?.source || "google-static-maps-api",
+          attribution: "Map data © Google",
+          capturedAt: capturedSnapshot?.capturedAt || null,
           sunPath: locationData.sunPath,
           wind: locationData.wind,
           climateAnalysis: locationData.climate,

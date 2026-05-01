@@ -926,11 +926,35 @@ describe("projectGraphVerticalSliceService", () => {
   });
 
   test("does not propagate low-confidence fallback boundary area into ProjectGraph site authority", async () => {
+    process.env.GOOGLE_MAPS_API_KEY = "test-google-key";
+    const pngBlob = new Blob(
+      [
+        Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR42mNk+M9Qz0AEYBxVSFIAAAeSAi8BTyQ1AAAAAElFTkSuQmCC",
+          "base64",
+        ),
+      ],
+      {
+        type: "image/png",
+      },
+    );
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      blob: async () => pngBlob,
+    });
+
     const result = await buildArchitectureProjectVerticalSlice(
       createLowConfidenceBradfordBoundaryBrief(),
     );
     const issueCodes = result.qa.issues.map((issue) => issue.code);
+    const staticMapUrl = global.fetch.mock.calls[0][0];
 
+    expect(global.fetch).toHaveBeenCalled();
+    expect(staticMapUrl).toContain("path=");
+    expect(staticMapUrl).toContain("visible=");
+    expect(staticMapUrl).toContain("53.79224,-1.75556");
     expect(result.success).toBe(true);
     expect(result.projectGraph.site.boundary_authoritative).toBe(false);
     expect(result.projectGraph.site.boundary_source).toBe(
@@ -947,6 +971,10 @@ describe("projectGraphVerticalSliceService", () => {
       result.projectGraph.site.data_quality.map((issue) => issue.code),
     ).toContain("SITE_BOUNDARY_ESTIMATED_NOT_AUTHORITATIVE");
     expect(issueCodes).toContain("SITE_BOUNDARY_ESTIMATED_NOT_AUTHORITATIVE");
+    expect(result.artifacts.siteMap.metadata.hasMapImage).toBe(true);
+    expect(result.artifacts.siteMap.metadata.siteMapSource).toBe(
+      "google-static-maps",
+    );
     expect(result.artifacts.siteMap.metadata.boundaryAuthoritative).toBe(false);
     expect(result.artifacts.siteMap.metadata.sitePlanMode).toBe(
       "contextual_estimated_boundary",
@@ -954,6 +982,8 @@ describe("projectGraphVerticalSliceService", () => {
     expect(result.artifacts.siteMap.svgString).toContain(
       "CONTEXTUAL SITE PLAN",
     );
+    expect(result.artifacts.siteMap.svgString).toContain("Google Static Maps");
+    expect(result.artifacts.siteMap.svgString).not.toContain('opacity="0.38"');
     expect(result.artifacts.siteMap.svgString).toContain("Boundary estimated");
     expect(result.artifacts.siteMap.svgString).toContain(
       "parcel area not authoritative",

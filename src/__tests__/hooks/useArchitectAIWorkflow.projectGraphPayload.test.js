@@ -242,9 +242,31 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
           source: "google_building_outline",
         },
       },
+      siteSnapshot: {
+        sitePolygon: estimatedBoundary,
+        metadata: {
+          sitePlanMode: "contextual_estimated_boundary",
+          boundaryAuthoritative: false,
+          boundaryEstimated: true,
+          contextualBoundaryOverlayUsed: true,
+          contextualBoundaryPolygon: estimatedBoundary,
+        },
+      },
     });
 
     expect(request.sitePolygon).toEqual([]);
+    expect(request.siteSnapshot.sitePolygon).toEqual(estimatedBoundary);
+    expect(request.siteSnapshot.metadata.sitePlanMode).toBe(
+      "contextual_estimated_boundary",
+    );
+    expect(request.siteSnapshot.metadata.boundaryAuthoritative).toBe(false);
+    expect(request.siteSnapshot.metadata.boundaryEstimated).toBe(true);
+    expect(request.siteSnapshot.metadata.contextualBoundaryOverlayUsed).toBe(
+      true,
+    );
+    expect(request.siteSnapshot.metadata.contextualBoundaryPolygon).toEqual(
+      estimatedBoundary,
+    );
     expect(request.siteMetrics.areaM2).toBeUndefined();
     expect(request.siteMetrics.boundaryAuthoritative).toBe(false);
     expect(request.locationData.boundaryAuthoritative).toBe(false);
