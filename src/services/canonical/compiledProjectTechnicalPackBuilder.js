@@ -67,9 +67,13 @@ function clamp(value, minimum, maximum) {
   return Math.max(minimum, Math.min(maximum, value));
 }
 
-function getTechnicalPanelRenderSize(panelType, floorCount = 1) {
+export function getTechnicalPanelRenderSize(
+  panelType,
+  floorCount = 1,
+  layoutTemplate = "board-v2",
+) {
   const { layout } = resolveComposeLayout({
-    layoutTemplate: "board-v2",
+    layoutTemplate,
     floorCount,
   });
   const slot = layout?.[panelType];
