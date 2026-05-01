@@ -16,7 +16,10 @@ import { Skeleton } from "../ui/feedback/Loader.jsx";
 import IconWrapper from "../ui/IconWrapper.jsx";
 import StepContainer from "../layout/StepContainer.jsx";
 import { fadeInUp, staggerChildren } from "../../styles/animations.js";
-import { shouldEnableBoundaryAutoDetect } from "../../services/siteBoundaryAutoDetectPolicy.js";
+import {
+  selectContextualBoundaryPolygon,
+  shouldEnableBoundaryAutoDetect,
+} from "../../services/siteBoundaryAutoDetectPolicy.js";
 
 import LocationAccuracyBadge from "../ui/LocationAccuracyBadge.jsx";
 
@@ -37,6 +40,8 @@ const LocationStep = ({
   const hasResults = !!locationData;
   const boundaryAutoDetectEnabled =
     shouldEnableBoundaryAutoDetect(locationData);
+  const contextualBoundaryPolygon =
+    selectContextualBoundaryPolygon(locationData);
 
   return (
     <StepContainer
@@ -169,6 +174,7 @@ const LocationStep = ({
               center={locationData.coordinates}
               autoDetectEnabled={boundaryAutoDetectEnabled}
               autoDetectOnLoad={boundaryAutoDetectEnabled}
+              contextualBoundaryPolygon={contextualBoundaryPolygon}
             />
           </motion.div>
         )}

@@ -53,12 +53,14 @@ export function SiteBoundaryEditorV2({
   autoDetectEnabled = true,
   autoDetectOnLoad = true,
   autoDetectDisabledMessage = "Automatic boundary detection is unavailable for this address. Draw or enter a verified boundary manually.",
+  contextualBoundaryPolygon = [],
 }) {
   // Refs
   const mapContainerRef = useRef(null);
   const polygonEditorRef = useRef(null);
   const drawingManagerRef = useRef(null);
   const polygonOverlayRef = useRef(null);
+  const contextualBoundaryOverlayRef = useRef(null);
 
   // State
   const [mode, setMode] = useState(MODES.SELECT);
@@ -108,6 +110,14 @@ export function SiteBoundaryEditorV2({
   } = useBoundaryState(initialBoundaryPolygon);
 
   const polygonLength = polygon.length;
+  const contextualBoundaryLength = Array.isArray(contextualBoundaryPolygon)
+    ? contextualBoundaryPolygon.length
+    : 0;
+  const fitBoundaryPolygon =
+    polygonLength >= 3 ? polygon : contextualBoundaryPolygon;
+  const fitBoundaryLength = Array.isArray(fitBoundaryPolygon)
+    ? fitBoundaryPolygon.length
+    : 0;
 
   const handleAutoDetect = useCallback(async () => {
     if (!autoDetectEnabled) {
@@ -248,6 +258,49 @@ export function SiteBoundaryEditorV2({
   // ============================================================
 
   useEffect(() => {
+    if (!map || !google || !isLoaded) return undefined;
+
+    if (contextualBoundaryOverlayRef.current) {
+      contextualBoundaryOverlayRef.current.setMap(null);
+      contextualBoundaryOverlayRef.current = null;
+    }
+
+    const shouldShowContextualBoundary =
+      contextualBoundaryLength >= 3 &&
+      (polygonLength < 3 ||
+        !latLngPolygonsEqual(contextualBoundaryPolygon, polygon));
+
+    if (shouldShowContextualBoundary) {
+      contextualBoundaryOverlayRef.current = new google.maps.Polygon({
+        paths: contextualBoundaryPolygon,
+        strokeColor: "#F59E0B",
+        strokeOpacity: 0.95,
+        strokeWeight: 2,
+        fillColor: "#F59E0B",
+        fillOpacity: 0.08,
+        clickable: false,
+        zIndex: 1,
+        map,
+      });
+    }
+
+    return () => {
+      if (contextualBoundaryOverlayRef.current) {
+        contextualBoundaryOverlayRef.current.setMap(null);
+        contextualBoundaryOverlayRef.current = null;
+      }
+    };
+  }, [
+    contextualBoundaryLength,
+    contextualBoundaryPolygon,
+    google,
+    isLoaded,
+    map,
+    polygon,
+    polygonLength,
+  ]);
+
+  useEffect(() => {
     if (!map || !google || !isLoaded) return;
 
     // Remove existing overlay
@@ -266,7 +319,8 @@ export function SiteBoundaryEditorV2({
         fillColor: "#3B82F6",
         fillOpacity: 0.2,
         clickable: false,
-        map: map,
+        zIndex: 2,
+        map,
       });
     }
 
@@ -280,14 +334,14 @@ export function SiteBoundaryEditorV2({
 
   // Fit bounds when polygon changes significantly
   useEffect(() => {
-    if (map && google && polygonLength >= 3 && mode === MODES.SELECT) {
-      const bounds = calculateBounds(polygon);
+    if (map && google && fitBoundaryLength >= 3 && mode === MODES.SELECT) {
+      const bounds = calculateBounds(fitBoundaryPolygon);
       if (bounds) {
         const googleBounds = boundsToGoogleBounds(bounds, google);
         map.fitBounds(googleBounds);
       }
     }
-  }, [google, map, mode, polygon, polygonLength]);
+  }, [fitBoundaryLength, fitBoundaryPolygon, google, map, mode]);
 
   // ============================================================
   // PRECISION POLYGON EDITOR (Edit Mode)
@@ -418,14 +472,14 @@ export function SiteBoundaryEditorV2({
   );
 
   const handleFitBounds = useCallback(() => {
-    if (polygon.length >= 3 && map && google) {
-      const bounds = calculateBounds(polygon);
+    if (fitBoundaryLength >= 3 && map && google) {
+      const bounds = calculateBounds(fitBoundaryPolygon);
       if (bounds) {
         const googleBounds = boundsToGoogleBounds(bounds, google);
         map.fitBounds(googleBounds);
       }
     }
-  }, [polygon, map, google]);
+  }, [fitBoundaryLength, fitBoundaryPolygon, map, google]);
 
   const handleTableVerticesChange = useCallback(
     (newVertices) => {
@@ -582,7 +636,7 @@ export function SiteBoundaryEditorV2({
           {/* Utility buttons */}
           <button
             onClick={handleFitBounds}
-            disabled={polygon.length < 3}
+            disabled={fitBoundaryLength < 3}
             className="px-3 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 disabled:bg-slate-100 disabled:text-slate-400 transition-colors text-sm"
           >
             📍 Fit

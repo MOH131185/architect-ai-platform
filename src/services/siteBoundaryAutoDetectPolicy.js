@@ -2,6 +2,14 @@ const ESTIMATED_BOUNDARY_WARNING_CODE =
   "SITE_BOUNDARY_ESTIMATED_NOT_AUTHORITATIVE";
 const BOUNDARY_AUTHORITY_CONFIDENCE_THRESHOLD = 0.6;
 
+function hasUsablePolygon(polygon) {
+  return Array.isArray(polygon) && polygon.length >= 3;
+}
+
+function firstUsablePolygon(candidates = []) {
+  return candidates.find(hasUsablePolygon) || [];
+}
+
 function getBoundaryConfidence(locationData = {}) {
   const confidence = Number(
     locationData.boundaryConfidence ??
@@ -67,6 +75,24 @@ export function shouldEnableBoundaryAutoDetect(locationData = null) {
   }
 
   return true;
+}
+
+export function selectContextualBoundaryPolygon(locationData = null) {
+  if (!locationData || shouldEnableBoundaryAutoDetect(locationData)) {
+    return [];
+  }
+
+  return firstUsablePolygon([
+    locationData.contextualSiteBoundary,
+    locationData.estimatedSiteBoundary,
+    locationData.siteBoundary,
+    locationData.polygon,
+    locationData.siteAnalysis?.contextualSiteBoundary,
+    locationData.siteAnalysis?.estimatedSiteBoundary,
+    locationData.siteAnalysis?.siteBoundary,
+    locationData.metadata?.contextualSiteBoundary,
+    locationData.metadata?.estimatedSiteBoundary,
+  ]);
 }
 
 export default shouldEnableBoundaryAutoDetect;
