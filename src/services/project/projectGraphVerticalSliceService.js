@@ -26,6 +26,11 @@ import {
   buildVisualManifest,
   buildVisualIdentityLockBlock,
 } from "../render/visualManifestService.js";
+import {
+  buildSheetDesignContext,
+  assertSheetDesignContext,
+  SHEET_DESIGN_CONTEXT_VERSION,
+} from "../dnaPromptContext.js";
 import { getSiteSnapshotWithMetadata } from "../siteMapSnapshotService.js";
 import { computeSunPath } from "../climate/sunPath.js";
 import { listSourceDocumentsForParts } from "../regulation/sourceRegistry.js";
@@ -3713,6 +3718,10 @@ async function buildSheetPanelArtifacts({
   siteSnapshot = null,
   sheetPlan = null,
   visualManifest = null,
+  // Phase 1: optional SheetDesignContext. Reserved for downstream
+  // consumers; not consumed by the existing data-panel builders yet.
+  // eslint-disable-next-line no-unused-vars
+  sheetDesignContext = null,
 }) {
   const siteContext = buildSiteContextPanelArtifact({
     projectGraphId,
@@ -4826,6 +4835,9 @@ async function buildA1Sheet({
   siteSnapshot = null,
   sheetPlan = null,
   visualManifest = null,
+  // Phase 1: optional SheetDesignContext. Existing callers may omit it; the
+  // function does not yet hard-depend on it.
+  sheetDesignContext = null,
 }) {
   const __a1sheetStart = Date.now();
   const __a1sheetLog = (step, sinceMs, extra = "") => {
@@ -4857,6 +4869,7 @@ async function buildA1Sheet({
       label: sheetLabel,
     },
     visualManifest,
+    sheetDesignContext,
   });
   __a1mark = __a1sheetLog("build_panel_artifacts", __a1mark);
   const panelArtifacts = {
@@ -7531,6 +7544,31 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     materialPalette: localStyle?.material_palette || null,
   });
   __vsMark = __vsLog("visual_manifest", __vsMark);
+  // Phase 1 — SheetDesignContext foundation. One frozen contract object
+  // built once per generation. Wraps (does not replace) visualManifest and
+  // adds material/style/climate/portfolio/programme surfaces so future panel
+  // renderers can consume one source of truth. Phase 1 is wiring-only; no
+  // render output changes. The validator below is warn-only — existing
+  // callers that ignore the context keep working unchanged.
+  const sheetDesignContext = buildSheetDesignContext({
+    masterDNA: input?.masterDNA || null,
+    brief,
+    compiledProject,
+    climate,
+    localStyle,
+    styleDNA: styleDNAForManifest,
+    regulations,
+    programmeSummary,
+    region,
+    projectGraphId,
+    visualManifest,
+  });
+  const sheetDesignContextReport = assertSheetDesignContext(sheetDesignContext);
+  __vsMark = __vsLog(
+    "sheet_design_context",
+    __vsMark,
+    `hash=${sheetDesignContext.contextHash} ok=${sheetDesignContextReport.ok} gaps=${sheetDesignContextReport.gaps.length}`,
+  );
   const renderedSheets = [];
   for (const sheetPlan of splitDecision.sheets) {
     const sheetIndex = renderedSheets.length;
@@ -7554,6 +7592,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       siteSnapshot: siteMapSnapshot,
       sheetPlan,
       visualManifest,
+      sheetDesignContext,
     });
     __vsMark = __vsLog(`build_a1_sheet[${sheetTag}]`, __vsMark);
     const pdfStart = Date.now();
@@ -7571,6 +7610,8 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       ...(sheetResult.sheetArtifact.metadata || {}),
       renderProof: pdf.renderedProof,
       textRenderStatus: pdf.renderedProof?.textRenderStatus,
+      sheetDesignContextHash: sheetDesignContext.contextHash,
+      sheetDesignContextVersion: SHEET_DESIGN_CONTEXT_VERSION,
     };
     renderedSheets.push({
       sheetPlan,
@@ -7857,6 +7898,13 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     // metadata.visualManifestId / Hash / visualIdentityLocked.
     visualManifest,
     visualManifestHash: visualManifest.manifestHash,
+    // Phase 1 — SheetDesignContext foundation. Frozen contract object that
+    // wraps visualManifest with material/style/climate/portfolio/programme.
+    // Surfaced here so downstream tests/consumers can prove every panel
+    // was driven by the same design context. No render output changes.
+    sheetDesignContext,
+    sheetDesignContextHash: sheetDesignContext.contextHash,
+    sheetDesignContextReport,
     technicalBuild: {
       ok: technicalBuild.ok,
       technicalPanelTypes: technicalBuild.technicalPanelTypes,
