@@ -3357,6 +3357,34 @@ function buildTitleBlockPanelArtifact({
   };
 }
 
+function buildProjectGraphVisualContinuityBlock(visualManifest) {
+  if (!visualManifest || typeof visualManifest !== "object") {
+    return "";
+  }
+
+  const manifest = visualManifest;
+  const roofForm = manifest.roof?.form || "specified roof form";
+  const roofMaterial = manifest.roof?.materialName || "specified roof material";
+  const primaryMaterial =
+    manifest.primaryFacadeMaterial?.name || "specified primary facade material";
+  const secondaryMaterial =
+    manifest.secondaryFacadeMaterial?.name ||
+    "specified secondary facade material";
+  const windowRhythm = manifest.windowRhythm || "specified window rhythm";
+  const entrance =
+    manifest.entranceOrientation || "specified entrance position";
+
+  return [
+    "VISUAL CONTINUITY CONSTRAINTS:",
+    `- Preserve the exact ${manifest.storeyCount || "specified"} storey count, footprint proportions, silhouette, and roofline from the geometry reference.`,
+    `- Preserve roof form "${roofForm}" with ${roofMaterial}; do not flatten, steepen, rotate, or restyle the roof.`,
+    `- Preserve facade material order: primary ${primaryMaterial}; secondary ${secondaryMaterial}; do not swap materials between panels.`,
+    `- Preserve the ${windowRhythm} window rhythm, opening sizes, and opening positions from the reference geometry.`,
+    `- Preserve the entrance at ${entrance}; do not relocate the front door.`,
+    "- Do not invent extra bays, extra storeys, neighbouring buildings, signage, diagram labels, or text overlays.",
+  ].join("\n");
+}
+
 // Build a climate + style + programme aware prompt for image-edit-based
 // 3D panel rendering. Uses panelPromptBuilders.buildReasoningChainBlock
 // so the gpt-image call sees the same upstream drivers (UK temperate,
@@ -3396,8 +3424,11 @@ export function buildProjectGraphRenderPrompt({
   // interior_3d) describe the same building. The block is identical across
   // panels for the same manifest, so OpenAI image generation cannot drift.
   const identityLock = buildVisualIdentityLockBlock(visualManifest);
+  const visualContinuity =
+    buildProjectGraphVisualContinuityBlock(visualManifest);
   return [
     identityLock,
+    visualContinuity,
     `Project: ${projectName} — ${buildingType}.`,
     intent,
     reasoning,
