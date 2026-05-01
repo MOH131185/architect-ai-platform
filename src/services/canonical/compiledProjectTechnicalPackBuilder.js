@@ -829,6 +829,13 @@ export function buildCompiledProjectTechnicalPanels(source = {}, options = {}) {
     options.elevationHeight || options.height,
   );
   const customSectionHeight = Number(options.sectionHeight || options.height);
+  // Default to board-v2 so non-residential / unspecified callers retain
+  // existing behaviour. Residential/presentation-v3 callers pass it
+  // explicitly so floor plans and sections render at slot aspect.
+  const layoutTemplate =
+    typeof options.layoutTemplate === "string" && options.layoutTemplate
+      ? options.layoutTemplate
+      : "board-v2";
 
   const levels = Array.isArray(compiledProject.levels)
     ? compiledProject.levels
@@ -837,7 +844,11 @@ export function buildCompiledProjectTechnicalPanels(source = {}, options = {}) {
 
   levels.forEach((level, index) => {
     const panelType = technicalFloorPanelType(index);
-    const slotRenderSize = getTechnicalPanelRenderSize(panelType, floorCount);
+    const slotRenderSize = getTechnicalPanelRenderSize(
+      panelType,
+      floorCount,
+      layoutTemplate,
+    );
     const renderSize = {
       width:
         Number.isFinite(customRenderWidth) && customRenderWidth > 0
@@ -872,7 +883,11 @@ export function buildCompiledProjectTechnicalPanels(source = {}, options = {}) {
 
   Object.entries(TECHNICAL_ELEVATION_PANELS).forEach(
     ([orientation, panelType]) => {
-      const slotRenderSize = getTechnicalPanelRenderSize(panelType, floorCount);
+      const slotRenderSize = getTechnicalPanelRenderSize(
+        panelType,
+        floorCount,
+        layoutTemplate,
+      );
       const renderSize = {
         width:
           Number.isFinite(customRenderWidth) && customRenderWidth > 0
@@ -907,7 +922,11 @@ export function buildCompiledProjectTechnicalPanels(source = {}, options = {}) {
 
   Object.entries(TECHNICAL_SECTION_PANELS).forEach(
     ([sectionType, panelType]) => {
-      const slotRenderSize = getTechnicalPanelRenderSize(panelType, floorCount);
+      const slotRenderSize = getTechnicalPanelRenderSize(
+        panelType,
+        floorCount,
+        layoutTemplate,
+      );
       const renderSize = {
         width:
           Number.isFinite(customRenderWidth) && customRenderWidth > 0

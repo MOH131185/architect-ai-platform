@@ -187,4 +187,58 @@ describe("getTechnicalPanelRenderSize — aspect preservation", () => {
       expect(size).toEqual({ width: 1200, height: 760 });
     });
   });
+
+  describe("presentation-v3 vs board-v2 differ where it matters", () => {
+    // Verifies the wiring activates the aspect-fit fix on residential briefs:
+    // board-v2 floor_plan_ground (2-storey, wide slot) and presentation-v3
+    // floor_plan_ground (2-storey, square slot) produce DIFFERENT dimensions.
+    // If they were identical, the layoutTemplate plumbing would be a no-op.
+    test("floor_plan_ground (2-storey) differs between board-v2 and presentation-v3", () => {
+      const boardV2 = getTechnicalPanelRenderSize(
+        "floor_plan_ground",
+        2,
+        "board-v2",
+      );
+      const presV3 = getTechnicalPanelRenderSize(
+        "floor_plan_ground",
+        2,
+        "presentation-v3",
+      );
+      const boardAspect = boardV2.width / boardV2.height;
+      const presAspect = presV3.width / presV3.height;
+      // board-v2 floor row is wide (~2:1 or wider after applyFloorRow);
+      // presentation-v3 is closer to 1:1.
+      expect(boardAspect).toBeGreaterThan(1.5);
+      expect(presAspect).toBeLessThan(1.5);
+      expect(boardV2).not.toEqual(presV3);
+    });
+
+    test("section_AA differs between board-v2 and presentation-v3", () => {
+      const boardV2 = getTechnicalPanelRenderSize("section_AA", 2, "board-v2");
+      const presV3 = getTechnicalPanelRenderSize(
+        "section_AA",
+        2,
+        "presentation-v3",
+      );
+      expect(boardV2).not.toEqual(presV3);
+    });
+
+    test("storey routing intact: 1-storey omits floor_plan_first slot in both templates", () => {
+      // For 1-storey, floor_plan_first should not exist in the layout
+      // (returns the documented fallback). For 2-storey, it has a real slot.
+      const v3OneStorey = getTechnicalPanelRenderSize(
+        "floor_plan_first",
+        1,
+        "presentation-v3",
+      );
+      const v3TwoStorey = getTechnicalPanelRenderSize(
+        "floor_plan_first",
+        2,
+        "presentation-v3",
+      );
+      // 1-storey returns the absent-slot fallback {1200, 760}; 2-storey returns a real slot dim.
+      expect(v3OneStorey).toEqual({ width: 1200, height: 760 });
+      expect(v3TwoStorey).not.toEqual(v3OneStorey);
+    });
+  });
 });
