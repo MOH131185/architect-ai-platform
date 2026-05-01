@@ -4456,6 +4456,15 @@ async function buildA1Sheet({
   sheetPlan = null,
   visualManifest = null,
 }) {
+  const __a1sheetStart = Date.now();
+  const __a1sheetLog = (step, sinceMs, extra = "") => {
+    const now = Date.now();
+    const tail = extra ? ` ${extra}` : "";
+    // eslint-disable-next-line no-console
+    console.log(`[VS_TIMING] step=a1sheet.${step} ms=${now - sinceMs}${tail}`);
+    return now;
+  };
+  let __a1mark = __a1sheetStart;
   const drawingNumber = sheetPlan?.sheet_number || "A1-00";
   const sheetLabel = sheetPlan?.label || "RIBA Stage 2 Master";
   const supplementalPanelArtifacts = await buildSheetPanelArtifacts({
@@ -4478,6 +4487,7 @@ async function buildA1Sheet({
     },
     visualManifest,
   });
+  __a1mark = __a1sheetLog("build_panel_artifacts", __a1mark);
   const panelArtifacts = {
     ...drawingArtifacts,
     ...supplementalPanelArtifacts,
@@ -4519,6 +4529,11 @@ async function buildA1Sheet({
     sheetLabel,
     layoutTemplate,
   });
+  __a1mark = __a1sheetLog(
+    "build_sheet_svg",
+    __a1mark,
+    `svg_chars=${rawSvgString.length}`,
+  );
   // Embed fonts immediately so every downstream consumer - frontend viewer,
   // PDF rasteriser, SVG download - works with a single self-contained sheet.
   // prepareFinalSheetSvgForRasterization prefers bundled NotoSans from
@@ -4530,6 +4545,7 @@ async function buildA1Sheet({
       textToPath: true,
     },
   );
+  __a1mark = __a1sheetLog("prepare_sheet_for_raster", __a1mark);
   const { svgString, textRenderStatus } = preparedSheet;
   if (!svgString.includes("@font-face")) {
     throw new Error(
@@ -4571,6 +4587,7 @@ async function buildA1Sheet({
       },
     ]),
   );
+  __a1sheetLog("a1sheet_done", __a1sheetStart, `chars=${svgString.length}`);
   return {
     sheetSet: {
       sheets: [
@@ -4808,6 +4825,15 @@ async function buildA1PdfArtifact({
   qaStatus = "pending",
   renderIntent = "final_a1",
 }) {
+  const __a1pdfStart = Date.now();
+  const __a1pdfLog = (step, sinceMs, extra = "") => {
+    const now = Date.now();
+    const tail = extra ? ` ${extra}` : "";
+    // eslint-disable-next-line no-console
+    console.log(`[VS_TIMING] step=a1pdf.${step} ms=${now - sinceMs}${tail}`);
+    return now;
+  };
+  let __pdfMark = __a1pdfStart;
   const isFinalA1 = renderIntent === "final_a1";
   const widthPt = 841 * MM_TO_PT;
   const heightPt = 594 * MM_TO_PT;
@@ -4838,6 +4864,11 @@ async function buildA1PdfArtifact({
     sheetArtifact,
     densityDpi: targetDensityDpi,
   });
+  __pdfMark = __a1pdfLog(
+    "rasterise_sheet",
+    __pdfMark,
+    `dpi=${targetDensityDpi} bytes=${renderedSheet?.pngBuffer?.length || "?"}`,
+  );
   const renderedPngBytes = normalizeBinaryBytes(
     renderedSheet.pngBuffer,
     "rendered A1 sheet PNG",
@@ -4847,13 +4878,16 @@ async function buildA1PdfArtifact({
     png: Buffer.from(renderedPngBytes).toString("base64"),
     geometryHash,
   });
+  __pdfMark = __a1pdfLog("hash_png", __pdfMark);
   const occupancy = await analyseRenderedSheetPng(renderedPngBytes);
+  __pdfMark = __a1pdfLog("analyse_png", __pdfMark);
   const panelOccupancy = buildPanelRenderSummary(sheetArtifact);
   const textRenderStatus = await analyseRenderedTextProof({
     pngBuffer: renderedPngBytes,
     sheetSvg: rawSheetSvg,
     requiredLabels: REQUIRED_A1_TEXT_PROOF_LABELS,
   });
+  __pdfMark = __a1pdfLog("analyse_text_proof", __pdfMark);
   // Phase A: post-rasterisation tofu QA. Sample each panel's caption band on
   // the rendered PNG (not the SVG source) and refuse final PDF emission if
   // any band matches the tofu signature. Coordinates are derived from the
@@ -4892,6 +4926,7 @@ async function buildA1PdfArtifact({
       sharp: sharpModule,
       panelLabelCoordinates,
     });
+    __pdfMark = __a1pdfLog("glyph_integrity", __pdfMark);
   } catch (err) {
     rasterGlyphIntegrity = {
       version: "phase22-a1-raster-glyph-integrity-v1",
@@ -4988,6 +5023,7 @@ async function buildA1PdfArtifact({
   pdfDoc.setModificationDate(new Date(0));
   const page = pdfDoc.addPage([widthPt, heightPt]);
   const sheetImage = await pdfDoc.embedPng(renderedPngBytes);
+  __pdfMark = __a1pdfLog("pdf_embed_png", __pdfMark);
   page.drawImage(sheetImage, {
     x: 0,
     y: 0,
@@ -5010,6 +5046,12 @@ async function buildA1PdfArtifact({
   }
 
   const pdfDataUri = await pdfDoc.saveAsBase64({ dataUri: true });
+  __a1pdfLog("pdf_save_data_uri", __pdfMark);
+  __a1pdfLog(
+    "a1pdf_done",
+    __a1pdfStart,
+    `dataUri_kb=${Math.round(pdfDataUri.length / 1024)}`,
+  );
   const contentHash = computeCDSHashSync({
     sourceSvgHash: sheetArtifact.svgHash,
     renderedPngHash,
@@ -6825,7 +6867,24 @@ function buildProjectGraph({
 }
 
 export async function buildArchitectureProjectVerticalSlice(input = {}) {
+  // Diagnostics: per-step timing logs so the next 504/timeout reveals which
+  // step is consuming the budget. Output goes to stdout (Vercel captures it
+  // as Function Logs). Format is greppable: `[VS_TIMING] step=<name> ms=<n> total_ms=<n>`.
+  const __vsRunStart = Date.now();
+  const __vsLog = (step, prevMs, extra = "") => {
+    const now = Date.now();
+    const deltaMs = now - prevMs;
+    const totalMs = now - __vsRunStart;
+    const tail = extra ? ` ${extra}` : "";
+    // eslint-disable-next-line no-console
+    console.log(
+      `[VS_TIMING] step=${step} ms=${deltaMs} total_ms=${totalMs}${tail}`,
+    );
+    return now;
+  };
+  let __vsMark = __vsRunStart;
   const brief = normalizeBrief(input);
+  __vsMark = __vsLog("normalize_brief", __vsMark);
   // Programme preflight gate. Mirrors the UI-layer gate in
   // ArchitectAIWizardContainer so API-submitted requests cannot bypass
   // validation. A failure short-circuits with success:false; the route
@@ -6873,7 +6932,9 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     (input.contextProviders.fetchImpl || input.contextProviders.useDefaultFetch)
       ? await enrichSiteContext(deterministicSite, input.contextProviders)
       : deterministicSite;
+  __vsMark = __vsLog("site_context", __vsMark);
   const siteMapSnapshot = await resolveSiteMapSnapshot({ input, brief, site });
+  __vsMark = __vsLog("site_map_snapshot", __vsMark);
   const climate = buildClimatePack(brief, site);
   const regulationsMetadata = buildRegulationPack(brief);
   const localStyle = buildLocalStylePack(brief, site, climate);
@@ -6889,6 +6950,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     climate,
   });
   const programme = syncProgrammeActuals(draftProgramme, projectGeometry);
+  __vsMark = __vsLog("programme_and_geometry", __vsMark);
   // Programme-level QA. Catches both empty levels and the forensic
   // "every space collapsed to Ground" regression. Errors halt generation
   // with a structured response so the API surfaces a 422 instead of
@@ -6944,6 +7006,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       localMaterials: localStyle.material_palette,
     },
   });
+  __vsMark = __vsLog("compile_project", __vsMark);
   // Compiled-project QA. Catches geometry layers losing a level (e.g. the
   // 3-level brief silently producing a 2-level model). The level-count
   // mismatch is fatal; missing rooms on a level are a warning attached
@@ -6969,7 +7032,13 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
   const selectedDesign = buildSelectedDesign(compiledProject, programme);
   const { drawingSet, drawingArtifacts, technicalBuild } =
     buildDrawingSet(compiledProject);
+  __vsMark = __vsLog(
+    "build_drawing_set",
+    __vsMark,
+    `panel_count=${Object.keys(drawingArtifacts || {}).length}`,
+  );
   const scene3d = build3DProjection(compiledProject);
+  __vsMark = __vsLog("build_3d_projection", __vsMark);
   const modelRegistry = resolveArchitectureModelRegistry({
     steps: [
       "BRIEF",
@@ -7053,8 +7122,12 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     styleDNA: styleDNAForManifest,
     materialPalette: localStyle?.material_palette || null,
   });
+  __vsMark = __vsLog("visual_manifest", __vsMark);
   const renderedSheets = [];
   for (const sheetPlan of splitDecision.sheets) {
+    const sheetIndex = renderedSheets.length;
+    const sheetTag = `sheet_${sheetIndex}`;
+    const sheetStart = Date.now();
     const sheetResult = await buildA1Sheet({
       projectGraphId,
       brief,
@@ -7074,6 +7147,8 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       sheetPlan,
       visualManifest,
     });
+    __vsMark = __vsLog(`build_a1_sheet[${sheetTag}]`, __vsMark);
+    const pdfStart = Date.now();
     const pdf = await buildA1PdfArtifact({
       projectGraphId,
       brief,
@@ -7081,6 +7156,8 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       sheetArtifact: sheetResult.sheetArtifact,
       renderIntent: "final_a1",
     });
+    __vsMark = __vsLog(`build_a1_pdf[${sheetTag}]`, pdfStart);
+    __vsLog(`sheet_total[${sheetTag}]`, sheetStart);
     sheetResult.sheetArtifact.renderProof = pdf.renderedProof;
     sheetResult.sheetArtifact.metadata = {
       ...(sheetResult.sheetArtifact.metadata || {}),
@@ -7138,6 +7215,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     },
     execution: openaiReasoningExecution,
   });
+  __vsMark = __vsLog("openai_reasoning_steps", __vsMark);
   const imageProviderCalls = buildImageProviderCalls(visuals3d);
   const allProviderCalls = [...providerCalls, ...imageProviderCalls];
   const openaiQaMetadata = buildOpenAIQaMetadata({
@@ -7385,6 +7463,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       exportSteps,
     },
   };
+  __vsMark = __vsLog("artifacts_assembled", __vsMark);
   let qa = validateProjectGraphVerticalSlice({
     projectGraph: graphWithStableId,
     artifacts,
@@ -7394,6 +7473,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     getBlockedOpenAIReasoningCalls(providerCalls),
   );
   qa.openai = openaiQaMetadata;
+  __vsMark = __vsLog("validate_qa", __vsMark, `qa_status=${qa.status}`);
 
   // Phase 5: structured reasoning chain — Brief → Site → Climate → Style →
   // Programme — exposed as both a structured object (for QA / API consumers)
@@ -7476,6 +7556,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     qa,
   };
   finalGraph.project_graph_hash = computeCDSHashSync(finalGraph);
+  __vsLog("vertical_slice_done", __vsRunStart, `qa_status=${qa.status}`);
 
   return {
     success: qa.status === "pass",
