@@ -546,23 +546,66 @@ async function runProjectGraphVerticalSliceWorkflow({
     const issues = Array.isArray(verticalSlice?.qa?.issues)
       ? verticalSlice.qa.issues
       : [];
+    const safeStringify = (value) => {
+      try {
+        return JSON.stringify(value);
+      } catch {
+        return String(value);
+      }
+    };
+    const summarizePanelTypes = (entries) => {
+      if (!Array.isArray(entries)) return null;
+      const labels = entries
+        .map((entry) => {
+          if (typeof entry === "string") return entry;
+          const panelType = entry?.panelType || entry?.type || "?";
+          const reason = entry?.reason ? `:${entry.reason}` : "";
+          return `${panelType}${reason}`;
+        })
+        .filter(Boolean);
+      return labels.length ? labels.join(", ") : null;
+    };
     const placeholderIssue = issues.find(
       (entry) => entry?.code === "PLACEHOLDER_3D_RENDER_USED",
     );
     if (placeholderIssue?.details?.placeholder3dPanels) {
+      const summary = summarizePanelTypes(
+        placeholderIssue.details.placeholder3dPanels,
+      );
+      console.error(
+        `[ProjectGraph] PLACEHOLDER_3D_RENDER_USED panels=${summary || "?"}`,
+      );
       console.error(
         "[ProjectGraph] PLACEHOLDER_3D_RENDER_USED detail",
         placeholderIssue.details.placeholder3dPanels,
+      );
+      console.error(
+        "[ProjectGraph] PLACEHOLDER_3D_RENDER_USED detail (json)",
+        safeStringify(placeholderIssue.details.placeholder3dPanels),
       );
     }
     const panelContentIssue = issues.find(
       (entry) => entry?.code === "A1_PANEL_CONTENT_MISSING",
     );
-    if (panelContentIssue?.details?.missingRequiredPanels) {
+    if (panelContentIssue?.details) {
+      const flatTypes =
+        panelContentIssue.details.missingRequiredPanelTypes ||
+        summarizePanelTypes(panelContentIssue.details.missingRequiredPanels);
       console.error(
-        "[ProjectGraph] A1_PANEL_CONTENT_MISSING detail",
-        panelContentIssue.details.missingRequiredPanels,
+        `[ProjectGraph] A1_PANEL_CONTENT_MISSING panels=${
+          Array.isArray(flatTypes) ? flatTypes.join(", ") : flatTypes || "?"
+        }`,
       );
+      if (panelContentIssue.details.missingRequiredPanels) {
+        console.error(
+          "[ProjectGraph] A1_PANEL_CONTENT_MISSING detail",
+          panelContentIssue.details.missingRequiredPanels,
+        );
+        console.error(
+          "[ProjectGraph] A1_PANEL_CONTENT_MISSING detail (json)",
+          safeStringify(panelContentIssue.details.missingRequiredPanels),
+        );
+      }
     }
     const errorIssues = issues.filter((entry) => entry?.severity === "error");
     if (errorIssues.length) {
@@ -572,6 +615,10 @@ async function runProjectGraphVerticalSliceWorkflow({
           `[ProjectGraph] issue ${entry?.code || "UNKNOWN"}:`,
           entry?.message || "",
           entry?.details || {},
+        );
+        console.error(
+          `[ProjectGraph] issue ${entry?.code || "UNKNOWN"} details (json)`,
+          safeStringify(entry?.details || {}),
         );
       });
     }
