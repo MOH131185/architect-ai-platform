@@ -31,11 +31,48 @@ async function blobToDataUrl(blob) {
   return `data:${mimeType};base64,${base64}`;
 }
 
+const STATIC_MAP_COLOR_NAMES = {
+  red: "0xff0000ff",
+  orange: "0xf59e0bff",
+  yellow: "0xffcc00ff",
+  paleGreen: "0xb7d7a833",
+  paleBlue: "0xb7d8f033",
+};
+
+function opacityToAlpha(opacity, fallback = "ff") {
+  const numeric = Number(opacity);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.round(Math.max(0, Math.min(1, numeric)) * 255)
+    .toString(16)
+    .padStart(2, "0");
+}
+
+function normalizeStaticMapColor(value, fallback, alpha = "ff") {
+  if (!value) return fallback;
+  const raw = String(value).trim();
+  const named = STATIC_MAP_COLOR_NAMES[raw];
+  if (named) return named;
+
+  const googleHex = raw.match(/^0x([0-9a-f]{6})([0-9a-f]{2})?$/i);
+  if (googleHex) {
+    return `0x${googleHex[1]}${googleHex[2] || alpha}`;
+  }
+
+  const cssHex = raw.match(/^#?([0-9a-f]{6})([0-9a-f]{2})?$/i);
+  if (cssHex) {
+    return `0x${cssHex[1]}${cssHex[2] || alpha}`;
+  }
+
+  return fallback;
+}
+
 /**
  * Get site snapshot from Google Static Maps API
  * @param {Object} params - Snapshot parameters
  * @param {Object} params.coordinates - { lat, lng } coordinates
  * @param {Array} params.polygon - Optional array of { lat, lng } points for site boundary overlay
+ * @param {Object} params.polygonStyle - Optional Google Static Maps path style
+ * @param {boolean} params.drawPolygonOverlay - Whether to draw the polygon into the static map image
  * @param {number} params.zoom - Zoom level (default 19, used if polygon not provided)
  * @param {Array} params.size - [width, height] in pixels (default [640, 400])
  * @param {string} params.mapType - Map type: 'roadmap' (default), 'satellite', 'hybrid', 'terrain'
@@ -44,6 +81,8 @@ async function blobToDataUrl(blob) {
 export async function getSiteSnapshot({
   coordinates,
   polygon = null,
+  polygonStyle = null,
+  drawPolygonOverlay = true,
   zoom = 19,
   size = [640, 400],
   mapType = "roadmap",
@@ -66,11 +105,31 @@ export async function getSiteSnapshot({
 
   // Build polygon path if provided
   let pathParam = "";
-  if (polygon && Array.isArray(polygon) && polygon.length > 0) {
+  if (
+    drawPolygonOverlay &&
+    polygon &&
+    Array.isArray(polygon) &&
+    polygon.length > 0
+  ) {
     const pathPoints = polygon.map(({ lat, lng }) => `${lat},${lng}`).join("|");
+    const fillAlpha = opacityToAlpha(polygonStyle?.fillOpacity, "33");
+    const fillColor = normalizeStaticMapColor(
+      polygonStyle?.fillColor,
+      "0xB7D7A833",
+      fillAlpha,
+    );
+    const strokeColor = normalizeStaticMapColor(
+      polygonStyle?.strokeColor || polygonStyle?.color,
+      "0xf59e0bff",
+    );
+    const strokeWeight = Math.max(
+      1,
+      Math.round(
+        Number(polygonStyle?.strokeWeight ?? polygonStyle?.weight) || 3,
+      ),
+    );
 
-    // Yellow semi-transparent fill with yellow border
-    pathParam = `&path=fillcolor:0xFFFF0033|color:0xffcc00ff|weight:4|${pathPoints}`;
+    pathParam = `&path=fillcolor:${fillColor}|color:${strokeColor}|weight:${strokeWeight}|${pathPoints}`;
   }
 
   // Build visible parameter if polygon provided (auto-fit view to polygon)
@@ -103,7 +162,11 @@ export async function getSiteSnapshot({
     );
     logger.info(`   Size: ${size[0]}×${size[1]}px`);
     logger.info(
-      `   Polygon overlay: ${polygon ? `${polygon.length} points` : "none"}`,
+      `   Polygon: ${
+        polygon
+          ? `${polygon.length} points (${drawPolygonOverlay ? "drawn" : "bounds only"})`
+          : "none"
+      }`,
     );
 
     const response = await fetch(url);
@@ -150,6 +213,9 @@ export async function getSiteSnapshotWithMetadata(params) {
     attribution: "Map data © Google",
     sourceUrl: "google-static-maps",
     hasPolygon: params.polygon && params.polygon.length > 0,
+    mapType: params.mapType || "roadmap",
+    polygonStyle: params.polygonStyle || null,
+    drawPolygonOverlay: params.drawPolygonOverlay !== false,
   };
 }
 
@@ -162,6 +228,7 @@ export async function getSiteSnapshotWithMetadata(params) {
  * @param {Object} params.size - Image size { width, height } (default: { width: 400, height: 300 })
  * @param {Array} params.polygon - Polygon coordinates [{ lat, lng }, ...]
  * @param {Object} params.polygonStyle - Polygon style { strokeColor, strokeWeight, fillColor, fillOpacity }
+ * @param {boolean} params.drawPolygonOverlay - Whether to draw the polygon into the static map image
  * @returns {Promise<Object>} Snapshot with { dataUrl, sha256, center, zoom, mapType, size, polygon, polygonStyle, capturedAt }
  */
 export async function captureSnapshotForPersistence({
@@ -177,6 +244,7 @@ export async function captureSnapshotForPersistence({
     fillColor: "red",
     fillOpacity: 0.2,
   },
+  drawPolygonOverlay = true,
 }) {
   // Accept both 'center' and 'coordinates' for backward compatibility
   const resolvedCenter = center || coordinates;
@@ -202,6 +270,8 @@ export async function captureSnapshotForPersistence({
     const dataUrl = await getSiteSnapshot({
       coordinates: resolvedCenter,
       polygon,
+      polygonStyle,
+      drawPolygonOverlay,
       zoom,
       size: sizeArray,
       mapType,
@@ -228,6 +298,7 @@ export async function captureSnapshotForPersistence({
       size: { width: sizeArray[0], height: sizeArray[1] },
       polygon,
       polygonStyle,
+      drawPolygonOverlay,
       capturedAt: new Date().toISOString(),
       source: "google-static-maps-api",
     };
