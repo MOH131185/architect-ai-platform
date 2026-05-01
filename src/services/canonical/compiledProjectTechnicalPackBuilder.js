@@ -84,12 +84,19 @@ function getTechnicalPanelRenderSize(panelType, floorCount = 1) {
   const minWidth = isPlan ? 760 : isSection ? 720 : 560;
   const minHeight = isPlan ? 420 : isSection ? 400 : 320;
 
+  // Render the SVG at the slot's actual aspect ratio. If either dimension
+  // would fall below its readability minimum, scale BOTH dimensions up by
+  // the same factor so the aspect ratio (and the downstream fit:"contain"
+  // placement) still fills the A1 panel slot completely.
+  const targetWidth = slotRect.width * TECHNICAL_RENDER_SCALE_FACTOR;
+  const targetHeight = slotRect.height * TECHNICAL_RENDER_SCALE_FACTOR;
+  const widthDeficit = targetWidth > 0 ? minWidth / targetWidth : 1;
+  const heightDeficit = targetHeight > 0 ? minHeight / targetHeight : 1;
+  const upscale = Math.max(1, widthDeficit, heightDeficit);
+
   return {
-    width: roundEven(slotRect.width * TECHNICAL_RENDER_SCALE_FACTOR, minWidth),
-    height: roundEven(
-      slotRect.height * TECHNICAL_RENDER_SCALE_FACTOR,
-      minHeight,
-    ),
+    width: roundEven(targetWidth * upscale, 0),
+    height: roundEven(targetHeight * upscale, 0),
   };
 }
 
