@@ -300,6 +300,34 @@ function renderRoof(baseX, topY, widthPx, roofLanguage, theme) {
   `;
 }
 
+// Phase 3 — friendly RIBA-style stage names for elevation level datums.
+// Maps level_number / level.name to a short uppercase suffix used in the
+// "FFL <STAGE> +X.XXm" datum labels along the elevation's left edge.
+const FLOOR_STAGE_NAMES = Object.freeze([
+  "GROUND",
+  "FIRST",
+  "SECOND",
+  "THIRD",
+  "FOURTH",
+  "FIFTH",
+  "SIXTH",
+  "SEVENTH",
+  "EIGHTH",
+]);
+
+function resolveFloorStageLabel(level) {
+  if (level && typeof level.name === "string" && level.name.trim()) {
+    const cleaned = level.name.replace(/\b(floor|level|storey|story)\b/gi, "");
+    const trimmed = cleaned.replace(/\s+/g, " ").trim();
+    if (trimmed) return trimmed.toUpperCase();
+  }
+  const n = Number(level?.level_number);
+  if (Number.isFinite(n) && n >= 0 && n < FLOOR_STAGE_NAMES.length) {
+    return FLOOR_STAGE_NAMES[n];
+  }
+  return Number.isFinite(n) ? `L${n}` : "FFL";
+}
+
 function renderLevelDatums(
   baseX,
   baseY,
@@ -308,6 +336,7 @@ function renderLevelDatums(
   scale,
   theme,
   polish = {},
+  ridgeInfo = null,
 ) {
   const lines = [];
   const labels = [];
@@ -317,10 +346,15 @@ function renderLevelDatums(
   const guideStroke = polishSize(1, strokeScale);
   const primaryLabelFont = polishSize(9, fontScale);
   const secondaryLabelFont = polishSize(8, fontScale);
-  levelProfiles.forEach((level) => {
+  // Phase 3 — render datums starting from the ground (FFL GROUND +0.00m) and
+  // labelled with a friendly RIBA-style stage name ("FFL FIRST +3.20m" etc.)
+  // instead of the bare level identifier. The ground datum is emitted last so
+  // it sits on top of the level lines visually.
+  levelProfiles.forEach((level, index) => {
     const topY = baseY - level.top_m * scale;
     const midY =
       baseY - (level.bottom_m + Number(level.height_m || 3.2) / 2) * scale;
+    const stage = resolveFloorStageLabel(level);
     lines.push(
       `<line x1="${formatNumber(baseX)}" y1="${formatNumber(
         topY,
@@ -328,6 +362,13 @@ function renderLevelDatums(
         topY,
       )}" stroke="${theme.lineMuted}" stroke-width="${datumStroke}" />`,
     );
+    // The "top of level N" line marks the FFL of level N+1. Use the next
+    // level's stage label so the datum reads naturally (e.g. the top of the
+    // ground floor is the FFL of the first floor).
+    const datumStage =
+      index + 1 < levelProfiles.length
+        ? resolveFloorStageLabel(levelProfiles[index + 1])
+        : "ROOF";
     labels.push(`
       <line x1="${formatNumber(baseX - 46)}" y1="${formatNumber(
         topY,
@@ -336,17 +377,19 @@ function renderLevelDatums(
       )}" stroke="${theme.lineMuted}" stroke-width="${guideStroke}" />
       <text x="${formatNumber(baseX - 52)}" y="${formatNumber(
         topY + 4,
-      )}" font-size="${primaryLabelFont}" font-family="Arial, sans-serif" font-weight="700" text-anchor="end">${escapeXml(
-        `${level.name || `L${level.level_number}`} +${level.top_m.toFixed(2)}m`,
+      )}" font-size="${primaryLabelFont}" font-family="Arial, sans-serif" font-weight="700" text-anchor="end" data-datum-role="ffl">${escapeXml(
+        `FFL ${datumStage} +${level.top_m.toFixed(2)}m`,
       )}</text>
       <text x="${formatNumber(baseX - 10)}" y="${formatNumber(
         midY,
       )}" font-size="${secondaryLabelFont}" font-family="Arial, sans-serif" text-anchor="end">${escapeXml(
-        level.name || `L${level.level_number}`,
+        stage,
       )}</text>
     `);
   });
 
+  // Ground line: explicitly labelled "FFL GROUND +0.00m" so reviewers can
+  // read the datum without inferring the stage from the absence of a name.
   labels.push(`
     <line x1="${formatNumber(baseX - 46)}" y1="${formatNumber(
       baseY,
@@ -355,12 +398,38 @@ function renderLevelDatums(
     )}" stroke="${theme.line}" stroke-width="${datumStroke}" />
     <text x="${formatNumber(baseX - 52)}" y="${formatNumber(
       baseY + 4,
-    )}" font-size="${primaryLabelFont}" font-family="Arial, sans-serif" font-weight="700" text-anchor="end">FFL +0.00m</text>
+    )}" font-size="${primaryLabelFont}" font-family="Arial, sans-serif" font-weight="700" text-anchor="end" data-datum-role="ffl-ground">FFL GROUND +0.00m</text>
   `);
+
+  // Phase 3 — optional RIDGE datum. Caller passes `{ y, heightM }` when the
+  // ridge height is known so the elevation matches the goal sheet's
+  // "RIDGE +X.XXm" label band.
+  let ridgeDatumCount = 0;
+  if (
+    ridgeInfo &&
+    Number.isFinite(ridgeInfo.y) &&
+    Number.isFinite(ridgeInfo.heightM)
+  ) {
+    const ridgeY = ridgeInfo.y;
+    const ridgeFont = polishSize(9, fontScale);
+    labels.push(`
+      <line x1="${formatNumber(baseX - 46)}" y1="${formatNumber(
+        ridgeY,
+      )}" x2="${formatNumber(baseX - 6)}" y2="${formatNumber(
+        ridgeY,
+      )}" stroke="${theme.line}" stroke-width="${datumStroke}" />
+      <text x="${formatNumber(baseX - 52)}" y="${formatNumber(
+        ridgeY + 4,
+      )}" font-size="${ridgeFont}" font-family="Arial, sans-serif" font-weight="700" text-anchor="end" data-datum-role="ridge">${escapeXml(
+        `RIDGE +${ridgeInfo.heightM.toFixed(2)}m`,
+      )}</text>
+    `);
+    ridgeDatumCount = 1;
+  }
 
   return {
     markup: `<g id="phase8-elevation-datums">${lines.join("")}${labels.join("")}</g>`,
-    count: levelProfiles.length + 1,
+    count: levelProfiles.length + 1 + ridgeDatumCount,
   };
 }
 
@@ -1211,6 +1280,49 @@ export function renderElevationSvg(
     scale,
     theme,
   );
+  // Phase 3 — derive a ridge datum so the elevation labels include the
+  // building peak ("RIDGE +X.XXm") matching the goal A1 sheet. The ridge
+  // height is taken from canonical roof truth when present; otherwise we
+  // approximate from the sum of level heights plus a typical pitched-roof
+  // contribution (half-width × tan(pitch_deg)). Flat / parapet roofs use
+  // the parapet line.
+  const flatRoofForDatum =
+    String(roofLanguage || "")
+      .toLowerCase()
+      .includes("flat") ||
+    String(roofLanguage || "")
+      .toLowerCase()
+      .includes("parapet");
+  const totalLevelHeightM = levelProfiles.reduce(
+    (sum, level) => sum + Number(level.height_m || 3.2),
+    0,
+  );
+  const canonicalRoof =
+    geometry.metadata?.canonical_construction_truth?.roof || null;
+  let ridgeHeightM =
+    Number(canonicalRoof?.ridge_height_m) ||
+    Number(canonicalRoof?.peak_height_m) ||
+    null;
+  if (!Number.isFinite(ridgeHeightM)) {
+    if (flatRoofForDatum) {
+      ridgeHeightM = totalLevelHeightM + 0.45; // parapet upstand
+    } else {
+      const pitchDeg = Number(
+        geometry.metadata?.geometry_rules?.roof_pitch_degrees ||
+          canonicalRoof?.pitch_deg ||
+          35,
+      );
+      const halfWidthM = Math.max(2, metrics.width_m / 2);
+      const radians = (pitchDeg * Math.PI) / 180;
+      const rise = halfWidthM * Math.tan(radians);
+      ridgeHeightM = totalLevelHeightM + Math.max(1.4, Math.min(rise, 4.5));
+    }
+  }
+  const ridgeYpx = baseY - ridgeHeightM * scale;
+  const ridgeInfo =
+    Number.isFinite(ridgeHeightM) && ridgeYpx < baseY
+      ? { y: ridgeYpx, heightM: ridgeHeightM }
+      : null;
   const datums = renderLevelDatums(
     baseX,
     baseY,
@@ -1219,6 +1331,7 @@ export function renderElevationSvg(
     scale,
     theme,
     sheetPolish,
+    ridgeInfo,
   );
   const openings = renderProjectedOpenings(
     sideFacade,

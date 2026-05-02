@@ -5,6 +5,10 @@ import {
   getLevelDrawingBoundsWithSource,
   resolveCompiledProjectGeometryInput,
 } from "./drawingBounds.js";
+import {
+  renderFurnitureSymbol,
+  resolveFurnitureToken,
+} from "./furnitureSymbolService.js";
 
 function escapeXml(value) {
   return String(value)
@@ -407,12 +411,22 @@ function renderFurnitureHints(rooms = [], project, theme) {
       );
     }
 
+    // Phase 3 — additionally render symbols for room types the existing
+    // inline switch does not cover (WC, basin, stair_arrow, kitchen_island,
+    // and an explicit `room.semantic_type` when the schema carries one).
+    // Service-driven symbols are deterministic and respect the same theme.
+    const extraSymbol = renderFurnitureSymbol(room, rect, theme);
+    if (extraSymbol) {
+      furniture.push(extraSymbol);
+    }
+
     if (!furniture.length) {
       return [];
     }
 
+    const tokenAttr = resolveFurnitureToken(room);
     return [
-      `<g class="plan-furniture-hint" data-room-id="${escapeXml(room.id || room.name || "")}">${furniture.join("")}</g>`,
+      `<g class="plan-furniture-hint" data-room-id="${escapeXml(room.id || room.name || "")}"${tokenAttr ? ` data-furniture-token="${escapeXml(tokenAttr)}"` : ""}>${furniture.join("")}</g>`,
     ];
   });
 
