@@ -1,11 +1,16 @@
 /**
  * Brownfield Land Register client
  *
- * Reads pre-converted slim JSON fixtures from disk and returns sites
- * within a radius of a query lat/lng. The fixtures are produced offline
- * by `scripts/brownfield/convert-csv.cjs` from the official council
- * Brownfield Land Register CSVs (released under Open Government Licence
- * v3.0).
+ * Reads a single national pre-converted JSON fixture (national.json,
+ * produced by `scripts/brownfield/convert-national.cjs` from the
+ * Digital Land consolidated brownfield-land dataset) and returns sites
+ * within a radius of a query lat/lng. The Digital Land feed already
+ * carries WGS84 `POINT(lng lat)` geometry so no projection is needed
+ * at runtime.
+ *
+ * Coverage: every English Local Authority that publishes a brownfield
+ * register — ~35,000 sites across ~300 councils. Loaded once per
+ * Vercel Function cold start (Fluid Compute warmth re-uses the cache).
  *
  * This is purposefully separate from `inspirePolygonsClient.js`:
  *   - INSPIRE polygons are *legal lot boundaries* — used for the auto-
@@ -26,17 +31,9 @@ const BROWNFIELD_DATA_DIR = path.resolve(
   "brownfieldData",
 );
 
-const fixtureCache = new Map();
+const NATIONAL_FIXTURE = "national.json";
 
-/**
- * Map a UK postcode area (the leading 1–2 letters) to the brownfield
- * fixture file(s) that cover it. Postcode areas span multiple Local
- * Authorities; the runtime filter still applies a radius check so a
- * DN postcode address outside North Lincs simply gets an empty list.
- */
-const POSTCODE_AREA_TO_FIXTURES = Object.freeze({
-  DN: ["north-lincolnshire.json"],
-});
+const fixtureCache = new Map();
 
 function loadFixture(filename) {
   const cached = fixtureCache.get(filename);
@@ -86,58 +83,53 @@ function haversineDistanceM(a, b) {
  * Return brownfield sites within `radiusM` metres of the given point,
  * sorted by distance (nearest first). Limited to `limit` results.
  *
+ * The query is a linear scan against the national fixture; with ~35k
+ * sites that's cheap (single-digit milliseconds) and avoids needing a
+ * spatial index on the data.
+ *
  * @param {object} params
  * @param {number} params.lat
  * @param {number} params.lng
  * @param {number} [params.radiusM=2000]
  * @param {number} [params.limit=20]
- * @param {string|null} [params.postcode]
+ * @param {string|null} [params.postcode] — currently unused; reserved
+ *   for future LA-scoped routing if the fixture ever splits per-region.
  */
 export function findNearbyBrownfieldSites({
   lat,
   lng,
   radiusM = 2000,
   limit = 20,
+  // eslint-disable-next-line no-unused-vars
   postcode = null,
 } = {}) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return [];
 
-  let candidateFiles = [];
-  if (typeof postcode === "string" && postcode.trim()) {
-    const area = postcode
-      .trim()
-      .toUpperCase()
-      .match(/^([A-Z]{1,2})/)?.[1];
-    if (area && POSTCODE_AREA_TO_FIXTURES[area]) {
-      candidateFiles = POSTCODE_AREA_TO_FIXTURES[area];
-    }
-  }
-  if (candidateFiles.length === 0) {
-    candidateFiles = Object.values(POSTCODE_AREA_TO_FIXTURES).flat();
-  }
-
+  const sites = loadFixture(NATIONAL_FIXTURE);
   const point = { lat, lng };
   const matches = [];
-  for (const filename of candidateFiles) {
-    const sites = loadFixture(filename);
-    for (const site of sites) {
-      if (
-        !Number.isFinite(Number(site?.lat)) ||
-        !Number.isFinite(Number(site?.lng))
-      ) {
-        continue;
-      }
-      const distance = haversineDistanceM(point, {
-        lat: Number(site.lat),
-        lng: Number(site.lng),
-      });
-      if (distance <= radiusM) {
-        matches.push({
-          ...site,
-          distanceM: Math.round(distance),
-          sourceFile: filename,
-        });
-      }
+
+  // Cheap pre-filter: skip sites whose lat/lng diff alone exceeds the
+  // radius converted to degrees. ~111 km/degree of latitude, so the
+  // bound is `radiusM / 111000` in latitude and slightly more for
+  // longitude (we use the same bound — slightly conservative which is
+  // fine, the haversine still applies).
+  const latDeg = radiusM / 111000 + 0.001;
+  for (const site of sites) {
+    if (
+      !Number.isFinite(Number(site?.lat)) ||
+      !Number.isFinite(Number(site?.lng))
+    ) {
+      continue;
+    }
+    if (Math.abs(Number(site.lat) - lat) > latDeg) continue;
+    if (Math.abs(Number(site.lng) - lng) > latDeg * 2) continue;
+    const distance = haversineDistanceM(point, {
+      lat: Number(site.lat),
+      lng: Number(site.lng),
+    });
+    if (distance <= radiusM) {
+      matches.push({ ...site, distanceM: Math.round(distance) });
     }
   }
   matches.sort((a, b) => a.distanceM - b.distanceM);
@@ -153,7 +145,7 @@ export function __resetBrownfieldFixtureCacheForTests() {
 
 export const __testing = Object.freeze({
   BROWNFIELD_DATA_DIR,
-  POSTCODE_AREA_TO_FIXTURES,
+  NATIONAL_FIXTURE,
   haversineDistanceM,
   loadFixture,
 });
