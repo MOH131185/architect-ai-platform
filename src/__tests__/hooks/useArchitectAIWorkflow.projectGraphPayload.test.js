@@ -128,6 +128,44 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
     expect(request.brief.targetStoreys).toBe(2);
   });
 
+  test.each([
+    ["office", "commercial", "office", "office_studio", "production"],
+    ["school", "education", "school", "education_studio", "beta"],
+    ["clinic", "healthcare", "clinic", "clinic", "production"],
+    ["hospital", "healthcare", "hospital", "hospital", "beta"],
+  ])(
+    "preserves %s selection and posts canonical ProjectGraph building_type",
+    (_label, category, subType, canonicalBuildingType, supportStatus) => {
+      const request = buildProjectGraphVerticalSliceRequest({
+        designSpec: {
+          buildingCategory: category,
+          buildingSubType: subType,
+          area: 480,
+          floorCount: 2,
+          floorCountLocked: true,
+        },
+      });
+
+      expect(request.projectDetails.category).toBe(category);
+      expect(request.projectDetails.subType).toBe(subType);
+      expect(request.projectDetails.canonicalBuildingType).toBe(
+        canonicalBuildingType,
+      );
+      expect(request.projectDetails.buildingType).toBe(canonicalBuildingType);
+      expect(request.projectDetails.projectTypeRoute).toBe("project_graph");
+      expect(request.projectDetails.supportStatus).toBe(supportStatus);
+      expect(request.projectDetails.programmeTemplateKey).toBe(
+        canonicalBuildingType,
+      );
+      expect(request.brief.building_type).toBe(canonicalBuildingType);
+      expect(request.brief.canonical_building_type).toBe(canonicalBuildingType);
+      expect(request.brief.original_category).toBe(category);
+      expect(request.brief.original_subtype).toBe(subType);
+      expect(request.brief.project_type_route).toBe("project_graph");
+      expect(request.brief.support_status).toBe(supportStatus);
+    },
+  );
+
   test("preserves a compact provided site map data URL for ProjectGraph site context", () => {
     const mapDataUrl =
       "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR42mNk+M9Qz0AEYBxVSFIAAAeSAi8BTyQ1AAAAAElFTkSuQmCC";

@@ -28,8 +28,10 @@ import BuildingProgramTable from "../specs/BuildingProgramTable.jsx";
 import ProgramReviewCards from "../specs/ProgramReviewCards.jsx";
 import StepContainer from "../layout/StepContainer.jsx";
 import { fadeInUp, staggerChildren } from "../../styles/animations.js";
-import { isFeatureEnabled } from "../../config/featureFlags.js";
-import { isSupportedResidentialV2SubType } from "../../services/project/v2ProjectContracts.js";
+import {
+  getProjectTypeSupportForDetails,
+  PROJECT_TYPE_ROUTES,
+} from "../../services/project/projectTypeSupportRegistry.js";
 import {
   levelIndexFromLabel,
   levelName,
@@ -89,6 +91,16 @@ export function applyProgramRowChangeForFloorAuthority({
   return stampProgramFloorAuthorityMetadata(updated, floorCount, floorMetrics);
 }
 
+export function canProceedWithProjectType(projectDetails = {}) {
+  const support = getProjectTypeSupportForDetails(projectDetails);
+  return Boolean(
+    projectDetails.area &&
+    projectDetails.category &&
+    projectDetails.subType &&
+    support.enabledInUi,
+  );
+}
+
 const SpecsStep = ({
   projectDetails,
   programSpaces,
@@ -107,18 +119,13 @@ const SpecsStep = ({
   validationState,
 }) => {
   const [showProgramReview, setShowProgramReview] = useState(false);
-  const restrictToResidentialV2 =
-    isFeatureEnabled("ukResidentialV2") &&
-    isFeatureEnabled("hideExperimentalBuildingTypes");
-  const supportedResidentialSubtype =
-    projectDetails.category === "residential" &&
-    isSupportedResidentialV2SubType(projectDetails.subType);
-
-  const canProceed =
-    projectDetails.area &&
-    projectDetails.category &&
-    projectDetails.subType &&
-    (!restrictToResidentialV2 || supportedResidentialSubtype);
+  const projectTypeSupport = useMemo(
+    () => getProjectTypeSupportForDetails(projectDetails),
+    [projectDetails],
+  );
+  const canProceed = canProceedWithProjectType(projectDetails);
+  const usesResidentialV2 =
+    projectTypeSupport.route === PROJECT_TYPE_ROUTES.RESIDENTIAL_V2;
 
   const handleBuildingTypeChange = useCallback(
     ({ category, subType }) => {
@@ -316,27 +323,29 @@ const SpecsStep = ({
             <h3 className="mb-4 text-lg font-semibold tracking-tight text-white">
               Building type
             </h3>
-            {restrictToResidentialV2 && (
-              <div className="mb-4 rounded-xl border border-success-500/30 bg-success-500/10 px-4 py-3 text-sm text-success-200">
-                UK Residential V2 is live. Production generation is restricted
-                to supported low-rise residential types, and unsupported types
-                are intentionally marked experimental/off.
-              </div>
-            )}
+            <div className="mb-4 rounded-xl border border-success-500/30 bg-success-500/10 px-4 py-3 text-sm text-success-200">
+              Production generation is controlled by the project type support
+              registry. Residential V2 remains the production residential route;
+              selected ProjectGraph beta types are enabled explicitly.
+            </div>
             <BuildingTypeSelector
               selectedCategory={projectDetails.category}
               selectedSubType={projectDetails.subType}
               onSelectionChange={handleBuildingTypeChange}
               validationErrors={validationState?.buildingType || []}
             />
-            {restrictToResidentialV2 &&
-              projectDetails.category &&
+            {projectDetails.category &&
               projectDetails.subType &&
-              !supportedResidentialSubtype && (
+              !projectTypeSupport.enabledInUi && (
                 <p className="mt-4 text-sm text-warning-300">
-                  This subtype is outside the supported UK Residential V2
-                  production scope. Choose a supported residential subtype to
-                  continue.
+                  {projectTypeSupport.message ||
+                    "This subtype is not enabled for production generation."}
+                </p>
+              )}
+            {projectTypeSupport.enabledInUi &&
+              projectTypeSupport.supportStatus === "beta" && (
+                <p className="mt-4 text-sm text-sky-300">
+                  {projectTypeSupport.message}
                 </p>
               )}
           </Card>
@@ -559,7 +568,7 @@ const SpecsStep = ({
                 >
                   {isGeneratingSpaces
                     ? "Compiling..."
-                    : restrictToResidentialV2 && supportedResidentialSubtype
+                    : usesResidentialV2
                       ? "Compile Program"
                       : "Generate Program"}
                 </Button>

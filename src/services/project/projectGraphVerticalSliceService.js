@@ -88,6 +88,10 @@ import {
 } from "./levelUtils.js";
 import { runProgramPreflight } from "./programPreflight.js";
 import { resolveAuthoritativeFloorCount } from "./floorCountAuthority.js";
+import {
+  buildProjectTypeSupportMetadata,
+  getProjectTypeSupport,
+} from "./projectTypeSupportRegistry.js";
 
 export const PROJECT_GRAPH_SCHEMA_VERSION = "project-graph-v1";
 export const PROJECT_GRAPH_VERTICAL_SLICE_VERSION =
@@ -273,6 +277,8 @@ export const KNOWN_BUILDING_TYPES = Object.freeze([
   "community",
   "office_studio",
   "education_studio",
+  "clinic",
+  "hospital",
 ]);
 
 const DWELLING_SYNONYMS = [
@@ -288,12 +294,17 @@ const DWELLING_SYNONYMS = [
 
 function normalizeBuildingType(input = {}) {
   const raw = String(
-    input.building_type ||
+    input.canonical_building_type ||
+      input.canonicalBuildingType ||
+      input.project_type_support?.canonicalBuildingType ||
+      input.projectTypeSupport?.canonicalBuildingType ||
+      input.building_type ||
       input.buildingType ||
-      input.category ||
-      input.projectType ||
-      input.program ||
       input.subType ||
+      input.buildingSubType ||
+      input.program ||
+      input.projectType ||
+      input.category ||
       "dwelling",
   )
     .trim()
@@ -322,6 +333,22 @@ function normalizeBuildingType(input = {}) {
     raw === "tenement"
   ) {
     return "multi_residential";
+  }
+  if (
+    raw.includes("hospital") ||
+    raw.includes("inpatient") ||
+    raw.includes("ward")
+  ) {
+    return "hospital";
+  }
+  if (
+    raw.includes("clinic") ||
+    raw.includes("medical") ||
+    raw.includes("healthcare") ||
+    raw.includes("health-center") ||
+    raw.includes("health-centre")
+  ) {
+    return "clinic";
   }
   if (
     raw.includes("community") ||
@@ -593,9 +620,73 @@ function normalizeBrief(input = {}) {
     Number.isFinite(Number(siteInput.lon))
       ? { lat: Number(siteInput.lat), lng: Number(siteInput.lon) }
       : null);
+  const originalCategory =
+    projectDetails.category ||
+    projectDetails.buildingCategory ||
+    sourceBrief.original_category ||
+    sourceBrief.originalCategory ||
+    input.originalCategory ||
+    input.category ||
+    null;
+  const originalSubtype =
+    projectDetails.subType ||
+    projectDetails.buildingSubType ||
+    sourceBrief.original_subtype ||
+    sourceBrief.originalSubtype ||
+    input.originalSubtype ||
+    input.subType ||
+    null;
+  const registrySupport = getProjectTypeSupport(
+    originalCategory,
+    originalSubtype,
+  );
+  const incomingSupport =
+    projectDetails.projectTypeSupport ||
+    sourceBrief.project_type_support ||
+    sourceBrief.projectTypeSupport ||
+    input.projectTypeSupport ||
+    {};
+  const projectTypeSupport = {
+    ...registrySupport,
+    ...incomingSupport,
+    categoryId: incomingSupport.categoryId || originalCategory,
+    subtypeId: incomingSupport.subtypeId || originalSubtype,
+    supportStatus:
+      incomingSupport.supportStatus ||
+      projectDetails.supportStatus ||
+      sourceBrief.support_status ||
+      sourceBrief.supportStatus ||
+      input.supportStatus ||
+      registrySupport.supportStatus,
+    canonicalBuildingType:
+      incomingSupport.canonicalBuildingType ||
+      projectDetails.canonicalBuildingType ||
+      sourceBrief.canonical_building_type ||
+      sourceBrief.canonicalBuildingType ||
+      input.canonicalBuildingType ||
+      registrySupport.canonicalBuildingType,
+    route:
+      incomingSupport.route ||
+      projectDetails.projectTypeRoute ||
+      sourceBrief.project_type_route ||
+      sourceBrief.projectTypeRoute ||
+      input.projectTypeRoute ||
+      registrySupport.route,
+    programmeTemplateKey:
+      incomingSupport.programmeTemplateKey ||
+      projectDetails.programmeTemplateKey ||
+      sourceBrief.programme_template_key ||
+      sourceBrief.programmeTemplateKey ||
+      input.programmeTemplateKey ||
+      registrySupport.programmeTemplateKey,
+  };
+  const projectTypeSupportMetadata =
+    buildProjectTypeSupportMetadata(projectTypeSupport);
   const buildingType = normalizeBuildingType({
     ...projectDetails,
     ...sourceBrief,
+    canonicalBuildingType: projectTypeSupportMetadata.canonicalBuildingType,
+    projectTypeSupport: projectTypeSupportMetadata,
   });
   const targetGiaM2 = Math.max(
     40,
@@ -692,6 +783,11 @@ function normalizeBrief(input = {}) {
     source: "active_generation_input",
     project_name: projectName,
     building_type: buildingType,
+    original_category: originalCategory,
+    original_subtype: originalSubtype,
+    support_status: projectTypeSupportMetadata.supportStatus,
+    programme_template_key: projectTypeSupportMetadata.programmeTemplateKey,
+    project_type_route: projectTypeSupportMetadata.route,
     address: activeAddress,
     postcode: siteInput.postcode || locationData.postcode || null,
     target_gia_m2: round(targetGiaM2, 2),
@@ -704,6 +800,13 @@ function normalizeBrief(input = {}) {
   return {
     project_name: projectName,
     building_type: buildingType,
+    canonical_building_type: buildingType,
+    original_category: originalCategory,
+    original_subtype: originalSubtype,
+    support_status: projectTypeSupportMetadata.supportStatus,
+    programme_template_key: projectTypeSupportMetadata.programmeTemplateKey,
+    project_type_route: projectTypeSupportMetadata.route,
+    project_type_support: projectTypeSupportMetadata,
     client_goals: toArray(
       sourceBrief.client_goals ||
         sourceBrief.clientGoals ||
@@ -1078,75 +1181,83 @@ function mixedUseProgrammeTemplate(upperLevel) {
 function officeStudioProgrammeTemplate(upperLevel) {
   return [
     [
-      "Reception and breakout",
-      "client arrival and informal meeting",
+      "Reception and client lounge",
+      "visitor arrival and front-of-house waiting",
       "public",
+      0.08,
+      0,
+      "medium",
+    ],
+    [
+      "Open office floorplate (ground)",
+      "primary desk workspace",
+      "semi_public",
+      0.22,
+      0,
+      "high",
+    ],
+    [
+      "Meeting suite",
+      "bookable meeting and collaboration rooms",
+      "semi_public",
       0.1,
       0,
       "medium",
     ],
     [
-      "Open studio (ground)",
-      "primary collaborative workspace",
+      "Collaboration and breakout",
+      "informal work and team breakout",
       "semi_public",
-      0.3,
-      0,
-      "high",
-    ],
-    [
-      "Meeting room",
-      "enclosed client meeting",
-      "semi_public",
-      0.07,
+      0.08,
       0,
       "medium",
     ],
     ["WC and accessible WC", "inclusive WCs", "service", 0.05, 0, "low"],
     [
-      "Tea point and store",
-      "kitchenette and storage",
-      "service",
-      0.05,
-      0,
-      "low",
-    ],
-    [
       "Ground circulation",
-      "stair, corridor and store",
+      "stair, corridor and reception support",
       "semi_public",
-      0.06,
+      0.07,
       0,
       "medium",
     ],
     [
-      "Open studio (upper)",
-      "additional desk space",
+      "Open office floorplate (upper)",
+      "additional desk workspace",
       "semi_public",
       0.2,
       upperLevel,
       "high",
     ],
     [
-      "Workshop or model room",
-      "physical making and prototyping",
+      "Focus and phone rooms",
+      "quiet focus booths and calls",
       "private",
-      0.08,
+      0.06,
       upperLevel,
       "medium",
     ],
     [
-      "Quiet focus room",
-      "phone and focus booths",
+      "Staff kitchen and welfare",
+      "staff kitchen, lockers and rest area",
       "private",
       0.05,
       upperLevel,
       "medium",
     ],
     [
-      "Upper circulation and store",
-      "landing and storage",
-      "semi_public",
+      "IT, storage and plant",
+      "server, storage and MEP plant",
+      "service",
       0.04,
+      upperLevel,
+      "low",
+    ],
+    [
+      "Upper circulation",
+      "landing, corridor and refuge",
+      "semi_public",
+      0.05,
       upperLevel,
       "medium",
     ],
@@ -1156,75 +1267,292 @@ function officeStudioProgrammeTemplate(upperLevel) {
 function educationStudioProgrammeTemplate(upperLevel) {
   return [
     [
-      "Entrance and showcase",
-      "public arrival and pupil work display",
+      "Entrance, reception and admin",
+      "secure arrival, administration and waiting",
       "public",
+      0.08,
+      0,
+      "high",
+    ],
+    [
+      "Classrooms (ground)",
+      "general teaching rooms",
+      "semi_public",
+      0.2,
+      0,
+      "high",
+    ],
+    [
+      "Assembly and multipurpose hall",
+      "assembly, indoor activity and community use",
+      "semi_public",
       0.1,
       0,
-      "high",
+      "medium",
     ],
     [
-      "Workshop (messy)",
-      "primary making space",
-      "semi_public",
-      0.22,
-      0,
-      "high",
-    ],
-    [
-      "Workshop store and prep",
-      "tool and material store",
+      "Pupil and accessible WCs",
+      "inclusive pupil WCs",
       "service",
-      0.07,
+      0.05,
       0,
       "low",
     ],
-    ["Accessible WC", "inclusive pupil WC", "service", 0.04, 0, "low"],
     [
-      "Plant and cleaner store",
-      "MEP plant and cleaner store",
+      "Dining and kitchen support",
+      "dining support, servery and back-of-house",
+      "service",
+      0.06,
+      0,
+      "medium",
+    ],
+    [
+      "Ground circulation",
+      "secure stair, corridor and cloak support",
+      "semi_public",
+      0.07,
+      0,
+      "medium",
+    ],
+    [
+      "Classrooms (upper)",
+      "additional general teaching rooms",
+      "semi_public",
+      0.22,
+      upperLevel,
+      "high",
+    ],
+    [
+      "Library and resource centre",
+      "reading, resources and small group learning",
+      "semi_public",
+      0.08,
+      upperLevel,
+      "medium",
+    ],
+    [
+      "Staff, prep and SEN support",
+      "staff base, prep and specialist support",
+      "private",
+      0.06,
+      upperLevel,
+      "high",
+    ],
+    [
+      "Plant and stores",
+      "MEP plant, curriculum storage and cleaner store",
+      "service",
+      0.03,
+      upperLevel,
+      "low",
+    ],
+    [
+      "Upper circulation",
+      "landing, corridor and refuge",
+      "semi_public",
+      0.05,
+      upperLevel,
+      "medium",
+    ],
+  ];
+}
+
+function clinicProgrammeTemplate(upperLevel) {
+  return [
+    [
+      "Reception and waiting",
+      "patient arrival and waiting",
+      "public",
+      0.12,
+      0,
+      "medium",
+    ],
+    [
+      "Consult rooms (ground)",
+      "primary consultation and triage rooms",
+      "semi_public",
+      0.16,
+      0,
+      "high",
+    ],
+    [
+      "Treatment suite",
+      "minor procedures and treatment",
+      "semi_public",
+      0.12,
+      0,
+      "medium",
+    ],
+    [
+      "Patient and accessible WCs",
+      "public clinical WCs",
       "service",
       0.04,
       0,
       "low",
     ],
     [
-      "Ground circulation",
-      "stair and corridor",
+      "Clean and dirty utility",
+      "clinical support and disposal",
+      "service",
+      0.06,
+      0,
+      "low",
+    ],
+    [
+      "Ground clinical circulation",
+      "patient corridor, stair and refuge",
       "semi_public",
-      0.07,
+      0.08,
       0,
       "medium",
     ],
     [
-      "Studio (clean)",
-      "drawing and design studio",
+      "Consult rooms (upper)",
+      "additional clinical consultation rooms",
       "semi_public",
-      0.2,
+      0.16,
       upperLevel,
       "high",
     ],
     [
-      "Seminar room",
-      "small group teaching",
-      "semi_public",
-      0.1,
+      "Staff and administration",
+      "clinical administration and staff base",
+      "private",
+      0.08,
       upperLevel,
       "medium",
     ],
     [
-      "Quiet study",
-      "focused individual work",
-      "private",
-      0.1,
+      "Records and clinical store",
+      "secure records and consumables store",
+      "service",
+      0.04,
       upperLevel,
-      "high",
+      "low",
     ],
     [
-      "Upper circulation",
-      "landing and storage",
+      "Staff welfare",
+      "staff rest, lockers and kitchenette",
+      "private",
+      0.04,
+      upperLevel,
+      "medium",
+    ],
+    [
+      "Plant and services",
+      "MEP plant and service riser",
+      "service",
+      0.04,
+      upperLevel,
+      "low",
+    ],
+    [
+      "Upper clinical circulation",
+      "clinical corridor, landing and refuge",
       "semi_public",
       0.06,
+      upperLevel,
+      "medium",
+    ],
+  ];
+}
+
+function hospitalProgrammeTemplate(upperLevel) {
+  return [
+    [
+      "Main reception and admissions",
+      "public arrival, admissions and waiting",
+      "public",
+      0.08,
+      0,
+      "medium",
+    ],
+    [
+      "Emergency and outpatient assessment",
+      "triage, outpatient and urgent assessment",
+      "semi_public",
+      0.12,
+      0,
+      "medium",
+    ],
+    [
+      "Diagnostics",
+      "imaging, diagnostics and testing",
+      "semi_public",
+      0.1,
+      0,
+      "low",
+    ],
+    [
+      "Clinical support and utility",
+      "clean utility, dirty utility and treatment support",
+      "service",
+      0.07,
+      0,
+      "low",
+    ],
+    [
+      "Public WCs and cafe support",
+      "public WCs and refreshment support",
+      "public",
+      0.05,
+      0,
+      "medium",
+    ],
+    [
+      "Ground hospital circulation",
+      "public concourse, clinical corridor and stair",
+      "semi_public",
+      0.08,
+      0,
+      "medium",
+    ],
+    [
+      "Ward and day rooms",
+      "patient rooms, bay wards and day space",
+      "private",
+      0.18,
+      upperLevel,
+      "medium",
+    ],
+    [
+      "Treatment and consult suites",
+      "clinical treatment and consultation rooms",
+      "semi_public",
+      0.09,
+      upperLevel,
+      "medium",
+    ],
+    [
+      "Staff and administration base",
+      "staff base, changing and administration",
+      "private",
+      0.07,
+      upperLevel,
+      "medium",
+    ],
+    [
+      "Pharmacy, stores and logistics",
+      "medicines, supplies and FM logistics",
+      "service",
+      0.05,
+      upperLevel,
+      "low",
+    ],
+    [
+      "Plant and services",
+      "MEP plant and service risers",
+      "service",
+      0.04,
+      upperLevel,
+      "low",
+    ],
+    [
+      "Upper hospital circulation",
+      "clinical corridor, lift lobby and refuge",
+      "semi_public",
+      0.07,
       upperLevel,
       "medium",
     ],
@@ -1261,6 +1589,16 @@ function getProgrammeTemplate(buildingType, upperLevel) {
     case "education_studio":
       return {
         template: educationStudioProgrammeTemplate(upperLevel),
+        fallback: false,
+      };
+    case "clinic":
+      return {
+        template: clinicProgrammeTemplate(upperLevel),
+        fallback: false,
+      };
+    case "hospital":
+      return {
+        template: hospitalProgrammeTemplate(upperLevel),
         fallback: false,
       };
     default:
@@ -1337,12 +1675,18 @@ function buildTemplateProgramSpaces(brief) {
           source: "fallback_template",
           requested_building_type: fallbackFrom,
           resolved_template: "community",
+          programme_template_key:
+            brief.programme_template_key || brief.building_type,
+          support_status: brief.support_status || null,
           severity: "warning",
           message: `building_type "${fallbackFrom}" not in KNOWN_BUILDING_TYPES; using community template as deterministic fallback.`,
         }
       : {
           source: "matched_template",
           resolved_template: brief.building_type,
+          programme_template_key:
+            brief.programme_template_key || brief.building_type,
+          support_status: brief.support_status || null,
           severity: "info",
         },
   };
@@ -1357,6 +1701,8 @@ function buildProgramme({ brief, programSpaces = [] } = {}) {
     templateProvenance = {
       source: "user_supplied",
       resolved_template: null,
+      programme_template_key: brief.programme_template_key || null,
+      support_status: brief.support_status || null,
       severity: "info",
     };
   } else {
@@ -3611,6 +3957,19 @@ function todayIsoDate() {
   }
 }
 
+function resolveProgrammeDisplayLabel(brief = {}) {
+  return String(
+    brief?.project_type_support?.label ||
+      brief?.projectTypeSupport?.label ||
+      brief?.programme_label ||
+      brief?.programmeLabel ||
+      brief?.building_type ||
+      "architecture",
+  )
+    .replace(/[_-]+/g, " ")
+    .trim();
+}
+
 export function buildTitleBlockPanelArtifact({
   projectGraphId,
   brief,
@@ -3634,9 +3993,7 @@ export function buildTitleBlockPanelArtifact({
     .trim()
     .toUpperCase();
   const titleLines = splitNoteLines(projectTitle, 22, 2);
-  const programmeLabel = String(brief?.building_type || "architecture")
-    .replace(/[_-]+/g, " ")
-    .trim();
+  const programmeLabel = resolveProgrammeDisplayLabel(brief);
   const ribaStageLabel = resolveRibaStageLabel(brief, sheetPlan);
   const status = String(
     brief?.status ||
@@ -3708,7 +4065,7 @@ export function buildTitleBlockPanelArtifact({
   <rect width="${width}" height="${height}" fill="#ffffff"/>
   <rect x="18" y="18" width="584" height="864" fill="none" stroke="#111111" stroke-width="3"/>
   ${titleSvg}
-  <text x="34" y="170" font-family="Arial, sans-serif" font-size="20" fill="#333333">${escapeXml((brief?.building_type || "architecture").replace(/_/g, " ").toUpperCase())}</text>
+  <text x="34" y="170" font-family="Arial, sans-serif" font-size="20" fill="#333333">${escapeXml(programmeLabel.toUpperCase())}</text>
   <line x1="34" y1="206" x2="586" y2="206" stroke="#111111" stroke-width="2"/>
   ${rowSvg}
   <line x1="34" y1="780" x2="586" y2="780" stroke="#111111" stroke-width="1"/>
@@ -3752,6 +4109,10 @@ export function buildTitleBlockPanelArtifact({
       targetGiaM2: Number(brief?.target_gia_m2 || 0),
       targetStoreys: Number(brief?.target_storeys || 1),
       buildingType: brief?.building_type || null,
+      programmeLabel,
+      supportStatus: brief?.support_status || null,
+      programmeTemplateKey: brief?.programme_template_key || null,
+      projectTypeRoute: brief?.project_type_route || null,
       drawingNumber,
       sheetLabel,
       // Phase 2 — RIBA-style metadata fields
@@ -7644,6 +8005,7 @@ function buildProjectGraph({
     jurisdiction: regulations?.jurisdiction || "england",
     brief,
     user_intent: brief.user_intent,
+    project_type_support: brief.project_type_support || null,
     site,
     climate,
     regulations,
@@ -8370,6 +8732,12 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     brief: {
       project_name: brief?.project_name || null,
       building_type: brief?.building_type || null,
+      original_category: brief?.original_category || null,
+      original_subtype: brief?.original_subtype || null,
+      canonical_building_type: brief?.canonical_building_type || null,
+      support_status: brief?.support_status || null,
+      programme_template_key: brief?.programme_template_key || null,
+      project_type_route: brief?.project_type_route || null,
       target_gia_m2: brief?.target_gia_m2 || null,
       target_storeys: brief?.target_storeys || null,
       floorCountLocked:
@@ -8434,6 +8802,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     success: qa.status === "pass",
     pipelineVersion: PROJECT_GRAPH_VERTICAL_SLICE_VERSION,
     geometryHash: compiledProject.geometryHash,
+    projectTypeSupport: brief.project_type_support || null,
     projectGraph: finalGraph,
     artifacts: {
       ...artifacts,
@@ -8474,6 +8843,17 @@ export async function buildArchitectureProjectVerticalSliceWithRepair(
     maxAttempts,
   });
 }
+
+export const __projectGraphVerticalSliceInternals = Object.freeze({
+  normalizeBrief,
+  buildProgramme,
+  buildSiteContext,
+  buildClimatePack,
+  buildLocalStylePack,
+  buildProjectGeometryFromProgramme,
+  syncProgrammeActuals,
+  compileProject,
+});
 
 export default {
   PROJECT_GRAPH_SCHEMA_VERSION,
