@@ -149,9 +149,11 @@ describe("projectTypeSupportRegistry", () => {
           supportStatus: PROJECT_TYPE_SUPPORT_STATUS.DISABLED,
           route: null,
           canonicalBuildingType: null,
-          badgeLabel: "Experimental/off",
         }),
       );
+      // Either generic "Experimental/off" or per-subtype "Coming soon"
+      // for entries that have an explicit DISABLED_REASONS row.
+      expect(["Experimental/off", "Coming soon"]).toContain(entry.badgeLabel);
     }
 
     expect(getProjectTypeSupport("civic", "museum")).toEqual(
@@ -163,5 +165,46 @@ describe("projectTypeSupportRegistry", () => {
         badgeLabel: "Experimental/off",
       }),
     );
+  });
+
+  test("disabled commercial/healthcare/education subtypes surface a per-subtype 'Coming soon' message", () => {
+    const comingSoonKeys = [
+      ["commercial", "retail"],
+      ["commercial", "mixed-use"],
+      ["commercial", "shopping-mall"],
+      ["healthcare", "dental"],
+      ["healthcare", "lab"],
+      ["education", "university"],
+      ["education", "kindergarten"],
+    ];
+    for (const [category, subtype] of comingSoonKeys) {
+      const support = getProjectTypeSupport(category, subtype);
+      expect(support).toEqual(
+        expect.objectContaining({
+          enabledInUi: false,
+          badgeLabel: "Coming soon",
+          supportStatus: PROJECT_TYPE_SUPPORT_STATUS.DISABLED,
+        }),
+      );
+      expect(support.message).toBeTruthy();
+      expect(support.message).not.toEqual(
+        expect.stringContaining("Experimental/off"),
+      );
+    }
+  });
+
+  test("residential mansion is enabled on the production V2 route", () => {
+    const mansion = getProjectTypeSupport("residential", "mansion");
+    expect(mansion).toEqual(
+      expect.objectContaining({
+        enabledInUi: true,
+        route: PROJECT_TYPE_ROUTES.RESIDENTIAL_V2,
+        supportStatus: PROJECT_TYPE_SUPPORT_STATUS.PRODUCTION,
+        canonicalBuildingType: "dwelling",
+        programmeTemplateKey: "mansion",
+        badgeLabel: "Residential V2",
+      }),
+    );
+    expect(SUPPORTED_RESIDENTIAL_V2_SUBTYPES).toContain("mansion");
   });
 });

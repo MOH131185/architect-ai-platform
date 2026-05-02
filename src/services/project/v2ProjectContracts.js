@@ -6,6 +6,7 @@ export const SUPPORTED_RESIDENTIAL_V2_SUBTYPES = Object.freeze([
   "terraced-house",
   "villa",
   "cottage",
+  "mansion",
   "apartment-building",
   "multi-family",
   "duplex",

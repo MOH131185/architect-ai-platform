@@ -115,12 +115,12 @@ export async function getSiteSnapshot({
     const fillAlpha = opacityToAlpha(polygonStyle?.fillOpacity, "33");
     const fillColor = normalizeStaticMapColor(
       polygonStyle?.fillColor,
-      "0xB7D7A833",
+      "0x1976d233",
       fillAlpha,
     );
     const strokeColor = normalizeStaticMapColor(
       polygonStyle?.strokeColor || polygonStyle?.color,
-      "0xf59e0bff",
+      "0x1976d2ff",
     );
     const strokeWeight = Math.max(
       1,
@@ -239,10 +239,10 @@ export async function captureSnapshotForPersistence({
   size = { width: 400, height: 300 },
   polygon = null,
   polygonStyle = {
-    strokeColor: "red",
-    strokeWeight: 2,
-    fillColor: "red",
-    fillOpacity: 0.2,
+    strokeColor: "#1976D2",
+    strokeWeight: 3,
+    fillColor: "#1976D2",
+    fillOpacity: 0.18,
   },
   drawPolygonOverlay = true,
 }) {

@@ -28,9 +28,21 @@ describe("BuildingTypeSelector project type support", () => {
         route: "residential_v2",
       }),
     );
+    // Mansion was added to SUPPORTED_RESIDENTIAL_V2_SUBTYPES; it is now an
+    // enabled production V2 subtype. The residentialProgramEngine has a
+    // mansion template (resolveTemplate handles it), so end-to-end support
+    // is real.
     expect(
       getBuildingTypeSelectorSubTypeState("residential", mansion).isEnabled,
-    ).toBe(false);
+    ).toBe(true);
+    expect(
+      getBuildingTypeSelectorSubTypeState("residential", mansion).support,
+    ).toEqual(
+      expect.objectContaining({
+        badgeLabel: "Residential V2",
+        route: "residential_v2",
+      }),
+    );
   });
 
   test("enables supported non-residential ProjectGraph templates", () => {
@@ -184,7 +196,10 @@ describe("BuildingTypeSelector project type support", () => {
       expect.objectContaining({
         isEnabled: false,
         support: expect.objectContaining({
-          badgeLabel: "Experimental/off",
+          // Per-subtype DISABLED_REASONS now surfaces a "Coming soon"
+          // badge with a specific message, replacing the generic
+          // "Experimental/off" wording.
+          badgeLabel: "Coming soon",
           supportStatus: "disabled",
         }),
       }),
@@ -209,7 +224,8 @@ describe("BuildingTypeSelector project type support", () => {
         isEnabled: false,
         support: expect.objectContaining({
           supportStatus: "disabled",
-          badgeLabel: "Experimental/off",
+          badgeLabel: "Coming soon",
+          message: expect.stringContaining("Retail"),
         }),
       }),
     );

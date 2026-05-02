@@ -4,7 +4,7 @@
  * Step 4: Project specifications with building type selector, entrance orientation, and program generator
  */
 
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   Settings,
@@ -32,6 +32,7 @@ import {
   getProjectTypeSupportForDetails,
   PROJECT_TYPE_ROUTES,
 } from "../../services/project/projectTypeSupportRegistry.js";
+import detectProjectTypeFromBrief from "../../utils/projectTypeAutoDetect.js";
 import {
   levelIndexFromLabel,
   levelName,
@@ -134,16 +135,68 @@ const SpecsStep = ({
         category,
         subType,
         program: subType || category, // Maintain backward compatibility
+        // Mark the project type as explicitly chosen so the autodetect
+        // chip stays suppressed even if the brief text changes later.
+        // Manual choice always wins over auto-detect.
+        projectTypeExplicitlySetByUser: Boolean(category && subType),
       });
     },
     [projectDetails, onProjectDetailsChange],
   );
 
+  const handleApplyAutoDetectedType = useCallback(
+    ({ category, subType }) => {
+      onProjectDetailsChange({
+        ...projectDetails,
+        category,
+        subType,
+        program: subType || category,
+        projectTypeExplicitlySetByUser: true,
+      });
+    },
+    [projectDetails, onProjectDetailsChange],
+  );
+
+  // Debounced project-type auto-detect from the user's brief text.
+  // Output is purely a *suggestion* surfaced via BuildingTypeSelector — it
+  // never overwrites projectDetails.category/subType automatically; the
+  // chip requires an explicit click. Suppressed once the user has made
+  // a manual selection (preserves explicit choice).
+  const [autoDetectedProjectType, setAutoDetectedProjectType] = useState(null);
+  useEffect(() => {
+    if (projectDetails.projectTypeExplicitlySetByUser) {
+      setAutoDetectedProjectType(null);
+      return undefined;
+    }
+    const handle = setTimeout(() => {
+      const result = detectProjectTypeFromBrief({
+        title: projectDetails.title || "",
+        description: projectDetails.description || "",
+        brief: projectDetails.brief || "",
+        customNotes: projectDetails.customNotes || "",
+      });
+      setAutoDetectedProjectType(result);
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [
+    projectDetails.title,
+    projectDetails.description,
+    projectDetails.brief,
+    projectDetails.customNotes,
+    projectDetails.projectTypeExplicitlySetByUser,
+  ]);
+
   const handleEntranceChange = useCallback(
     (direction) => {
+      // Manual selection always wins — clear the auto-detect provenance so
+      // the "Please confirm" badge disappears and the wizard's
+      // auto-trigger useEffect does not re-run on the next polygon change.
       onProjectDetailsChange({
         ...projectDetails,
         entranceDirection: direction,
+        entranceAutoDetected: false,
+        entranceConfidence: 1,
+        entranceNeedsReview: false,
       });
     },
     [projectDetails, onProjectDetailsChange],
@@ -333,6 +386,8 @@ const SpecsStep = ({
               selectedSubType={projectDetails.subType}
               onSelectionChange={handleBuildingTypeChange}
               validationErrors={validationState?.buildingType || []}
+              autoDetectedType={autoDetectedProjectType}
+              onApplyAutoDetectedType={handleApplyAutoDetectedType}
             />
             {projectDetails.category &&
               projectDetails.subType &&
@@ -365,6 +420,7 @@ const SpecsStep = ({
                 isDetecting={isDetectingEntrance}
                 autoDetectResult={autoDetectResult}
                 showAutoDetect={!!onAutoDetectEntrance}
+                needsReview={Boolean(projectDetails.entranceNeedsReview)}
               />
             </Card>
           </motion.div>

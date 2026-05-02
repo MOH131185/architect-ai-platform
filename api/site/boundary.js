@@ -223,6 +223,8 @@ export async function resolveBoundaryRequest({
       osmElement: best.element,
       queryRadiusM: buildingRadiusM,
       cached: false,
+      estimateReason: best.estimateReason || null,
+      demotedParcel: best.demotedParcel || null,
     });
   }
   if (useCache) cacheSet(key, body);
