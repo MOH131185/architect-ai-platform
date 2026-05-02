@@ -496,6 +496,33 @@ describe("projectGraphVerticalSliceService", () => {
         imageProviderUsed: "deterministic",
       }),
     );
+    // Phase 5B — visual identity validation report attached to artifacts
+    // and to sheet metadata. Deterministic-fallback path must not fail.
+    // The validator is report-only; it never modifies the export gate
+    // (the gate's decision is driven by its own evidence chain at
+    // src/services/project/projectGraphVerticalSliceService.js Phase F
+    // and is unchanged by this PR).
+    expect(result.artifacts.visualIdentityValidation).toEqual(
+      expect.objectContaining({
+        version: "visual-manifest-validator-v1",
+        strictMode: false,
+      }),
+    );
+    expect(result.artifacts.visualIdentityValidation.status).not.toBe("fail");
+    expect(result.artifacts.visualIdentityValidation.summary).toEqual(
+      expect.objectContaining({ totalPanels: 4 }),
+    );
+    expect(
+      Object.keys(result.artifacts.visualIdentityValidation.panels).sort(),
+    ).toEqual(
+      ["axonometric", "exterior_render", "hero_3d", "interior_3d"].sort(),
+    );
+    expect(
+      result.artifacts.a1Sheet.metadata.visualIdentityValidation,
+    ).toBeTruthy();
+    expect(
+      result.artifacts.a1Sheet.metadata.visualIdentityValidation.version,
+    ).toBe("visual-manifest-validator-v1");
     expect(result.artifacts.a1Pdf.asset_type).toBe("a1_sheet_pdf");
     expect(result.artifacts.a1Pdf.sheet_size_mm).toEqual({
       width: 841,

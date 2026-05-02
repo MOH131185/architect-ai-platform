@@ -27,6 +27,10 @@ import {
   buildVisualIdentityLockBlock,
 } from "../render/visualManifestService.js";
 import {
+  evaluateVisualIdentity,
+  VISUAL_MANIFEST_VALIDATOR_VERSION,
+} from "../render/visualManifestValidator.js";
+import {
   buildSheetDesignContext,
   assertSheetDesignContext,
   SHEET_DESIGN_CONTEXT_VERSION,
@@ -10037,6 +10041,55 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       )
       .map((artifact) => [artifact.panel_type, artifact]),
   );
+  // Phase 5B: post-render visual identity validation. Reports only — does
+  // NOT block the export gate by default. Strict mode (opt-in via
+  // PROJECT_GRAPH_VISUAL_IDENTITY_STRICT=true) promotes warnings to error
+  // severity so a downstream gate can choose to demote, but this
+  // validator never throws and never decides for the gate. The report is
+  // stamped onto sheetArtifact.metadata.visualIdentityValidation and
+  // surfaced at artifacts.visualIdentityValidation for QA / API consumers.
+  const visualIdentityStrictMode =
+    String(
+      (typeof process !== "undefined" &&
+        process.env?.PROJECT_GRAPH_VISUAL_IDENTITY_STRICT) ||
+        "",
+    )
+      .toLowerCase()
+      .trim() === "true";
+  let visualIdentityValidation;
+  try {
+    visualIdentityValidation = evaluateVisualIdentity({
+      visualManifest,
+      sheetDesignContext,
+      sheetDesignContextHash: sheetDesignContext?.contextHash || null,
+      panelArtifacts: visuals3d,
+      sheetMetadata: sheetArtifact?.metadata || null,
+      options: { strictMode: visualIdentityStrictMode },
+    });
+  } catch (validationError) {
+    visualIdentityValidation = {
+      version: VISUAL_MANIFEST_VALIDATOR_VERSION,
+      status: "warning",
+      severity: "warning",
+      strictMode: visualIdentityStrictMode,
+      summary: { totalPanels: 4, error: true },
+      warnings: [
+        `Visual identity validator threw: ${validationError?.message || "unknown"}.`,
+      ],
+      panels: {},
+      sheetChecks: {},
+      sheetWarnings: [],
+    };
+  }
+  sheetArtifact.metadata = {
+    ...(sheetArtifact.metadata || {}),
+    visualIdentityValidation,
+  };
+  __vsMark = __vsLog(
+    "visual_identity_validation",
+    __vsMark,
+    `status=${visualIdentityValidation.status} warnings=${visualIdentityValidation.summary?.totalWarnings ?? 0}`,
+  );
   const openaiReasoningExecution =
     input.openaiReasoningExecution ||
     input.providerExecution?.openaiReasoning ||
@@ -10303,6 +10356,13 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     sheetDesignContext,
     sheetDesignContextHash: sheetDesignContext.contextHash,
     sheetDesignContextReport,
+    // Phase 5B — post-render visual identity validation report. Warning-
+    // only by default; opt-in strict mode lets a downstream export gate
+    // demote on visual-identity drift. The validator reads what panel
+    // artifacts already stamp (visualManifestHash / Id / locked) plus the
+    // sheet-level sheetDesignContextHash and emits a structured per-panel
+    // report. See src/services/render/visualManifestValidator.js.
+    visualIdentityValidation,
     technicalBuild: {
       ok: technicalBuild.ok,
       technicalPanelTypes: technicalBuild.technicalPanelTypes,
