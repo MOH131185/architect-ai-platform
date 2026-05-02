@@ -57,13 +57,14 @@ export function SiteBoundaryEditorV2({
   boundarySource = null,
 }) {
   // OGL v3.0 attribution: when the boundary comes from HM Land Registry
-  // INSPIRE Index Polygons we must surface the attribution wherever the
-  // polygon is visible. The flag lets the parent pass `boundarySource`
-  // (e.g. from the boundary proxy response) and the chip renders only
-  // when the source is INSPIRE.
+  // (via either the bundled INSPIRE fixture or Digital Land's
+  // `title-boundary` real-time API) we must surface the attribution
+  // wherever the polygon is visible. Both source values map to the same
+  // chip — they originate from the same HMLR dataset.
   const isInspireBoundary =
     typeof boundarySource === "string" &&
-    boundarySource.startsWith("hm-land-registry-inspire");
+    (boundarySource.startsWith("hm-land-registry-inspire") ||
+      boundarySource.startsWith("digital-land-title-boundary"));
   // Refs
   const mapContainerRef = useRef(null);
   const polygonEditorRef = useRef(null);
@@ -565,8 +566,12 @@ export function SiteBoundaryEditorV2({
           }
         },
         onValidationError: (errors) => {
+          // 15-second window (was 5 s) — long enough for the user to read
+          // and act, short enough to clear if they ignore. The warning
+          // also has a manual dismiss button so the user can clear it
+          // immediately without waiting.
           setValidationWarning(errors.join("; "));
-          setTimeout(() => setValidationWarning(null), 5000);
+          setTimeout(() => setValidationWarning(null), 15000);
         },
         minVertices: 3,
       });
@@ -851,20 +856,43 @@ export function SiteBoundaryEditorV2({
           )}
         </AnimatePresence>
 
-        {/* Validation warning */}
+        {/* Validation warning — dismissible. Auto-clears after 15 s; the
+            user can also click × to dismiss immediately. */}
         <AnimatePresence>
           {validationWarning && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800"
+              className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 flex items-start gap-2"
+              data-testid="boundary-validation-warning"
             >
-              ⚠️ {validationWarning}
+              <span className="flex-1">⚠️ {validationWarning}</span>
+              <button
+                type="button"
+                onClick={() => setValidationWarning(null)}
+                className="text-amber-700 hover:text-amber-900 px-1 leading-none"
+                aria-label="Dismiss warning"
+              >
+                ×
+              </button>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
+
+      {/* Always-visible summary bar — surfaces area / perimeter / vertex
+          count + reference + length-of-each-side data the moment a polygon
+          is loaded, so the user never has to discover the Diagnostics
+          toggle to see it. */}
+      {polygon.length >= 3 && (
+        <div
+          className="bg-white rounded-lg shadow p-3 mb-3"
+          data-testid="boundary-summary-bar"
+        >
+          <BoundaryDiagnostics vertices={vertices} compact={true} />
+        </div>
+      )}
 
       {/* Main Content Grid */}
       <div className={`grid gap-4 ${showTableEditor ? "lg:grid-cols-2" : ""}`}>
@@ -969,7 +997,7 @@ export function SiteBoundaryEditorV2({
             <BoundaryDiagnostics
               vertices={vertices}
               showSegments={true}
-              showAngles={false}
+              showAngles={true}
             />
           </motion.div>
         )}

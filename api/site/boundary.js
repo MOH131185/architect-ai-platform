@@ -50,6 +50,7 @@ import {
   selectBestBoundaryCandidate,
 } from "./_lib/boundaryNormalize.js";
 import { fetchInspireParcelsNear } from "./_lib/inspirePolygonsClient.js";
+import { fetchTitleBoundariesNear } from "./_lib/digitalLandTitleBoundaryClient.js";
 import { isEnglandOrWales } from "./_lib/postcodeRegion.js";
 
 const CACHE_MAX_ENTRIES = 256;
@@ -182,19 +183,32 @@ export async function resolveBoundaryRequest({
     }
   }
 
-  // INSPIRE lookup — synchronous (fixture-backed) and cheap, gated by
-  // postcode/lat/lng country detection so we don't waste cycles on
-  // Scottish/NI/non-UK addresses. Independent of Overpass; both sources
-  // are passed to `selectBestBoundaryCandidate` which decides the winner.
+  // For England/Wales addresses, query Digital Land's `title-boundary`
+  // dataset (republished HM Land Registry INSPIRE Index Polygons) in
+  // parallel with Overpass. The Digital Land API is per-point real-time —
+  // no fixture, no GDAL, no bundle. Local-fixture INSPIRE lookup is
+  // kept as a secondary source; on cold-start the synthetic placeholder
+  // returns empty, which is fine: Digital Land is the new primary.
+  const isUk = isEnglandOrWales({ postcode, lat, lng });
+  const digitalLandPromise = isUk
+    ? fetchTitleBoundariesNear({ lat, lng, fetchImpl }).catch((err) => {
+        console.warn(
+          "[/api/site/boundary] Digital Land title-boundary error:",
+          err?.message || err,
+        );
+        return [];
+      })
+    : Promise.resolve([]);
+
   let inspireElements = [];
-  if (isEnglandOrWales({ postcode, lat, lng })) {
+  if (isUk) {
     try {
       inspireElements = fetchInspireParcelsNear({ lat, lng, postcode });
     } catch (inspireErr) {
       // Never fail the proxy because of an INSPIRE fixture issue. Log and
       // fall through to OSM.
       console.warn(
-        "[/api/site/boundary] INSPIRE lookup error:",
+        "[/api/site/boundary] INSPIRE fixture lookup error:",
         inspireErr?.message || inspireErr,
       );
       inspireElements = [];
@@ -220,11 +234,18 @@ export async function resolveBoundaryRequest({
     parcelElements = [];
   }
 
+  // Resolve the Digital Land lookup — by now the Overpass call has
+  // either completed or errored, so we are not double-blocking.
+  const digitalLandElements = await digitalLandPromise;
+  // Digital Land entries always go in front of the bundled fixture so
+  // when both are present the live source wins.
+  const allInspireElements = [...digitalLandElements, ...inspireElements];
+
   let body;
-  // If INSPIRE has a match we can skip the Overpass error path entirely:
-  // INSPIRE is the higher-authority source so its presence makes the
-  // OSM lookup outcome irrelevant for the response.
-  if (overpassError && inspireElements.length === 0) {
+  // If INSPIRE/Digital Land has a match we can skip the Overpass error
+  // path entirely: those sources are higher-authority and their presence
+  // makes the OSM lookup outcome irrelevant for the response.
+  if (overpassError && allInspireElements.length === 0) {
     const reason = overpassError.rateLimited
       ? "overpass_rate_limited"
       : overpassError.timedOut
@@ -244,7 +265,7 @@ export async function resolveBoundaryRequest({
   }
 
   const best = selectBestBoundaryCandidate({
-    inspireElements,
+    inspireElements: allInspireElements,
     buildingElements,
     parcelElements,
     point: { lat, lng },
