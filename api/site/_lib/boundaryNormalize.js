@@ -18,6 +18,11 @@
 export const PROXY_RESPONSE_SCHEMA_VERSION = "site-boundary-proxy-v1";
 
 export const BOUNDARY_SOURCE = Object.freeze({
+  // HM Land Registry INSPIRE Index Polygons. Highest authority for
+  // England/Wales addresses — the legal lot boundary recorded by the
+  // Land Registry. Served from offline-converted fixtures under
+  // `inspireData/`. See `inspirePolygonsClient.js`.
+  INSPIRE_PARCEL_CONTAINS: "hm-land-registry-inspire-parcel-contains-point",
   OVERPASS_BUILDING_CONTAINS: "openstreetmap-overpass-building-contains-point",
   OVERPASS_BUILDING_NEAREST: "openstreetmap-overpass-building-nearest",
   OVERPASS_PARCEL_CONTAINS: "openstreetmap-overpass-parcel-contains-point",
@@ -25,12 +30,16 @@ export const BOUNDARY_SOURCE = Object.freeze({
 });
 
 const CONFIDENCE_BY_SOURCE = Object.freeze({
+  // INSPIRE outranks Overpass parcel because INSPIRE *is* the legal
+  // boundary, whereas Overpass `landuse=*` polygons are zoning hints.
+  [BOUNDARY_SOURCE.INSPIRE_PARCEL_CONTAINS]: 0.98,
   [BOUNDARY_SOURCE.OVERPASS_PARCEL_CONTAINS]: 0.95,
   [BOUNDARY_SOURCE.OVERPASS_BUILDING_CONTAINS]: 0.92,
   [BOUNDARY_SOURCE.OVERPASS_BUILDING_NEAREST]: 0.7,
 });
 
 const AUTHORITATIVE_BY_SOURCE = Object.freeze({
+  [BOUNDARY_SOURCE.INSPIRE_PARCEL_CONTAINS]: true,
   [BOUNDARY_SOURCE.OVERPASS_PARCEL_CONTAINS]: true,
   [BOUNDARY_SOURCE.OVERPASS_BUILDING_CONTAINS]: true,
   [BOUNDARY_SOURCE.OVERPASS_BUILDING_NEAREST]: false,
@@ -241,13 +250,16 @@ export function distanceM(a, b) {
 }
 
 /**
- * Choose the best Overpass `way` element for the given point.
+ * Choose the best boundary candidate for the given point.
  *
  * Preference order:
- *   1. parcel polygon that contains the point AND passes the lot-plausibility
- *      classifier (small enough, simple enough, not a `landuse=*` district)
- *   2. building polygon that contains the point
- *   3. nearest building polygon (within 25 m of the point) — flagged
+ *   1. INSPIRE Index Polygon (HM Land Registry, England + Wales) — the
+ *      legal lot boundary. Reuses the same plausibility classifier as
+ *      OSM parcels so a corrupted INSPIRE entry can still be skipped.
+ *   2. OSM parcel polygon that contains the point AND passes the
+ *      lot-plausibility classifier
+ *   3. OSM building polygon that contains the point
+ *   4. Nearest OSM building polygon (within 25 m of the point) — flagged
  *      non-authoritative so downstream gating treats it as estimated
  *
  * If a parcel candidate contained the point but failed the plausibility
@@ -258,7 +270,8 @@ export function distanceM(a, b) {
  * Returns `{ element, polygon, source, estimateReason?, demotedParcel? }`
  * or null when nothing usable.
  */
-export function selectBestOverpassWay({
+export function selectBestBoundaryCandidate({
+  inspireElements = [],
   buildingElements = [],
   parcelElements = [],
   point,
@@ -266,6 +279,34 @@ export function selectBestOverpassWay({
   const checkPoint = point;
   let demotedParcel = null;
   let demotedReason = null;
+
+  // 0. INSPIRE parcel containing the point. INSPIRE entries are already
+  // legal lot boundaries so they bypass the OSM `landuse=*` exclusion in
+  // `classifyParcelCandidate`, but the size/vertex sanity check still
+  // applies — a corrupted INSPIRE entry covering 50 ha is still wrong.
+  for (const el of inspireElements) {
+    const polygon = extractPolygonFromOverpassWay(el);
+    if (polygon.length < 3 || !polygonContainsPoint(polygon, checkPoint)) {
+      continue;
+    }
+    // INSPIRE polygons don't carry `landuse` tags, so the
+    // PARCEL_LANDUSE_DISTRICT branch of the classifier is a no-op for
+    // them. The size and vertex caps still apply.
+    const reason = classifyParcelCandidate({ polygon, element: el });
+    if (!reason) {
+      return {
+        element: el,
+        polygon,
+        source: BOUNDARY_SOURCE.INSPIRE_PARCEL_CONTAINS,
+      };
+    }
+    // INSPIRE returned an implausible polygon — log via demotedReason
+    // and fall through to OSM rather than failing the whole request.
+    if (!demotedParcel) {
+      demotedParcel = { element: el, polygon };
+      demotedReason = reason;
+    }
+  }
 
   // 1. parcel containing the point (with plausibility check)
   for (const el of parcelElements) {
@@ -330,6 +371,25 @@ export function selectBestOverpassWay({
     };
   }
   return null;
+}
+
+/**
+ * Backwards-compatible alias for `selectBestBoundaryCandidate`. Existing
+ * callers that pass only Overpass elements continue to work unchanged;
+ * `inspireElements` defaults to `[]` so the new INSPIRE branch is
+ * skipped for non-INSPIRE call sites.
+ */
+export function selectBestOverpassWay({
+  buildingElements = [],
+  parcelElements = [],
+  point,
+} = {}) {
+  return selectBestBoundaryCandidate({
+    inspireElements: [],
+    buildingElements,
+    parcelElements,
+    point,
+  });
 }
 
 /**

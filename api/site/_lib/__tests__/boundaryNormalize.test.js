@@ -8,6 +8,7 @@ import {
   classifyBuildingCandidate,
   classifyParcelCandidate,
   polygonAreaM2,
+  selectBestBoundaryCandidate,
   selectBestOverpassWay,
 } from "../boundaryNormalize.js";
 
@@ -177,6 +178,77 @@ describe("selectBestOverpassWay", () => {
     });
     expect(result?.source).toBe(BOUNDARY_SOURCE.OVERPASS_BUILDING_CONTAINS);
     expect(result?.estimateReason).toBeNull();
+  });
+});
+
+describe("selectBestBoundaryCandidate (INSPIRE precedence)", () => {
+  test("an INSPIRE polygon containing the point wins over an Overpass parcel", () => {
+    const inspirePolygon = squarePolygonAround(POINT.lat, POINT.lng, 8);
+    const overpassParcel = squarePolygonAround(POINT.lat, POINT.lng, 12);
+    const result = selectBestBoundaryCandidate({
+      inspireElements: [
+        wayWithGeometry(inspirePolygon, { inspireId: "12345" }, 1),
+      ],
+      parcelElements: [
+        wayWithGeometry(overpassParcel, { boundary: "land_lot" }, 2),
+      ],
+      buildingElements: [],
+      point: POINT,
+    });
+    expect(result?.source).toBe(BOUNDARY_SOURCE.INSPIRE_PARCEL_CONTAINS);
+    expect(result?.element?.tags?.inspireId).toBe("12345");
+  });
+
+  test("falls back to Overpass parcel when INSPIRE has no match", () => {
+    const overpassParcel = squarePolygonAround(POINT.lat, POINT.lng, 12);
+    const result = selectBestBoundaryCandidate({
+      inspireElements: [],
+      parcelElements: [
+        wayWithGeometry(overpassParcel, { boundary: "land_lot" }, 1),
+      ],
+      buildingElements: [],
+      point: POINT,
+    });
+    expect(result?.source).toBe(BOUNDARY_SOURCE.OVERPASS_PARCEL_CONTAINS);
+  });
+
+  test("falls back to OSM when INSPIRE entry is implausibly large", () => {
+    const oversizedInspire = squarePolygonAround(POINT.lat, POINT.lng, 100); // ~40k m²
+    const overpassParcel = squarePolygonAround(POINT.lat, POINT.lng, 12);
+    const result = selectBestBoundaryCandidate({
+      inspireElements: [
+        wayWithGeometry(oversizedInspire, { inspireId: "bad" }, 1),
+      ],
+      parcelElements: [
+        wayWithGeometry(overpassParcel, { boundary: "land_lot" }, 2),
+      ],
+      buildingElements: [],
+      point: POINT,
+    });
+    expect(result?.source).toBe(BOUNDARY_SOURCE.OVERPASS_PARCEL_CONTAINS);
+  });
+
+  test("backwards-compatible: selectBestOverpassWay alias still works", () => {
+    const overpassParcel = squarePolygonAround(POINT.lat, POINT.lng, 12);
+    const result = selectBestOverpassWay({
+      parcelElements: [wayWithGeometry(overpassParcel)],
+      buildingElements: [],
+      point: POINT,
+    });
+    expect(result?.source).toBe(BOUNDARY_SOURCE.OVERPASS_PARCEL_CONTAINS);
+  });
+});
+
+describe("INSPIRE confidence in buildBoundaryResponse", () => {
+  test("INSPIRE_PARCEL_CONTAINS produces highest confidence (0.98)", () => {
+    const polygon = squarePolygonAround(POINT.lat, POINT.lng, 8);
+    const body = buildBoundaryResponse({
+      polygon,
+      source: BOUNDARY_SOURCE.INSPIRE_PARCEL_CONTAINS,
+    });
+    expect(body.boundaryAuthoritative).toBe(true);
+    expect(body.confidence).toBeCloseTo(0.98, 2);
+    expect(body.source).toBe(BOUNDARY_SOURCE.INSPIRE_PARCEL_CONTAINS);
   });
 });
 

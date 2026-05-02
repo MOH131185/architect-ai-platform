@@ -54,7 +54,16 @@ export function SiteBoundaryEditorV2({
   autoDetectOnLoad = true,
   autoDetectDisabledMessage = "Automatic boundary detection is unavailable for this address. Draw or enter a verified boundary manually.",
   contextualBoundaryPolygon = [],
+  boundarySource = null,
 }) {
+  // OGL v3.0 attribution: when the boundary comes from HM Land Registry
+  // INSPIRE Index Polygons we must surface the attribution wherever the
+  // polygon is visible. The flag lets the parent pass `boundarySource`
+  // (e.g. from the boundary proxy response) and the chip renders only
+  // when the source is INSPIRE.
+  const isInspireBoundary =
+    typeof boundarySource === "string" &&
+    boundarySource.startsWith("hm-land-registry-inspire");
   // Refs
   const mapContainerRef = useRef(null);
   const polygonEditorRef = useRef(null);
@@ -765,6 +774,20 @@ export function SiteBoundaryEditorV2({
             style={{ minHeight: "450px" }}
           />
         </div>
+
+        {/* HM Land Registry attribution. OGL v3.0 requires the
+            attribution to be visible wherever INSPIRE polygons are
+            rendered. Renders only when the boundary's source is the
+            INSPIRE proxy response. */}
+        {isInspireBoundary && (
+          <p
+            className="mt-2 text-[10px] uppercase tracking-wide text-white/55"
+            data-testid="hmlr-attribution"
+          >
+            Contains HM Land Registry data © Crown copyright and database right
+            (Open Government Licence v3.0)
+          </p>
+        )}
 
         {/* Table Editor */}
         <AnimatePresence>

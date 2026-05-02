@@ -1,0 +1,13 @@
+[
+  {
+    "inspireId": "synthetic-17-kensington-rd-dn15-8bq",
+    "_synthetic": true,
+    "_note": "Hand-crafted placeholder polygon for 17 Kensington Rd, DN15 8BQ. Replace with real INSPIRE data from `npm run inspire:download north-lincolnshire` once GDAL/ogr2ogr is installed locally. See inspireData/README.md.",
+    "polygon": [
+      { "lat": 53.5908, "lng": -0.6509 },
+      { "lat": 53.5908, "lng": -0.6506 },
+      { "lat": 53.5905, "lng": -0.6506 },
+      { "lat": 53.5905, "lng": -0.6509 }
+    ]
+  }
+]
