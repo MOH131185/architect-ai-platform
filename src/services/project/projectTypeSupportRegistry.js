@@ -22,12 +22,66 @@ export const PROJECT_GRAPH_PROJECT_TYPE_PIPELINE_VERSION =
 const DEFAULT_DISABLED_MESSAGE =
   "Experimental/off in the current production ProjectGraph rollout.";
 
+// Per-subtype disabled reasons. Each entry replaces the generic
+// `DEFAULT_DISABLED_MESSAGE` for one specific `category:subtype` pair so
+// the UI can show the user *why* a type is not yet available rather than
+// a one-size-fits-all "Experimental/off" badge. Entries are intentionally
+// granular — when a programme template is authored end-to-end, the entry
+// is removed and an `ENABLED_OVERRIDES` row takes its place.
+const DISABLED_REASONS = Object.freeze({
+  "commercial:retail": {
+    badgeLabel: "Coming soon",
+    message:
+      "Retail programme template is not yet available. We are validating the deterministic ProjectGraph template before enabling.",
+    reason:
+      "ProjectGraph retail programme template is still in authoring; payload + title-block copy not ready.",
+  },
+  "commercial:mixed-use": {
+    badgeLabel: "Coming soon",
+    message:
+      "Mixed-use programme template is in development. The sheet-split policy for mixed-use is being validated separately.",
+    reason:
+      "Mixed-use sheet-split policy is still being validated; programme template not finalised.",
+  },
+  "commercial:shopping-mall": {
+    badgeLabel: "Coming soon",
+    message:
+      "Shopping mall programme template is not yet available end-to-end.",
+    reason:
+      "ProjectGraph shopping-mall programme template is still in authoring.",
+  },
+  "healthcare:dental": {
+    badgeLabel: "Coming soon",
+    message:
+      "Dental clinic programme template is not yet authored. Use Medical Clinic for now if the brief is general healthcare.",
+    reason: "Healthcare dental programme template not yet authored.",
+  },
+  "healthcare:lab": {
+    badgeLabel: "Coming soon",
+    message:
+      "Laboratory programme template is not yet authored. Specialist programme work is required for safe lab layouts.",
+    reason: "Laboratory programme template not yet authored.",
+  },
+  "education:university": {
+    badgeLabel: "Coming soon",
+    message:
+      "University programme template is not yet available. Use School for the smaller campus case for now.",
+    reason: "University programme template not yet authored.",
+  },
+  "education:kindergarten": {
+    badgeLabel: "Coming soon",
+    message: "Kindergarten programme template is not yet available end-to-end.",
+    reason: "Kindergarten programme template not yet authored.",
+  },
+});
+
 const RESIDENTIAL_CANONICAL_BY_SUBTYPE = Object.freeze({
   "detached-house": "dwelling",
   "semi-detached-house": "dwelling",
   "terraced-house": "dwelling",
   villa: "dwelling",
   cottage: "dwelling",
+  mansion: "dwelling",
   "apartment-building": "multi_residential",
   "multi-family": "multi_residential",
   duplex: "dwelling",
@@ -177,6 +231,8 @@ function labelFor(categoryId, subtypeId) {
 }
 
 function createDisabledEntry(category, subType) {
+  const key = registryKey(category.id, subType.id);
+  const override = DISABLED_REASONS[key];
   return {
     categoryId: category.id,
     subtypeId: subType.id,
@@ -185,10 +241,10 @@ function createDisabledEntry(category, subType) {
     canonicalBuildingType: null,
     route: null,
     enabledInUi: false,
-    reason: DEFAULT_DISABLED_MESSAGE,
-    message: DEFAULT_DISABLED_MESSAGE,
+    reason: override?.reason || DEFAULT_DISABLED_MESSAGE,
+    message: override?.message || DEFAULT_DISABLED_MESSAGE,
     programmeTemplateKey: null,
-    badgeLabel: "Experimental/off",
+    badgeLabel: override?.badgeLabel || "Experimental/off",
   };
 }
 

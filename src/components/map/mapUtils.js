@@ -245,8 +245,9 @@ export function isPointInPolygon(point, polygon) {
     const xj = polygon[j].lng;
     const yj = polygon[j].lat;
 
-    const intersectsLatitude =
-      (yi > point.lat) !== (yj > point.lat);
+    const yiAbove = yi > point.lat;
+    const yjAbove = yj > point.lat;
+    const intersectsLatitude = yiAbove !== yjAbove;
     const intersect =
       intersectsLatitude &&
       point.lng < ((xj - xi) * (point.lat - yi)) / (yj - yi) + xi;
@@ -257,12 +258,37 @@ export function isPointInPolygon(point, polygon) {
   return inside;
 }
 
+// Static Maps stroke colours for the site boundary.
+// Authoritative boundary uses Material Blue 700 (#1976D2) at full opacity.
+// Estimated boundary uses the same hue at slightly reduced stroke opacity
+// so it remains clearly visible but distinguishable. Static Maps does not
+// support dasharray on `path=`, so we differentiate by line weight + a thin
+// outer halo path.
+export const SITE_BOUNDARY_STATIC_MAP_COLORS = Object.freeze({
+  authoritative: {
+    stroke: "0x1976d2ff",
+    fill: "0x1976d233",
+    weight: 3,
+  },
+  estimated: {
+    stroke: "0x1976d2cc",
+    fill: "0x1976d21a",
+    weight: 2,
+  },
+});
+
 /**
  * Generate map snapshot URL
  * @param {Array<{lat: number, lng: number}>} polygon - Polygon coordinates
  * @param {string} apiKey - Google Maps API key
  * @param {number} width - Image width
  * @param {number} height - Image height
+ * @param {object} [options]
+ * @param {boolean} [options.estimated=false] - When true, render the
+ *   boundary with the "estimated" style (lighter stroke + thinner weight)
+ *   so the user can see the polygon is non-authoritative. The colour
+ *   stays blue in either case so the wizard preview and the final A1
+ *   site plan match.
  * @returns {string} Static map URL
  */
 export function generateMapSnapshotURL(
@@ -270,11 +296,15 @@ export function generateMapSnapshotURL(
   apiKey,
   width = 640,
   height = 480,
+  options = {},
 ) {
   if (!polygon || polygon.length === 0) return null;
 
   const centroid = getPolygonCentroid(polygon);
   const pathString = polygon.map((p) => `${p.lat},${p.lng}`).join("|");
+  const style = options?.estimated
+    ? SITE_BOUNDARY_STATIC_MAP_COLORS.estimated
+    : SITE_BOUNDARY_STATIC_MAP_COLORS.authoritative;
 
   return (
     `https://maps.googleapis.com/maps/api/staticmap?` +
@@ -282,7 +312,7 @@ export function generateMapSnapshotURL(
     `zoom=18&` +
     `size=${width}x${height}&` +
     `maptype=hybrid&` +
-    `path=color:0xff0000ff|weight:2|fillcolor:0xff000033|${pathString}&` +
+    `path=color:${style.stroke}|weight:${style.weight}|fillcolor:${style.fill}|${pathString}&` +
     `key=${apiKey}`
   );
 }

@@ -1707,12 +1707,20 @@ const ArchitectAIWizardContainer = () => {
 
       setAutoDetectResult(result);
 
-      if (result.confidence > 0.6) {
+      // Apply the auto-detected direction at confidence ≥ 0.5. Below 0.7
+      // we still apply but mark `entranceNeedsReview = true` so the
+      // EntranceDirectionSelector shows a "Please confirm" badge — the
+      // user can override on the compass without having to discover the
+      // auto-detect button. Manual selection always wins (the
+      // SpecsStep.handleEntranceChange path clears `entranceAutoDetected`
+      // implicitly because the user typed a direction).
+      if (result.confidence >= 0.5) {
         setProjectDetails((prev) => ({
           ...prev,
           entranceDirection: result.direction,
           entranceAutoDetected: true,
           entranceConfidence: result.confidence,
+          entranceNeedsReview: result.confidence < 0.7,
         }));
       }
 
@@ -1732,6 +1740,36 @@ const ArchitectAIWizardContainer = () => {
     setProjectDetails,
     siteMetrics,
     sitePolygon,
+  ]);
+
+  // Auto-trigger entrance orientation detection once a site polygon is
+  // available. This removes the discoverability problem with the
+  // "Auto-Detect Entrance" button (the user reported manual works but
+  // auto-detect "doesn't work" — the detector itself runs, but the user
+  // never noticed the button on the specs step). The hook fires exactly
+  // once per session: it gates on (a) a usable polygon, (b) no manual
+  // entrance already set by the user, and (c) no detection already
+  // recorded. Manual override still wins because the user changing the
+  // compass calls handleEntranceChange which sets a new direction
+  // without `entranceAutoDetected: true`.
+  useEffect(() => {
+    if (!sitePolygon || sitePolygon.length < 3) return;
+    if (isDetectingEntrance) return;
+    if (projectDetails.entranceAutoDetected) return;
+    if (
+      projectDetails.entranceDirection &&
+      !["", "N"].includes(projectDetails.entranceDirection)
+    ) {
+      // User has already picked a non-default direction — don't override.
+      return;
+    }
+    handleAutoDetectEntrance();
+  }, [
+    sitePolygon,
+    handleAutoDetectEntrance,
+    isDetectingEntrance,
+    projectDetails.entranceAutoDetected,
+    projectDetails.entranceDirection,
   ]);
 
   /**
@@ -1846,19 +1884,26 @@ const ArchitectAIWizardContainer = () => {
         capturedSnapshot = await captureSnapshotForPersistence({
           coordinates: locationData?.coordinates,
           polygon: siteSnapshotDisplayPolygon,
-          drawPolygonOverlay: siteSnapshotBoundaryAuthoritative,
+          // Always overlay the polygon when we have one — the user wants
+          // to see the auto-detected boundary even when it is non-
+          // authoritative. The metadata flag below preserves the
+          // estimated semantic for downstream gating.
+          drawPolygonOverlay: Boolean(
+            siteSnapshotDisplayPolygon &&
+            siteSnapshotDisplayPolygon.length >= 3,
+          ),
           polygonStyle: siteSnapshotBoundaryAuthoritative
             ? {
-                strokeColor: "#d64d35",
+                strokeColor: "#1976D2",
                 strokeWeight: 3,
-                fillColor: "#b7d7a8",
+                fillColor: "#1976D2",
                 fillOpacity: 0.18,
               }
             : {
-                strokeColor: "#e87524",
-                strokeWeight: 3,
-                fillColor: "#b7d7a8",
-                fillOpacity: 0.18,
+                strokeColor: "#1976D2",
+                strokeWeight: 2,
+                fillColor: "#1976D2",
+                fillOpacity: 0.1,
               },
           zoom: locationData?.mapZoom || 17,
           mapType: siteSnapshotMapType,

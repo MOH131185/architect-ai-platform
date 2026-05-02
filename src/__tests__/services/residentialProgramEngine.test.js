@@ -139,4 +139,27 @@ describe("residentialProgramEngine", () => {
     expect(brief.clampedBy).toBe("subtype-max");
     expect(brief.maxLevels).toBe(2);
   });
+
+  test("mansion subtype produces a deterministic brief that respects the 3-level cap", () => {
+    const brief = generateResidentialProgramBrief({
+      subType: "mansion",
+      totalAreaM2: 320,
+      siteAreaM2: 1800,
+      entranceDirection: "S",
+    });
+    expect(brief.supportedResidentialSubtype).toBe(true);
+    expect(brief.levelCount).toBeGreaterThanOrEqual(1);
+    expect(brief.levelCount).toBeLessThanOrEqual(3);
+    expect(Array.isArray(brief.spaces)).toBe(true);
+    expect(brief.spaces.length).toBeGreaterThan(0);
+    expect(
+      brief.spaces.every(
+        (space) =>
+          Number.isFinite(space.area) &&
+          Number(space.area) > 0 &&
+          space.levelIndex >= 0 &&
+          space.levelIndex < brief.levelCount,
+      ),
+    ).toBe(true);
+  });
 });

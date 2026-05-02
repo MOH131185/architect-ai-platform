@@ -36,6 +36,74 @@ const AUTHORITATIVE_BY_SOURCE = Object.freeze({
   [BOUNDARY_SOURCE.OVERPASS_BUILDING_NEAREST]: false,
 });
 
+// A residential / small-parcel polygon should not exceed this area. Anything
+// larger is almost certainly an OSM `landuse=*` district polygon (a whole
+// neighbourhood) rather than the legal parcel of the address. Demote those
+// candidates to "estimated" and prefer the building-contains polygon.
+export const RESIDENTIAL_PARCEL_MAX_M2 = 5000;
+
+// Vertex-count cap mirrors the same heuristic — district polygons frequently
+// have 50+ vertices, while typical lot polygons sit well under this.
+export const RESIDENTIAL_PARCEL_MAX_VERTICES = 30;
+
+// `landuse` tag values that almost always indicate zoning districts rather
+// than legal parcel boundaries. Treat any parcel candidate carrying one of
+// these tags as non-authoritative even when it geometrically contains the
+// query point.
+const DISTRICT_LANDUSE_TAGS = Object.freeze(
+  new Set([
+    "residential",
+    "commercial",
+    "industrial",
+    "retail",
+    "education",
+    "institutional",
+    "religious",
+    "recreation_ground",
+    "farmland",
+    "forest",
+    "meadow",
+    "village_green",
+  ]),
+);
+
+export const ESTIMATE_REASON = Object.freeze({
+  PARCEL_OVERSIZED: "parcel_oversized",
+  PARCEL_LANDUSE_DISTRICT: "parcel_landuse_district",
+  PARCEL_TOO_COMPLEX: "parcel_too_complex",
+  BUILDING_NEAREST_FALLBACK: "building_nearest_fallback",
+  NONE: null,
+});
+
+/**
+ * Inspect a candidate parcel polygon and decide whether it is plausibly the
+ * legal lot boundary or a much larger zoning/landuse district. District
+ * polygons routinely cover 20+ ha at a residential address point, which is
+ * authoritative *for the district*, not for the parcel — and using one as
+ * the site boundary produces wildly incorrect setbacks and areas downstream.
+ *
+ * Returns `null` when the candidate is plausible, otherwise an
+ * `ESTIMATE_REASON` describing the demotion cause.
+ */
+export function classifyParcelCandidate({ polygon, element }) {
+  if (!Array.isArray(polygon) || polygon.length < 3) {
+    return null;
+  }
+  const vertexCount = polygon.length;
+  const areaM2 = polygonAreaM2(polygon);
+  const landuseTag = element?.tags?.landuse;
+  if (landuseTag && DISTRICT_LANDUSE_TAGS.has(String(landuseTag))) {
+    return ESTIMATE_REASON.PARCEL_LANDUSE_DISTRICT;
+  }
+  if (Number.isFinite(areaM2) && areaM2 > RESIDENTIAL_PARCEL_MAX_M2) {
+    return ESTIMATE_REASON.PARCEL_OVERSIZED;
+  }
+  if (vertexCount > RESIDENTIAL_PARCEL_MAX_VERTICES) {
+    return ESTIMATE_REASON.PARCEL_TOO_COMPLEX;
+  }
+  return null;
+}
+
 /**
  * Convert a raw Overpass `way` element with embedded `geometry` into
  * the canonical polygon shape `[{ lat, lng }, …]`.
@@ -99,8 +167,10 @@ export function polygonContainsPoint(polygon, point) {
     const yi = Number(polygon[i].lat);
     const xj = Number(polygon[j].lng);
     const yj = Number(polygon[j].lat);
+    const yiAbove = yi > y;
+    const yjAbove = yj > y;
     const intersect =
-      yi > y !== yj > y &&
+      yiAbove !== yjAbove &&
       x < ((xj - xi) * (y - yi)) / (yj - yi + Number.EPSILON) + xi;
     if (intersect) inside = !inside;
   }
@@ -140,12 +210,19 @@ export function distanceM(a, b) {
  * Choose the best Overpass `way` element for the given point.
  *
  * Preference order:
- *   1. parcel polygon that contains the point (rare in OSM but highest)
+ *   1. parcel polygon that contains the point AND passes the lot-plausibility
+ *      classifier (small enough, simple enough, not a `landuse=*` district)
  *   2. building polygon that contains the point
  *   3. nearest building polygon (within 25 m of the point) — flagged
  *      non-authoritative so downstream gating treats it as estimated
  *
- * Returns `{ element, polygon, source }` or null when nothing usable.
+ * If a parcel candidate contained the point but failed the plausibility
+ * classifier, the returned record carries `estimateReason` describing why
+ * the parcel was demoted. Callers that still want to see that polygon for
+ * map preview can read `demotedParcel`.
+ *
+ * Returns `{ element, polygon, source, estimateReason?, demotedParcel? }`
+ * or null when nothing usable.
  */
 export function selectBestOverpassWay({
   buildingElements = [],
@@ -153,17 +230,31 @@ export function selectBestOverpassWay({
   point,
 }) {
   const checkPoint = point;
-  // 1. parcel containing the point
+  let demotedParcel = null;
+  let demotedReason = null;
+
+  // 1. parcel containing the point (with plausibility check)
   for (const el of parcelElements) {
     const polygon = extractPolygonFromOverpassWay(el);
-    if (polygon.length >= 3 && polygonContainsPoint(polygon, checkPoint)) {
+    if (polygon.length < 3 || !polygonContainsPoint(polygon, checkPoint)) {
+      continue;
+    }
+    const reason = classifyParcelCandidate({ polygon, element: el });
+    if (!reason) {
       return {
         element: el,
         polygon,
         source: BOUNDARY_SOURCE.OVERPASS_PARCEL_CONTAINS,
       };
     }
+    // Capture the first demoted parcel so we can flag the reason on the
+    // ultimate response even when we fall through to a building polygon.
+    if (!demotedParcel) {
+      demotedParcel = { element: el, polygon };
+      demotedReason = reason;
+    }
   }
+
   // 2. building containing the point
   for (const el of buildingElements) {
     const polygon = extractPolygonFromOverpassWay(el);
@@ -172,6 +263,8 @@ export function selectBestOverpassWay({
         element: el,
         polygon,
         source: BOUNDARY_SOURCE.OVERPASS_BUILDING_CONTAINS,
+        estimateReason: demotedReason,
+        demotedParcel,
       };
     }
   }
@@ -193,6 +286,9 @@ export function selectBestOverpassWay({
       element: nearest.element,
       polygon: nearest.polygon,
       source: BOUNDARY_SOURCE.OVERPASS_BUILDING_NEAREST,
+      estimateReason:
+        demotedReason || ESTIMATE_REASON.BUILDING_NEAREST_FALLBACK,
+      demotedParcel,
     };
   }
   return null;
@@ -237,13 +333,26 @@ export function buildBoundaryResponse({
   queryRadiusM = 30,
   cached = false,
   now = null,
+  estimateReason = null,
+  demotedParcel = null,
 } = {}) {
   const hasShape = Array.isArray(polygon) && polygon.length >= 3;
   const resolvedSource = hasShape ? source : BOUNDARY_SOURCE.NONE;
-  const confidence = hasShape ? CONFIDENCE_BY_SOURCE[resolvedSource] || 0 : 0;
-  const boundaryAuthoritative = hasShape
-    ? AUTHORITATIVE_BY_SOURCE[resolvedSource] === true
-    : false;
+  const baseConfidence = hasShape
+    ? CONFIDENCE_BY_SOURCE[resolvedSource] || 0
+    : 0;
+  // When a parcel candidate was demoted to a building polygon, treat the
+  // result as estimated even if the building polygon itself is normally
+  // authoritative — the user-facing site boundary is no longer the parcel
+  // they were promised.
+  const isEstimatedByDemotion = Boolean(estimateReason);
+  const boundaryAuthoritative =
+    hasShape && !isEstimatedByDemotion
+      ? AUTHORITATIVE_BY_SOURCE[resolvedSource] === true
+      : false;
+  const confidence = isEstimatedByDemotion
+    ? Math.min(baseConfidence, 0.7)
+    : baseConfidence;
   const areaM2 = hasShape ? polygonAreaM2(polygon) : 0;
   const hash = hashBoundaryShape({ polygon, source: resolvedSource });
 
@@ -253,6 +362,7 @@ export function buildBoundaryResponse({
     source: resolvedSource,
     confidence,
     boundaryAuthoritative,
+    estimateReason: estimateReason || null,
     areaM2: Math.round(areaM2),
     hash,
     cached: Boolean(cached),
@@ -265,6 +375,14 @@ export function buildBoundaryResponse({
       addrHousenumber: osmElement?.tags?.["addr:housenumber"] || null,
       addrStreet: osmElement?.tags?.["addr:street"] || null,
       overpassQueryRadiusM: queryRadiusM,
+      demotedParcel: demotedParcel
+        ? {
+            osmId: demotedParcel.element?.id || null,
+            landuseTag: demotedParcel.element?.tags?.landuse || null,
+            vertexCount: demotedParcel.polygon?.length || 0,
+            areaM2: Math.round(polygonAreaM2(demotedParcel.polygon || [])),
+          }
+        : null,
     },
   };
 }
@@ -287,6 +405,7 @@ export function buildEmptyResponse({
     source: BOUNDARY_SOURCE.NONE,
     confidence: 0,
     boundaryAuthoritative: false,
+    estimateReason: null,
     areaM2: 0,
     hash: hashBoundaryShape({ polygon: [], source: null }),
     cached: Boolean(cached),

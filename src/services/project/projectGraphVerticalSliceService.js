@@ -3799,6 +3799,26 @@ async function resolveSiteMapSnapshot({ input = {}, brief, site }) {
       ? "contextual_estimated_boundary"
       : "context_only";
 
+  // Site boundary stroke is Material Blue 700 in both states. The
+  // boundaryAuthoritative semantic stays exactly as before — the colour
+  // change is purely visual. Estimated boundaries get a slightly thinner
+  // stroke and lower fill opacity so they remain readable but the user
+  // can tell at a glance that the polygon is non-authoritative; the
+  // metadata block below still carries `boundaryAuthoritative` and
+  // `boundaryEstimated` flags for downstream gating.
+  const blueAuthoritative = {
+    strokeColor: "#1976D2",
+    strokeWeight: 3,
+    fillColor: "#1976D2",
+    fillOpacity: 0.18,
+  };
+  const blueEstimated = {
+    strokeColor: "#1976D2",
+    strokeWeight: 2,
+    fillColor: "#1976D2",
+    fillOpacity: 0.1,
+  };
+
   try {
     const snapshot = await getSiteSnapshotWithMetadata({
       coordinates: {
@@ -3806,20 +3826,12 @@ async function resolveSiteMapSnapshot({ input = {}, brief, site }) {
         lng: Number(center?.lng ?? center?.lon ?? site.lon),
       },
       polygon: polygon.length >= 3 ? polygon : null,
-      drawPolygonOverlay: boundaryAuthoritative,
-      polygonStyle: boundaryAuthoritative
-        ? {
-            strokeColor: "#d64d35",
-            strokeWeight: 3,
-            fillColor: "#b7d7a8",
-            fillOpacity: 0.18,
-          }
-        : {
-            strokeColor: "#e87524",
-            strokeWeight: 3,
-            fillColor: "#b7d7a8",
-            fillOpacity: 0.18,
-          },
+      // Always draw the polygon overlay when we have one — the user needs
+      // to see the auto-detected boundary even when it is non-authoritative.
+      // The visual style and the `boundaryEstimated` metadata flag below
+      // continue to differentiate the two states.
+      drawPolygonOverlay: polygon.length >= 3,
+      polygonStyle: boundaryAuthoritative ? blueAuthoritative : blueEstimated,
       zoom: Number(input.siteSnapshot?.zoom || 18),
       size: [1200, 780],
       mapType: "roadmap",

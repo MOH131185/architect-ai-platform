@@ -4,7 +4,7 @@
  * Grid-based selector for building category and sub-type with icons
  */
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import * as LucideIcons from "lucide-react";
 import { getAllCategories, getCategoryById } from "../../data/buildingTypes.js";
@@ -30,15 +30,51 @@ export function getBuildingTypeSelectorSubTypeState(categoryId, subType) {
   };
 }
 
+function confidenceBand(confidence) {
+  if (!Number.isFinite(confidence)) return "low";
+  if (confidence >= 0.85) return "high";
+  if (confidence >= 0.7) return "med";
+  return "low";
+}
+
 const BuildingTypeSelector = ({
   selectedCategory,
   selectedSubType,
   onSelectionChange,
   validationErrors = [],
+  autoDetectedType = null,
+  onApplyAutoDetectedType = null,
 }) => {
   const [expandedCategory, setExpandedCategory] = useState(
     selectedCategory || null,
   );
+
+  // Resolve the suggested label only when the suggestion still maps to an
+  // enabled subtype in the current registry. The detector already filters
+  // by enabledInUi, but we re-check here so a subtype that gets disabled
+  // mid-session does not surface a stale chip.
+  const suggestedLabel = (() => {
+    if (!autoDetectedType?.category || !autoDetectedType?.subType) return null;
+    const support = getProjectTypeSupport(
+      autoDetectedType.category,
+      autoDetectedType.subType,
+    );
+    if (!support || support.enabledInUi !== true) return null;
+    return support.label || autoDetectedType.subType;
+  })();
+
+  const showSuggestion = Boolean(
+    suggestedLabel && !selectedCategory && !selectedSubType,
+  );
+
+  // When the suggestion is shown and the user hasn't expanded any category,
+  // expand the suggested one so the user immediately sees the suggested
+  // subtype highlighted in the grid below.
+  useEffect(() => {
+    if (showSuggestion && !expandedCategory && autoDetectedType?.category) {
+      setExpandedCategory(autoDetectedType.category);
+    }
+  }, [showSuggestion, expandedCategory, autoDetectedType?.category]);
   const categories = getAllCategories();
 
   const isCategoryEnabled = (category) =>
@@ -83,6 +119,50 @@ const BuildingTypeSelector = ({
 
   return (
     <div className="space-y-4">
+      {showSuggestion && (
+        <motion.button
+          type="button"
+          onClick={() => {
+            if (typeof onApplyAutoDetectedType === "function") {
+              onApplyAutoDetectedType({
+                category: autoDetectedType.category,
+                subType: autoDetectedType.subType,
+              });
+            } else if (typeof onSelectionChange === "function") {
+              onSelectionChange({
+                category: autoDetectedType.category,
+                subType: autoDetectedType.subType,
+              });
+            }
+          }}
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex w-full items-center justify-between gap-3 rounded-xl border border-sky-400/40 bg-sky-500/10 px-4 py-3 text-left transition-colors hover:border-sky-400 hover:bg-sky-500/15"
+          data-testid="building-type-auto-detect-chip"
+        >
+          <div className="flex items-center gap-3">
+            <LucideIcons.Sparkles className="h-4 w-4 text-sky-300" />
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-sky-200/80">
+                Suggested from your brief
+              </p>
+              <p className="text-sm font-medium text-white">{suggestedLabel}</p>
+              {Array.isArray(autoDetectedType.matchedKeywords) &&
+                autoDetectedType.matchedKeywords.length > 0 && (
+                  <p className="mt-0.5 text-xs text-white/55">
+                    Matched:{" "}
+                    {autoDetectedType.matchedKeywords.slice(0, 3).join(", ")}
+                  </p>
+                )}
+            </div>
+          </div>
+          <span className="text-[10px] uppercase tracking-wider text-sky-200/70">
+            {confidenceBand(autoDetectedType.confidence)} confidence · click to
+            apply
+          </span>
+        </motion.button>
+      )}
+
       {/* Category Grid */}
       <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-4">
         {categories.map((category) => {
