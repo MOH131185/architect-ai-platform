@@ -31,6 +31,7 @@ import {
   assertSheetDesignContext,
   SHEET_DESIGN_CONTEXT_VERSION,
 } from "../dnaPromptContext.js";
+import { isFeatureEnabled } from "../../config/featureFlags.js";
 import { getSiteSnapshotWithMetadata } from "../siteMapSnapshotService.js";
 import { computeSunPath } from "../climate/sunPath.js";
 import { listSourceDocumentsForParts } from "../regulation/sourceRegistry.js";
@@ -3802,6 +3803,50 @@ function buildProjectGraphVisualContinuityBlock(visualManifest) {
 // so the gpt-image call sees the same upstream drivers (UK temperate,
 // red brick + timber vernacular, 3-storey detached programme, etc.) that
 // the deterministic pipeline already computed.
+// Phase 4 — version stamp for the visual-panel render prompt + identity lock
+// surface. Bump when the prompt structure or identity metadata changes so QA
+// and tests can detect drift.
+export const RENDER_PROMPT_IDENTITY_VERSION =
+  "phase4-render-prompt-identity-v1";
+
+function summariseProgramSpacesForCutaway(programSpaces) {
+  if (!Array.isArray(programSpaces) || programSpaces.length === 0) return "";
+  const grouped = new Map();
+  for (const space of programSpaces) {
+    if (!space || !space.name) continue;
+    const level = String(space.level || space.floor || "Ground");
+    if (!grouped.has(level)) grouped.set(level, []);
+    grouped.get(level).push(String(space.name).trim());
+  }
+  if (grouped.size === 0) return "";
+  const parts = [];
+  for (const [level, rooms] of grouped) {
+    const top = rooms.slice(0, 6).join(", ");
+    parts.push(`${level}: ${top}`);
+  }
+  return parts.join(" | ");
+}
+
+function buildAxonometricCutawayIntent({ sheetDesignContext, brief }) {
+  const programSummary = summariseProgramSpacesForCutaway(
+    sheetDesignContext?.programSpaces,
+  );
+  const programmeLine = programSummary
+    ? `Reveal the rooms and furniture as compositionally indicated by the programme — ${programSummary}.`
+    : "Reveal the principal rooms and furniture as indicated by the programme.";
+  const storeysHint = brief?.target_storeys
+    ? `Show ${brief.target_storeys} storey(s) cleanly stacked with the upper slab cut away to expose the floors below.`
+    : "Show all storeys cleanly stacked with each upper slab cut away to expose the floor below.";
+  return [
+    "Photoreal CUTAWAY axonometric 3D projection (30 degrees isometric) — architectural sectional axonometric.",
+    "The roof and the upper portion of the building are partially removed (cut-away) so interior rooms, walls, doors, and key furniture are visible from above.",
+    storeysHint,
+    programmeLine,
+    "Match the reference massing, roof outline, opening layout, materials, and entrance position exactly — only the cut-away reveal differs from the standard axonometric.",
+    "Material textures legible on the remaining facades and on visible interior surfaces.",
+  ].join(" ");
+}
+
 export function buildProjectGraphRenderPrompt({
   panelType,
   brief,
@@ -3812,13 +3857,19 @@ export function buildProjectGraphRenderPrompt({
   programmeSummary,
   region,
   visualManifest = null,
+  // Phase 4 — optional SheetDesignContext for cutaway programme injection
+  // and stable identity hashing on every visual panel.
+  sheetDesignContext = null,
+  axonometricCutawayEnabled = false,
 }) {
   const reasoning = buildReasoningChainBlock({
     locationData: { climate, region },
     masterDNA: { localStyle, styleDNA },
     projectContext: { programmeSummary, targetStoreys: brief?.target_storeys },
   });
-  const intent =
+  const cutawayActive =
+    axonometricCutawayEnabled === true && panelType === "axonometric";
+  const baseIntent =
     {
       hero_3d:
         "Photoreal hero exterior 3D perspective — magazine-cover quality. Match the silhouette of the reference image exactly (same massing, same roof shape, same opening positions, same storey count). Apply the materials, lighting, and detailing from the reasoning chain below.",
@@ -3829,6 +3880,9 @@ export function buildProjectGraphRenderPrompt({
       interior_3d:
         "Photoreal interior perspective — main living/kitchen space. Use the SAME materials and palette as the exterior. Match the reference interior volume.",
     }[panelType] || "Photoreal architectural render.";
+  const intent = cutawayActive
+    ? buildAxonometricCutawayIntent({ sheetDesignContext, brief })
+    : baseIntent;
   const buildingType = brief?.building_type || "building";
   const projectName = brief?.project_name || "project";
   // Phase D: every visual-panel prompt is prefixed with the visual identity
@@ -3867,7 +3921,23 @@ async function buildVisual3DPanelArtifacts({
   programmeSummary = null,
   region = null,
   visualManifest = null,
+  // Phase 4 — optional SheetDesignContext for cutaway programme injection
+  // and identity metadata propagation.
+  sheetDesignContext = null,
 }) {
+  // Phase 4 — feature flag gate. Default off; production behaviour
+  // unchanged. Server-side env override is `PROJECT_GRAPH_AXONOMETRIC_CUTAWAY_ENABLED=true`.
+  const cutawayEnvOverride = String(
+    (typeof process !== "undefined" &&
+      process.env?.PROJECT_GRAPH_AXONOMETRIC_CUTAWAY_ENABLED) ||
+      "",
+  )
+    .toLowerCase()
+    .trim();
+  const axonometricCutawayEnabled =
+    cutawayEnvOverride === "true" ||
+    cutawayEnvOverride === "1" ||
+    isFeatureEnabled("axonometricCutawayEnabled");
   const renderInputs = ensureCompiledProjectRenderInputs(compiledProject, {
     geometryHash,
     views: REQUIRED_3D_A1_PANEL_TYPES,
@@ -3902,6 +3972,8 @@ async function buildVisual3DPanelArtifacts({
           programmeSummary,
           region,
           visualManifest,
+          sheetDesignContext,
+          axonometricCutawayEnabled,
         });
         try {
           renderResult = await renderProjectGraphPanelImage({
@@ -4022,6 +4094,17 @@ async function buildVisual3DPanelArtifacts({
             visualManifestId: visualManifest?.manifestId || null,
             visualManifestHash: visualManifest?.manifestHash || null,
             visualIdentityLocked: Boolean(visualManifest?.manifestHash),
+            // Phase 4 — extended identity metadata. Surfaces the
+            // SheetDesignContext hash + cutaway flag + render prompt
+            // identity version on every visual panel so QA, validators,
+            // and downstream readers can prove the four panels share the
+            // same source of truth and detect any drift quickly.
+            sheetDesignContextHash: sheetDesignContext?.contextHash || null,
+            axonometricCutawayEnabled:
+              panelType === "axonometric"
+                ? axonometricCutawayEnabled === true
+                : false,
+            renderPromptIdentityVersion: RENDER_PROMPT_IDENTITY_VERSION,
           },
         },
       ];
@@ -4095,6 +4178,7 @@ async function buildSheetPanelArtifacts({
     programmeSummary,
     region,
     visualManifest,
+    sheetDesignContext,
   });
   return {
     [siteContext.asset_id]: siteContext,
