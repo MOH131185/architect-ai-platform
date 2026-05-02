@@ -28,6 +28,10 @@ import {
 import { PIPELINE_MODE } from "../config/pipelineMode.js";
 import { createSheetArtifactManifest } from "../services/project/v2ProjectContracts.js";
 import {
+  buildProjectTypeSupportMetadata,
+  getProjectTypeSupport,
+} from "../services/project/projectTypeSupportRegistry.js";
+import {
   levelIndexFromLabel,
   levelName,
   normalizeLevelIndex,
@@ -408,6 +412,61 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
     designSpec.program?.spaces ||
     designSpec.rooms ||
     [];
+  const originalCategory =
+    projectDetails.category ||
+    projectDetails.buildingCategory ||
+    designSpec.originalCategory ||
+    designSpec.buildingCategory ||
+    designSpec.projectTypeSupport?.categoryId ||
+    null;
+  const originalSubtype =
+    projectDetails.subType ||
+    projectDetails.buildingSubType ||
+    designSpec.originalSubtype ||
+    designSpec.buildingSubType ||
+    designSpec.projectTypeSupport?.subtypeId ||
+    null;
+  const registrySupport = getProjectTypeSupport(
+    originalCategory,
+    originalSubtype,
+  );
+  const incomingSupport =
+    projectDetails.projectTypeSupport || designSpec.projectTypeSupport || {};
+  const projectTypeSupport = {
+    ...registrySupport,
+    ...incomingSupport,
+    categoryId: incomingSupport.categoryId || originalCategory,
+    subtypeId: incomingSupport.subtypeId || originalSubtype,
+    supportStatus:
+      incomingSupport.supportStatus ||
+      projectDetails.supportStatus ||
+      designSpec.supportStatus ||
+      registrySupport.supportStatus,
+    canonicalBuildingType:
+      incomingSupport.canonicalBuildingType ||
+      projectDetails.canonicalBuildingType ||
+      designSpec.canonicalBuildingType ||
+      registrySupport.canonicalBuildingType,
+    route:
+      incomingSupport.route ||
+      projectDetails.projectTypeRoute ||
+      designSpec.projectTypeRoute ||
+      registrySupport.route,
+    programmeTemplateKey:
+      incomingSupport.programmeTemplateKey ||
+      projectDetails.programmeTemplateKey ||
+      designSpec.programmeTemplateKey ||
+      registrySupport.programmeTemplateKey,
+  };
+  const projectTypeSupportMetadata =
+    buildProjectTypeSupportMetadata(projectTypeSupport);
+  const canonicalBuildingType =
+    projectTypeSupportMetadata.canonicalBuildingType ||
+    projectDetails.canonicalBuildingType ||
+    designSpec.canonicalBuildingType ||
+    projectDetails.buildingType ||
+    designSpec.buildingType ||
+    null;
 
   // Single resolver across the workflow: ensures floorCountLocked /
   // autoDetectedFloorCount semantics are honoured even on replay/import paths
@@ -432,10 +491,11 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
         projectDetails.area ??
         designSpec.area,
       buildingType:
+        canonicalBuildingType ||
         projectDetails.buildingType ||
-        projectDetails.subType ||
         designSpec.buildingType ||
         designSpec.buildingSubType ||
+        projectDetails.subType ||
         designSpec.buildingProgram ||
         projectDetails.category,
       subType:
@@ -478,6 +538,35 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
   const resolvedBrief = sourceProjectBrief
     ? {
         ...sourceProjectBrief,
+        building_type:
+          canonicalBuildingType ||
+          sourceProjectBrief.building_type ||
+          "dwelling",
+        canonical_building_type:
+          canonicalBuildingType ||
+          sourceProjectBrief.canonical_building_type ||
+          sourceProjectBrief.building_type ||
+          "dwelling",
+        original_category:
+          originalCategory || sourceProjectBrief.original_category || null,
+        original_subtype:
+          originalSubtype || sourceProjectBrief.original_subtype || null,
+        support_status:
+          projectTypeSupportMetadata.supportStatus ||
+          sourceProjectBrief.support_status ||
+          null,
+        programme_template_key:
+          projectTypeSupportMetadata.programmeTemplateKey ||
+          sourceProjectBrief.programme_template_key ||
+          null,
+        project_type_route:
+          projectTypeSupportMetadata.route ||
+          sourceProjectBrief.project_type_route ||
+          null,
+        project_type_support:
+          projectTypeSupportMetadata ||
+          sourceProjectBrief.project_type_support ||
+          null,
         target_storeys: resolvedFloorCount,
         targetStoreys: resolvedFloorCount,
         referenceMatch,
@@ -500,11 +589,14 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
           180,
         target_storeys: resolvedFloorCount,
         targetStoreys: resolvedFloorCount,
-        building_type:
-          projectDetails.buildingType ||
-          projectDetails.subType ||
-          designSpec.buildingType ||
-          "dwelling",
+        building_type: canonicalBuildingType || "dwelling",
+        canonical_building_type: canonicalBuildingType || "dwelling",
+        original_category: originalCategory,
+        original_subtype: originalSubtype,
+        support_status: projectTypeSupportMetadata.supportStatus,
+        programme_template_key: projectTypeSupportMetadata.programmeTemplateKey,
+        project_type_route: projectTypeSupportMetadata.route,
+        project_type_support: projectTypeSupportMetadata,
         required_spaces_text:
           projectDetails.requiredSpacesText ||
           designSpec.requiredSpacesText ||
@@ -547,13 +639,19 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
       ? "reference_match"
       : params.qualityTarget || designSpec.qualityTarget || null,
     projectDetails: {
-      category: projectDetails.category || designSpec.buildingCategory || null,
-      subType: projectDetails.subType || designSpec.buildingSubType || null,
+      category: originalCategory,
+      subType: originalSubtype,
       program:
         projectDetails.program ||
         designSpec.buildingProgram ||
         designSpec.buildingSubType ||
         null,
+      canonicalBuildingType,
+      buildingType: canonicalBuildingType,
+      projectTypeRoute: projectTypeSupportMetadata.route,
+      supportStatus: projectTypeSupportMetadata.supportStatus,
+      programmeTemplateKey: projectTypeSupportMetadata.programmeTemplateKey,
+      projectTypeSupport: projectTypeSupportMetadata,
       area: projectDetails.area ?? designSpec.area ?? designSpec.floorArea,
       floorCount: resolvedFloorCount,
       autoDetectedFloorCount:

@@ -7,10 +7,28 @@
 import React, { useState } from "react";
 import { motion } from "framer-motion";
 import * as LucideIcons from "lucide-react";
-import { isFeatureEnabled } from "../../config/featureFlags.js";
 import { getAllCategories, getCategoryById } from "../../data/buildingTypes.js";
-import { isSupportedResidentialV2SubType } from "../../services/project/v2ProjectContracts.js";
+import {
+  getCategorySupportSummary,
+  getProjectTypeSupport,
+} from "../../services/project/projectTypeSupportRegistry.js";
 import Card from "../ui/Card.jsx";
+
+export function getBuildingTypeSelectorCategoryState(category) {
+  const summary = getCategorySupportSummary(category?.id);
+  return {
+    supportSummary: summary,
+    isEnabled: summary.enabledInUi === true,
+  };
+}
+
+export function getBuildingTypeSelectorSubTypeState(categoryId, subType) {
+  const support = getProjectTypeSupport(categoryId, subType?.id);
+  return {
+    support,
+    isEnabled: support.enabledInUi === true,
+  };
+}
 
 const BuildingTypeSelector = ({
   selectedCategory,
@@ -22,17 +40,12 @@ const BuildingTypeSelector = ({
     selectedCategory || null,
   );
   const categories = getAllCategories();
-  const restrictToResidentialV2 =
-    isFeatureEnabled("ukResidentialV2") &&
-    isFeatureEnabled("hideExperimentalBuildingTypes");
 
   const isCategoryEnabled = (category) =>
-    !restrictToResidentialV2 || category?.id === "residential";
+    getBuildingTypeSelectorCategoryState(category).isEnabled;
 
   const isSubTypeEnabled = (categoryId, subType) =>
-    !restrictToResidentialV2 ||
-    (categoryId === "residential" &&
-      isSupportedResidentialV2SubType(subType?.id));
+    getBuildingTypeSelectorSubTypeState(categoryId, subType).isEnabled;
 
   const handleCategoryClick = (categoryId) => {
     const category = getCategoryById(categoryId);
@@ -75,7 +88,8 @@ const BuildingTypeSelector = ({
         {categories.map((category) => {
           const isSelected = selectedCategory === category.id;
           const isExpanded = expandedCategory === category.id;
-          const isEnabled = isCategoryEnabled(category);
+          const { supportSummary, isEnabled } =
+            getBuildingTypeSelectorCategoryState(category);
 
           return (
             <motion.button
@@ -103,9 +117,14 @@ const BuildingTypeSelector = ({
                   <p className="text-sm text-gray-400 mt-1">
                     {category.subTypes.length} types
                   </p>
+                  {isEnabled && (
+                    <p className="text-xs text-emerald-300 mt-2">
+                      {supportSummary.message}
+                    </p>
+                  )}
                   {!isEnabled && (
                     <p className="text-xs text-amber-300 mt-2">
-                      Experimental/off in UK Residential V2
+                      {supportSummary.message}
                     </p>
                   )}
                 </div>
@@ -150,7 +169,17 @@ const BuildingTypeSelector = ({
                 const isSelected =
                   selectedSubType === subType.id &&
                   selectedCategory === expandedCategory;
-                const isEnabled = isSubTypeEnabled(expandedCategory, subType);
+                const { support, isEnabled } =
+                  getBuildingTypeSelectorSubTypeState(
+                    expandedCategory,
+                    subType,
+                  );
+                const badgeClass =
+                  support.supportStatus === "production"
+                    ? "text-emerald-300"
+                    : support.supportStatus === "beta"
+                      ? "text-sky-300"
+                      : "text-amber-300";
 
                 return (
                   <motion.button
@@ -180,12 +209,18 @@ const BuildingTypeSelector = ({
                       </div>
                       <span
                         className={`text-[10px] uppercase tracking-wide ${
-                          isEnabled ? "text-emerald-300" : "text-amber-300"
+                          isEnabled ? badgeClass : "text-amber-300"
                         }`}
                       >
-                        {isEnabled ? "Supported" : "Experimental/Off"}
+                        {support.badgeLabel ||
+                          (isEnabled ? "Supported" : "Experimental/Off")}
                       </span>
                     </div>
+                    {!isEnabled && support.message && (
+                      <p className="mt-2 text-xs text-amber-200/80">
+                        {support.message}
+                      </p>
+                    )}
                   </motion.button>
                 );
               })}

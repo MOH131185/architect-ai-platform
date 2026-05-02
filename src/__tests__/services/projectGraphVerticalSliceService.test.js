@@ -2,6 +2,7 @@ import {
   buildArchitectureProjectVerticalSlice,
   validateProjectGraphVerticalSlice,
   KNOWN_BUILDING_TYPES,
+  __projectGraphVerticalSliceInternals,
 } from "../../services/project/projectGraphVerticalSliceService.js";
 
 jest.setTimeout(420000);
@@ -1058,6 +1059,10 @@ describe("projectGraphVerticalSliceService", () => {
       expect(
         result.projectGraph.programme.template_provenance.resolved_template,
       ).toBe(buildingType);
+      expect(
+        result.projectGraph.programme.template_provenance
+          .programme_template_key,
+      ).toBe(buildingType);
       const totalArea = result.projectGraph.programme.spaces.reduce(
         (sum, space) => sum + Number(space.target_area_m2 || 0),
         0,
@@ -1065,6 +1070,123 @@ describe("projectGraphVerticalSliceService", () => {
       const targetGia = briefInput.brief.target_gia_m2;
       expect(totalArea).toBeGreaterThan(targetGia * 0.9);
       expect(totalArea).toBeLessThan(targetGia * 1.1);
+    },
+  );
+
+  test.each([
+    ["office", "commercial", "office", "office_studio", "production"],
+    ["school", "education", "school", "education_studio", "beta"],
+    ["clinic", "healthcare", "clinic", "clinic", "production"],
+    ["hospital", "healthcare", "hospital", "hospital", "beta"],
+  ])(
+    "maps %s category/subtype to ProjectGraph programme metadata",
+    async (_label, category, subType, canonicalBuildingType, supportStatus) => {
+      const briefInput = createReadingRoomBrief();
+      delete briefInput.brief.building_type;
+      briefInput.brief.project_name = `Registry Smoke ${canonicalBuildingType}`;
+      briefInput.brief.target_gia_m2 = 520;
+      briefInput.projectDetails = {
+        category,
+        subType,
+        area: 520,
+        floorCount: 2,
+        floorCountLocked: true,
+      };
+
+      const brief =
+        __projectGraphVerticalSliceInternals.normalizeBrief(briefInput);
+      const programme = __projectGraphVerticalSliceInternals.buildProgramme({
+        brief,
+      });
+      const site = __projectGraphVerticalSliceInternals.buildSiteContext({
+        brief,
+        sitePolygon: briefInput.sitePolygon,
+        siteMetrics: briefInput.siteMetrics,
+      });
+      const climate = __projectGraphVerticalSliceInternals.buildClimatePack(
+        brief,
+        site,
+      );
+      const localStyle =
+        __projectGraphVerticalSliceInternals.buildLocalStylePack(
+          brief,
+          site,
+          climate,
+        );
+      const projectGeometry =
+        __projectGraphVerticalSliceInternals.buildProjectGeometryFromProgramme({
+          brief,
+          site,
+          programme,
+          localStyle,
+          climate,
+        });
+      const placedProgramme =
+        __projectGraphVerticalSliceInternals.syncProgrammeActuals(
+          programme,
+          projectGeometry,
+        );
+      const compiledProject =
+        __projectGraphVerticalSliceInternals.compileProject({
+          projectGeometry,
+          masterDNA: {
+            projectName: brief.project_name,
+            projectID: projectGeometry.project_id,
+            styleDNA: projectGeometry.metadata.style_dna,
+            rooms: placedProgramme.spaces,
+          },
+          locationData: {
+            address: brief.site_input.address,
+            coordinates: { lat: site.lat, lng: site.lon },
+            climate: { type: climate.weather_source },
+            localMaterials: localStyle.material_palette,
+          },
+        });
+      const spaces = programme.spaces;
+      const levelIndexes = new Set(
+        spaces.map((space) => Number(space.target_level_index)),
+      );
+
+      expect(KNOWN_BUILDING_TYPES).toContain(canonicalBuildingType);
+      expect(brief).toEqual(
+        expect.objectContaining({
+          building_type: canonicalBuildingType,
+          canonical_building_type: canonicalBuildingType,
+          original_category: category,
+          original_subtype: subType,
+          support_status: supportStatus,
+          programme_template_key: canonicalBuildingType,
+          project_type_route: "project_graph",
+        }),
+      );
+      expect(brief.project_type_support).toEqual(
+        expect.objectContaining({
+          categoryId: category,
+          subtypeId: subType,
+          canonicalBuildingType,
+          route: "project_graph",
+          supportStatus,
+        }),
+      );
+      expect(spaces.length).toBeGreaterThanOrEqual(6);
+      expect(levelIndexes.has(0)).toBe(true);
+      expect(Math.max(...levelIndexes)).toBeGreaterThanOrEqual(1);
+      expect(projectGeometry.levels.length).toBeGreaterThan(0);
+      expect(projectGeometry.rooms.length).toBeGreaterThan(0);
+      expect(compiledProject.geometryHash).toEqual(expect.any(String));
+      expect(programme.template_provenance).toEqual(
+        expect.objectContaining({
+          source: "matched_template",
+          resolved_template: canonicalBuildingType,
+          programme_template_key: canonicalBuildingType,
+          support_status: supportStatus,
+        }),
+      );
+      expect(brief.building_type).not.toBe("dwelling");
+      expect(brief.building_type).not.toBe("detached-house");
+      expect(spaces.map((space) => space.name).join(" ")).not.toMatch(
+        /bedroom|living room|kitchen\/dining/i,
+      );
     },
   );
 

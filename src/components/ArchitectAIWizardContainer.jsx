@@ -44,10 +44,13 @@ import {
   generateResidentialProgramBrief,
   normalizeResidentialProgramSpaces,
 } from "../services/project/residentialProgramEngine.js";
+import { UK_RESIDENTIAL_V2_PIPELINE_VERSION } from "../services/project/v2ProjectContracts.js";
 import {
-  isSupportedResidentialV2SubType,
-  UK_RESIDENTIAL_V2_PIPELINE_VERSION,
-} from "../services/project/v2ProjectContracts.js";
+  buildProjectTypeSupportMetadata,
+  getProjectTypeSupportForDetails,
+  PROJECT_GRAPH_PROJECT_TYPE_PIPELINE_VERSION,
+  PROJECT_TYPE_ROUTES,
+} from "../services/project/projectTypeSupportRegistry.js";
 import { runProgramPreflight } from "../services/project/programPreflight.js";
 import {
   resolveAuthoritativeFloorCount,
@@ -210,6 +213,35 @@ const normalizeSitePolygonForUi = (polygon = []) => {
   return normalized.length >= 3 ? normalized : [];
 };
 
+export function resolveWizardProjectTypeSupport(projectDetails = {}) {
+  return getProjectTypeSupportForDetails(projectDetails);
+}
+
+export function assertProjectTypeSupportedForGeneration(projectDetails = {}) {
+  const support = resolveWizardProjectTypeSupport(projectDetails);
+  if (!projectDetails.category || !projectDetails.subType) {
+    throw new Error("Choose a supported project type before generation.");
+  }
+  if (support.enabledInUi !== true || !support.route) {
+    throw new Error(
+      support.message ||
+        "This project type is not enabled for production generation.",
+    );
+  }
+  return support;
+}
+
+export function shouldUseResidentialV2Route(
+  projectDetails = {},
+  { residentialV2Enabled = true } = {},
+) {
+  const support = resolveWizardProjectTypeSupport(projectDetails);
+  return (
+    residentialV2Enabled === true &&
+    support.route === PROJECT_TYPE_ROUTES.RESIDENTIAL_V2
+  );
+}
+
 const ArchitectAIWizardContainer = () => {
   // Top-level view: 'wizard' | 'pricing'
   const [view, setView] = useState("wizard");
@@ -287,9 +319,6 @@ const ArchitectAIWizardContainer = () => {
   // Surfaces PDF conversion failures via Modal instead of native alert().
   const [pdfErrorState, setPdfErrorState] = useState(null);
   const residentialV2Enabled = isFeatureEnabled("ukResidentialV2");
-  const restrictToResidentialV2 = isFeatureEnabled(
-    "hideExperimentalBuildingTypes",
-  );
 
   const hasA1Output = Boolean(
     result?.a1Sheet?.url ||
@@ -1050,17 +1079,22 @@ const ArchitectAIWizardContainer = () => {
     setProgramWarnings([]);
 
     try {
+      const projectTypeSupport =
+        resolveWizardProjectTypeSupport(projectDetails);
       const subType = projectDetails.subType || projectDetails.program;
-      const isSupportedResidentialV2 =
-        residentialV2Enabled &&
-        projectDetails.category === "residential" &&
-        isSupportedResidentialV2SubType(subType);
-      const sanitizedProgram = sanitizePromptInput(
-        projectDetails.program ||
-          projectDetails.subType ||
-          projectDetails.category,
-        { maxLength: 120, allowNewlines: false },
+      const isSupportedResidentialV2 = shouldUseResidentialV2Route(
+        projectDetails,
+        { residentialV2Enabled },
       );
+      const canonicalProgram =
+        projectTypeSupport.canonicalBuildingType ||
+        projectDetails.program ||
+        projectDetails.subType ||
+        projectDetails.category;
+      const sanitizedProgram = sanitizePromptInput(canonicalProgram, {
+        maxLength: 120,
+        allowNewlines: false,
+      });
       const sanitizedArea = sanitizeDimensionInput(projectDetails.area);
       const siteArea = siteMetrics?.areaM2 || 0;
       // Single source of truth for floor count. Every downstream call -
@@ -1097,9 +1131,13 @@ const ArchitectAIWizardContainer = () => {
         return;
       }
 
-      if (restrictToResidentialV2 && !isSupportedResidentialV2) {
+      if (
+        projectTypeSupport.enabledInUi !== true ||
+        !projectTypeSupport.route
+      ) {
         setProgramWarnings([
-          "UK Residential V2 currently supports low-rise residential types only.",
+          projectTypeSupport.message ||
+            "This project type is not enabled for production generation.",
         ]);
         setProgramSpaces([]);
         return [];
@@ -1219,6 +1257,12 @@ const ArchitectAIWizardContainer = () => {
             qualityTier: prev.qualityTier || "mid",
             program: subType,
             pipelineVersion: UK_RESIDENTIAL_V2_PIPELINE_VERSION,
+            canonicalBuildingType: projectTypeSupport.canonicalBuildingType,
+            projectTypeRoute: projectTypeSupport.route,
+            supportStatus: projectTypeSupport.supportStatus,
+            programmeTemplateKey: projectTypeSupport.programmeTemplateKey,
+            projectTypeSupport:
+              buildProjectTypeSupportMetadata(projectTypeSupport),
           };
           // Only overwrite floorCount when the resolver pulled it from the
           // auto-detected source. Locked / manual values are the user's
@@ -1293,7 +1337,20 @@ const ArchitectAIWizardContainer = () => {
         return levels;
       })();
 
-      const prompt = `You are an architectural programming expert. Generate a JSON array of spaces for a ${sanitizedProgram} totaling ~${sanitizedArea} m². Ensure the total area (area×count sum) is within ±5% of ${sanitizedArea}. Assign each space to ONE of these level names only: ${levelNames.join(", ")}. Public/amenity spaces on Ground; private/sleeping spaces on upper levels. Return ONLY the JSON array, no commentary.`;
+      const programmeGuidanceByType = {
+        clinic:
+          "Include reception, waiting, consult/treatment rooms, clinical support, staff/admin, storage, clean/dirty utility, toilets, plant, and circulation.",
+        hospital:
+          "Include reception/admissions, outpatient or emergency care, diagnostics, wards, clinical support, staff/admin, logistics, plant, toilets, and circulation.",
+        office_studio:
+          "Include reception, open office, meeting rooms, focus rooms, shared support, staff amenities, storage, plant, toilets, and circulation.",
+        education_studio:
+          "Include classrooms, admin, staff areas, library or resource space, assembly or multipurpose space, dining/support, toilets, storage, plant, and circulation.",
+      };
+      const programmeGuidance =
+        programmeGuidanceByType[projectTypeSupport.canonicalBuildingType] ||
+        "Put public and high-footfall spaces on Ground, with support, staff, teaching, workplace, or clinical spaces distributed logically across the remaining levels.";
+      const prompt = `You are an architectural programming expert. Generate a JSON array of spaces for a ${projectTypeSupport.label || sanitizedProgram} totaling ~${sanitizedArea} m². Ensure the total area (area×count sum) is within ±5% of ${sanitizedArea}. Assign each space to ONE of these level names only: ${levelNames.join(", ")}. ${programmeGuidance} Return ONLY the JSON array, no commentary.`;
 
       const response = await togetherAIReasoningService.chatCompletion(
         [
@@ -1408,6 +1465,16 @@ const ArchitectAIWizardContainer = () => {
         if (floorMetrics) {
           next.floorMetrics = floorMetrics;
         }
+        next.canonicalBuildingType = projectTypeSupport.canonicalBuildingType;
+        next.projectTypeRoute = projectTypeSupport.route;
+        next.supportStatus = projectTypeSupport.supportStatus;
+        next.programmeTemplateKey = projectTypeSupport.programmeTemplateKey;
+        next.projectTypeSupport =
+          buildProjectTypeSupportMetadata(projectTypeSupport);
+        next.pipelineVersion =
+          projectTypeSupport.route === PROJECT_TYPE_ROUTES.PROJECT_GRAPH
+            ? PROJECT_GRAPH_PROJECT_TYPE_PIPELINE_VERSION
+            : prev.pipelineVersion;
         // Only auto-source overwrites floorCount; locked/manual are the
         // user's authority and must not be stomped.
         if (
@@ -1459,7 +1526,6 @@ const ArchitectAIWizardContainer = () => {
     setProjectDetails,
     siteMetrics,
     residentialV2Enabled,
-    restrictToResidentialV2,
   ]);
 
   const handleProgramSpacesChange = useCallback(
@@ -1675,14 +1741,30 @@ const ArchitectAIWizardContainer = () => {
     setIsGenerationTimerRunning(true);
 
     try {
+      const projectTypeSupport =
+        assertProjectTypeSupportedForGeneration(projectDetails);
+      const projectTypeSupportMetadata =
+        buildProjectTypeSupportMetadata(projectTypeSupport);
+      const selectedSubType = projectDetails.subType || projectDetails.program;
+      const canUseResidentialV2 = shouldUseResidentialV2Route(projectDetails, {
+        residentialV2Enabled,
+      });
+      const projectTypePipelineVersion =
+        projectTypeSupport.route === PROJECT_TYPE_ROUTES.PROJECT_GRAPH
+          ? PROJECT_GRAPH_PROJECT_TYPE_PIPELINE_VERSION
+          : UK_RESIDENTIAL_V2_PIPELINE_VERSION;
+
       // Auto-generate program spaces if user skipped "Generate Program" button.
       // The ProgramComplianceGate requires programSpaces to build ProgramLock + CDS.
+      // ProjectGraph project types may intentionally rely on service-side
+      // deterministic programme templates, so do not synthesize UI spaces first.
       // React setState is async so we capture the returned array for immediate use.
       let effectiveProgramSpaces = programSpaces;
       if (
         programSpaces.length === 0 &&
         projectDetails.category &&
-        projectDetails.area
+        projectDetails.area &&
+        projectTypeSupport.route !== PROJECT_TYPE_ROUTES.PROJECT_GRAPH
       ) {
         logger.info(
           "Auto-generating program spaces before generation...",
@@ -1829,15 +1911,12 @@ const ArchitectAIWizardContainer = () => {
       });
 
       let v2Bundle = null;
-      const selectedSubType = projectDetails.subType || projectDetails.program;
-      const canUseResidentialV2 =
-        residentialV2Enabled &&
-        projectDetails.category === "residential" &&
-        isSupportedResidentialV2SubType(selectedSubType);
-
-      if (restrictToResidentialV2 && !canUseResidentialV2) {
+      if (
+        projectTypeSupport.route === PROJECT_TYPE_ROUTES.RESIDENTIAL_V2 &&
+        !canUseResidentialV2
+      ) {
         throw new Error(
-          "UK Residential V2 currently supports detached, semi-detached, terraced, villa, cottage, duplex, and small apartment residential projects only.",
+          "Residential V2 generation is disabled by feature flag.",
         );
       }
 
@@ -1902,9 +1981,20 @@ const ArchitectAIWizardContainer = () => {
       const designFloorCount = designFloorAuth.floorCount;
 
       const designSpec = {
-        buildingProgram: selectedSubType || projectDetails.category,
+        buildingProgram:
+          projectTypeSupport.label ||
+          selectedSubType ||
+          projectDetails.category,
         buildingCategory: projectDetails.category,
         buildingSubType: projectDetails.subType,
+        originalCategory: projectDetails.category,
+        originalSubtype: projectDetails.subType,
+        buildingType: projectTypeSupport.canonicalBuildingType,
+        canonicalBuildingType: projectTypeSupport.canonicalBuildingType,
+        projectTypeRoute: projectTypeSupport.route,
+        supportStatus: projectTypeSupport.supportStatus,
+        programmeTemplateKey: projectTypeSupport.programmeTemplateKey,
+        projectTypeSupport: projectTypeSupportMetadata,
         buildingNotes: projectDetails.customNotes,
         floorArea: parseFloat(projectDetails.area),
         area: parseFloat(projectDetails.area), // Alias for services expecting `area`
@@ -1921,13 +2011,13 @@ const ArchitectAIWizardContainer = () => {
           confidence: projectDetails.entranceConfidence,
           warnings: programWarnings,
           pipelineVersion:
-            v2Bundle?.pipelineVersion || UK_RESIDENTIAL_V2_PIPELINE_VERSION,
+            v2Bundle?.pipelineVersion || projectTypePipelineVersion,
         },
         sitePolygon,
         siteMetrics, // Alias for downstream generators expecting `siteMetrics`
         sitePolygonMetrics: siteMetrics,
         pipelineVersion:
-          v2Bundle?.pipelineVersion || UK_RESIDENTIAL_V2_PIPELINE_VERSION,
+          v2Bundle?.pipelineVersion || projectTypePipelineVersion,
         portfolioBlend: {
           materialWeight,
           characteristicWeight,
@@ -2002,7 +2092,6 @@ const ArchitectAIWizardContainer = () => {
     programWarnings,
     projectDetails,
     residentialV2Enabled,
-    restrictToResidentialV2,
     setCurrentStep,
     setGeneratedDesignId,
     setProgramSpaces,
