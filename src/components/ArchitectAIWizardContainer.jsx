@@ -20,6 +20,7 @@ import { useWizardState } from "../hooks/useWizardState.js";
 import { getDemoProject, buildDemoResult } from "../data/demoProjects.js";
 import { normalizeSiteSnapshot } from "../types/schemas.js";
 import { computeSiteMetrics } from "../utils/geometry.js";
+import { shouldAutoTriggerEntranceDetection } from "../utils/entranceAutoTriggerGate.js";
 import { locationIntelligence } from "../services/locationIntelligence.js";
 import siteAnalysisService from "../services/siteAnalysisService.js";
 import autoLevelAssignmentService from "../services/autoLevelAssignmentService.js";
@@ -1662,15 +1663,26 @@ const ArchitectAIWizardContainer = () => {
   }, [programSpaces, projectDetails]);
 
   const handleAutoDetectEntrance = useCallback(async () => {
-    if (!sitePolygon || sitePolygon.length < 3) return;
+    if (!sitePolygon || sitePolygon.length < 3) {
+      logger.info("[Entrance] auto-detect skipped — site polygon not ready", {
+        polygonLength: sitePolygon?.length || 0,
+      });
+      return;
+    }
 
     setIsDetectingEntrance(true);
+    logger.info("[Entrance] auto-detect starting", {
+      polygonLength: sitePolygon.length,
+      hasSunPath: Boolean(locationData?.sunPath),
+      centroid: siteMetrics?.centroid || locationData?.coordinates || null,
+    });
 
     try {
       const { inferEntranceDirection } =
         await import("../utils/entranceOrientation");
 
       let roadSegments = null;
+      let roadLookupOk = false;
       try {
         const queryPoint = siteMetrics?.centroid || locationData?.coordinates;
         if (queryPoint?.lat && queryPoint?.lng) {
@@ -1690,11 +1702,16 @@ const ArchitectAIWizardContainer = () => {
                   typeof road.midpoint.lat === "number" &&
                   typeof road.midpoint.lng === "number",
               );
+            roadLookupOk = true;
+          } else {
+            logger.info("[Entrance] road lookup returned non-OK status", {
+              status: data?.status || "unknown",
+            });
           }
         }
       } catch (roadErr) {
         logger.debug(
-          "Road lookup unavailable, falling back to geometry-only entrance detection",
+          "[Entrance] road lookup unavailable, falling back to geometry-only detection",
           roadErr?.message || roadErr,
         );
       }
@@ -1703,6 +1720,15 @@ const ArchitectAIWizardContainer = () => {
         sitePolygon,
         roadSegments,
         sunPath: locationData?.sunPath,
+      });
+
+      logger.info("[Entrance] inferEntranceDirection returned", {
+        direction: result?.direction,
+        confidence: result?.confidence,
+        rationale: result?.rationale?.[0]?.message || null,
+        roadSegmentsUsed: roadLookupOk
+          ? roadSegments?.length || 0
+          : "lookup-failed",
       });
 
       setAutoDetectResult(result);
@@ -1715,6 +1741,11 @@ const ArchitectAIWizardContainer = () => {
       // SpecsStep.handleEntranceChange path clears `entranceAutoDetected`
       // implicitly because the user typed a direction).
       if (result.confidence >= 0.5) {
+        logger.info("[Entrance] applying auto-detected direction", {
+          direction: result.direction,
+          confidence: result.confidence,
+          needsReview: result.confidence < 0.7,
+        });
         setProjectDetails((prev) => ({
           ...prev,
           entranceDirection: result.direction,
@@ -1722,6 +1753,14 @@ const ArchitectAIWizardContainer = () => {
           entranceConfidence: result.confidence,
           entranceNeedsReview: result.confidence < 0.7,
         }));
+      } else {
+        logger.warn(
+          "[Entrance] auto-detected confidence below 0.5 threshold — direction NOT applied; user must pick manually",
+          {
+            direction: result.direction,
+            confidence: result.confidence,
+          },
+        );
       }
 
       logger.success("Entrance orientation detected", {
@@ -1729,7 +1768,7 @@ const ArchitectAIWizardContainer = () => {
         confidence: result.confidence,
       });
     } catch (err) {
-      logger.error("Entrance detection failed", err);
+      logger.error("[Entrance] detection failed", err);
     } finally {
       setIsDetectingEntrance(false);
     }
@@ -1743,33 +1782,35 @@ const ArchitectAIWizardContainer = () => {
   ]);
 
   // Auto-trigger entrance orientation detection once a site polygon is
-  // available. This removes the discoverability problem with the
-  // "Auto-Detect Entrance" button (the user reported manual works but
-  // auto-detect "doesn't work" — the detector itself runs, but the user
-  // never noticed the button on the specs step). The hook fires exactly
-  // once per session: it gates on (a) a usable polygon, (b) no manual
-  // entrance already set by the user, and (c) no detection already
-  // recorded. Manual override still wins because the user changing the
-  // compass calls handleEntranceChange which sets a new direction
-  // without `entranceAutoDetected: true`.
+  // available. The gating logic is extracted into
+  // `shouldAutoTriggerEntranceDetection` so it can be unit-tested without
+  // rendering the wizard, and so that user-reported "not working" cases
+  // are diagnosable from a single logger.info line per state transition.
+  // Manual override still wins — once the user picks a non-default
+  // direction the gate returns `manual_direction_set` and stops re-firing.
   useEffect(() => {
-    if (!sitePolygon || sitePolygon.length < 3) return;
-    if (isDetectingEntrance) return;
-    if (projectDetails.entranceAutoDetected) return;
-    if (
-      projectDetails.entranceDirection &&
-      !["", "N"].includes(projectDetails.entranceDirection)
-    ) {
-      // User has already picked a non-default direction — don't override.
+    const decision = shouldAutoTriggerEntranceDetection({
+      sitePolygon,
+      isDetectingEntrance,
+      projectDetails,
+    });
+    if (!decision.shouldFire) {
+      // Only emit the log line when the polygon is present (otherwise
+      // every render before location-detect finishes spams the console).
+      if (sitePolygon?.length >= 3) {
+        logger.info("[Entrance] auto-trigger gate held", decision);
+      }
       return;
     }
+    logger.info("[Entrance] auto-trigger gate firing — polygon ready", {
+      polygonLength: sitePolygon.length,
+    });
     handleAutoDetectEntrance();
   }, [
     sitePolygon,
     handleAutoDetectEntrance,
     isDetectingEntrance,
-    projectDetails.entranceAutoDetected,
-    projectDetails.entranceDirection,
+    projectDetails,
   ]);
 
   /**

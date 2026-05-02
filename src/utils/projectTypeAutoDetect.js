@@ -77,6 +77,22 @@ const KEYWORDS = Object.freeze({
     { keyword: "workplace", weight: 0.6 },
     { keyword: "workspace", weight: 0.6 },
   ],
+  "commercial:retail": [
+    { keyword: "retail store", weight: 1.0 },
+    { keyword: "shop", weight: 0.7 },
+    { keyword: "boutique", weight: 0.8 },
+    { keyword: "high street", weight: 0.6 },
+  ],
+  "commercial:mixed-use": [
+    { keyword: "mixed-use", weight: 1.0 },
+    { keyword: "mixed use", weight: 1.0 },
+    { keyword: "live-work", weight: 0.7 },
+  ],
+  "commercial:shopping-mall": [
+    { keyword: "shopping mall", weight: 1.0 },
+    { keyword: "shopping centre", weight: 1.0 },
+    { keyword: "shopping center", weight: 1.0 },
+  ],
   "healthcare:clinic": [
     { keyword: "clinic", weight: 1.0 },
     { keyword: "surgery", weight: 0.7 },
@@ -85,11 +101,32 @@ const KEYWORDS = Object.freeze({
     { keyword: "gp practice", weight: 0.8 },
   ],
   "healthcare:hospital": [{ keyword: "hospital", weight: 1.0 }],
+  "healthcare:dental": [
+    { keyword: "dental clinic", weight: 1.0 },
+    { keyword: "dentist", weight: 0.9 },
+    { keyword: "orthodontist", weight: 0.9 },
+  ],
+  "healthcare:lab": [
+    { keyword: "laboratory", weight: 1.0 },
+    { keyword: "research lab", weight: 0.9 },
+    { keyword: "pathology lab", weight: 0.9 },
+  ],
   "education:school": [
     { keyword: "school", weight: 1.0 },
     { keyword: "academy", weight: 0.7 },
     { keyword: "primary", weight: 0.6 },
     { keyword: "secondary school", weight: 0.9 },
+  ],
+  "education:university": [
+    { keyword: "university", weight: 1.0 },
+    { keyword: "campus", weight: 0.7 },
+    { keyword: "faculty building", weight: 0.8 },
+  ],
+  "education:kindergarten": [
+    { keyword: "kindergarten", weight: 1.0 },
+    { keyword: "nursery school", weight: 1.0 },
+    { keyword: "preschool", weight: 0.9 },
+    { keyword: "early years", weight: 0.7 },
   ],
   "hospitality:hotel": [
     { keyword: "hotel", weight: 1.0 },

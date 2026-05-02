@@ -271,12 +271,16 @@ export function SiteBoundaryEditorV2({
         !latLngPolygonsEqual(contextualBoundaryPolygon, polygon));
 
     if (shouldShowContextualBoundary) {
+      // Estimated/contextual boundary uses Material Blue 700 with a thinner
+      // stroke + lower fill opacity than the authoritative blue overlay so
+      // the user can tell at a glance it is non-authoritative — colour
+      // matches the A1 site-plan boundary for end-to-end consistency.
       contextualBoundaryOverlayRef.current = new google.maps.Polygon({
         paths: contextualBoundaryPolygon,
-        strokeColor: "#F59E0B",
-        strokeOpacity: 0.95,
+        strokeColor: "#1976D2",
+        strokeOpacity: 0.85,
         strokeWeight: 2,
-        fillColor: "#F59E0B",
+        fillColor: "#1976D2",
         fillOpacity: 0.08,
         clickable: false,
         zIndex: 1,

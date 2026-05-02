@@ -79,13 +79,28 @@ describe("detectProjectTypeFromBrief", () => {
     expect(result).toBeNull();
   });
 
-  test("does not surface a disabled type even if keywords match", () => {
-    // "shopping mall" exists in our keyword tables but commercial:shopping-mall
-    // is gated to disabled. The detector must drop the suggestion.
+  test("suggests a shopping mall now that it is BETA-enabled", () => {
     const result = detectProjectTypeFromBrief({
-      customNotes: "shopping mall with food court",
+      customNotes: "Shopping mall with food court and underground parking",
     });
-    expect(result).toBeNull();
+    expect(result?.category).toBe("commercial");
+    expect(result?.subType).toBe("shopping-mall");
+  });
+
+  test("suggests kindergarten for a nursery brief", () => {
+    const result = detectProjectTypeFromBrief({
+      customNotes: "Small kindergarten for 60 children with outdoor play area",
+    });
+    expect(result?.category).toBe("education");
+    expect(result?.subType).toBe("kindergarten");
+  });
+
+  test("suggests dental for a dentist brief", () => {
+    const result = detectProjectTypeFromBrief({
+      customNotes: "Modern dentist surgery with three treatment rooms",
+    });
+    expect(result?.category).toBe("healthcare");
+    expect(result?.subType).toBe("dental");
   });
 
   test("returns null for an unrelated brief", () => {

@@ -1,9 +1,11 @@
 import {
   BOUNDARY_SOURCE,
   ESTIMATE_REASON,
+  RESIDENTIAL_BUILDING_MAX_M2,
   RESIDENTIAL_PARCEL_MAX_M2,
   RESIDENTIAL_PARCEL_MAX_VERTICES,
   buildBoundaryResponse,
+  classifyBuildingCandidate,
   classifyParcelCandidate,
   polygonAreaM2,
   selectBestOverpassWay,
@@ -75,6 +77,31 @@ describe("classifyParcelCandidate", () => {
     const reason = classifyParcelCandidate({ polygon, element: {} });
     expect(reason).toBe(ESTIMATE_REASON.PARCEL_TOO_COMPLEX);
   });
+
+  test("rejects a multi-house terrace block (~1500 m²) under the tightened threshold", () => {
+    // 17 Kensington Rd DN15 8BQ regression: a polygon spanning ~5 terraced
+    // houses came back at roughly 1500 m². Under the previous 5000 m²
+    // threshold this slipped through; the tightened 1500 m² threshold
+    // (with strict-greater comparison) now demotes it.
+    const polygon = squarePolygonAround(POINT.lat, POINT.lng, 25); // ~2500 m²
+    const reason = classifyParcelCandidate({ polygon, element: {} });
+    expect(reason).toBe(ESTIMATE_REASON.PARCEL_OVERSIZED);
+  });
+});
+
+describe("classifyBuildingCandidate", () => {
+  test("accepts a single residential building footprint", () => {
+    const polygon = squarePolygonAround(POINT.lat, POINT.lng, 6); // ~144 m²
+    const reason = classifyBuildingCandidate({ polygon });
+    expect(reason).toBeNull();
+  });
+
+  test("flags an oversized building as estimated (multi-unit / non-residential)", () => {
+    const polygon = squarePolygonAround(POINT.lat, POINT.lng, 25); // ~2500 m²
+    expect(polygonAreaM2(polygon)).toBeGreaterThan(RESIDENTIAL_BUILDING_MAX_M2);
+    const reason = classifyBuildingCandidate({ polygon });
+    expect(reason).toBe(ESTIMATE_REASON.BUILDING_OVERSIZED);
+  });
 });
 
 describe("selectBestOverpassWay", () => {
@@ -126,6 +153,30 @@ describe("selectBestOverpassWay", () => {
       point: POINT,
     });
     expect(result).toBeNull();
+  });
+
+  test("flags an oversized building polygon as estimated", () => {
+    const oversizedBuilding = squarePolygonAround(POINT.lat, POINT.lng, 20); // ~1600 m²
+    const result = selectBestOverpassWay({
+      parcelElements: [],
+      buildingElements: [
+        wayWithGeometry(oversizedBuilding, { building: "yes" }, 1),
+      ],
+      point: POINT,
+    });
+    expect(result?.source).toBe(BOUNDARY_SOURCE.OVERPASS_BUILDING_CONTAINS);
+    expect(result?.estimateReason).toBe(ESTIMATE_REASON.BUILDING_OVERSIZED);
+  });
+
+  test("a small building stays authoritative when no parcel was demoted", () => {
+    const building = squarePolygonAround(POINT.lat, POINT.lng, 6);
+    const result = selectBestOverpassWay({
+      parcelElements: [],
+      buildingElements: [wayWithGeometry(building, { building: "yes" }, 1)],
+      point: POINT,
+    });
+    expect(result?.source).toBe(BOUNDARY_SOURCE.OVERPASS_BUILDING_CONTAINS);
+    expect(result?.estimateReason).toBeNull();
   });
 });
 

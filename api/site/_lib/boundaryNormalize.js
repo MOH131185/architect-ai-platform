@@ -38,13 +38,28 @@ const AUTHORITATIVE_BY_SOURCE = Object.freeze({
 
 // A residential / small-parcel polygon should not exceed this area. Anything
 // larger is almost certainly an OSM `landuse=*` district polygon (a whole
-// neighbourhood) rather than the legal parcel of the address. Demote those
-// candidates to "estimated" and prefer the building-contains polygon.
-export const RESIDENTIAL_PARCEL_MAX_M2 = 5000;
+// neighbourhood) or a multi-house terrace block rather than the legal parcel
+// of the address. Demote those candidates to "estimated" and prefer the
+// building-contains polygon.
+//
+// Tuned 2026-05-02 from 5000 → 1500 m² after a Birmingham residential test
+// case (17 Kensington Rd, DN15 8BQ) returned a ~1500 m² polygon spanning
+// ~5 houses — under the previous threshold and so escaping demotion.
+// Typical UK residential lots: 100–500 m². Generous large villas: 800–
+// 1200 m². 1500 m² gives headroom while still rejecting multi-house
+// returns.
+export const RESIDENTIAL_PARCEL_MAX_M2 = 1500;
 
 // Vertex-count cap mirrors the same heuristic — district polygons frequently
 // have 50+ vertices, while typical lot polygons sit well under this.
 export const RESIDENTIAL_PARCEL_MAX_VERTICES = 30;
+
+// A single residential building footprint is rarely larger than this. When
+// Overpass returns a building polygon larger than this for a residential
+// address, it is almost certainly a multi-unit terrace block, an apartment
+// block being treated as a single building, or a non-residential structure
+// at that postcode. Demote it to estimated like an oversized parcel.
+export const RESIDENTIAL_BUILDING_MAX_M2 = 600;
 
 // `landuse` tag values that almost always indicate zoning districts rather
 // than legal parcel boundaries. Treat any parcel candidate carrying one of
@@ -71,9 +86,28 @@ export const ESTIMATE_REASON = Object.freeze({
   PARCEL_OVERSIZED: "parcel_oversized",
   PARCEL_LANDUSE_DISTRICT: "parcel_landuse_district",
   PARCEL_TOO_COMPLEX: "parcel_too_complex",
+  BUILDING_OVERSIZED: "building_oversized",
   BUILDING_NEAREST_FALLBACK: "building_nearest_fallback",
   NONE: null,
 });
+
+/**
+ * Inspect a candidate building polygon and decide whether it is plausibly a
+ * single-residence footprint or a larger multi-unit / non-residential
+ * structure. When the building polygon is implausibly large, callers
+ * should still use it (better than nothing) but flag the result as
+ * estimated so downstream A1 layout treats setbacks/areas with caution.
+ */
+export function classifyBuildingCandidate({ polygon }) {
+  if (!Array.isArray(polygon) || polygon.length < 3) {
+    return null;
+  }
+  const areaM2 = polygonAreaM2(polygon);
+  if (Number.isFinite(areaM2) && areaM2 > RESIDENTIAL_BUILDING_MAX_M2) {
+    return ESTIMATE_REASON.BUILDING_OVERSIZED;
+  }
+  return null;
+}
 
 /**
  * Inspect a candidate parcel polygon and decide whether it is plausibly the
@@ -255,15 +289,19 @@ export function selectBestOverpassWay({
     }
   }
 
-  // 2. building containing the point
+  // 2. building containing the point. We still return the building even
+  // when it fails the size classifier — it is better than nothing — but
+  // the response is tagged with `BUILDING_OVERSIZED` so downstream code
+  // (and the map UI) can render it as estimated rather than authoritative.
   for (const el of buildingElements) {
     const polygon = extractPolygonFromOverpassWay(el);
     if (polygon.length >= 3 && polygonContainsPoint(polygon, checkPoint)) {
+      const buildingReason = classifyBuildingCandidate({ polygon });
       return {
         element: el,
         polygon,
         source: BOUNDARY_SOURCE.OVERPASS_BUILDING_CONTAINS,
-        estimateReason: demotedReason,
+        estimateReason: demotedReason || buildingReason || null,
         demotedParcel,
       };
     }
