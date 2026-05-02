@@ -23,6 +23,11 @@ import {
 import { computeCDSHashSync } from "../validation/cdsHash.js";
 import { rasteriseSheetArtifact } from "../render/svgRasteriser.js";
 import {
+  buildVectorPdfFromSheetSvg,
+  VECTOR_PDF_RENDER_MODE,
+  VECTOR_PDF_SCHEMA_VERSION,
+} from "../render/buildVectorPdfFromSheetSvg.js";
+import {
   buildVisualManifest,
   buildVisualIdentityLockBlock,
 } from "../render/visualManifestService.js";
@@ -7878,6 +7883,70 @@ async function buildA1PdfArtifact({
     hybridVectorPdfFollowUp: true,
   };
 
+  // Phase 5D: optional vector PDF as an *additional* artifact behind a
+  // feature flag (`PROJECT_GRAPH_VECTOR_PDF_ENABLED=true`). The raster
+  // PDF above remains the production deliverable; the vector PDF is
+  // emitted alongside for Preview/local evaluation. Failure of the
+  // vector path is recorded as warning metadata and NEVER blocks the
+  // raster artifact.
+  const vectorPdfFlag = String(
+    (typeof process !== "undefined" &&
+      process.env?.PROJECT_GRAPH_VECTOR_PDF_ENABLED) ||
+      "",
+  )
+    .toLowerCase()
+    .trim();
+  const vectorPdfEnabled = vectorPdfFlag === "true" || vectorPdfFlag === "1";
+  let vectorPdf = null;
+  if (vectorPdfEnabled && isFinalA1) {
+    try {
+      const t0 = Date.now();
+      vectorPdf = await buildVectorPdfFromSheetSvg({
+        svgString: rawSheetSvg,
+        title:
+          (brief?.project_name ? `${brief.project_name} — ` : "") +
+          "ArchiAI A1 Sheet (vector)",
+        author: brief?.architect || "ArchiAI",
+        geometryHash,
+      });
+      __pdfMark = __a1pdfLog(
+        "vector_pdf_build",
+        __pdfMark,
+        `ok=${vectorPdf.ok} bytes=${vectorPdf.byteLength} draws=${vectorPdf.summary?.drawCalls || 0} took_ms=${Date.now() - t0}`,
+      );
+    } catch (vectorErr) {
+      vectorPdf = {
+        ok: false,
+        pdfBytes: null,
+        dataUrl: null,
+        pdfHash: null,
+        byteLength: 0,
+        pageCount: 0,
+        pageSizeMm: { width: 841, height: 594 },
+        pdfRenderMode: VECTOR_PDF_RENDER_MODE,
+        schemaVersion: VECTOR_PDF_SCHEMA_VERSION,
+        summary: { drawCalls: 0, skipped: {}, warnings: [] },
+        error: `vector_pdf_threw:${vectorErr?.message || "unknown"}`,
+      };
+    }
+  }
+  if (vectorPdf) {
+    pdfMetadata.vectorPdf = {
+      enabled: vectorPdfEnabled,
+      ok: vectorPdf.ok === true,
+      schemaVersion: vectorPdf.schemaVersion,
+      pdfRenderMode: vectorPdf.pdfRenderMode,
+      pdfHash: vectorPdf.pdfHash,
+      byteLength: vectorPdf.byteLength,
+      drawCalls: vectorPdf.summary?.drawCalls ?? 0,
+      skipped: vectorPdf.summary?.skipped || {},
+      warnings: vectorPdf.summary?.warnings || [],
+      error: vectorPdf.error || null,
+    };
+  } else {
+    pdfMetadata.vectorPdf = { enabled: vectorPdfEnabled, ok: false };
+  }
+
   return {
     asset_id: assetId,
     asset_type: "a1_sheet_pdf",
@@ -7897,6 +7966,13 @@ async function buildA1PdfArtifact({
     pdfHash: contentHash,
     pdfMetadata,
     dataUrl: pdfDataUri,
+    // Phase 5D: vector artifact alongside the raster one. Consumers
+    // that want to download the vector PDF should read `vectorPdfDataUrl`.
+    // When the flag is off or the vector build failed, these are null.
+    vectorPdfDataUrl: vectorPdf?.ok ? vectorPdf.dataUrl : null,
+    vectorPdfBytes: vectorPdf?.ok ? vectorPdf.byteLength : 0,
+    vectorPdfHash: vectorPdf?.ok ? vectorPdf.pdfHash : null,
+    vectorPdfRenderMode: vectorPdf?.ok ? vectorPdf.pdfRenderMode : null,
   };
 }
 
