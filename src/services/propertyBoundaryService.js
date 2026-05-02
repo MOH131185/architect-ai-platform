@@ -9,6 +9,15 @@ const API_ENDPOINTS = {
   NOMINATIM: "https://nominatim.openstreetmap.org/search",
 };
 
+// Phase 5C: server-side proxy that runs the same Overpass queries but
+// without browser CORS restrictions. The browser path calls this URL
+// instead of skipping Overpass and going straight to the estimated
+// fallback. A fetch failure / non-OK response / null polygon causes the
+// caller to fall through to the existing Intelligent Fallback chain —
+// the proxy is purely additive evidence, never the safety net itself.
+export const SITE_BOUNDARY_PROXY_URL = "/api/site/boundary";
+export const SITE_BOUNDARY_PROXY_TIMEOUT_MS = 9000;
+
 export const INTELLIGENT_FALLBACK_BOUNDARY_SOURCE = "Intelligent Fallback";
 export const INTELLIGENT_FALLBACK_BOUNDARY_CONFIDENCE = 0.4;
 
@@ -61,6 +70,102 @@ function isBrowserRuntime() {
   );
 }
 
+/**
+ * Phase 5C: call the server-side `/api/site/boundary` proxy from the
+ * browser. Returns a normalised `{ polygon, source, confidence,
+ * boundaryAuthoritative, ... }` object on success, or `null` on any
+ * failure (network error, timeout, non-OK status, empty result, or
+ * low-confidence response). A null return is the explicit signal for
+ * `detectPropertyBoundary` to continue down the existing chain into the
+ * Intelligent Fallback — the proxy is *additive* evidence and never a
+ * replacement for the existing safety net.
+ *
+ * Pure-ish: the only side effects are the fetch and a console.warn on
+ * failure. Accepts an injected `fetchImpl` so tests can mock without
+ * monkey-patching globals.
+ *
+ * @param {object} params
+ * @param {{lat:number,lng:number}} params.coordinates
+ * @param {string} [params.address]
+ * @param {string} [params.proxyUrl=SITE_BOUNDARY_PROXY_URL]
+ * @param {number} [params.timeoutMs=SITE_BOUNDARY_PROXY_TIMEOUT_MS]
+ * @param {function} [params.fetchImpl]
+ * @returns {Promise<Object|null>}
+ */
+export async function fetchSiteBoundaryFromProxy({
+  coordinates,
+  address = null,
+  proxyUrl = SITE_BOUNDARY_PROXY_URL,
+  timeoutMs = SITE_BOUNDARY_PROXY_TIMEOUT_MS,
+  fetchImpl = typeof fetch === "function" ? fetch : null,
+} = {}) {
+  if (typeof fetchImpl !== "function") return null;
+  if (
+    !coordinates ||
+    !Number.isFinite(Number(coordinates.lat)) ||
+    !Number.isFinite(Number(coordinates.lng))
+  ) {
+    return null;
+  }
+
+  const controller =
+    typeof AbortController === "function" ? new AbortController() : null;
+  const timer = controller
+    ? setTimeout(
+        () => controller.abort("site_boundary_proxy_timeout"),
+        timeoutMs,
+      )
+    : null;
+
+  try {
+    const response = await fetchImpl(proxyUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        lat: Number(coordinates.lat),
+        lng: Number(coordinates.lng),
+      }),
+      signal: controller?.signal,
+    });
+    if (!response.ok) {
+      console.warn(
+        `[site-boundary-proxy] non-OK response ${response.status}; falling through to existing chain`,
+      );
+      return null;
+    }
+    const json = await response.json();
+    if (!json || !Array.isArray(json.polygon) || json.polygon.length < 3) {
+      // No polygon found server-side. The browser chain falls through
+      // to the existing Intelligent Fallback path. We deliberately do
+      // NOT promote `polygon: null` from the proxy to anything else.
+      return null;
+    }
+    return {
+      polygon: json.polygon,
+      shapeType: analyzeShapeType(json.polygon),
+      source: json.source,
+      confidence: Number(json.confidence) || 0,
+      area: Number(json.areaM2) || 0,
+      boundaryAuthoritative: Boolean(json.boundaryAuthoritative),
+      boundaryConfidence: Number(json.confidence) || 0,
+      boundarySource: json.source,
+      metadata: {
+        ...(json.metadata || {}),
+        proxyHash: json.hash,
+        proxyCached: Boolean(json.cached),
+        proxySchemaVersion: json.schemaVersion,
+      },
+    };
+  } catch (error) {
+    console.warn(
+      `[site-boundary-proxy] fetch failed (${error?.name || "error"}: ${error?.message || error}); falling through to existing chain`,
+    );
+    return null;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 function createSeededRandom(seedInput) {
   let seed = 2166136261;
   const input = String(seedInput || "");
@@ -80,16 +185,69 @@ function createSeededRandom(seedInput) {
 }
 
 /**
- * Detect property boundary shape from coordinates
+ * Detect property boundary shape from coordinates.
+ *
+ * Phase 5C: the browser path now starts by calling the
+ * `/api/site/boundary` server proxy so Overpass evidence is available
+ * without CORS. If the proxy returns no polygon, we fall through to
+ * the existing chain (which still ends in the Intelligent Fallback).
+ * The estimated-boundary safety net at the bottom of the chain is
+ * untouched — the proxy is purely additive evidence.
+ *
  * @param {Object} coordinates - { lat, lng }
  * @param {string} address - Full address string
+ * @param {Object} [options]
+ * @param {boolean} [options.bypassProxy=false] - skip the `/api/site/boundary`
+ *        proxy call. Used by Jest fixtures that stub the existing chain
+ *        directly so the proxy doesn't interfere with their assertions.
+ *        The corresponding env override is `BYPASS_SITE_BOUNDARY_PROXY=true`.
+ * @param {function} [options.fetchImpl] - injected fetch for the proxy
+ *        call (tests).
  * @returns {Promise<Object>} Boundary data with shape type
  */
-export async function detectPropertyBoundary(coordinates, address) {
+export async function detectPropertyBoundary(
+  coordinates,
+  address,
+  options = {},
+) {
   console.log("🔍 Detecting property boundary for:", address);
 
   try {
     const browserRuntime = isBrowserRuntime();
+    const bypassProxy =
+      options?.bypassProxy === true ||
+      (typeof process !== "undefined" &&
+        String(process.env?.BYPASS_SITE_BOUNDARY_PROXY || "")
+          .toLowerCase()
+          .trim() === "true");
+
+    // Phase 5C: server-side proxy call. Browser-only — server runtime
+    // already calls Overpass directly via the existing chain, so we
+    // skip the proxy hop there.
+    if (browserRuntime && !bypassProxy) {
+      const proxyResult = await fetchSiteBoundaryFromProxy({
+        coordinates,
+        address,
+        fetchImpl: options?.fetchImpl,
+      });
+      if (
+        proxyResult &&
+        Array.isArray(proxyResult.polygon) &&
+        proxyResult.polygon.length >= 3
+      ) {
+        const estimated = isEstimatedBoundaryResult(proxyResult);
+        if (estimated) {
+          console.warn(
+            `⚠️ Proxy returned a low-confidence boundary (source=${proxyResult.source}, confidence=${proxyResult.confidence}); falling through to existing chain.`,
+          );
+        } else {
+          console.log(
+            `✅ Boundary detected via /api/site/boundary: ${proxyResult.shapeType} (${proxyResult.polygon.length} pts, source=${proxyResult.source})`,
+          );
+          return proxyResult;
+        }
+      }
+    }
 
     // Try multiple detection methods in order of accuracy
     const methods = browserRuntime
@@ -107,7 +265,7 @@ export async function detectPropertyBoundary(coordinates, address) {
 
     if (browserRuntime) {
       console.info(
-        "Skipping direct Overpass boundary detection in browser runtime; using CORS-safe fallbacks.",
+        "Falling through to CORS-safe browser chain (proxy returned no authoritative polygon).",
       );
     }
 
