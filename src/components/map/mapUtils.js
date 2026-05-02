@@ -245,7 +245,9 @@ export function isPointInPolygon(point, polygon) {
     const xj = polygon[j].lng;
     const yj = polygon[j].lat;
 
-    const intersectsLatitude = yi > point.lat !== yj > point.lat;
+    const yiAbove = yi > point.lat;
+    const yjAbove = yj > point.lat;
+    const intersectsLatitude = yiAbove !== yjAbove;
     const intersect =
       intersectsLatitude &&
       point.lng < ((xj - xi) * (point.lat - yi)) / (yj - yi) + xi;

@@ -167,8 +167,10 @@ export function polygonContainsPoint(polygon, point) {
     const yi = Number(polygon[i].lat);
     const xj = Number(polygon[j].lng);
     const yj = Number(polygon[j].lat);
+    const yiAbove = yi > y;
+    const yjAbove = yj > y;
     const intersect =
-      yi > y !== yj > y &&
+      yiAbove !== yjAbove &&
       x < ((xj - xi) * (y - yi)) / (yj - yi + Number.EPSILON) + xi;
     if (intersect) inside = !inside;
   }
