@@ -16,6 +16,7 @@ import {
 const NavBar = ({
   onNewDesign,
   onPricing,
+  historyControl = null,
   showNewDesign = true,
   transparent = false,
   className = "",
@@ -141,6 +142,7 @@ const NavBar = ({
 
           {/* CTA / Auth area */}
           <div className="flex items-center gap-3">
+            {historyControl}
             {showNewDesign && (
               <Button
                 variant="gradient"
@@ -204,6 +206,7 @@ NavLink.propTypes = {
 NavBar.propTypes = {
   onNewDesign: PropTypes.func,
   onPricing: PropTypes.func,
+  historyControl: PropTypes.node,
   showNewDesign: PropTypes.bool,
   transparent: PropTypes.bool,
   className: PropTypes.string,

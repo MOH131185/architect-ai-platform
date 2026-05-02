@@ -13,6 +13,10 @@ import {
   sanitizeSvgDataUrl,
   svgToSanitizedDataUrl,
 } from "../utils/svgPathSanitizer.js";
+import {
+  isDesignHistoryArtifactUrl,
+  resolveDesignHistoryArtifactUrlToObjectUrl,
+} from "../services/designHistoryArtifactStore.js";
 
 function svgToDataUrl(svgString = "") {
   return svgToSanitizedDataUrl(svgString);
@@ -81,7 +85,13 @@ function extractPanels(result) {
 }
 
 const A1PanelGallery = ({ result }) => {
-  const panels = extractPanels(result);
+  const panels = React.useMemo(() => extractPanels(result), [result]);
+  const artifactPanelUrls = React.useMemo(
+    () =>
+      panels.map((panel) => panel.imageUrl).filter(isDesignHistoryArtifactUrl),
+    [panels],
+  );
+  const [artifactObjectUrlMap, setArtifactObjectUrlMap] = useState({});
   const [selectedIndex, setSelectedIndex] = useState(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -90,7 +100,72 @@ const A1PanelGallery = ({ result }) => {
   const [isDownloading, setIsDownloading] = useState(false);
   const imageContainerRef = useRef(null);
 
-  const selectedPanel = selectedIndex !== null ? panels[selectedIndex] : null;
+  useEffect(() => {
+    let isCancelled = false;
+    const objectUrls = [];
+
+    async function resolvePanelArtifacts() {
+      if (artifactPanelUrls.length === 0) {
+        setArtifactObjectUrlMap({});
+        return;
+      }
+
+      const entries = await Promise.all(
+        artifactPanelUrls.map(async (artifactUrl) => {
+          try {
+            const objectUrl =
+              await resolveDesignHistoryArtifactUrlToObjectUrl(artifactUrl);
+            if (objectUrl) {
+              objectUrls.push(objectUrl);
+              return [artifactUrl, objectUrl];
+            }
+          } catch {
+            // Keep the unresolved artifact URL; the viewer will simply skip it.
+          }
+          return [artifactUrl, null];
+        }),
+      );
+
+      if (!isCancelled) {
+        setArtifactObjectUrlMap(
+          Object.fromEntries(
+            entries.filter(([, objectUrl]) => Boolean(objectUrl)),
+          ),
+        );
+      }
+    }
+
+    resolvePanelArtifacts();
+
+    return () => {
+      isCancelled = true;
+      objectUrls.forEach((objectUrl) => {
+        try {
+          URL.revokeObjectURL(objectUrl);
+        } catch {
+          // Ignore revoke failures for already-released object URLs.
+        }
+      });
+    };
+  }, [artifactPanelUrls]);
+
+  const displayPanels = React.useMemo(
+    () =>
+      panels
+        .map((panel) => ({
+          ...panel,
+          imageUrl:
+            artifactObjectUrlMap[panel.imageUrl] ||
+            (isDesignHistoryArtifactUrl(panel.imageUrl)
+              ? null
+              : panel.imageUrl),
+        }))
+        .filter((panel) => panel.imageUrl),
+    [artifactObjectUrlMap, panels],
+  );
+
+  const selectedPanel =
+    selectedIndex !== null ? displayPanels[selectedIndex] : null;
 
   const resetView = useCallback(() => {
     setZoom(1);
@@ -111,18 +186,20 @@ const A1PanelGallery = ({ result }) => {
   }, [resetView]);
 
   const goToPrev = useCallback(() => {
-    if (selectedIndex === null || panels.length === 0) return;
-    const prev = selectedIndex === 0 ? panels.length - 1 : selectedIndex - 1;
+    if (selectedIndex === null || displayPanels.length === 0) return;
+    const prev =
+      selectedIndex === 0 ? displayPanels.length - 1 : selectedIndex - 1;
     setSelectedIndex(prev);
     resetView();
-  }, [selectedIndex, panels.length, resetView]);
+  }, [selectedIndex, displayPanels.length, resetView]);
 
   const goToNext = useCallback(() => {
-    if (selectedIndex === null || panels.length === 0) return;
-    const next = selectedIndex === panels.length - 1 ? 0 : selectedIndex + 1;
+    if (selectedIndex === null || displayPanels.length === 0) return;
+    const next =
+      selectedIndex === displayPanels.length - 1 ? 0 : selectedIndex + 1;
     setSelectedIndex(next);
     resetView();
-  }, [selectedIndex, panels.length, resetView]);
+  }, [selectedIndex, displayPanels.length, resetView]);
 
   const handleZoomIn = useCallback(() => {
     setZoom((z) => Math.min(z + 0.5, 4));
@@ -239,7 +316,7 @@ const A1PanelGallery = ({ result }) => {
     };
   }, [selectedIndex]);
 
-  if (!panels.length) {
+  if (!displayPanels.length) {
     return (
       <Card variant="glass" padding="lg" className="text-center">
         <p className="text-gray-400">No individual panels available.</p>
@@ -256,13 +333,13 @@ const A1PanelGallery = ({ result }) => {
               A1 Panel Gallery
             </h3>
             <p className="text-sm text-gray-400">
-              {panels.length} panels — click to zoom
+              {displayPanels.length} panels — click to zoom
             </p>
           </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {panels.map((panel, index) => (
+          {displayPanels.map((panel, index) => (
             <div
               key={panel.key}
               onClick={() => openPanel(index)}
@@ -322,7 +399,7 @@ const A1PanelGallery = ({ result }) => {
                 {selectedPanel.label}
               </span>
               <span className="text-gray-400 text-sm whitespace-nowrap">
-                {selectedIndex + 1} / {panels.length}
+                {selectedIndex + 1} / {displayPanels.length}
               </span>
             </div>
 
@@ -384,7 +461,7 @@ const A1PanelGallery = ({ result }) => {
             }}
           >
             {/* Prev button */}
-            {panels.length > 1 && (
+            {displayPanels.length > 1 && (
               <button
                 onClick={goToPrev}
                 className="absolute left-3 top-1/2 -translate-y-1/2 z-10 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white/80 hover:text-white transition-colors"
@@ -395,7 +472,7 @@ const A1PanelGallery = ({ result }) => {
             )}
 
             {/* Next button */}
-            {panels.length > 1 && (
+            {displayPanels.length > 1 && (
               <button
                 onClick={goToNext}
                 className="absolute right-3 top-1/2 -translate-y-1/2 z-10 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white/80 hover:text-white transition-colors"
