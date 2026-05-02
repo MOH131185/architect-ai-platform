@@ -58,6 +58,7 @@ import {
 } from "../services/project/floorCountAuthority.js";
 import { normalizeProgramSpaces } from "../services/project/levelUtils.js";
 import PricingPage from "./PricingPage.jsx";
+import DesignHistoryMenu from "./DesignHistoryMenu.jsx";
 
 // Step Components
 import LocationStep from "./steps/LocationStep.jsx";
@@ -255,6 +256,8 @@ const ArchitectAIWizardContainer = () => {
     generateSheet,
     modifySheetWorkflow,
     exportSheetWorkflow,
+    loadDesign,
+    listDesigns,
     clearError,
     loadDemoResult,
   } = useArchitectAIWorkflow();
@@ -2174,6 +2177,34 @@ const ArchitectAIWizardContainer = () => {
     [result],
   );
 
+  const handleLoadDesignFromHistory = useCallback(
+    async (designId) => {
+      const restoredResult = await loadDesign(designId);
+      const restoredDesignId =
+        restoredResult?.designId || restoredResult?.id || designId;
+      setGeneratedDesignId(restoredDesignId);
+      setGenerationStartAtMs(null);
+      setGenerationElapsedSeconds(0);
+      setIsGenerationTimerRunning(false);
+      setView("wizard");
+      setCurrentStep(6);
+
+      logger.success("Design restored from history", {
+        designId: restoredDesignId,
+      });
+
+      return restoredResult;
+    },
+    [
+      loadDesign,
+      setCurrentStep,
+      setGeneratedDesignId,
+      setGenerationElapsedSeconds,
+      setGenerationStartAtMs,
+      setIsGenerationTimerRunning,
+    ],
+  );
+
   /**
    * Navigation handlers
    */
@@ -2231,6 +2262,13 @@ const ArchitectAIWizardContainer = () => {
     setSitePolygon,
   ]);
 
+  const historyControl = (
+    <DesignHistoryMenu
+      listDesigns={listDesigns}
+      onLoadDesign={handleLoadDesignFromHistory}
+    />
+  );
+
   /**
    * Render current step
    */
@@ -2243,6 +2281,7 @@ const ArchitectAIWizardContainer = () => {
             onDemo={() => {
               window.location.search = "?demo=true";
             }}
+            historyControl={historyControl}
           />
         );
 
@@ -2353,7 +2392,12 @@ const ArchitectAIWizardContainer = () => {
         );
 
       default:
-        return <LandingPage onStart={() => setCurrentStep(1)} />;
+        return (
+          <LandingPage
+            onStart={() => setCurrentStep(1)}
+            historyControl={historyControl}
+          />
+        );
     }
   };
 
@@ -2383,6 +2427,7 @@ const ArchitectAIWizardContainer = () => {
       navProps={{
         onNewDesign: handleStartNew,
         onPricing: () => setView("pricing"),
+        historyControl,
         showNewDesign: currentStep > 0,
       }}
       background={currentStep === 0 ? "default" : "gradient"}

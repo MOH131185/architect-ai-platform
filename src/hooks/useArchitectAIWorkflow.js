@@ -16,6 +16,7 @@ import * as generationGate from "../services/generationGate.js";
 import { modifySheet } from "../services/pureModificationService.js";
 import exportService from "../services/exportService.js";
 import designHistoryRepository from "../services/designHistoryRepository.js";
+import { buildSheetResultFromDesignHistoryEntry } from "../services/designHistoryResultHydrator.js";
 import dnaWorkflowOrchestrator from "../services/dnaWorkflowOrchestrator.js";
 import logger from "../utils/logger.js";
 import { normalizeMultiPanelResult } from "../types/schemas.js";
@@ -1523,7 +1524,17 @@ export function useArchitectAIWorkflow() {
         throw new Error(`Design ${designId} not found`);
       }
 
-      return design;
+      const restoredResult = buildSheetResultFromDesignHistoryEntry(design);
+      setResult(restoredResult);
+      setProgress({
+        step: 5,
+        total: 5,
+        message: "Design restored",
+        stage: "finalizing",
+        percentage: 100,
+      });
+
+      return restoredResult;
     } catch (err) {
       logger.error("Failed to load design", err);
       setError(err.message);
