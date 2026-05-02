@@ -92,9 +92,24 @@ function isBrowserRuntime() {
  * @param {function} [params.fetchImpl]
  * @returns {Promise<Object|null>}
  */
+/**
+ * Extract a UK postcode from a free-form address string. Returns null
+ * for non-UK addresses. The proxy uses this to gate INSPIRE lookups by
+ * country (England + Wales only).
+ */
+export function extractPostcodeFromAddress(address) {
+  if (typeof address !== "string") return null;
+  // UK postcode pattern: 1-2 letters + 1-2 digits + optional letter,
+  // space, 1 digit + 2 letters. Anchor to word boundary so we don't
+  // match house-number-like fragments.
+  const match = address.match(/\b([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\b/i);
+  return match ? match[1].toUpperCase().replace(/\s+/g, " ").trim() : null;
+}
+
 export async function fetchSiteBoundaryFromProxy({
   coordinates,
   address = null,
+  postcode = null,
   proxyUrl = SITE_BOUNDARY_PROXY_URL,
   timeoutMs = SITE_BOUNDARY_PROXY_TIMEOUT_MS,
   fetchImpl = typeof fetch === "function" ? fetch : null,
@@ -117,6 +132,12 @@ export async function fetchSiteBoundaryFromProxy({
       )
     : null;
 
+  // Resolve postcode: explicit param wins; otherwise try extracting from
+  // the address. The proxy does its own gating with `isEnglandOrWales`,
+  // so passing a non-UK postcode (or omitting it) is safe.
+  const resolvedPostcode =
+    postcode || extractPostcodeFromAddress(address) || null;
+
   try {
     const response = await fetchImpl(proxyUrl, {
       method: "POST",
@@ -124,6 +145,7 @@ export async function fetchSiteBoundaryFromProxy({
       body: JSON.stringify({
         lat: Number(coordinates.lat),
         lng: Number(coordinates.lng),
+        postcode: resolvedPostcode,
       }),
       signal: controller?.signal,
     });

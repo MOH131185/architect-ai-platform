@@ -192,21 +192,21 @@ describe("BuildingTypeSelector project type support", () => {
         }),
       }),
     );
+    // Promoted from "Coming soon" to BETA on 2026-05-02 — same generic
+    // ProjectGraph route as the existing BETA types above.
     expect(getBuildingTypeSelectorSubTypeState("commercial", retail)).toEqual(
       expect.objectContaining({
-        isEnabled: false,
+        isEnabled: true,
         support: expect.objectContaining({
-          // Per-subtype DISABLED_REASONS now surfaces a "Coming soon"
-          // badge with a specific message, replacing the generic
-          // "Experimental/off" wording.
-          badgeLabel: "Coming soon",
-          supportStatus: "disabled",
+          canonicalBuildingType: "commercial_retail",
+          badgeLabel: "Beta ProjectGraph",
+          supportStatus: "beta",
         }),
       }),
     );
   });
 
-  test("unsupported subtypes stay visible but disabled", () => {
+  test("commercial category surfaces all four subtypes as enabled (1 production + 3 beta)", () => {
     const commercial = getCategoryById("commercial");
     const retail = commercial.subTypes.find((entry) => entry.id === "retail");
 
@@ -215,17 +215,18 @@ describe("BuildingTypeSelector project type support", () => {
         isEnabled: true,
         supportSummary: expect.objectContaining({
           enabledInUi: true,
-          enabledCount: 1,
+          // office (production) + retail/mixed-use/shopping-mall (beta) = 4
+          enabledCount: 4,
         }),
       }),
     );
     expect(getBuildingTypeSelectorSubTypeState("commercial", retail)).toEqual(
       expect.objectContaining({
-        isEnabled: false,
+        isEnabled: true,
         support: expect.objectContaining({
-          supportStatus: "disabled",
-          badgeLabel: "Coming soon",
-          message: expect.stringContaining("Retail"),
+          supportStatus: "beta",
+          badgeLabel: "Beta ProjectGraph",
+          canonicalBuildingType: "commercial_retail",
         }),
       }),
     );

@@ -28,52 +28,14 @@ const DEFAULT_DISABLED_MESSAGE =
 // a one-size-fits-all "Experimental/off" badge. Entries are intentionally
 // granular — when a programme template is authored end-to-end, the entry
 // is removed and an `ENABLED_OVERRIDES` row takes its place.
-const DISABLED_REASONS = Object.freeze({
-  "commercial:retail": {
-    badgeLabel: "Coming soon",
-    message:
-      "Retail programme template is not yet available. We are validating the deterministic ProjectGraph template before enabling.",
-    reason:
-      "ProjectGraph retail programme template is still in authoring; payload + title-block copy not ready.",
-  },
-  "commercial:mixed-use": {
-    badgeLabel: "Coming soon",
-    message:
-      "Mixed-use programme template is in development. The sheet-split policy for mixed-use is being validated separately.",
-    reason:
-      "Mixed-use sheet-split policy is still being validated; programme template not finalised.",
-  },
-  "commercial:shopping-mall": {
-    badgeLabel: "Coming soon",
-    message:
-      "Shopping mall programme template is not yet available end-to-end.",
-    reason:
-      "ProjectGraph shopping-mall programme template is still in authoring.",
-  },
-  "healthcare:dental": {
-    badgeLabel: "Coming soon",
-    message:
-      "Dental clinic programme template is not yet authored. Use Medical Clinic for now if the brief is general healthcare.",
-    reason: "Healthcare dental programme template not yet authored.",
-  },
-  "healthcare:lab": {
-    badgeLabel: "Coming soon",
-    message:
-      "Laboratory programme template is not yet authored. Specialist programme work is required for safe lab layouts.",
-    reason: "Laboratory programme template not yet authored.",
-  },
-  "education:university": {
-    badgeLabel: "Coming soon",
-    message:
-      "University programme template is not yet available. Use School for the smaller campus case for now.",
-    reason: "University programme template not yet authored.",
-  },
-  "education:kindergarten": {
-    badgeLabel: "Coming soon",
-    message: "Kindergarten programme template is not yet available end-to-end.",
-    reason: "Kindergarten programme template not yet authored.",
-  },
-});
+//
+// As of 2026-05-02: empty. The seven previously-disabled non-residential
+// subtypes (commercial:retail, mixed-use, shopping-mall; healthcare:dental,
+// lab; education:university, kindergarten) are now BETA via the same
+// generic ProjectGraph route as warehouse / hotel / theatre etc. — the
+// pipeline accepts the canonical building type as the programme template
+// key and produces a deterministic programme from the brief area + spaces.
+const DISABLED_REASONS = Object.freeze({});
 
 const RESIDENTIAL_CANONICAL_BY_SUBTYPE = Object.freeze({
   "detached-house": "dwelling",
@@ -218,6 +180,39 @@ const ENABLED_OVERRIDES = Object.freeze({
   "recreation:pool": betaProjectGraphSupport({
     canonicalBuildingType: "recreation_pool",
     label: "Swimming Pool",
+  }),
+  // Promoted from "Coming soon" to BETA on 2026-05-02. The ProjectGraph
+  // pipeline accepts the canonical building type as the programme
+  // template key and generates the programme from area + spaces brief
+  // — same pattern as the BETA types above. End-to-end smoke is the
+  // user's manual responsibility per the new BETA contract.
+  "commercial:retail": betaProjectGraphSupport({
+    canonicalBuildingType: "commercial_retail",
+    label: "Retail Store",
+  }),
+  "commercial:mixed-use": betaProjectGraphSupport({
+    canonicalBuildingType: "commercial_mixed_use",
+    label: "Mixed-Use",
+  }),
+  "commercial:shopping-mall": betaProjectGraphSupport({
+    canonicalBuildingType: "commercial_shopping_mall",
+    label: "Shopping Mall",
+  }),
+  "healthcare:dental": betaProjectGraphSupport({
+    canonicalBuildingType: "healthcare_dental",
+    label: "Dental Clinic",
+  }),
+  "healthcare:lab": betaProjectGraphSupport({
+    canonicalBuildingType: "healthcare_laboratory",
+    label: "Laboratory",
+  }),
+  "education:university": betaProjectGraphSupport({
+    canonicalBuildingType: "education_university",
+    label: "University",
+  }),
+  "education:kindergarten": betaProjectGraphSupport({
+    canonicalBuildingType: "education_kindergarten",
+    label: "Kindergarten",
   }),
 });
 

@@ -175,6 +175,11 @@ const LocationStep = ({
               autoDetectEnabled={boundaryAutoDetectEnabled}
               autoDetectOnLoad={boundaryAutoDetectEnabled}
               contextualBoundaryPolygon={contextualBoundaryPolygon}
+              boundarySource={
+                locationData?.boundarySource ||
+                locationData?.siteAnalysis?.boundary?.source ||
+                null
+              }
             />
           </motion.div>
         )}

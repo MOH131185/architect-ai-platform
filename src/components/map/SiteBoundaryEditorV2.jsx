@@ -54,7 +54,16 @@ export function SiteBoundaryEditorV2({
   autoDetectOnLoad = true,
   autoDetectDisabledMessage = "Automatic boundary detection is unavailable for this address. Draw or enter a verified boundary manually.",
   contextualBoundaryPolygon = [],
+  boundarySource = null,
 }) {
+  // OGL v3.0 attribution: when the boundary comes from HM Land Registry
+  // INSPIRE Index Polygons we must surface the attribution wherever the
+  // polygon is visible. The flag lets the parent pass `boundarySource`
+  // (e.g. from the boundary proxy response) and the chip renders only
+  // when the source is INSPIRE.
+  const isInspireBoundary =
+    typeof boundarySource === "string" &&
+    boundarySource.startsWith("hm-land-registry-inspire");
   // Refs
   const mapContainerRef = useRef(null);
   const polygonEditorRef = useRef(null);
@@ -70,6 +79,15 @@ export function SiteBoundaryEditorV2({
   const [showTableEditor, setShowTableEditor] = useState(false);
   const [validationWarning, setValidationWarning] = useState(null);
   const [mapContainerElement, setMapContainerElement] = useState(null);
+  // Brownfield overlay (opt-in). When the user toggles it on the wizard
+  // fetches `/api/site/brownfield-nearby` and renders one map marker per
+  // returned site. Useful for site-selection workflows where the user is
+  // looking at where adjacent development opportunities are.
+  const [showBrownfieldNearby, setShowBrownfieldNearby] = useState(false);
+  const [brownfieldSites, setBrownfieldSites] = useState([]);
+  const [brownfieldLoading, setBrownfieldLoading] = useState(false);
+  const brownfieldMarkersRef = useRef([]);
+  const brownfieldInfoWindowRef = useRef(null);
 
   const handleMapContainerRef = useCallback((element) => {
     mapContainerRef.current = element;
@@ -254,6 +272,112 @@ export function SiteBoundaryEditorV2({
   ]);
 
   // ============================================================
+  // BROWNFIELD OVERLAY (opt-in)
+  // ============================================================
+
+  // Fetch nearby brownfield sites whenever the toggle is on, the map
+  // center is known, and the center has changed by more than ~10 m.
+  useEffect(() => {
+    if (!showBrownfieldNearby) {
+      setBrownfieldSites([]);
+      return undefined;
+    }
+    const lat = Number(center?.lat);
+    const lng = Number(center?.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return undefined;
+    }
+    let cancelled = false;
+    setBrownfieldLoading(true);
+    const url = `/api/site/brownfield-nearby?lat=${lat}&lng=${lng}&radiusM=2000`;
+    fetch(url)
+      .then((r) =>
+        r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)),
+      )
+      .then((json) => {
+        if (cancelled) return;
+        setBrownfieldSites(Array.isArray(json?.sites) ? json.sites : []);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        logger.warn("[Brownfield] nearby fetch failed", err?.message || err);
+        setBrownfieldSites([]);
+      })
+      .finally(() => {
+        if (!cancelled) setBrownfieldLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showBrownfieldNearby, center?.lat, center?.lng]);
+
+  // Render Google Maps markers for the brownfield sites. Cleans up on
+  // toggle-off and on unmount.
+  useEffect(() => {
+    if (!map || !google || !isLoaded) return undefined;
+
+    // Always tear down previous markers before deciding whether to draw.
+    for (const marker of brownfieldMarkersRef.current) {
+      marker.setMap(null);
+    }
+    brownfieldMarkersRef.current = [];
+
+    if (!showBrownfieldNearby || brownfieldSites.length === 0) {
+      return undefined;
+    }
+
+    if (!brownfieldInfoWindowRef.current) {
+      brownfieldInfoWindowRef.current = new google.maps.InfoWindow();
+    }
+
+    for (const site of brownfieldSites) {
+      const marker = new google.maps.Marker({
+        position: { lat: Number(site.lat), lng: Number(site.lng) },
+        map,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 6,
+          fillColor: "#F59E0B",
+          fillOpacity: 0.9,
+          strokeColor: "#FFFFFF",
+          strokeWeight: 2,
+        },
+        title: site.name || site.ref || "Brownfield site",
+        zIndex: 50,
+      });
+      marker.addListener("click", () => {
+        if (!brownfieldInfoWindowRef.current) return;
+        const planningLink = site.planningUrl
+          ? `<a href="${String(site.planningUrl).split(/\s+and\s+/i)[0]}" target="_blank" rel="noopener noreferrer" style="color:#1976d2;">Planning history</a>`
+          : "";
+        const html = `
+          <div style="max-width:240px;font-family:system-ui,sans-serif;color:#0f172a;">
+            <div style="font-weight:600;margin-bottom:4px;">${site.name || site.ref || "Brownfield site"}</div>
+            <div style="font-size:12px;color:#475569;">
+              ${site.planningStatus || "Planning status unknown"} · ${(Number(site.hectares) || 0).toFixed(2)} ha · ${site.distanceM} m away
+            </div>
+            ${site.ownership ? `<div style="font-size:11px;color:#64748b;margin-top:2px;">${site.ownership}</div>` : ""}
+            ${planningLink ? `<div style="font-size:12px;margin-top:6px;">${planningLink}</div>` : ""}
+          </div>
+        `;
+        brownfieldInfoWindowRef.current.setContent(html);
+        brownfieldInfoWindowRef.current.open({ map, anchor: marker });
+      });
+      brownfieldMarkersRef.current.push(marker);
+    }
+
+    return () => {
+      for (const marker of brownfieldMarkersRef.current) {
+        marker.setMap(null);
+      }
+      brownfieldMarkersRef.current = [];
+      if (brownfieldInfoWindowRef.current) {
+        brownfieldInfoWindowRef.current.close();
+      }
+    };
+  }, [map, google, isLoaded, showBrownfieldNearby, brownfieldSites]);
+
+  // ============================================================
   // POLYGON OVERLAY (non-editable display)
   // ============================================================
 
@@ -271,12 +395,16 @@ export function SiteBoundaryEditorV2({
         !latLngPolygonsEqual(contextualBoundaryPolygon, polygon));
 
     if (shouldShowContextualBoundary) {
+      // Estimated/contextual boundary uses Material Blue 700 with a thinner
+      // stroke + lower fill opacity than the authoritative blue overlay so
+      // the user can tell at a glance it is non-authoritative — colour
+      // matches the A1 site-plan boundary for end-to-end consistency.
       contextualBoundaryOverlayRef.current = new google.maps.Polygon({
         paths: contextualBoundaryPolygon,
-        strokeColor: "#F59E0B",
-        strokeOpacity: 0.95,
+        strokeColor: "#1976D2",
+        strokeOpacity: 0.85,
         strokeWeight: 2,
-        fillColor: "#F59E0B",
+        fillColor: "#1976D2",
         fillOpacity: 0.08,
         clickable: false,
         zIndex: 1,
@@ -665,6 +793,25 @@ export function SiteBoundaryEditorV2({
           </button>
 
           <button
+            onClick={() => setShowBrownfieldNearby((prev) => !prev)}
+            disabled={brownfieldLoading}
+            data-testid="brownfield-toggle"
+            className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              showBrownfieldNearby
+                ? "bg-amber-600 text-white"
+                : "bg-slate-200 text-slate-700 hover:bg-slate-300"
+            } disabled:opacity-60`}
+            title="Show nearby brownfield development sites from the council Brownfield Land Register"
+          >
+            🏗️ Brownfield {brownfieldLoading ? "…" : ""}
+            {showBrownfieldNearby && brownfieldSites.length > 0 && (
+              <span className="ml-1 text-[10px] opacity-90">
+                ({brownfieldSites.length})
+              </span>
+            )}
+          </button>
+
+          <button
             onClick={handleClear}
             disabled={polygon.length === 0}
             className="px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 disabled:bg-slate-100 disabled:text-slate-400 transition-colors text-sm"
@@ -761,6 +908,30 @@ export function SiteBoundaryEditorV2({
             style={{ minHeight: "450px" }}
           />
         </div>
+
+        {/* HM Land Registry attribution. OGL v3.0 requires the
+            attribution to be visible wherever INSPIRE polygons are
+            rendered. Renders only when the boundary's source is the
+            INSPIRE proxy response. */}
+        {isInspireBoundary && (
+          <p
+            className="mt-2 text-[10px] uppercase tracking-wide text-white/55"
+            data-testid="hmlr-attribution"
+          >
+            Contains HM Land Registry data © Crown copyright and database right
+            (Open Government Licence v3.0)
+          </p>
+        )}
+
+        {showBrownfieldNearby && brownfieldSites.length > 0 && (
+          <p
+            className="mt-1 text-[10px] uppercase tracking-wide text-white/55"
+            data-testid="brownfield-attribution"
+          >
+            Brownfield sites: contains public sector information licensed under
+            the Open Government Licence v3.0 (council Brownfield Land Register).
+          </p>
+        )}
 
         {/* Table Editor */}
         <AnimatePresence>

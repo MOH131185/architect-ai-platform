@@ -33,6 +33,15 @@ const expandedProjectGraphTemplateCases = [
   ["recreation", "sports-center", "recreation_sports_center"],
   ["recreation", "gym", "recreation_gym"],
   ["recreation", "pool", "recreation_pool"],
+  // Promoted from "Coming soon" to BETA on 2026-05-02 — same generic
+  // ProjectGraph route as the existing BETA types above.
+  ["commercial", "retail", "commercial_retail"],
+  ["commercial", "mixed-use", "commercial_mixed_use"],
+  ["commercial", "shopping-mall", "commercial_shopping_mall"],
+  ["healthcare", "dental", "healthcare_dental"],
+  ["healthcare", "lab", "healthcare_laboratory"],
+  ["education", "university", "education_university"],
+  ["education", "kindergarten", "education_kindergarten"],
 ];
 
 describe("projectTypeSupportRegistry", () => {
@@ -149,11 +158,9 @@ describe("projectTypeSupportRegistry", () => {
           supportStatus: PROJECT_TYPE_SUPPORT_STATUS.DISABLED,
           route: null,
           canonicalBuildingType: null,
+          badgeLabel: "Experimental/off",
         }),
       );
-      // Either generic "Experimental/off" or per-subtype "Coming soon"
-      // for entries that have an explicit DISABLED_REASONS row.
-      expect(["Experimental/off", "Coming soon"]).toContain(entry.badgeLabel);
     }
 
     expect(getProjectTypeSupport("civic", "museum")).toEqual(
@@ -167,28 +174,26 @@ describe("projectTypeSupportRegistry", () => {
     );
   });
 
-  test("disabled commercial/healthcare/education subtypes surface a per-subtype 'Coming soon' message", () => {
-    const comingSoonKeys = [
-      ["commercial", "retail"],
-      ["commercial", "mixed-use"],
-      ["commercial", "shopping-mall"],
-      ["healthcare", "dental"],
-      ["healthcare", "lab"],
-      ["education", "university"],
-      ["education", "kindergarten"],
+  test("previously 'Coming soon' subtypes are now BETA-enabled", () => {
+    const newlyEnabled = [
+      ["commercial", "retail", "commercial_retail"],
+      ["commercial", "mixed-use", "commercial_mixed_use"],
+      ["commercial", "shopping-mall", "commercial_shopping_mall"],
+      ["healthcare", "dental", "healthcare_dental"],
+      ["healthcare", "lab", "healthcare_laboratory"],
+      ["education", "university", "education_university"],
+      ["education", "kindergarten", "education_kindergarten"],
     ];
-    for (const [category, subtype] of comingSoonKeys) {
-      const support = getProjectTypeSupport(category, subtype);
-      expect(support).toEqual(
+    for (const [category, subtype, canonicalBuildingType] of newlyEnabled) {
+      expect(getProjectTypeSupport(category, subtype)).toEqual(
         expect.objectContaining({
-          enabledInUi: false,
-          badgeLabel: "Coming soon",
-          supportStatus: PROJECT_TYPE_SUPPORT_STATUS.DISABLED,
+          enabledInUi: true,
+          route: PROJECT_TYPE_ROUTES.PROJECT_GRAPH,
+          supportStatus: PROJECT_TYPE_SUPPORT_STATUS.BETA,
+          canonicalBuildingType,
+          programmeTemplateKey: canonicalBuildingType,
+          badgeLabel: "Beta ProjectGraph",
         }),
-      );
-      expect(support.message).toBeTruthy();
-      expect(support.message).not.toEqual(
-        expect.stringContaining("Experimental/off"),
       );
     }
   });

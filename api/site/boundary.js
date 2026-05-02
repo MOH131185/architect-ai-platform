@@ -47,8 +47,10 @@ import {
 import {
   buildBoundaryResponse,
   buildEmptyResponse,
-  selectBestOverpassWay,
+  selectBestBoundaryCandidate,
 } from "./_lib/boundaryNormalize.js";
+import { fetchInspireParcelsNear } from "./_lib/inspirePolygonsClient.js";
+import { isEnglandOrWales } from "./_lib/postcodeRegion.js";
 
 const CACHE_MAX_ENTRIES = 256;
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days for found
@@ -56,12 +58,17 @@ const CACHE_NEGATIVE_TTL_MS = 60 * 60 * 1000; // 1 hour for negatives
 
 const cache = new Map();
 
-function cacheKey({ lat, lng, buildingRadiusM, parcelRadiusM }) {
+function cacheKey({ lat, lng, buildingRadiusM, parcelRadiusM, postcode }) {
   return [
     Number(lat).toFixed(6),
     Number(lng).toFixed(6),
     Number(buildingRadiusM),
     Number(parcelRadiusM),
+    // Postcode is part of the key because INSPIRE coverage depends on
+    // the LA fixture chosen by postcode area; same lat/lng with two
+    // different postcodes (rare but happens at ward boundaries) must
+    // not share a cache slot.
+    String(postcode || ""),
   ].join("|");
 }
 
@@ -100,6 +107,8 @@ function parseLatLng(req) {
       lng,
       buildingRadiusM: Number(req.query?.buildingRadiusM) || 30,
       parcelRadiusM: Number(req.query?.parcelRadiusM) || 50,
+      postcode:
+        typeof req.query?.postcode === "string" ? req.query.postcode : null,
     };
   }
   const body = req.body || {};
@@ -108,6 +117,7 @@ function parseLatLng(req) {
     lng: Number(body.lng),
     buildingRadiusM: Number(body.buildingRadiusM) || 30,
     parcelRadiusM: Number(body.parcelRadiusM) || 50,
+    postcode: typeof body.postcode === "string" ? body.postcode : null,
   };
 }
 
@@ -141,6 +151,7 @@ export async function resolveBoundaryRequest({
   lng,
   buildingRadiusM = 30,
   parcelRadiusM = 50,
+  postcode = null,
   fetchImpl,
   useCache = true,
 } = {}) {
@@ -154,7 +165,13 @@ export async function resolveBoundaryRequest({
     };
   }
 
-  const key = cacheKey({ lat, lng, buildingRadiusM, parcelRadiusM });
+  const key = cacheKey({
+    lat,
+    lng,
+    buildingRadiusM,
+    parcelRadiusM,
+    postcode,
+  });
   if (useCache) {
     const cached = cacheGet(key);
     if (cached) {
@@ -162,6 +179,25 @@ export async function resolveBoundaryRequest({
         status: 200,
         body: { ...cached, cached: true },
       };
+    }
+  }
+
+  // INSPIRE lookup — synchronous (fixture-backed) and cheap, gated by
+  // postcode/lat/lng country detection so we don't waste cycles on
+  // Scottish/NI/non-UK addresses. Independent of Overpass; both sources
+  // are passed to `selectBestBoundaryCandidate` which decides the winner.
+  let inspireElements = [];
+  if (isEnglandOrWales({ postcode, lat, lng })) {
+    try {
+      inspireElements = fetchInspireParcelsNear({ lat, lng, postcode });
+    } catch (inspireErr) {
+      // Never fail the proxy because of an INSPIRE fixture issue. Log and
+      // fall through to OSM.
+      console.warn(
+        "[/api/site/boundary] INSPIRE lookup error:",
+        inspireErr?.message || inspireErr,
+      );
+      inspireElements = [];
     }
   }
 
@@ -185,7 +221,10 @@ export async function resolveBoundaryRequest({
   }
 
   let body;
-  if (overpassError) {
+  // If INSPIRE has a match we can skip the Overpass error path entirely:
+  // INSPIRE is the higher-authority source so its presence makes the
+  // OSM lookup outcome irrelevant for the response.
+  if (overpassError && inspireElements.length === 0) {
     const reason = overpassError.rateLimited
       ? "overpass_rate_limited"
       : overpassError.timedOut
@@ -204,7 +243,8 @@ export async function resolveBoundaryRequest({
     return { status: 200, body };
   }
 
-  const best = selectBestOverpassWay({
+  const best = selectBestBoundaryCandidate({
+    inspireElements,
     buildingElements,
     parcelElements,
     point: { lat, lng },

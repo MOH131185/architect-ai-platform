@@ -18,6 +18,11 @@
 export const PROXY_RESPONSE_SCHEMA_VERSION = "site-boundary-proxy-v1";
 
 export const BOUNDARY_SOURCE = Object.freeze({
+  // HM Land Registry INSPIRE Index Polygons. Highest authority for
+  // England/Wales addresses — the legal lot boundary recorded by the
+  // Land Registry. Served from offline-converted fixtures under
+  // `inspireData/`. See `inspirePolygonsClient.js`.
+  INSPIRE_PARCEL_CONTAINS: "hm-land-registry-inspire-parcel-contains-point",
   OVERPASS_BUILDING_CONTAINS: "openstreetmap-overpass-building-contains-point",
   OVERPASS_BUILDING_NEAREST: "openstreetmap-overpass-building-nearest",
   OVERPASS_PARCEL_CONTAINS: "openstreetmap-overpass-parcel-contains-point",
@@ -25,12 +30,16 @@ export const BOUNDARY_SOURCE = Object.freeze({
 });
 
 const CONFIDENCE_BY_SOURCE = Object.freeze({
+  // INSPIRE outranks Overpass parcel because INSPIRE *is* the legal
+  // boundary, whereas Overpass `landuse=*` polygons are zoning hints.
+  [BOUNDARY_SOURCE.INSPIRE_PARCEL_CONTAINS]: 0.98,
   [BOUNDARY_SOURCE.OVERPASS_PARCEL_CONTAINS]: 0.95,
   [BOUNDARY_SOURCE.OVERPASS_BUILDING_CONTAINS]: 0.92,
   [BOUNDARY_SOURCE.OVERPASS_BUILDING_NEAREST]: 0.7,
 });
 
 const AUTHORITATIVE_BY_SOURCE = Object.freeze({
+  [BOUNDARY_SOURCE.INSPIRE_PARCEL_CONTAINS]: true,
   [BOUNDARY_SOURCE.OVERPASS_PARCEL_CONTAINS]: true,
   [BOUNDARY_SOURCE.OVERPASS_BUILDING_CONTAINS]: true,
   [BOUNDARY_SOURCE.OVERPASS_BUILDING_NEAREST]: false,
@@ -38,13 +47,28 @@ const AUTHORITATIVE_BY_SOURCE = Object.freeze({
 
 // A residential / small-parcel polygon should not exceed this area. Anything
 // larger is almost certainly an OSM `landuse=*` district polygon (a whole
-// neighbourhood) rather than the legal parcel of the address. Demote those
-// candidates to "estimated" and prefer the building-contains polygon.
-export const RESIDENTIAL_PARCEL_MAX_M2 = 5000;
+// neighbourhood) or a multi-house terrace block rather than the legal parcel
+// of the address. Demote those candidates to "estimated" and prefer the
+// building-contains polygon.
+//
+// Tuned 2026-05-02 from 5000 → 1500 m² after a Birmingham residential test
+// case (17 Kensington Rd, DN15 8BQ) returned a ~1500 m² polygon spanning
+// ~5 houses — under the previous threshold and so escaping demotion.
+// Typical UK residential lots: 100–500 m². Generous large villas: 800–
+// 1200 m². 1500 m² gives headroom while still rejecting multi-house
+// returns.
+export const RESIDENTIAL_PARCEL_MAX_M2 = 1500;
 
 // Vertex-count cap mirrors the same heuristic — district polygons frequently
 // have 50+ vertices, while typical lot polygons sit well under this.
 export const RESIDENTIAL_PARCEL_MAX_VERTICES = 30;
+
+// A single residential building footprint is rarely larger than this. When
+// Overpass returns a building polygon larger than this for a residential
+// address, it is almost certainly a multi-unit terrace block, an apartment
+// block being treated as a single building, or a non-residential structure
+// at that postcode. Demote it to estimated like an oversized parcel.
+export const RESIDENTIAL_BUILDING_MAX_M2 = 600;
 
 // `landuse` tag values that almost always indicate zoning districts rather
 // than legal parcel boundaries. Treat any parcel candidate carrying one of
@@ -71,9 +95,28 @@ export const ESTIMATE_REASON = Object.freeze({
   PARCEL_OVERSIZED: "parcel_oversized",
   PARCEL_LANDUSE_DISTRICT: "parcel_landuse_district",
   PARCEL_TOO_COMPLEX: "parcel_too_complex",
+  BUILDING_OVERSIZED: "building_oversized",
   BUILDING_NEAREST_FALLBACK: "building_nearest_fallback",
   NONE: null,
 });
+
+/**
+ * Inspect a candidate building polygon and decide whether it is plausibly a
+ * single-residence footprint or a larger multi-unit / non-residential
+ * structure. When the building polygon is implausibly large, callers
+ * should still use it (better than nothing) but flag the result as
+ * estimated so downstream A1 layout treats setbacks/areas with caution.
+ */
+export function classifyBuildingCandidate({ polygon }) {
+  if (!Array.isArray(polygon) || polygon.length < 3) {
+    return null;
+  }
+  const areaM2 = polygonAreaM2(polygon);
+  if (Number.isFinite(areaM2) && areaM2 > RESIDENTIAL_BUILDING_MAX_M2) {
+    return ESTIMATE_REASON.BUILDING_OVERSIZED;
+  }
+  return null;
+}
 
 /**
  * Inspect a candidate parcel polygon and decide whether it is plausibly the
@@ -207,13 +250,16 @@ export function distanceM(a, b) {
 }
 
 /**
- * Choose the best Overpass `way` element for the given point.
+ * Choose the best boundary candidate for the given point.
  *
  * Preference order:
- *   1. parcel polygon that contains the point AND passes the lot-plausibility
- *      classifier (small enough, simple enough, not a `landuse=*` district)
- *   2. building polygon that contains the point
- *   3. nearest building polygon (within 25 m of the point) — flagged
+ *   1. INSPIRE Index Polygon (HM Land Registry, England + Wales) — the
+ *      legal lot boundary. Reuses the same plausibility classifier as
+ *      OSM parcels so a corrupted INSPIRE entry can still be skipped.
+ *   2. OSM parcel polygon that contains the point AND passes the
+ *      lot-plausibility classifier
+ *   3. OSM building polygon that contains the point
+ *   4. Nearest OSM building polygon (within 25 m of the point) — flagged
  *      non-authoritative so downstream gating treats it as estimated
  *
  * If a parcel candidate contained the point but failed the plausibility
@@ -224,7 +270,8 @@ export function distanceM(a, b) {
  * Returns `{ element, polygon, source, estimateReason?, demotedParcel? }`
  * or null when nothing usable.
  */
-export function selectBestOverpassWay({
+export function selectBestBoundaryCandidate({
+  inspireElements = [],
   buildingElements = [],
   parcelElements = [],
   point,
@@ -232,6 +279,34 @@ export function selectBestOverpassWay({
   const checkPoint = point;
   let demotedParcel = null;
   let demotedReason = null;
+
+  // 0. INSPIRE parcel containing the point. INSPIRE entries are already
+  // legal lot boundaries so they bypass the OSM `landuse=*` exclusion in
+  // `classifyParcelCandidate`, but the size/vertex sanity check still
+  // applies — a corrupted INSPIRE entry covering 50 ha is still wrong.
+  for (const el of inspireElements) {
+    const polygon = extractPolygonFromOverpassWay(el);
+    if (polygon.length < 3 || !polygonContainsPoint(polygon, checkPoint)) {
+      continue;
+    }
+    // INSPIRE polygons don't carry `landuse` tags, so the
+    // PARCEL_LANDUSE_DISTRICT branch of the classifier is a no-op for
+    // them. The size and vertex caps still apply.
+    const reason = classifyParcelCandidate({ polygon, element: el });
+    if (!reason) {
+      return {
+        element: el,
+        polygon,
+        source: BOUNDARY_SOURCE.INSPIRE_PARCEL_CONTAINS,
+      };
+    }
+    // INSPIRE returned an implausible polygon — log via demotedReason
+    // and fall through to OSM rather than failing the whole request.
+    if (!demotedParcel) {
+      demotedParcel = { element: el, polygon };
+      demotedReason = reason;
+    }
+  }
 
   // 1. parcel containing the point (with plausibility check)
   for (const el of parcelElements) {
@@ -255,15 +330,19 @@ export function selectBestOverpassWay({
     }
   }
 
-  // 2. building containing the point
+  // 2. building containing the point. We still return the building even
+  // when it fails the size classifier — it is better than nothing — but
+  // the response is tagged with `BUILDING_OVERSIZED` so downstream code
+  // (and the map UI) can render it as estimated rather than authoritative.
   for (const el of buildingElements) {
     const polygon = extractPolygonFromOverpassWay(el);
     if (polygon.length >= 3 && polygonContainsPoint(polygon, checkPoint)) {
+      const buildingReason = classifyBuildingCandidate({ polygon });
       return {
         element: el,
         polygon,
         source: BOUNDARY_SOURCE.OVERPASS_BUILDING_CONTAINS,
-        estimateReason: demotedReason,
+        estimateReason: demotedReason || buildingReason || null,
         demotedParcel,
       };
     }
@@ -292,6 +371,25 @@ export function selectBestOverpassWay({
     };
   }
   return null;
+}
+
+/**
+ * Backwards-compatible alias for `selectBestBoundaryCandidate`. Existing
+ * callers that pass only Overpass elements continue to work unchanged;
+ * `inspireElements` defaults to `[]` so the new INSPIRE branch is
+ * skipped for non-INSPIRE call sites.
+ */
+export function selectBestOverpassWay({
+  buildingElements = [],
+  parcelElements = [],
+  point,
+} = {}) {
+  return selectBestBoundaryCandidate({
+    inspireElements: [],
+    buildingElements,
+    parcelElements,
+    point,
+  });
 }
 
 /**
