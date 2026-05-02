@@ -18,10 +18,14 @@
 export const PROXY_RESPONSE_SCHEMA_VERSION = "site-boundary-proxy-v1";
 
 export const BOUNDARY_SOURCE = Object.freeze({
-  // HM Land Registry INSPIRE Index Polygons. Highest authority for
-  // England/Wales addresses — the legal lot boundary recorded by the
-  // Land Registry. Served from offline-converted fixtures under
-  // `inspireData/`. See `inspirePolygonsClient.js`.
+  // Digital Land's real-time `title-boundary` API (republished HMLR
+  // INSPIRE polygons). Highest authority — live, daily-refreshed, the
+  // authoritative legal lot boundary recorded by the Land Registry.
+  // See `digitalLandTitleBoundaryClient.js`.
+  DIGITAL_LAND_TITLE_BOUNDARY: "digital-land-title-boundary-contains-point",
+  // HM Land Registry INSPIRE Index Polygons via offline-converted
+  // fixtures under `inspireData/`. Same data as Digital Land but
+  // bundled — used as a fallback if the live API is unavailable.
   INSPIRE_PARCEL_CONTAINS: "hm-land-registry-inspire-parcel-contains-point",
   OVERPASS_BUILDING_CONTAINS: "openstreetmap-overpass-building-contains-point",
   OVERPASS_BUILDING_NEAREST: "openstreetmap-overpass-building-nearest",
@@ -30,8 +34,10 @@ export const BOUNDARY_SOURCE = Object.freeze({
 });
 
 const CONFIDENCE_BY_SOURCE = Object.freeze({
-  // INSPIRE outranks Overpass parcel because INSPIRE *is* the legal
-  // boundary, whereas Overpass `landuse=*` polygons are zoning hints.
+  // Digital Land's live API beats every other source because it is the
+  // current, refreshed legal-lot record straight from HMLR.
+  [BOUNDARY_SOURCE.DIGITAL_LAND_TITLE_BOUNDARY]: 0.99,
+  // INSPIRE fixture is the same data, just stale at fixture-build time.
   [BOUNDARY_SOURCE.INSPIRE_PARCEL_CONTAINS]: 0.98,
   [BOUNDARY_SOURCE.OVERPASS_PARCEL_CONTAINS]: 0.95,
   [BOUNDARY_SOURCE.OVERPASS_BUILDING_CONTAINS]: 0.92,
@@ -39,6 +45,7 @@ const CONFIDENCE_BY_SOURCE = Object.freeze({
 });
 
 const AUTHORITATIVE_BY_SOURCE = Object.freeze({
+  [BOUNDARY_SOURCE.DIGITAL_LAND_TITLE_BOUNDARY]: true,
   [BOUNDARY_SOURCE.INSPIRE_PARCEL_CONTAINS]: true,
   [BOUNDARY_SOURCE.OVERPASS_PARCEL_CONTAINS]: true,
   [BOUNDARY_SOURCE.OVERPASS_BUILDING_CONTAINS]: true,
@@ -280,24 +287,29 @@ export function selectBestBoundaryCandidate({
   let demotedParcel = null;
   let demotedReason = null;
 
-  // 0. INSPIRE parcel containing the point. INSPIRE entries are already
-  // legal lot boundaries so they bypass the OSM `landuse=*` exclusion in
-  // `classifyParcelCandidate`, but the size/vertex sanity check still
-  // applies — a corrupted INSPIRE entry covering 50 ha is still wrong.
+  // 0. INSPIRE / Digital Land title-boundary containing the point.
+  // Both source kinds flow through this list; we tell them apart by
+  // looking for the `titleReference` tag the Digital Land client adds.
+  // Live Digital Land entries are tagged with the higher-confidence
+  // source value so the response carries provenance accurately. Both
+  // are legal lot boundaries so they bypass the OSM `landuse=*`
+  // exclusion in `classifyParcelCandidate`, but the size/vertex
+  // sanity check still applies — a corrupted entry covering 50 ha is
+  // still wrong.
   for (const el of inspireElements) {
     const polygon = extractPolygonFromOverpassWay(el);
     if (polygon.length < 3 || !polygonContainsPoint(polygon, checkPoint)) {
       continue;
     }
-    // INSPIRE polygons don't carry `landuse` tags, so the
-    // PARCEL_LANDUSE_DISTRICT branch of the classifier is a no-op for
-    // them. The size and vertex caps still apply.
     const reason = classifyParcelCandidate({ polygon, element: el });
     if (!reason) {
+      const isDigitalLand = Boolean(el?.tags?.titleReference);
       return {
         element: el,
         polygon,
-        source: BOUNDARY_SOURCE.INSPIRE_PARCEL_CONTAINS,
+        source: isDigitalLand
+          ? BOUNDARY_SOURCE.DIGITAL_LAND_TITLE_BOUNDARY
+          : BOUNDARY_SOURCE.INSPIRE_PARCEL_CONTAINS,
       };
     }
     // INSPIRE returned an implausible polygon — log via demotedReason
