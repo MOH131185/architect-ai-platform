@@ -1,4 +1,7 @@
 import designHistoryRepository from "../../services/designHistoryRepository.js";
+import designHistoryArtifactStore, {
+  isDesignHistoryArtifactUrl,
+} from "../../services/designHistoryArtifactStore.js";
 import { StorageManager } from "../../utils/storageManager.js";
 
 jest.mock("../../utils/logger.js", () => ({
@@ -164,6 +167,7 @@ describe("design history storage hardening", () => {
   beforeEach(async () => {
     installStorageMock(320_000);
     await designHistoryRepository.clearAllDesigns();
+    await designHistoryArtifactStore.clearAllArtifacts();
     jest.clearAllMocks();
   });
 
@@ -220,5 +224,109 @@ describe("design history storage hardening", () => {
       window.localStorage.getItem("archiAI_design_history"),
     );
     expect(stored.payload).toHaveLength(1_100);
+  });
+
+  it("stores A1 data URLs as artifact URLs and keeps history lightweight", async () => {
+    const sheetDataUrl = buildLargeDataUrl(48);
+    const pdfDataUrl = `data:application/pdf;base64,${"J".repeat(32 * 1024)}`;
+    const panelSvg =
+      '<svg xmlns="http://www.w3.org/2000/svg"><rect width="100" height="50"/></svg>';
+
+    await expect(
+      designHistoryRepository.saveDesign({
+        designId: "artifact_design",
+        dna: {
+          dimensions: { length: 13, width: 9, height: 6, floors: 2 },
+          materials: [{ name: "Brick", hexColor: "#aa5533" }],
+          rooms: [{ name: "Room", dimensions: "4m x 4m", floor: "ground" }],
+        },
+        resultUrl: sheetDataUrl,
+        composedSheetUrl: sheetDataUrl,
+        pdfUrl: pdfDataUrl,
+        panelMap: {
+          plan: {
+            panelType: "floor_plan_ground",
+            imageUrl: sheetDataUrl,
+            svgString: panelSvg,
+            width: 100,
+            height: 50,
+            metadata: { geometryHash: "geometry-hash-1" },
+          },
+        },
+        sheetMetadata: {
+          width: 1792,
+          height: 1269,
+          geometryHash: "geometry-hash-1",
+          exportGate: { allowed: true },
+        },
+        a1Sheet: {
+          sheetId: "default",
+          url: sheetDataUrl,
+          composedSheetUrl: sheetDataUrl,
+          pdfUrl: pdfDataUrl,
+          metadata: {
+            width: 1792,
+            height: 1269,
+            geometryHash: "geometry-hash-1",
+            exportGate: { allowed: true },
+          },
+          panelMap: {
+            plan: {
+              panelType: "floor_plan_ground",
+              imageUrl: sheetDataUrl,
+              svgString: panelSvg,
+              width: 100,
+              height: 50,
+            },
+          },
+          compiledProject: {
+            huge: "compiled payload should not be in history",
+          },
+        },
+      }),
+    ).resolves.toBe("artifact_design");
+
+    const rawHistory = window.localStorage.getItem("archiAI_design_history");
+    const storedDesign =
+      await designHistoryRepository.getDesignById("artifact_design");
+    const storedJson = JSON.stringify(storedDesign);
+
+    expect(rawHistory).toBeTruthy();
+    expect(rawHistory).not.toContain("data:image");
+    expect(rawHistory).not.toContain("data:application/pdf");
+    expect(rawHistory).not.toContain("[DATA_URL_REMOVED");
+    expect(rawHistory).not.toContain(panelSvg);
+    expect(isDesignHistoryArtifactUrl(storedDesign.resultUrl)).toBe(true);
+    expect(isDesignHistoryArtifactUrl(storedDesign.pdfUrl)).toBe(true);
+    expect(isDesignHistoryArtifactUrl(storedDesign.a1Sheet.pdfUrl)).toBe(true);
+    expect(
+      isDesignHistoryArtifactUrl(storedDesign.panelMap.plan.imageUrl),
+    ).toBe(true);
+    expect(
+      isDesignHistoryArtifactUrl(storedDesign.panelMap.plan.svgArtifactUrl),
+    ).toBe(true);
+    expect(storedDesign.panelMap.plan.dataUrl).toBeUndefined();
+    expect(storedDesign.panelMap.plan.svgString).toBeUndefined();
+    expect(storedDesign.a1Sheet.compiledProject).toBeUndefined();
+    expect(storedDesign.a1ArtifactManifest).toEqual(
+      expect.objectContaining({
+        schema_version: "a1-artifact-url-manifest-v1",
+        designId: "artifact_design",
+      }),
+    );
+    expect(storedJson).toContain("artifactManifest");
+    expect(storedJson).not.toContain(
+      "compiled payload should not be in history",
+    );
+
+    const sheetRecord = await designHistoryArtifactStore.getRecord(
+      storedDesign.resultUrl,
+    );
+    const pdfRecord = await designHistoryArtifactStore.getRecord(
+      storedDesign.pdfUrl,
+    );
+
+    expect(sheetRecord.payload).toBe(sheetDataUrl);
+    expect(pdfRecord.payload).toBe(pdfDataUrl);
   });
 });

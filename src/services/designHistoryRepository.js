@@ -24,6 +24,10 @@ import {
   stripDataUrlsDeep,
 } from "../utils/designHistorySanitizer.js";
 import baselineArtifactStore from "./baselineArtifactStore.js";
+import designHistoryArtifactStore, {
+  isDesignHistoryArtifactUrl,
+  isStorableDataUrl,
+} from "./designHistoryArtifactStore.js";
 
 const MAX_DESIGNS = 2;
 const MAX_VERSIONS_PER_DESIGN = 3;
@@ -312,6 +316,436 @@ function compactSiteSnapshotMetadata(metadata = {}) {
   };
 }
 
+function createA1ArtifactManifest(designId) {
+  return {
+    schema_version: "a1-artifact-url-manifest-v1",
+    designId,
+    storage: "design_history_artifact_store",
+    artifacts: {
+      sheet: null,
+      pdf: null,
+      panels: {},
+    },
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function addArtifactManifestEntry(manifest, slot, entry, panelKey = null) {
+  if (!manifest || !entry) {
+    return;
+  }
+
+  const lightweight = {
+    artifactId: entry.artifactId,
+    artifactUrl: entry.artifactUrl,
+    artifactType: entry.artifactType,
+    mimeType: entry.mimeType,
+    extension: entry.extension,
+    byteLength: entry.byteLength,
+    contentHash: entry.contentHash,
+    storage: entry.storage,
+    metadata: entry.metadata || {},
+  };
+
+  if (slot === "panels" && panelKey) {
+    manifest.artifacts.panels[panelKey] = {
+      ...(manifest.artifacts.panels[panelKey] || {}),
+      [entry.artifactType]: lightweight,
+    };
+    return;
+  }
+
+  manifest.artifacts[slot] = lightweight;
+}
+
+function manifestHasArtifacts(manifest) {
+  return Boolean(
+    manifest?.artifacts?.sheet ||
+    manifest?.artifacts?.pdf ||
+    Object.keys(manifest?.artifacts?.panels || {}).length > 0,
+  );
+}
+
+function attachA1ArtifactManifest(design, manifest) {
+  if (!manifestHasArtifacts(manifest)) {
+    return design;
+  }
+
+  design.a1ArtifactManifest = manifest;
+  design.artifactManifest = manifest;
+  design.sheetMetadata = {
+    ...(design.sheetMetadata || design.a1Sheet?.metadata || {}),
+    artifactManifest: manifest,
+  };
+  design.a1Sheet = {
+    ...(design.a1Sheet || {}),
+    artifactManifest: manifest,
+    metadata: {
+      ...(design.a1Sheet?.metadata || design.sheetMetadata || {}),
+      artifactManifest: manifest,
+    },
+  };
+  return design;
+}
+
+function deleteStoredArtifactsForDesign(designId) {
+  if (!designId) {
+    return;
+  }
+
+  designHistoryArtifactStore
+    .deleteArtifactsForDesign(designId)
+    .catch((error) => {
+      logger.warn("Failed to delete design history artifacts", {
+        designId,
+        error: error?.message || String(error),
+      });
+    });
+}
+
+function compactA1SheetForHistory(sheet = {}) {
+  if (!sheet || typeof sheet !== "object") {
+    return {};
+  }
+
+  const compacted = cloneData(sheet) || {};
+  delete compacted.dataUrl;
+  delete compacted.svgString;
+  delete compacted.svg;
+  delete compacted.pdfDataUrl;
+  delete compacted.compiledProject;
+  delete compacted.projectGraph;
+  delete compacted.projectGeometry;
+  delete compacted.projectQuantityTakeoff;
+  delete compacted.artifacts;
+  delete compacted.trace;
+  delete compacted.reasoningChain;
+
+  return compacted;
+}
+
+async function persistArtifactPayload({
+  designId,
+  artifactType,
+  payload,
+  payloadKind,
+  mimeType,
+  metadata,
+  manifest,
+  manifestSlot,
+  panelKey,
+  cache,
+}) {
+  if (isDesignHistoryArtifactUrl(payload)) {
+    return payload;
+  }
+
+  if (typeof payload !== "string" || payload.length === 0) {
+    return payload;
+  }
+
+  const cacheKey = `${artifactType}:${payloadKind}:${payload}`;
+  if (cache.has(cacheKey)) {
+    const cached = cache.get(cacheKey);
+    addArtifactManifestEntry(manifest, manifestSlot, cached, panelKey);
+    return cached.artifactUrl;
+  }
+
+  try {
+    const artifact = await designHistoryArtifactStore.saveArtifact({
+      designId,
+      artifactType,
+      payload,
+      payloadKind,
+      mimeType,
+      metadata,
+    });
+    if (!artifact) {
+      return payload;
+    }
+    cache.set(cacheKey, artifact);
+    addArtifactManifestEntry(manifest, manifestSlot, artifact, panelKey);
+    return artifact.artifactUrl;
+  } catch (error) {
+    logger.warn("Failed to persist design history artifact", {
+      designId,
+      artifactType,
+      error: error?.message || String(error),
+    });
+    return payload;
+  }
+}
+
+async function materializeUrlField({
+  target,
+  key,
+  designId,
+  artifactType,
+  manifest,
+  manifestSlot,
+  panelKey = null,
+  metadata = {},
+  cache,
+}) {
+  if (!target || typeof target !== "object") {
+    return;
+  }
+
+  const value = target[key];
+  if (!isStorableDataUrl(value)) {
+    return;
+  }
+
+  target[key] = await persistArtifactPayload({
+    designId,
+    artifactType,
+    payload: value,
+    payloadKind: "data_url",
+    metadata,
+    manifest,
+    manifestSlot,
+    panelKey,
+    cache,
+  });
+}
+
+async function materializePanelArtifacts({
+  panel,
+  panelKey,
+  designId,
+  manifest,
+  cache,
+}) {
+  if (!panel || typeof panel !== "object") {
+    return null;
+  }
+
+  const metadata = {
+    panelKey,
+    panelType: panel.panelType || panel.panel_type || panel.type || panelKey,
+    width: panel.width || panel.metadata?.width || null,
+    height: panel.height || panel.metadata?.height || null,
+    geometryHash: panel.geometryHash || panel.metadata?.geometryHash || null,
+    sourceModelHash:
+      panel.source_model_hash || panel.metadata?.sourceModelHash || null,
+    svgHash: panel.svgHash || panel.metadata?.svgHash || null,
+  };
+
+  for (const key of ["imageUrl", "url", "previewUrl", "dataUrl"]) {
+    await materializeUrlField({
+      target: panel,
+      key,
+      designId,
+      artifactType: "a1_panel_raster_or_svg",
+      manifest,
+      manifestSlot: "panels",
+      panelKey,
+      metadata,
+      cache,
+    });
+  }
+
+  if (isDesignHistoryArtifactUrl(panel.dataUrl)) {
+    panel.artifactUrl = panel.dataUrl;
+  }
+
+  if (!panel.url && panel.artifactUrl) {
+    panel.url = panel.artifactUrl;
+  }
+
+  if (typeof panel.svgString === "string" && panel.svgString.trim()) {
+    const svgArtifactUrl = await persistArtifactPayload({
+      designId,
+      artifactType: "a1_panel_svg",
+      payload: panel.svgString,
+      payloadKind: "text",
+      mimeType: "image/svg+xml",
+      metadata,
+      manifest,
+      manifestSlot: "panels",
+      panelKey,
+      cache,
+    });
+    panel.svgArtifactUrl = svgArtifactUrl;
+    panel.svgHash = panel.svgHash || computeStringHash(panel.svgString);
+    if (!panel.url && isDesignHistoryArtifactUrl(svgArtifactUrl)) {
+      panel.url = svgArtifactUrl;
+    }
+    delete panel.svgString;
+  }
+
+  if (typeof panel.svg === "string" && panel.svg.trim()) {
+    const svgArtifactUrl = await persistArtifactPayload({
+      designId,
+      artifactType: "a1_panel_svg",
+      payload: panel.svg,
+      payloadKind: "text",
+      mimeType: "image/svg+xml",
+      metadata,
+      manifest,
+      manifestSlot: "panels",
+      panelKey,
+      cache,
+    });
+    panel.svgArtifactUrl = panel.svgArtifactUrl || svgArtifactUrl;
+    if (!panel.url && isDesignHistoryArtifactUrl(svgArtifactUrl)) {
+      panel.url = svgArtifactUrl;
+    }
+    delete panel.svg;
+  }
+
+  delete panel.dataUrl;
+  return panel;
+}
+
+function computeStringHash(value = "") {
+  let hash = 0x811c9dc5;
+  const input = String(value || "");
+  for (let i = 0; i < input.length; i += 1) {
+    hash = Math.imul(hash ^ input.charCodeAt(i), 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+async function materializePanelMapArtifacts(panelMap, options) {
+  if (!panelMap || typeof panelMap !== "object") {
+    return panelMap || null;
+  }
+
+  if (Array.isArray(panelMap)) {
+    for (let index = 0; index < panelMap.length; index += 1) {
+      await materializePanelArtifacts({
+        panel: panelMap[index],
+        panelKey:
+          panelMap[index]?.panelType || panelMap[index]?.type || `${index}`,
+        ...options,
+      });
+    }
+    return panelMap;
+  }
+
+  const entries = Object.entries(panelMap);
+  for (const [panelKey, panel] of entries) {
+    await materializePanelArtifacts({
+      panel,
+      panelKey,
+      ...options,
+    });
+  }
+  return panelMap;
+}
+
+async function prepareDesignArtifactsForHistory(design, designId) {
+  const prepared = cloneData(design) || {};
+  const manifest = createA1ArtifactManifest(designId);
+  const cache = new Map();
+  const sheetMetadata = {
+    ...(prepared.sheetMetadata || prepared.a1Sheet?.metadata || {}),
+  };
+  const sheetArtifactMetadata = {
+    sheetId: prepared.sheetId || prepared.a1Sheet?.sheetId || "default",
+    width: sheetMetadata.width || prepared.a1Sheet?.width || null,
+    height: sheetMetadata.height || prepared.a1Sheet?.height || null,
+    sheetSizeMm:
+      sheetMetadata.sheetSizeMm || prepared.a1Sheet?.sheet_size_mm || null,
+    geometryHash:
+      sheetMetadata.geometryHash ||
+      prepared.geometryHash ||
+      prepared.a1Sheet?.metadata?.geometryHash ||
+      null,
+    exportGate:
+      sheetMetadata.exportGate ||
+      sheetMetadata.sheetArtifactManifest?.exportGate ||
+      null,
+  };
+
+  for (const target of [prepared, prepared.a1Sheet].filter(Boolean)) {
+    await materializeUrlField({
+      target,
+      key: "resultUrl",
+      designId,
+      artifactType: "a1_sheet",
+      manifest,
+      manifestSlot: "sheet",
+      metadata: sheetArtifactMetadata,
+      cache,
+    });
+    await materializeUrlField({
+      target,
+      key: "composedSheetUrl",
+      designId,
+      artifactType: "a1_sheet",
+      manifest,
+      manifestSlot: "sheet",
+      metadata: sheetArtifactMetadata,
+      cache,
+    });
+    await materializeUrlField({
+      target,
+      key: "url",
+      designId,
+      artifactType: "a1_sheet",
+      manifest,
+      manifestSlot: "sheet",
+      metadata: sheetArtifactMetadata,
+      cache,
+    });
+    await materializeUrlField({
+      target,
+      key: "a1SheetUrl",
+      designId,
+      artifactType: "a1_sheet",
+      manifest,
+      manifestSlot: "sheet",
+      metadata: sheetArtifactMetadata,
+      cache,
+    });
+    await materializeUrlField({
+      target,
+      key: "pdfUrl",
+      designId,
+      artifactType: "a1_pdf",
+      manifest,
+      manifestSlot: "pdf",
+      metadata: sheetArtifactMetadata,
+      cache,
+    });
+  }
+
+  await materializePanelMapArtifacts(prepared.panelMap, {
+    designId,
+    manifest,
+    cache,
+  });
+  await materializePanelMapArtifacts(prepared.panels, {
+    designId,
+    manifest,
+    cache,
+  });
+  await materializePanelMapArtifacts(prepared.a1Sheet?.panelMap, {
+    designId,
+    manifest,
+    cache,
+  });
+  await materializePanelMapArtifacts(prepared.a1Sheet?.panels, {
+    designId,
+    manifest,
+    cache,
+  });
+  await materializePanelMapArtifacts(prepared.sheetMetadata?.panelMap, {
+    designId,
+    manifest,
+    cache,
+  });
+  await materializePanelMapArtifacts(prepared.a1Sheet?.metadata?.panelMap, {
+    designId,
+    manifest,
+    cache,
+  });
+
+  return attachA1ArtifactManifest(prepared, manifest);
+}
+
 const VERSION_METADATA_KEYS = [
   "width",
   "height",
@@ -444,6 +878,16 @@ function buildDesignPayload(design, existingDesign = null) {
       design.composedSheetUrl ||
       null,
   );
+  const pdfUrl = stripDataUrl(
+    design.pdfUrl || design.a1Sheet?.pdfUrl || existingDesign?.a1Sheet?.pdfUrl,
+  );
+  const artifactManifest =
+    design.a1ArtifactManifest ||
+    design.artifactManifest ||
+    design.a1Sheet?.artifactManifest ||
+    design.sheetMetadata?.artifactManifest ||
+    existingDesign?.a1ArtifactManifest ||
+    null;
   const panelMapInput =
     design.panelMap ||
     design.panels ||
@@ -506,7 +950,7 @@ function buildDesignPayload(design, existingDesign = null) {
   const sanitizedBlendedStyle = cloneData(design.blendedStyle) || null;
   stripDataUrlsDeep(sanitizedBlendedStyle);
 
-  const clonedA1Sheet = design.a1Sheet ? cloneData(design.a1Sheet) || {} : {};
+  const clonedA1Sheet = compactA1SheetForHistory(design.a1Sheet);
   stripDataUrlsDeep(clonedA1Sheet);
   if (
     clonedA1Sheet &&
@@ -547,11 +991,16 @@ function buildDesignPayload(design, existingDesign = null) {
     blendedStyle: sanitizedBlendedStyle,
     composedSheetUrl: sheetUrl,
     resultUrl: sheetUrl,
+    pdfUrl,
+    a1ArtifactManifest: artifactManifest,
+    artifactManifest,
     a1Sheet: {
       ...(clonedA1Sheet || {}),
       sheetId: design.sheetId || clonedA1Sheet?.sheetId || "default",
       url: sheetUrl,
       composedSheetUrl: sheetUrl,
+      pdfUrl,
+      artifactManifest,
       metadata: sheetMetadata,
       panelMap: resolvedPanelMap || null,
       panels: resolvedPanelMap || null,
@@ -653,6 +1102,7 @@ function enforceHistoryCap(designs = []) {
     if (entry?.siteSnapshot?.key) {
       deleteSiteSnapshot(entry.siteSnapshot.key);
     }
+    deleteStoredArtifactsForDesign(entry?.designId || entry?.id);
   });
 
   logger.warn(`History exceeds ${MAX_DESIGNS} designs, removing oldest...`);
@@ -824,6 +1274,7 @@ function trimHistoryForStorage(history, maxBytes = MAX_HISTORY_BYTES) {
         if (entry?.siteSnapshot?.key) {
           deleteSiteSnapshot(entry.siteSnapshot.key);
         }
+        deleteStoredArtifactsForDesign(entry?.designId || entry?.id);
       });
 
       candidate = candidate.filter(
@@ -925,8 +1376,12 @@ class DesignHistoryRepository {
     const existingDesign =
       existingIndex >= 0 ? allDesigns[existingIndex] : null;
 
+    const storagePreparedDesign = await prepareDesignArtifactsForHistory(
+      { ...design, designId },
+      designId,
+    );
     const sanitizedDesign = enforceDesignSize(
-      buildDesignPayload({ ...design, designId }, existingDesign),
+      buildDesignPayload(storagePreparedDesign, existingDesign),
     );
 
     const updatedDesigns = [...allDesigns];
@@ -961,9 +1416,9 @@ class DesignHistoryRepository {
           designId,
           sheetId: design.sheetId || design.a1Sheet?.sheetId || "default",
           baselineImageUrl:
-            design.resultUrl ||
-            design.composedSheetUrl ||
-            design.a1Sheet?.url ||
+            storagePreparedDesign.resultUrl ||
+            storagePreparedDesign.composedSheetUrl ||
+            storagePreparedDesign.a1Sheet?.url ||
             "",
           baselineDNA: design.masterDNA || design.dna || {},
           geometryBaseline: {
@@ -1028,8 +1483,16 @@ class DesignHistoryRepository {
     const design = allDesigns[index];
 
     const versionId = `v${(design.versions?.length || 0) + 1}`;
+    const storagePreparedVersion = await prepareDesignArtifactsForHistory(
+      {
+        ...versionData,
+        designId,
+      },
+      designId,
+    );
     const sanitizedVersion = sanitizeVersionEntry({
       ...versionData,
+      ...storagePreparedVersion,
       versionId,
       createdAt: new Date().toISOString(),
     });
@@ -1108,11 +1571,13 @@ class DesignHistoryRepository {
     if (removed?.siteSnapshot?.key) {
       await deleteSiteSnapshot(removed.siteSnapshot.key);
     }
+    await designHistoryArtifactStore.deleteArtifactsForDesign(designId);
 
     return this.persistDesigns(filtered);
   }
 
   async clearAllDesigns() {
+    await designHistoryArtifactStore.clearAllArtifacts();
     if (typeof this.backend.setAll === "function") {
       await this.backend.setAll([]);
       return true;

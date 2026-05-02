@@ -146,6 +146,9 @@ export function sanitizeSheetMetadata(metadata = {}) {
     delete sanitized.dataUrl;
   }
 
+  delete sanitized.svgString;
+  delete sanitized.svg;
+
   if (sanitized.imageUrl) {
     sanitized.imageUrl = stripDataUrl(sanitized.imageUrl);
   }
@@ -221,13 +224,70 @@ export function sanitizePanelLayout(panels) {
         delete panel.dataUrl;
       }
 
+      delete panel.svgString;
+      delete panel.svg;
+
       if (panel.attachment && typeof panel.attachment === "string") {
         panel.attachment = stripDataUrl(panel.attachment);
       }
 
-      return panel;
+      return compactPanelForHistory(panel);
     })
     .filter(Boolean);
+}
+
+function compactPanelMetadata(metadata = {}) {
+  if (!metadata || typeof metadata !== "object") {
+    return metadata || {};
+  }
+
+  const allowedKeys = [
+    "panelType",
+    "panel_type",
+    "authoritySource",
+    "authorityUsed",
+    "sourceType",
+    "geometryHash",
+    "sourceModelHash",
+    "source_model_hash",
+    "svgHash",
+    "contentHash",
+    "width",
+    "height",
+    "sheetNumber",
+    "drawingNumber",
+    "exportGate",
+    "dimensions",
+    "bounds",
+  ];
+  const compacted = {};
+  allowedKeys.forEach((key) => {
+    if (metadata[key] !== undefined) {
+      compacted[key] = metadata[key];
+    }
+  });
+  return compacted;
+}
+
+function compactPanelForHistory(panel = {}) {
+  if (!panel || typeof panel !== "object") {
+    return panel;
+  }
+
+  delete panel.prompt;
+  delete panel.negativePrompt;
+  delete panel.fullPrompt;
+  delete panel.reasoning;
+  delete panel.trace;
+  delete panel.svgString;
+  delete panel.svg;
+  delete panel.dataUrl;
+
+  if (panel.metadata && typeof panel.metadata === "object") {
+    panel.metadata = compactPanelMetadata(panel.metadata);
+  }
+
+  return panel;
 }
 
 export function sanitizePanelMap(panelMap) {
@@ -272,7 +332,7 @@ export function sanitizePanelMap(panelMap) {
       delete sanitizedPanel.dataUrl;
     }
 
-    cloned[key] = sanitizedPanel;
+    cloned[key] = compactPanelForHistory(sanitizedPanel);
   });
 
   return cloned;
