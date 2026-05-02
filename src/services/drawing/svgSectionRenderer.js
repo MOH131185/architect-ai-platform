@@ -231,6 +231,78 @@ function buildFallbackSectionProfile(
       };
 }
 
+// Phase 3 — stronger ground / grade hatch beneath the foundation band.
+// Adds a deterministic 45-degree diagonal hatch pattern in the earth zone
+// below ground level so the section reads with proper grade continuity at
+// architectural-standard density. Pure SVG; no geometry mutation.
+function renderGroundHatch(
+  baseX,
+  baseY,
+  widthPx,
+  height,
+  padding,
+  options = {},
+) {
+  const margin = 14;
+  const startY = baseY + 32; // below the existing foundation soil band
+  // The grade band sits in the lower margin BELOW baseY (which is at
+  // height - padding). Allow it to extend almost to the bottom edge of the
+  // SVG, leaving a small gutter for the scale bar / overall dimensions.
+  const maxEndY = Math.max(startY, height - 18);
+  const bandHeight = Math.max(0, Math.min(140, maxEndY - startY));
+  if (bandHeight < 12) {
+    return { markup: "", count: 0 };
+  }
+  const startX = baseX - margin;
+  const bandWidth = widthPx + margin * 2;
+  const fillOpacity = Number.isFinite(options.fillOpacity)
+    ? options.fillOpacity
+    : 0.32;
+  const strokeWidth = options.strokeWidth || 0.85;
+  const stepPx = options.stepPx || 14;
+  const stroke = options.stroke || SECTION_THEME.lineLight;
+  const fill = options.fill || SECTION_THEME.fillSoft;
+  const lines = [];
+  // 45-degree hatch: project diagonal lines across the band.
+  for (
+    let offset = -bandHeight;
+    offset < bandWidth + bandHeight;
+    offset += stepPx
+  ) {
+    const x1 = startX + offset;
+    const y1 = startY;
+    const x2 = x1 + bandHeight;
+    const y2 = startY + bandHeight;
+    // Clip to band rectangle
+    const minX = startX;
+    const maxX = startX + bandWidth;
+    let cx1 = x1;
+    let cy1 = y1;
+    let cx2 = x2;
+    let cy2 = y2;
+    if (cx1 < minX) {
+      cy1 += minX - cx1;
+      cx1 = minX;
+    }
+    if (cx2 > maxX) {
+      cy2 -= cx2 - maxX;
+      cx2 = maxX;
+    }
+    if (cx2 <= cx1 || cy2 <= cy1) continue;
+    lines.push(
+      `<line x1="${formatNumber(cx1)}" y1="${formatNumber(cy1)}" x2="${formatNumber(cx2)}" y2="${formatNumber(cy2)}" stroke="${stroke}" stroke-width="${strokeWidth}"/>`,
+    );
+  }
+  return {
+    markup: `<g id="phase3-section-ground-hatch" data-grade-band="true">
+      <rect x="${formatNumber(startX)}" y="${formatNumber(startY)}" width="${formatNumber(bandWidth)}" height="${formatNumber(bandHeight)}" fill="${fill}" fill-opacity="${fillOpacity}"/>
+      ${lines.join("")}
+      <line x1="${formatNumber(startX)}" y1="${formatNumber(startY)}" x2="${formatNumber(startX + bandWidth)}" y2="${formatNumber(startY)}" stroke="${SECTION_THEME.line}" stroke-width="1.1"/>
+    </g>`,
+    count: lines.length,
+  };
+}
+
 function renderScaleBar(scalePxPerMeter, width, height, padding, options = {}) {
   const barMeters = chooseScaleBarMeters(scalePxPerMeter);
   const barWidthPx = barMeters * scalePxPerMeter;
@@ -1121,6 +1193,16 @@ export function renderSectionSvg(
     foundationTruthQuality,
     constructionGeometry.foundation,
   );
+  // Phase 3 — render the grade hatch beneath the foundation band so the
+  // section reads with proper earth/ground continuity. Render-only; sits
+  // behind the foundation visually (composed earlier in the SVG).
+  const groundHatch = renderGroundHatch(
+    baseX,
+    baseY,
+    horizontalExtent * scale,
+    height,
+    padding,
+  );
   const cutRoomMarkup = renderCutRooms(
     renderedSectionRooms,
     sectionType,
@@ -1279,6 +1361,7 @@ export function renderSectionSvg(
     `Cut coordinate ${cutCoordinate.toFixed(2)}m / usefulness ${usefulnessScore.toFixed(2)} / ${String(sectionProfile?.strategyId || "default-cut")}`,
   )}</text>`
   }
+  ${groundHatch.markup}
   ${foundation}
   ${roof}
   ${datums.markup}
@@ -1325,6 +1408,8 @@ export function renderSectionSvg(
       cut_room_count: renderedCutRoomCount,
       cut_opening_count: cutOpenings.length,
       foundation_marker_count: 1,
+      ground_hatch_band_lines: groundHatch.count,
+      ground_hatch_visible: groundHatch.count > 0,
       stair_tread_count: stairMarkup.treadCount,
       roof_profile_visible: true,
       section_usefulness_score: usefulnessScore,
