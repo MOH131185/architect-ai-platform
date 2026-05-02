@@ -15,6 +15,12 @@ describe("ArchitectAIWizardContainer project type routing", () => {
       { category: "education", subType: "school" },
       { category: "healthcare", subType: "clinic" },
       { category: "healthcare", subType: "hospital" },
+      { category: "hospitality", subType: "hotel" },
+      { category: "industrial", subType: "warehouse" },
+      { category: "cultural", subType: "museum" },
+      { category: "government", subType: "town-hall" },
+      { category: "religious", subType: "church" },
+      { category: "recreation", subType: "sports-center" },
     ]) {
       expect(assertProjectTypeSupportedForGeneration(projectDetails)).toEqual(
         expect.objectContaining({

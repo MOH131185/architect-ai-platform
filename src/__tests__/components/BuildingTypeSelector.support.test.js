@@ -33,16 +33,34 @@ describe("BuildingTypeSelector project type support", () => {
     ).toBe(false);
   });
 
-  test("enables only the first non-residential ProjectGraph set", () => {
+  test("enables supported non-residential ProjectGraph templates", () => {
     const commercial = getCategoryById("commercial");
     const education = getCategoryById("education");
     const healthcare = getCategoryById("healthcare");
+    const hospitality = getCategoryById("hospitality");
+    const industrial = getCategoryById("industrial");
+    const cultural = getCategoryById("cultural");
+    const government = getCategoryById("government");
+    const religious = getCategoryById("religious");
+    const recreation = getCategoryById("recreation");
     const office = commercial.subTypes.find((entry) => entry.id === "office");
     const retail = commercial.subTypes.find((entry) => entry.id === "retail");
     const school = education.subTypes.find((entry) => entry.id === "school");
     const clinic = healthcare.subTypes.find((entry) => entry.id === "clinic");
     const hospital = healthcare.subTypes.find(
       (entry) => entry.id === "hospital",
+    );
+    const hotel = hospitality.subTypes.find((entry) => entry.id === "hotel");
+    const warehouse = industrial.subTypes.find(
+      (entry) => entry.id === "warehouse",
+    );
+    const museum = cultural.subTypes.find((entry) => entry.id === "museum");
+    const townHall = government.subTypes.find(
+      (entry) => entry.id === "town-hall",
+    );
+    const church = religious.subTypes.find((entry) => entry.id === "church");
+    const sportsCenter = recreation.subTypes.find(
+      (entry) => entry.id === "sports-center",
     );
 
     expect(getBuildingTypeSelectorCategoryState(commercial).isEnabled).toBe(
@@ -54,6 +72,18 @@ describe("BuildingTypeSelector project type support", () => {
     expect(getBuildingTypeSelectorCategoryState(healthcare).isEnabled).toBe(
       true,
     );
+    for (const category of [
+      hospitality,
+      industrial,
+      cultural,
+      government,
+      religious,
+      recreation,
+    ]) {
+      expect(getBuildingTypeSelectorCategoryState(category).isEnabled).toBe(
+        true,
+      );
+    }
     expect(getBuildingTypeSelectorSubTypeState("commercial", office)).toEqual(
       expect.objectContaining({
         isEnabled: true,
@@ -92,6 +122,64 @@ describe("BuildingTypeSelector project type support", () => {
         }),
       }),
     );
+    expect(getBuildingTypeSelectorSubTypeState("hospitality", hotel)).toEqual(
+      expect.objectContaining({
+        isEnabled: true,
+        support: expect.objectContaining({
+          canonicalBuildingType: "hospitality_hotel",
+          badgeLabel: "Beta ProjectGraph",
+        }),
+      }),
+    );
+    expect(
+      getBuildingTypeSelectorSubTypeState("industrial", warehouse),
+    ).toEqual(
+      expect.objectContaining({
+        isEnabled: true,
+        support: expect.objectContaining({
+          canonicalBuildingType: "industrial_warehouse",
+          badgeLabel: "Beta ProjectGraph",
+        }),
+      }),
+    );
+    expect(getBuildingTypeSelectorSubTypeState("cultural", museum)).toEqual(
+      expect.objectContaining({
+        isEnabled: true,
+        support: expect.objectContaining({
+          canonicalBuildingType: "cultural_museum",
+          badgeLabel: "Beta ProjectGraph",
+        }),
+      }),
+    );
+    expect(getBuildingTypeSelectorSubTypeState("government", townHall)).toEqual(
+      expect.objectContaining({
+        isEnabled: true,
+        support: expect.objectContaining({
+          canonicalBuildingType: "government_town_hall",
+          badgeLabel: "Beta ProjectGraph",
+        }),
+      }),
+    );
+    expect(getBuildingTypeSelectorSubTypeState("religious", church)).toEqual(
+      expect.objectContaining({
+        isEnabled: true,
+        support: expect.objectContaining({
+          canonicalBuildingType: "religious_church",
+          badgeLabel: "Beta ProjectGraph",
+        }),
+      }),
+    );
+    expect(
+      getBuildingTypeSelectorSubTypeState("recreation", sportsCenter),
+    ).toEqual(
+      expect.objectContaining({
+        isEnabled: true,
+        support: expect.objectContaining({
+          canonicalBuildingType: "recreation_sports_center",
+          badgeLabel: "Beta ProjectGraph",
+        }),
+      }),
+    );
     expect(getBuildingTypeSelectorSubTypeState("commercial", retail)).toEqual(
       expect.objectContaining({
         isEnabled: false,
@@ -103,24 +191,20 @@ describe("BuildingTypeSelector project type support", () => {
     );
   });
 
-  test("unsupported categories stay visible but disabled", () => {
-    const industrial = getCategoryById("industrial");
-    const manufacturing = industrial.subTypes.find(
-      (entry) => entry.id === "manufacturing",
-    );
+  test("unsupported subtypes stay visible but disabled", () => {
+    const commercial = getCategoryById("commercial");
+    const retail = commercial.subTypes.find((entry) => entry.id === "retail");
 
-    expect(getBuildingTypeSelectorCategoryState(industrial)).toEqual(
+    expect(getBuildingTypeSelectorCategoryState(commercial)).toEqual(
       expect.objectContaining({
-        isEnabled: false,
+        isEnabled: true,
         supportSummary: expect.objectContaining({
-          enabledInUi: false,
-          enabledCount: 0,
+          enabledInUi: true,
+          enabledCount: 1,
         }),
       }),
     );
-    expect(
-      getBuildingTypeSelectorSubTypeState("industrial", manufacturing),
-    ).toEqual(
+    expect(getBuildingTypeSelectorSubTypeState("commercial", retail)).toEqual(
       expect.objectContaining({
         isEnabled: false,
         support: expect.objectContaining({

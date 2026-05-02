@@ -33,6 +33,23 @@ const RESIDENTIAL_CANONICAL_BY_SUBTYPE = Object.freeze({
   duplex: "dwelling",
 });
 
+function betaProjectGraphSupport({
+  canonicalBuildingType,
+  programmeTemplateKey = canonicalBuildingType,
+  label,
+}) {
+  return {
+    supportStatus: PROJECT_TYPE_SUPPORT_STATUS.BETA,
+    canonicalBuildingType,
+    route: PROJECT_TYPE_ROUTES.PROJECT_GRAPH,
+    enabledInUi: true,
+    message: `Beta ProjectGraph ${label} support is enabled.`,
+    reason: `${label} is backed by a deterministic ProjectGraph programme template.`,
+    programmeTemplateKey,
+    badgeLabel: "Beta ProjectGraph",
+  };
+}
+
 const ENABLED_OVERRIDES = Object.freeze({
   "commercial:office": {
     supportStatus: PROJECT_TYPE_SUPPORT_STATUS.PRODUCTION,
@@ -76,6 +93,78 @@ const ENABLED_OVERRIDES = Object.freeze({
     programmeTemplateKey: "hospital",
     badgeLabel: "Beta ProjectGraph",
   },
+  "hospitality:hotel": betaProjectGraphSupport({
+    canonicalBuildingType: "hospitality_hotel",
+    label: "Hotel",
+  }),
+  "hospitality:resort": betaProjectGraphSupport({
+    canonicalBuildingType: "hospitality_resort",
+    label: "Resort",
+  }),
+  "hospitality:guest-house": betaProjectGraphSupport({
+    canonicalBuildingType: "hospitality_guest_house",
+    label: "Guest House",
+  }),
+  "industrial:warehouse": betaProjectGraphSupport({
+    canonicalBuildingType: "industrial_warehouse",
+    label: "Warehouse",
+  }),
+  "industrial:manufacturing": betaProjectGraphSupport({
+    canonicalBuildingType: "industrial_manufacturing",
+    label: "Manufacturing",
+  }),
+  "industrial:workshop": betaProjectGraphSupport({
+    canonicalBuildingType: "industrial_workshop",
+    label: "Workshop",
+  }),
+  "cultural:museum": betaProjectGraphSupport({
+    canonicalBuildingType: "cultural_museum",
+    label: "Museum",
+  }),
+  "cultural:library": betaProjectGraphSupport({
+    canonicalBuildingType: "cultural_library",
+    label: "Library",
+  }),
+  "cultural:theatre": betaProjectGraphSupport({
+    canonicalBuildingType: "cultural_theatre",
+    label: "Theatre",
+  }),
+  "government:town-hall": betaProjectGraphSupport({
+    canonicalBuildingType: "government_town_hall",
+    label: "Town Hall",
+  }),
+  "government:police": betaProjectGraphSupport({
+    canonicalBuildingType: "government_police_station",
+    label: "Police Station",
+  }),
+  "government:fire-station": betaProjectGraphSupport({
+    canonicalBuildingType: "government_fire_station",
+    label: "Fire Station",
+  }),
+  "religious:mosque": betaProjectGraphSupport({
+    canonicalBuildingType: "religious_mosque",
+    label: "Mosque",
+  }),
+  "religious:church": betaProjectGraphSupport({
+    canonicalBuildingType: "religious_church",
+    label: "Church",
+  }),
+  "religious:temple": betaProjectGraphSupport({
+    canonicalBuildingType: "religious_temple",
+    label: "Temple",
+  }),
+  "recreation:sports-center": betaProjectGraphSupport({
+    canonicalBuildingType: "recreation_sports_center",
+    label: "Sports Center",
+  }),
+  "recreation:gym": betaProjectGraphSupport({
+    canonicalBuildingType: "recreation_gym",
+    label: "Gym",
+  }),
+  "recreation:pool": betaProjectGraphSupport({
+    canonicalBuildingType: "recreation_pool",
+    label: "Swimming Pool",
+  }),
 });
 
 function registryKey(categoryId, subtypeId) {

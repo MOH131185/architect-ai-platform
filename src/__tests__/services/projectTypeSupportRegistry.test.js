@@ -14,6 +14,27 @@ const enabledNonResidentialKeys = () =>
     .map((entry) => `${entry.categoryId}:${entry.subtypeId}`)
     .sort();
 
+const expandedProjectGraphTemplateCases = [
+  ["hospitality", "hotel", "hospitality_hotel"],
+  ["hospitality", "resort", "hospitality_resort"],
+  ["hospitality", "guest-house", "hospitality_guest_house"],
+  ["industrial", "warehouse", "industrial_warehouse"],
+  ["industrial", "manufacturing", "industrial_manufacturing"],
+  ["industrial", "workshop", "industrial_workshop"],
+  ["cultural", "museum", "cultural_museum"],
+  ["cultural", "library", "cultural_library"],
+  ["cultural", "theatre", "cultural_theatre"],
+  ["government", "town-hall", "government_town_hall"],
+  ["government", "police", "government_police_station"],
+  ["government", "fire-station", "government_fire_station"],
+  ["religious", "mosque", "religious_mosque"],
+  ["religious", "church", "religious_church"],
+  ["religious", "temple", "religious_temple"],
+  ["recreation", "sports-center", "recreation_sports_center"],
+  ["recreation", "gym", "recreation_gym"],
+  ["recreation", "pool", "recreation_pool"],
+];
+
 describe("projectTypeSupportRegistry", () => {
   test("keeps the Residential V2 supported subtype set unchanged", () => {
     const residentialSubtypes = BUILDING_CATEGORIES.RESIDENTIAL.subTypes.map(
@@ -53,12 +74,17 @@ describe("projectTypeSupportRegistry", () => {
   });
 
   test("enables only supported non-residential ProjectGraph templates", () => {
-    expect(enabledNonResidentialKeys()).toEqual([
-      "commercial:office",
-      "education:school",
-      "healthcare:clinic",
-      "healthcare:hospital",
-    ]);
+    expect(enabledNonResidentialKeys()).toEqual(
+      [
+        "commercial:office",
+        "education:school",
+        "healthcare:clinic",
+        "healthcare:hospital",
+        ...expandedProjectGraphTemplateCases.map(
+          ([category, subtype]) => `${category}:${subtype}`,
+        ),
+      ].sort(),
+    );
 
     expect(getProjectTypeSupport("commercial", "office")).toEqual(
       expect.objectContaining({
@@ -88,6 +114,22 @@ describe("projectTypeSupportRegistry", () => {
         route: PROJECT_TYPE_ROUTES.PROJECT_GRAPH,
       }),
     );
+
+    for (const [
+      category,
+      subtype,
+      canonicalBuildingType,
+    ] of expandedProjectGraphTemplateCases) {
+      expect(getProjectTypeSupport(category, subtype)).toEqual(
+        expect.objectContaining({
+          canonicalBuildingType,
+          programmeTemplateKey: canonicalBuildingType,
+          route: PROJECT_TYPE_ROUTES.PROJECT_GRAPH,
+          supportStatus: PROJECT_TYPE_SUPPORT_STATUS.BETA,
+          badgeLabel: "Beta ProjectGraph",
+        }),
+      );
+    }
   });
 
   test("unsupported categories and subtypes remain disabled with a clear status", () => {

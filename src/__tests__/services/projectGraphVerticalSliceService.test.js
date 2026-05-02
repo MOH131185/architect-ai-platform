@@ -2,6 +2,8 @@ import {
   buildArchitectureProjectVerticalSlice,
   validateProjectGraphVerticalSlice,
   KNOWN_BUILDING_TYPES,
+  buildKeyNotesPanelArtifact,
+  buildTitleBlockPanelArtifact,
   __projectGraphVerticalSliceInternals,
 } from "../../services/project/projectGraphVerticalSliceService.js";
 
@@ -276,6 +278,65 @@ function createOpenAIReasoningFetchMock() {
     };
   });
 }
+
+const expandedProjectGraphSubtypeCases = [
+  ["hotel", "hospitality", "hotel", "hospitality_hotel", "beta"],
+  ["resort", "hospitality", "resort", "hospitality_resort", "beta"],
+  [
+    "guest house",
+    "hospitality",
+    "guest-house",
+    "hospitality_guest_house",
+    "beta",
+  ],
+  ["warehouse", "industrial", "warehouse", "industrial_warehouse", "beta"],
+  [
+    "manufacturing",
+    "industrial",
+    "manufacturing",
+    "industrial_manufacturing",
+    "beta",
+  ],
+  ["workshop", "industrial", "workshop", "industrial_workshop", "beta"],
+  ["museum", "cultural", "museum", "cultural_museum", "beta"],
+  ["library", "cultural", "library", "cultural_library", "beta"],
+  ["theatre", "cultural", "theatre", "cultural_theatre", "beta"],
+  ["town hall", "government", "town-hall", "government_town_hall", "beta"],
+  [
+    "police station",
+    "government",
+    "police",
+    "government_police_station",
+    "beta",
+  ],
+  [
+    "fire station",
+    "government",
+    "fire-station",
+    "government_fire_station",
+    "beta",
+  ],
+  ["mosque", "religious", "mosque", "religious_mosque", "beta"],
+  ["church", "religious", "church", "religious_church", "beta"],
+  ["temple", "religious", "temple", "religious_temple", "beta"],
+  [
+    "sports center",
+    "recreation",
+    "sports-center",
+    "recreation_sports_center",
+    "beta",
+  ],
+  ["gym", "recreation", "gym", "recreation_gym", "beta"],
+  ["pool", "recreation", "pool", "recreation_pool", "beta"],
+];
+
+const projectGraphSubtypeSupportCases = [
+  ["office", "commercial", "office", "office_studio", "production"],
+  ["school", "education", "school", "education_studio", "beta"],
+  ["clinic", "healthcare", "clinic", "clinic", "production"],
+  ["hospital", "healthcare", "hospital", "hospital", "beta"],
+  ...expandedProjectGraphSubtypeCases,
+];
 
 describe("projectGraphVerticalSliceService", () => {
   const originalModelSource = process.env.MODEL_SOURCE;
@@ -1073,13 +1134,8 @@ describe("projectGraphVerticalSliceService", () => {
     },
   );
 
-  test.each([
-    ["office", "commercial", "office", "office_studio", "production"],
-    ["school", "education", "school", "education_studio", "beta"],
-    ["clinic", "healthcare", "clinic", "clinic", "production"],
-    ["hospital", "healthcare", "hospital", "hospital", "beta"],
-  ])(
-    "maps %s category/subtype to ProjectGraph programme metadata",
+  test.each(projectGraphSubtypeSupportCases)(
+    "maps %s category/subtype to ProjectGraph programme metadata and A1 wording",
     async (_label, category, subType, canonicalBuildingType, supportStatus) => {
       const briefInput = createReadingRoomBrief();
       delete briefInput.brief.building_type;
@@ -1146,6 +1202,22 @@ describe("projectGraphVerticalSliceService", () => {
       const levelIndexes = new Set(
         spaces.map((space) => Number(space.target_level_index)),
       );
+      const titleBlock = buildTitleBlockPanelArtifact({
+        projectGraphId: projectGeometry.project_id,
+        brief,
+        geometryHash: compiledProject.geometryHash,
+        sheetPlan: { sheet_number: "A1-TEST", label: "RIBA Stage 2 Test" },
+      });
+      const keyNotes = buildKeyNotesPanelArtifact({
+        projectGraphId: projectGeometry.project_id,
+        brief,
+        site,
+        climate,
+        regulations: {},
+        localStyle,
+        geometryHash: compiledProject.geometryHash,
+      });
+      const programmeLabel = brief.project_type_support.label;
 
       expect(KNOWN_BUILDING_TYPES).toContain(canonicalBuildingType);
       expect(brief).toEqual(
@@ -1185,8 +1257,24 @@ describe("projectGraphVerticalSliceService", () => {
       expect(brief.building_type).not.toBe("dwelling");
       expect(brief.building_type).not.toBe("detached-house");
       expect(spaces.map((space) => space.name).join(" ")).not.toMatch(
-        /bedroom|living room|kitchen\/dining/i,
+        /principal bedroom|living room|kitchen dining|kitchen\/dining/i,
       );
+      expect(titleBlock.metadata).toEqual(
+        expect.objectContaining({
+          programmeLabel,
+          buildingType: canonicalBuildingType,
+          programmeTemplateKey: canonicalBuildingType,
+        }),
+      );
+      expect(titleBlock.svgString).toContain(programmeLabel.toUpperCase());
+      expect(keyNotes.metadata).toEqual(
+        expect.objectContaining({
+          programmeLabel,
+          buildingType: canonicalBuildingType,
+          programmeTemplateKey: canonicalBuildingType,
+        }),
+      );
+      expect(keyNotes.svgString).toContain(`Programme: ${programmeLabel}.`);
     },
   );
 
@@ -1268,7 +1356,7 @@ describe("projectGraphVerticalSliceService", () => {
 
   test("unknown building_type does not silently render as a dwelling and is flagged in template_provenance", async () => {
     const briefInput = createReadingRoomBrief();
-    briefInput.brief.building_type = "warehouse";
+    briefInput.brief.building_type = "data-center";
     briefInput.brief.project_name = "Unknown Type Smoke";
     const result = await buildArchitectureProjectVerticalSlice(briefInput);
 
@@ -1277,7 +1365,7 @@ describe("projectGraphVerticalSliceService", () => {
     );
     expect(
       result.projectGraph.programme.template_provenance.requested_building_type,
-    ).toBe("warehouse");
+    ).toBe("data-center");
     expect(
       result.projectGraph.programme.template_provenance.resolved_template,
     ).toBe("community");
