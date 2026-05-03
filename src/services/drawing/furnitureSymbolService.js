@@ -20,10 +20,17 @@ const TOKEN_PATTERNS = Object.freeze([
   { token: "wc", pattern: /\b(wc|toilet|cloak|powder)\b/i },
   { token: "basin", pattern: /\b(basin|wash|vanity|hand\s*wash)\b/i },
   { token: "kitchen_island", pattern: /\bisland\b/i },
-  { token: "kitchen_counter", pattern: /\bkitchen|utility|pantry\b/i },
+  { token: "kitchen_counter", pattern: /\bkitchen|pantry\b/i },
+  { token: "utility_appliances", pattern: /\butility\b/i },
   { token: "dining_table", pattern: /\bdining\b/i },
   { token: "bed", pattern: /\bbed(room)?|master\b/i },
+  { token: "wardrobe", pattern: /\b(wardrobe|closet|dressing)\b/i },
   { token: "sofa", pattern: /\b(living|lounge|sitting|family|reception)\b/i },
+  { token: "garage_doors", pattern: /\b(garage|carport)\b/i },
+  {
+    token: "hallway_runner",
+    pattern: /\b(hall(way)?|corridor|entrance|foyer|vestibule|porch)\b/i,
+  },
   // Bath has both basin + WC + tub; we render the bath block elsewhere
   // (existing renderer covers it). Skipping here to avoid double-render.
 ]);
@@ -173,6 +180,84 @@ function stairArrowSymbol(rect, theme) {
   </g>`;
 }
 
+function hallwayRunnerSymbol(rect, theme) {
+  // Subtle floor runner / threshold chevron — long thin rectangle along the
+  // long axis of the hall, centred. Conveys circulation direction without
+  // pretending we know furnishings the user has not specified.
+  const horizontal = rect.width >= rect.height;
+  const runnerLen = Math.min(
+    horizontal ? rect.width * 0.66 : rect.height * 0.66,
+    180,
+  );
+  const runnerWidth = Math.min(
+    horizontal ? rect.height * 0.16 : rect.width * 0.16,
+    18,
+  );
+  const cx = rect.x + rect.width / 2;
+  const cy = rect.y + rect.height / 2;
+  const x = horizontal ? cx - runnerLen / 2 : cx - runnerWidth / 2;
+  const y = horizontal ? cy - runnerWidth / 2 : cy - runnerLen / 2;
+  const w = horizontal ? runnerLen : runnerWidth;
+  const h = horizontal ? runnerWidth : runnerLen;
+  return `<g class="furniture-hallway-runner">
+    <rect x="${fmt(x)}" y="${fmt(y)}" width="${fmt(w)}" height="${fmt(h)}" fill="none" stroke="${theme.lineLight}" stroke-width="0.85" stroke-dasharray="4 3" rx="3" ry="3"/>
+  </g>`;
+}
+
+function garageDoorsSymbol(rect, theme) {
+  // Garage car-bay outline + segmented door at the front edge.
+  const bayW = Math.min(rect.width * 0.62, 110);
+  const bayH = Math.min(rect.height * 0.5, 80);
+  const x = rect.x + (rect.width - bayW) / 2;
+  const y = rect.y + (rect.height - bayH) / 2;
+  // Sectional garage door across the south edge of the bay.
+  const doorY = rect.y + rect.height - 8;
+  const doorX = rect.x + 10;
+  const doorW = rect.width - 20;
+  const panels = [];
+  for (let i = 1; i < 4; i += 1) {
+    const px = doorX + (doorW * i) / 4;
+    panels.push(
+      `<line x1="${fmt(px)}" y1="${fmt(doorY)}" x2="${fmt(px)}" y2="${fmt(doorY + 6)}" stroke="${theme.guide}" stroke-width="0.8"/>`,
+    );
+  }
+  return `<g class="furniture-garage">
+    <rect x="${fmt(x)}" y="${fmt(y)}" width="${fmt(bayW)}" height="${fmt(bayH)}" fill="none" stroke="${theme.lineLight}" stroke-width="0.95" stroke-dasharray="6 3" rx="2" ry="2"/>
+    <rect x="${fmt(doorX)}" y="${fmt(doorY)}" width="${fmt(doorW)}" height="6" fill="none" stroke="${theme.lineMuted}" stroke-width="1.1"/>
+    ${panels.join("")}
+  </g>`;
+}
+
+function utilityAppliancesSymbol(rect, theme) {
+  // Two stacked appliance boxes (washer + dryer or boiler + tank) along the
+  // wall closest to the top-left of the room.
+  const boxW = Math.min(rect.width * 0.32, 24);
+  const boxH = Math.min(rect.height * 0.34, 28);
+  const x = rect.x + 6;
+  const y = rect.y + 6;
+  const gap = 4;
+  return `<g class="furniture-utility">
+    <rect x="${fmt(x)}" y="${fmt(y)}" width="${fmt(boxW)}" height="${fmt(boxH)}" fill="none" stroke="${theme.lineLight}" stroke-width="0.95" rx="2" ry="2"/>
+    <circle cx="${fmt(x + boxW / 2)}" cy="${fmt(y + boxH / 2)}" r="${fmt(Math.min(boxW, boxH) / 4, 1)}" fill="none" stroke="${theme.guide}" stroke-width="0.7"/>
+    <rect x="${fmt(x + boxW + gap)}" y="${fmt(y)}" width="${fmt(boxW)}" height="${fmt(boxH)}" fill="none" stroke="${theme.lineLight}" stroke-width="0.95" rx="2" ry="2"/>
+    <circle cx="${fmt(x + boxW + gap + boxW / 2)}" cy="${fmt(y + boxH / 2)}" r="${fmt(Math.min(boxW, boxH) / 4, 1)}" fill="none" stroke="${theme.guide}" stroke-width="0.7"/>
+  </g>`;
+}
+
+function wardrobeSymbol(rect, theme) {
+  // Wardrobe block along the longest interior wall + diagonal indicator
+  // showing it is a closet (door slide or hinge swing direction).
+  const wW = Math.min(rect.width * 0.78, 120);
+  const wH = Math.min(rect.height * 0.18, 16);
+  const x = rect.x + (rect.width - wW) / 2;
+  const y = rect.y + 8;
+  return `<g class="furniture-wardrobe">
+    <rect x="${fmt(x)}" y="${fmt(y)}" width="${fmt(wW)}" height="${fmt(wH)}" fill="none" stroke="${theme.lineLight}" stroke-width="0.95"/>
+    <line x1="${fmt(x)}" y1="${fmt(y + wH)}" x2="${fmt(x + wW * 0.5)}" y2="${fmt(y)}" stroke="${theme.guide}" stroke-width="0.7"/>
+    <line x1="${fmt(x + wW * 0.5)}" y1="${fmt(y + wH)}" x2="${fmt(x + wW)}" y2="${fmt(y)}" stroke="${theme.guide}" stroke-width="0.7"/>
+  </g>`;
+}
+
 const SYMBOL_RENDERERS = Object.freeze({
   sofa: sofaSymbol,
   bed: bedSymbol,
@@ -182,6 +267,10 @@ const SYMBOL_RENDERERS = Object.freeze({
   wc: wcSymbol,
   basin: basinSymbol,
   stair_arrow: stairArrowSymbol,
+  hallway_runner: hallwayRunnerSymbol,
+  garage_doors: garageDoorsSymbol,
+  utility_appliances: utilityAppliancesSymbol,
+  wardrobe: wardrobeSymbol,
 });
 
 /**
@@ -190,11 +279,23 @@ const SYMBOL_RENDERERS = Object.freeze({
  * (svgPlanRenderer) decides whether to wrap the markup in a group; this
  * helper returns the inner SVG fragment only.
  */
+// Per-token minimum projected size (px) below which the symbol becomes
+// visual noise. Most furniture needs ~60×50 to read clearly; corridor
+// runners and small fixtures (WC, basin) only need ~30×30.
+const TOKEN_MIN_RECT = Object.freeze({
+  hallway_runner: { width: 30, height: 30 },
+  wc: { width: 36, height: 36 },
+  basin: { width: 36, height: 30 },
+  wardrobe: { width: 50, height: 40 },
+});
+const DEFAULT_MIN_RECT = Object.freeze({ width: 60, height: 50 });
+
 export function renderFurnitureSymbol(room, rect, theme) {
   if (!rect || !theme) return "";
-  if (rect.width < 60 || rect.height < 50) return "";
   const token = resolveFurnitureToken(room);
   if (!token) return "";
+  const minRect = TOKEN_MIN_RECT[token] || DEFAULT_MIN_RECT;
+  if (rect.width < minRect.width || rect.height < minRect.height) return "";
   const renderer = SYMBOL_RENDERERS[token];
   if (!renderer) return "";
   try {
@@ -205,4 +306,4 @@ export function renderFurnitureSymbol(room, rect, theme) {
 }
 
 export const FURNITURE_TOKENS = Object.freeze(Array.from(KNOWN_TOKENS));
-export const FURNITURE_SYMBOL_VERSION = "phase3-furniture-symbol-v1";
+export const FURNITURE_SYMBOL_VERSION = "phase3-furniture-symbol-v2";

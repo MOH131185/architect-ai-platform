@@ -517,6 +517,32 @@ function renderWindowMarkup(
       const gapB = project(b);
       const gapWidth = Math.max(6, thicknessM * scale + 2);
 
+      // Jamb ticks: short perpendicular marks (along the wall thickness
+      // direction) at each end of the opening, just inside the wall faces.
+      // They communicate the masonry jamb / reveal at the window frame and
+      // visually anchor the opening to the wall, which the bare double-line
+      // glass alone does not. Length = full wall thickness in px so the
+      // tick spans face-to-face.
+      const jambHalfPx = Math.max(3, (thicknessM * scale) / 2);
+      const jambNxPx = vectors.normal.x;
+      const jambNyPx = vectors.normal.y;
+      const jambStartFace1 = {
+        x: gapA.x + jambNxPx * jambHalfPx,
+        y: gapA.y + jambNyPx * jambHalfPx,
+      };
+      const jambStartFace2 = {
+        x: gapA.x - jambNxPx * jambHalfPx,
+        y: gapA.y - jambNyPx * jambHalfPx,
+      };
+      const jambEndFace1 = {
+        x: gapB.x + jambNxPx * jambHalfPx,
+        y: gapB.y + jambNyPx * jambHalfPx,
+      };
+      const jambEndFace2 = {
+        x: gapB.x - jambNxPx * jambHalfPx,
+        y: gapB.y - jambNyPx * jambHalfPx,
+      };
+
       return `
         <g class="plan-window" data-window-id="${escapeXml(windowElement.id || "")}">
           <line x1="${formatNumber(gapA.x)}" y1="${formatNumber(gapA.y)}" x2="${formatNumber(
@@ -541,6 +567,16 @@ function renderWindowMarkup(
           )}" x2="${formatNumber((b1.x + b2.x) / 2)}" y2="${formatNumber(
             (b1.y + b2.y) / 2,
           )}" stroke="${theme.lineLight}" stroke-width="0.8"/>
+          <line class="window-jamb-tick" x1="${formatNumber(jambStartFace1.x)}" y1="${formatNumber(
+            jambStartFace1.y,
+          )}" x2="${formatNumber(jambStartFace2.x)}" y2="${formatNumber(
+            jambStartFace2.y,
+          )}" stroke="${theme.line}" stroke-width="1.05" stroke-linecap="square"/>
+          <line class="window-jamb-tick" x1="${formatNumber(jambEndFace1.x)}" y1="${formatNumber(
+            jambEndFace1.y,
+          )}" x2="${formatNumber(jambEndFace2.x)}" y2="${formatNumber(
+            jambEndFace2.y,
+          )}" stroke="${theme.line}" stroke-width="1.05" stroke-linecap="square"/>
         </g>
       `;
     })
@@ -804,9 +840,124 @@ function renderNorthArrow(width, layout, theme, northRotationDeg = 0) {
   `;
 }
 
-function renderExternalDimensions(bounds, project, layout, width, theme) {
+function collectChainStops(rooms, axis, bounds) {
+  // Gather distinct edge coords from room bboxes along the requested axis.
+  // Returns sorted, deduplicated metres values clamped to bounds, used to
+  // render dimension chain ticks (each room edge becomes a witness line).
+  const lo = axis === "x" ? Number(bounds.min_x) : Number(bounds.min_y);
+  const hi = axis === "x" ? Number(bounds.max_x) : Number(bounds.max_y);
+  if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi <= lo) {
+    return [];
+  }
+  const set = new Set();
+  for (const room of rooms || []) {
+    const bbox = resolveRoomBBox(room);
+    const edges =
+      axis === "x"
+        ? [Number(bbox.min_x), Number(bbox.max_x)]
+        : [Number(bbox.min_y), Number(bbox.max_y)];
+    for (const edge of edges) {
+      if (!Number.isFinite(edge)) continue;
+      if (edge <= lo + 1e-3 || edge >= hi - 1e-3) continue;
+      // Quantise to mm so floating-point dust doesn't create near-duplicates.
+      set.add(Math.round(edge * 1000));
+    }
+  }
+  return Array.from(set)
+    .map((v) => v / 1000)
+    .sort((a, b) => a - b);
+}
+
+function renderHorizontalChain({ bounds, rooms, project, topY, theme }) {
+  const stops = collectChainStops(rooms, "x", bounds);
+  if (!stops.length) {
+    return { markup: "", segmentCount: 0 };
+  }
+  const chainY = topY + 14;
+  const allStops = [Number(bounds.min_x), ...stops, Number(bounds.max_x)];
+  const parts = [];
+  // Witness ticks for each interior stop (the start/end ticks already exist
+  // from the overall dimension band).
+  for (const stopX of stops) {
+    const px = project({ x: stopX, y: bounds.min_y });
+    parts.push(
+      `<line x1="${formatNumber(px.x)}" y1="${formatNumber(chainY - 3)}" x2="${formatNumber(px.x)}" y2="${formatNumber(chainY + 3)}" stroke="${theme.line}" stroke-width="1.0"/>`,
+    );
+  }
+  // Chain bar across all stops.
+  const chainStart = project({ x: allStops[0], y: bounds.min_y });
+  const chainEnd = project({
+    x: allStops[allStops.length - 1],
+    y: bounds.min_y,
+  });
+  parts.push(
+    `<line x1="${formatNumber(chainStart.x)}" y1="${formatNumber(chainY)}" x2="${formatNumber(chainEnd.x)}" y2="${formatNumber(chainY)}" stroke="${theme.lineMuted}" stroke-width="0.95"/>`,
+  );
+  // Per-segment metre labels.
+  for (let i = 0; i < allStops.length - 1; i += 1) {
+    const a = allStops[i];
+    const b = allStops[i + 1];
+    const segM = b - a;
+    if (segM <= 0.01) continue;
+    const ax = project({ x: a, y: bounds.min_y }).x;
+    const bx = project({ x: b, y: bounds.min_y }).x;
+    parts.push(
+      `<text x="${formatNumber((ax + bx) / 2)}" y="${formatNumber(chainY + 12)}" font-size="8" font-family="Arial, sans-serif" text-anchor="middle" fill="${theme.lineMuted}">${escapeXml(formatMeters(segM))}</text>`,
+    );
+  }
+  return { markup: parts.join(""), segmentCount: allStops.length - 1 };
+}
+
+function renderVerticalChain({ bounds, rooms, project, rightX, theme }) {
+  const stops = collectChainStops(rooms, "y", bounds);
+  if (!stops.length) {
+    return { markup: "", segmentCount: 0 };
+  }
+  const chainX = rightX - 14;
+  const allStops = [Number(bounds.min_y), ...stops, Number(bounds.max_y)];
+  const parts = [];
+  for (const stopY of stops) {
+    const py = project({ x: bounds.max_x, y: stopY });
+    parts.push(
+      `<line x1="${formatNumber(chainX - 3)}" y1="${formatNumber(py.y)}" x2="${formatNumber(chainX + 3)}" y2="${formatNumber(py.y)}" stroke="${theme.line}" stroke-width="1.0"/>`,
+    );
+  }
+  const chainStart = project({ x: bounds.max_x, y: allStops[0] });
+  const chainEnd = project({
+    x: bounds.max_x,
+    y: allStops[allStops.length - 1],
+  });
+  parts.push(
+    `<line x1="${formatNumber(chainX)}" y1="${formatNumber(chainStart.y)}" x2="${formatNumber(chainX)}" y2="${formatNumber(chainEnd.y)}" stroke="${theme.lineMuted}" stroke-width="0.95"/>`,
+  );
+  for (let i = 0; i < allStops.length - 1; i += 1) {
+    const a = allStops[i];
+    const b = allStops[i + 1];
+    const segM = b - a;
+    if (segM <= 0.01) continue;
+    const ay = project({ x: bounds.max_x, y: a }).y;
+    const by = project({ x: bounds.max_x, y: b }).y;
+    const midY = (ay + by) / 2;
+    parts.push(
+      `<text x="${formatNumber(chainX - 6)}" y="${formatNumber(midY)}" font-size="8" font-family="Arial, sans-serif" text-anchor="middle" fill="${theme.lineMuted}" transform="rotate(90 ${formatNumber(chainX - 6)} ${formatNumber(midY)})">${escapeXml(formatMeters(segM))}</text>`,
+    );
+  }
+  return { markup: parts.join(""), segmentCount: allStops.length - 1 };
+}
+
+function renderExternalDimensions(
+  bounds,
+  project,
+  layout,
+  width,
+  theme,
+  options = {},
+) {
   if (!bounds?.width || !bounds?.height) {
-    return "";
+    return {
+      markup: "",
+      chain: { horizontalSegmentCount: 0, verticalSegmentCount: 0 },
+    };
   }
 
   const topLeft = project({ x: bounds.min_x, y: bounds.min_y });
@@ -815,7 +966,23 @@ function renderExternalDimensions(bounds, project, layout, width, theme) {
   const topY = layout.top - 16;
   const rightX = width - layout.right + 22;
 
-  return `
+  const rooms = Array.isArray(options.rooms) ? options.rooms : [];
+  const horizontalChain = renderHorizontalChain({
+    bounds,
+    rooms,
+    project,
+    topY,
+    theme,
+  });
+  const verticalChain = renderVerticalChain({
+    bounds,
+    rooms,
+    project,
+    rightX,
+    theme,
+  });
+
+  const markup = `
     <g id="external-dimensions">
       <line x1="${formatNumber(topLeft.x)}" y1="${formatNumber(
         topLeft.y,
@@ -880,8 +1047,18 @@ function renderExternalDimensions(bounds, project, layout, width, theme) {
       )} ${formatNumber(
         (topRight.y + bottomRight.y) / 2,
       )})" text-anchor="middle">${escapeXml(formatMeters(bounds.height))}</text>
+      ${horizontalChain.markup ? `<g class="dimension-chain horizontal">${horizontalChain.markup}</g>` : ""}
+      ${verticalChain.markup ? `<g class="dimension-chain vertical">${verticalChain.markup}</g>` : ""}
     </g>
   `;
+
+  return {
+    markup,
+    chain: {
+      horizontalSegmentCount: horizontalChain.segmentCount,
+      verticalSegmentCount: verticalChain.segmentCount,
+    },
+  };
 }
 
 function renderScaleBar(
@@ -937,6 +1114,87 @@ function renderScaleBar(
       </g>
     `,
     barMeters,
+  };
+}
+
+function renderSectionMarkers(sections, project, theme) {
+  // Render plan-side section call-out markers (A-A, B-B, …) for each section
+  // candidate in compiledProject.sections that carries a usable cutLine.
+  // Convention: a heavy dashed line traces the cut, with a circle + capital
+  // letter at each end. Letters are assigned deterministically by section
+  // type then id, so the same compiledProject input always renders A-A as
+  // the longitudinal cut and B-B as the transverse cut.
+  if (!Array.isArray(sections) || !sections.length) {
+    return { markup: "", count: 0, labels: [] };
+  }
+  const usable = sections
+    .map((entry) => entry || {})
+    .filter((section) => {
+      const cut = section?.cutLine;
+      return (
+        cut &&
+        Number.isFinite(Number(cut.from?.x)) &&
+        Number.isFinite(Number(cut.from?.y)) &&
+        Number.isFinite(Number(cut.to?.x)) &&
+        Number.isFinite(Number(cut.to?.y))
+      );
+    })
+    .sort((left, right) => {
+      // longitudinal → transverse → other; tie-break on id for determinism.
+      const order = (s) =>
+        s.sectionType === "longitudinal"
+          ? 0
+          : s.sectionType === "transverse"
+            ? 1
+            : 2;
+      const delta = order(left) - order(right);
+      if (delta !== 0) return delta;
+      return String(left.id || "").localeCompare(String(right.id || ""));
+    });
+  if (!usable.length) {
+    return { markup: "", count: 0, labels: [] };
+  }
+  const letters = ["A", "B", "C", "D", "E", "F"];
+  const labels = [];
+  const parts = usable.slice(0, letters.length).map((section, index) => {
+    const letter = letters[index];
+    const from = project({
+      x: Number(section.cutLine.from.x),
+      y: Number(section.cutLine.from.y),
+    });
+    const to = project({
+      x: Number(section.cutLine.to.x),
+      y: Number(section.cutLine.to.y),
+    });
+    // Direction-of-view arrowheads point perpendicular to the cut, towards
+    // the side of the plan being drawn. Default to "down" for transverse
+    // (looking south) and "right" for longitudinal (looking east) — this
+    // matches the most common architectural convention for unspecified
+    // section view directions.
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const length = Math.hypot(dx, dy) || 1;
+    const ux = dx / length;
+    const uy = dy / length;
+    // Perpendicular (rotated 90° CW in screen coords).
+    const px = -uy;
+    const py = ux;
+    const tickLen = 8;
+    labels.push(`${letter}-${letter}`);
+    return `<g class="section-marker" data-section-id="${escapeXml(section.id || "")}" data-section-type="${escapeXml(section.sectionType || "")}" data-section-letter="${letter}">
+      <line x1="${formatNumber(from.x)}" y1="${formatNumber(from.y)}" x2="${formatNumber(to.x)}" y2="${formatNumber(to.y)}" stroke="${theme.line}" stroke-width="1.4" stroke-dasharray="10 4 2 4"/>
+      <circle cx="${formatNumber(from.x)}" cy="${formatNumber(from.y)}" r="9" fill="${theme.paper}" stroke="${theme.line}" stroke-width="1.3"/>
+      <circle cx="${formatNumber(to.x)}" cy="${formatNumber(to.y)}" r="9" fill="${theme.paper}" stroke="${theme.line}" stroke-width="1.3"/>
+      <text x="${formatNumber(from.x)}" y="${formatNumber(from.y + 4)}" font-size="11" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" fill="${theme.line}">${letter}</text>
+      <text x="${formatNumber(to.x)}" y="${formatNumber(to.y + 4)}" font-size="11" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" fill="${theme.line}">${letter}</text>
+      <line x1="${formatNumber(from.x + px * tickLen)}" y1="${formatNumber(from.y + py * tickLen)}" x2="${formatNumber(from.x + px * (tickLen + 6))}" y2="${formatNumber(from.y + py * (tickLen + 6))}" stroke="${theme.line}" stroke-width="1.2"/>
+      <line x1="${formatNumber(to.x + px * tickLen)}" y1="${formatNumber(to.y + py * tickLen)}" x2="${formatNumber(to.x + px * (tickLen + 6))}" y2="${formatNumber(to.y + py * (tickLen + 6))}" stroke="${theme.line}" stroke-width="1.2"/>
+    </g>`;
+  });
+  return {
+    markup: `<g id="plan-section-markers">${parts.join("")}</g>`,
+    count: parts.length,
+    labels,
   };
 }
 
@@ -1100,13 +1358,15 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
   const buildableOutline = includeSiteContext
     ? polygonPath(geometry.site?.buildable_polygon || [], project)
     : "";
-  const dimensionMarkup = renderExternalDimensions(
+  const dimensionResult = renderExternalDimensions(
     bounds,
     project,
     layout,
     width,
     theme,
+    { rooms: levelRooms },
   );
+  const dimensionMarkup = dimensionResult.markup;
   const scaleBar = renderScaleBar(
     transform.scale,
     width,
@@ -1124,6 +1384,17 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
       })
     : "";
   const furnitureHints = renderFurnitureHints(levelRooms, project, theme);
+  // Section markers (A-A, B-B) — render the global section cuts on every
+  // level's plan, which matches standard architectural practice (the cut
+  // runs through the full building, not per-storey). When a section is
+  // explicitly scoped to a single level via `level_id`, we honour that.
+  // Sorting + letter assignment is deterministic inside renderSectionMarkers.
+  const levelSections = (geometry.sections || []).filter((section) => {
+    if (!section?.cutLine) return false;
+    if (section.level_id && section.level_id !== level.id) return false;
+    return true;
+  });
+  const sectionMarkers = renderSectionMarkers(levelSections, project, theme);
   const doorCount = doorEntries.length;
   const windowCount = windowEntries.length;
   const stairCount = stairEntries.length;
@@ -1159,6 +1430,7 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
   ${circulationMarkup ? `<g id="plan-circulation">${circulationMarkup}</g>` : ""}
   ${stairMarkup ? `<g id="plan-stairs">${stairMarkup}</g>` : ""}
   ${roomLabelMarkup ? `<g id="plan-room-labels">${roomLabelMarkup}</g>` : ""}
+  ${sectionMarkers.markup}
   ${dimensionMarkup}
   ${!sheetMode ? renderNorthArrow(width, layout, theme, geometry.site?.north_orientation_deg || 0) : ""}
   ${titleBlock}
@@ -1193,12 +1465,19 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
       has_scale_bar: true,
       furniture_hint_count: furnitureHints.count,
       door_swing_count: doorCount,
+      window_jamb_tick_count: windowCount * 2,
       plan_density_score: Number(roomDensityScore.toFixed(3)),
       bounds_source: boundsSource,
       blueprint_theme: theme.name,
       slot_occupancy_ratio: slotOccupancyRatio,
       sheet_occupancy_quality: slotOccupancyRatio >= 0.55 ? "strong" : "weak",
       scale_bar_meters: scaleBar.barMeters,
+      section_marker_count: sectionMarkers.count,
+      section_marker_labels: sectionMarkers.labels,
+      dimension_chain_horizontal_segments:
+        dimensionResult.chain.horizontalSegmentCount,
+      dimension_chain_vertical_segments:
+        dimensionResult.chain.verticalSegmentCount,
       line_hierarchy: {
         exterior_wall: 2.05,
         interior_wall: 1.28,
