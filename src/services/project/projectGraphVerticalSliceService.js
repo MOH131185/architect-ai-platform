@@ -46,6 +46,7 @@ import {
 import { isFeatureEnabled } from "../../config/featureFlags.js";
 import { getSiteSnapshotWithMetadata } from "../siteMapSnapshotService.js";
 import { computeSunPath } from "../climate/sunPath.js";
+import weatherService from "../weatherService.js";
 import { listSourceDocumentsForParts } from "../regulation/sourceRegistry.js";
 import {
   resolveJurisdiction,
@@ -3938,7 +3939,18 @@ async function resolveSiteMapSnapshot({ input = {}, brief, site }) {
   }
 }
 
-function buildClimatePack(brief, site) {
+function buildClimatePack(brief, site, options = {}) {
+  // Phase 3: optional `weather` is the result of weatherService.getClimateData()
+  // (Met Office → Open-Meteo → OpenWeather chain). When present, it supplies
+  // wind / rainfall facts and brings WEATHER_AUTHORITY_* + WEATHER_PROVIDER_*
+  // codes into climate.data_quality. Climate keeps its own data_quality array
+  // by design (Plan-agent ruling, Phase 1) — we do NOT merge weather codes
+  // into site.data_quality. The slice's provenanceManifest reads
+  // climate.providers separately.
+  const weather =
+    options.weather && typeof options.weather === "object"
+      ? options.weather
+      : null;
   let sunPath = null;
   let sunPathError = null;
   try {
@@ -3972,13 +3984,38 @@ function buildClimatePack(brief, site) {
       passiveMoves.push(note);
     }
   }
-  const dataQuality = [
-    {
+  const dataQuality = [];
+  // Live-weather-or-fallback messaging on data_quality.
+  if (
+    weather &&
+    weather.provider &&
+    weather.provider !== "deterministic-fallback"
+  ) {
+    dataQuality.push({
+      code: "CLIMATE_PACK_WEATHER_LIVE",
+      severity: "info",
+      message: `Live weather supplied by ${weather.provider} (authority=${weather.authority}).`,
+      source: weather.provider,
+    });
+  } else {
+    dataQuality.push({
       code: "CLIMATE_PACK_WEATHER_FALLBACK",
       severity: "warning",
-      message: "No live weather source was used in this vertical slice.",
-    },
-  ];
+      message: weather
+        ? "All weather providers failed; deterministic fallback used."
+        : "No live weather source was used in this vertical slice.",
+    });
+  }
+  // Forward the chain's own data_quality entries onto the climate pack so QA
+  // can read WEATHER_AUTHORITY_* / WEATHER_PROVIDER_FALLBACK / *_TIMEOUT /
+  // *_ERROR codes alongside the climate-pack-level entries above.
+  if (weather && Array.isArray(weather.data_quality)) {
+    for (const entry of weather.data_quality) {
+      if (entry && typeof entry === "object" && entry.code) {
+        dataQuality.push(entry);
+      }
+    }
+  }
   if (sunPathError) {
     dataQuality.push({
       code: "SUN_PATH_COMPUTATION_FAILED",
@@ -3993,10 +4030,16 @@ function buildClimatePack(brief, site) {
         "Sun path computed deterministically from site lat/lon via suncalc.",
     });
   }
+  const usingLiveWeather = Boolean(
+    weather &&
+    weather.provider &&
+    weather.provider !== "deterministic-fallback",
+  );
   return {
     lat: site.lat,
     lon: site.lon,
-    weather_source: "fallback",
+    weather_source: usingLiveWeather ? weather.provider : "fallback",
+    weather_authority: weather?.authority || (usingLiveWeather ? "low" : null),
     weather_file_asset_id: null,
     climate_projection_refs: [
       "UKCP18 reference required before production use",
@@ -4016,14 +4059,24 @@ function buildClimatePack(brief, site) {
           orientation_note:
             "Sun-path computation failed; defaulting to UK southern-glazing heuristic.",
         },
-    wind: {
-      exposure: "unknown",
-      source: "fallback",
-    },
-    rainfall: {
-      exposure: "uk_temperate_assumption",
-      source: "fallback",
-    },
+    wind:
+      usingLiveWeather && weather.wind
+        ? {
+            exposure: weather.wind.cardinal || "unknown",
+            source: weather.provider,
+            speed: weather.wind.speed ?? null,
+            direction: weather.wind.direction ?? null,
+            unit: weather.wind.unit || null,
+          }
+        : { exposure: "unknown", source: "fallback" },
+    rainfall:
+      usingLiveWeather && weather.precipitation
+        ? {
+            exposure: "live_provider_24h",
+            source: weather.provider,
+            daily_mm: weather.precipitation.daily ?? 0,
+          }
+        : { exposure: "uk_temperate_assumption", source: "fallback" },
     overheating: {
       risk_level: overheatingRisk,
       part_o_required: brief.building_type === "dwelling",
@@ -4040,6 +4093,8 @@ function buildClimatePack(brief, site) {
       "Select robust UK external materials and detail exposed edges for rain.",
     ],
     data_quality: dataQuality,
+    providers:
+      weather && Array.isArray(weather.providers) ? weather.providers : [],
   };
 }
 
@@ -10068,14 +10123,36 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
   // enrichSiteContext so the resulting `site` always carries the providers
   // manifest. The aggregator handles the offline / browser-guard / bad-coords
   // branches internally and stamps the appropriate data_quality codes.
-  const site = await enrichSiteContext(
-    deterministicSite,
-    input.contextProviders || {},
+  //
+  // Phase 3: weather is pulled in parallel via the Met Office → Open-Meteo →
+  // OpenWeather chain when context providers are enabled. The chain itself
+  // is server-only and falls back to deterministic data on any failure, so
+  // the slice never fails on weather alone. buildClimatePack stays sync —
+  // we resolve the weather promise first and pass the result in.
+  const contextProviderOptions = input.contextProviders || {};
+  const providersEnabled = Boolean(
+    contextProviderOptions.fetchImpl ||
+    contextProviderOptions.useDefaultFetch === true,
   );
+  const detLat = Number(deterministicSite?.lat);
+  const detLon = Number(deterministicSite?.lon);
+  const weatherFetchPromise =
+    providersEnabled && Number.isFinite(detLat) && Number.isFinite(detLon)
+      ? weatherService.getClimateData(detLat, detLon, {
+          fetchImpl: contextProviderOptions.fetchImpl,
+          providerTimeoutMs: contextProviderOptions.providerTimeoutMs,
+          metOfficeApiKey: contextProviderOptions.metOfficeApiKey,
+          openWeatherApiKey: contextProviderOptions.openWeatherApiKey,
+        })
+      : Promise.resolve(null);
+  const [site, weather] = await Promise.all([
+    enrichSiteContext(deterministicSite, contextProviderOptions),
+    weatherFetchPromise,
+  ]);
   __vsMark = __vsLog("site_context", __vsMark);
   const siteMapSnapshot = await resolveSiteMapSnapshot({ input, brief, site });
   __vsMark = __vsLog("site_map_snapshot", __vsMark);
-  const climate = buildClimatePack(brief, site);
+  const climate = buildClimatePack(brief, site, { weather });
   const regulationsMetadata = buildRegulationPack(brief);
   const localStyle = buildLocalStylePack(brief, site, climate);
   const draftProgramme = buildProgramme({
