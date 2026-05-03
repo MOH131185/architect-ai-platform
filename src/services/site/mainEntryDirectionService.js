@@ -41,15 +41,60 @@ function bearingFromEdge(edge) {
   if (!edge || !Array.isArray(edge.start) || !Array.isArray(edge.end)) {
     return null;
   }
-  // Caller may pass [lng, lat] or [x, y] — the bearing math just needs a
-  // consistent orientation; we use atan2 on the deltas.
   const dx = Number(edge.end[0]) - Number(edge.start[0]);
   const dy = Number(edge.end[1]) - Number(edge.start[1]);
   if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
     return null;
   }
-  const radians = Math.atan2(dy, dx);
+  // Compass bearing: 0 = north, 90 = east.
+  const radians = Math.atan2(dx, dy);
   return ((radians * 180) / Math.PI + 360) % 360;
+}
+
+function polygonSignedArea(sitePolygon) {
+  if (!Array.isArray(sitePolygon) || sitePolygon.length < 3) return 0;
+  let sum = 0;
+  for (let i = 0; i < sitePolygon.length; i += 1) {
+    const a = sitePolygon[i];
+    const b = sitePolygon[(i + 1) % sitePolygon.length];
+    sum += Number(a.lng) * Number(b.lat) - Number(b.lng) * Number(a.lat);
+  }
+  return sum / 2;
+}
+
+function edgeId(index) {
+  return Number.isFinite(Number(index)) ? `edge-${Number(index)}` : null;
+}
+
+function makeResult({
+  orientation,
+  bearingDeg,
+  frontageEdgeId = null,
+  mainEntryEdgeId = null,
+  source,
+  confidence,
+  warnings = [],
+  rationale = [],
+  edgeIndex = null,
+  label = null,
+}) {
+  const normalizedBearing = ((Number(bearingDeg) % 360) + 360) % 360;
+  const normalizedOrientation =
+    orientation || bearingToCardinalFull(normalizedBearing);
+  return {
+    orientation: normalizedOrientation,
+    bearingDeg: normalizedBearing,
+    frontageEdgeId,
+    mainEntryEdgeId,
+    source,
+    confidence,
+    warnings,
+    direction: normalizedOrientation,
+    bearing: normalizedBearing,
+    rationale,
+    label: label || capitalize(normalizedOrientation),
+    edgeIndex,
+  };
 }
 
 /**
@@ -65,12 +110,15 @@ function bearingFromEdge(edge) {
  * @param {string} [input.manualDirection] - Direct cardinal override
  *   (e.g. "north", "south"). Wins over manualEdgeIndex if both are present.
  * @returns {{
+ *   orientation: string,
+ *   bearingDeg: number,
+ *   frontageEdgeId: string|null,
+ *   mainEntryEdgeId: string|null,
+ *   source: 'manual'|'inferred'|'fallback',
+ *   confidence: number,
+ *   warnings: Array<string>,
  *   direction: string,
  *   bearing: number,
- *   confidence: number,
- *   rationale: Array<object>,
- *   label: string,
- *   source: 'manual'|'inferred'|'fallback',
  *   edgeIndex: number|null
  * }}
  */
@@ -86,9 +134,10 @@ export function resolveMainEntryDirection({
     const normalized =
       shortDirectionToFull(manualDirection) ||
       String(manualDirection).toLowerCase().trim();
-    return {
-      direction: normalized,
-      bearing: bearingFromCardinalLabel(normalized),
+    const bearingDeg = bearingFromCardinalLabel(normalized);
+    return makeResult({
+      orientation: normalized,
+      bearingDeg,
       confidence: 1,
       rationale: [
         {
@@ -97,10 +146,10 @@ export function resolveMainEntryDirection({
           message: `Manual override: main entry on the ${normalized} side`,
         },
       ],
-      label: capitalize(normalized),
       source: "manual",
       edgeIndex: null,
-    };
+      label: capitalize(normalized),
+    });
   }
 
   // Manual edge selection: derive the outward bearing perpendicular to the
@@ -125,12 +174,17 @@ export function resolveMainEntryDirection({
         end: [Number(end.lng), Number(end.lat)],
       });
       if (Number.isFinite(edgeBearing)) {
-        // Outward bearing perpendicular to the edge (right-hand side).
-        const outward = (edgeBearing + 90 + 360) % 360;
+        // Outward bearing perpendicular to the edge. For counter-clockwise
+        // rings the interior lies to the left, so outward is to the right.
+        const isCounterClockwise = polygonSignedArea(sitePolygon) > 0;
+        const outward =
+          (edgeBearing + (isCounterClockwise ? 90 : -90) + 360) % 360;
         const direction = bearingToCardinalFull(outward);
-        return {
-          direction,
-          bearing: outward,
+        return makeResult({
+          orientation: direction,
+          bearingDeg: outward,
+          frontageEdgeId: edgeId(idx),
+          mainEntryEdgeId: edgeId(idx),
           confidence: 1,
           rationale: [
             {
@@ -139,10 +193,10 @@ export function resolveMainEntryDirection({
               message: `Manual override: main entry on edge ${idx} (${direction})`,
             },
           ],
-          label: capitalize(direction),
           source: "manual",
           edgeIndex: idx,
-        };
+          label: capitalize(direction),
+        });
       }
     }
   }
@@ -155,21 +209,30 @@ export function resolveMainEntryDirection({
       sunPath,
     });
     if (inferred) {
-      return {
-        direction: shortDirectionToFull(inferred.direction) || inferred.label,
-        bearing: Number(inferred.bearing) || 0,
+      const bearingDeg = Number(inferred.bearing) || 0;
+      const orientation =
+        shortDirectionToFull(inferred.direction) ||
+        String(inferred.label || "")
+          .toLowerCase()
+          .trim() ||
+        bearingToCardinalFull(bearingDeg);
+      return makeResult({
+        orientation,
+        bearingDeg,
         confidence: Number(inferred.confidence) || 0.5,
         rationale: inferred.rationale || [],
-        label: inferred.label || "North",
         source: "inferred",
         edgeIndex: null,
-      };
+        frontageEdgeId: inferred.frontageEdgeId || null,
+        mainEntryEdgeId: inferred.mainEntryEdgeId || null,
+        label: inferred.label || capitalize(orientation),
+      });
     }
   }
 
-  return {
-    direction: "north",
-    bearing: 0,
+  return makeResult({
+    orientation: "north",
+    bearingDeg: 0,
     confidence: 0.2,
     rationale: [
       {
@@ -178,10 +241,11 @@ export function resolveMainEntryDirection({
         message: "No site polygon available; defaulting to north",
       },
     ],
-    label: "North",
     source: "fallback",
     edgeIndex: null,
-  };
+    label: "North",
+    warnings: ["No site polygon available; defaulting to north."],
+  });
 }
 
 function bearingFromCardinalLabel(label) {

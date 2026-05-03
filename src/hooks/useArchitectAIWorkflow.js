@@ -99,6 +99,23 @@ function compactLatLngPolygon(polygon = []) {
   return normalized.length >= 3 ? normalized : [];
 }
 
+function compactMainEntry(entry = null) {
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+  const bearingDeg = Number(entry.bearingDeg ?? entry.bearing);
+  const confidence = Number(entry.confidence);
+  return {
+    orientation: entry.orientation || entry.direction || null,
+    bearingDeg: Number.isFinite(bearingDeg) ? bearingDeg : null,
+    frontageEdgeId: entry.frontageEdgeId || null,
+    mainEntryEdgeId: entry.mainEntryEdgeId || null,
+    source: entry.source || null,
+    confidence: Number.isFinite(confidence) ? confidence : null,
+    warnings: Array.isArray(entry.warnings) ? entry.warnings : [],
+  };
+}
+
 function buildManifestPanels(multiPanelResult = {}) {
   const entries = {};
   const panelMap =
@@ -243,6 +260,10 @@ function compactSiteSnapshotForRequest(siteSnapshot = null) {
       contextualBoundaryPolygon: compactLatLngPolygon(
         siteSnapshot.metadata?.contextualBoundaryPolygon || [],
       ),
+      mainEntry: compactMainEntry(siteSnapshot.metadata?.mainEntry),
+      mainEntryDirection: compactMainEntry(
+        siteSnapshot.metadata?.mainEntryDirection,
+      ),
       sunPath: siteSnapshot.metadata?.sunPath || null,
       wind: siteSnapshot.metadata?.wind || null,
       climateSummary: siteSnapshot.metadata?.climateSummary || null,
@@ -283,6 +304,8 @@ function compactLocationDataForRequest(locationData = {}) {
       locationData.boundaryConfidence ??
       locationData.siteAnalysis?.boundaryConfidence ??
       null,
+    mainEntry: compactMainEntry(locationData.mainEntry),
+    mainEntryDirection: compactMainEntry(locationData.mainEntryDirection),
     estimatedSiteBoundary: compactLatLngPolygon(
       locationData.estimatedSiteBoundary || [],
     ),
@@ -295,6 +318,8 @@ function compactLocationDataForRequest(locationData = {}) {
     siteAnalysis: locationData.siteAnalysis
       ? {
           area: locationData.siteAnalysis.area || null,
+          areaM2: locationData.siteAnalysis.areaM2 || null,
+          surfaceAreaM2: locationData.siteAnalysis.surfaceAreaM2 || null,
           shape: locationData.siteAnalysis.shape || null,
           confidence: locationData.siteAnalysis.confidence || null,
           source: locationData.siteAnalysis.source || null,
@@ -315,6 +340,10 @@ function compactLocationDataForRequest(locationData = {}) {
           surfaceArea: locationData.siteAnalysis.surfaceArea || null,
           estimatedSurfaceArea:
             locationData.siteAnalysis.estimatedSurfaceArea || null,
+          mainEntry: compactMainEntry(locationData.siteAnalysis.mainEntry),
+          mainEntryDirection: compactMainEntry(
+            locationData.siteAnalysis.mainEntryDirection,
+          ),
           estimatedSiteBoundary: compactLatLngPolygon(
             locationData.siteAnalysis.estimatedSiteBoundary || [],
           ),
@@ -629,6 +658,15 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
     : compactSitePolygon.length >= 3
       ? compactSitePolygon
       : compactSiteSnapshot?.sitePolygon || [];
+  const requestMainEntry = compactMainEntry(
+    projectDetails.mainEntry ||
+      projectDetails.mainEntryDirection ||
+      designSpec.mainEntry ||
+      designSpec.mainEntryDirection ||
+      locationData?.mainEntry ||
+      locationData?.mainEntryDirection ||
+      compactSiteSnapshot?.metadata?.mainEntry,
+  );
 
   return {
     referenceMatch,
@@ -668,12 +706,19 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
         designSpec.entranceDirection ||
         designSpec.entranceOrientation ||
         null,
+      mainEntry: requestMainEntry,
+      mainEntryDirection: requestMainEntry,
+      mainEntryBearingDeg: requestMainEntry?.bearingDeg ?? null,
+      frontageEdgeId: requestMainEntry?.frontageEdgeId || null,
+      mainEntryEdgeId: requestMainEntry?.mainEntryEdgeId || null,
       pipelineVersion: designSpec.pipelineVersion || null,
     },
     locationData: compactLocationDataForRequest(locationData),
     siteSnapshot: compactSiteSnapshot,
     sitePolygon: requestSitePolygon,
     siteMetrics: requestSiteMetrics,
+    mainEntry: requestMainEntry,
+    mainEntryDirection: requestMainEntry,
     programSpaces: compactProgramSpacesForRequest(
       programSpaces,
       resolvedFloorCount,

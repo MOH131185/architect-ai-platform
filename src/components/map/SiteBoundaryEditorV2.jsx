@@ -31,6 +31,7 @@ import {
   boundsToGoogleBounds,
 } from "./mapUtils.js";
 import { closeRing, latLngPolygonsEqual } from "./boundaryGeometry.js";
+import { buildManualVerifiedBoundary } from "../../services/site/boundaryPolicy.js";
 import logger from "../../utils/logger.js";
 
 // Editor modes
@@ -115,6 +116,7 @@ export function SiteBoundaryEditorV2({
     vertices,
     polygon,
     metrics,
+    validation,
     canUndo,
     canRedo,
     setPolygon,
@@ -248,18 +250,36 @@ export function SiteBoundaryEditorV2({
         );
       }
 
-      onBoundaryChange({
+      const primaryFrontEdge = dominantEdge
+        ? {
+            index: dominantEdge.index,
+            length: dominantEdge.length,
+            bearing: dominantEdge.bearing,
+          }
+        : null;
+      const verifiedBoundary = buildManualVerifiedBoundary({
         polygon,
         metrics: formattedMetrics,
-        dna,
+        validation,
         geoJSON: exportGeoJSON(),
-        primaryFrontEdge: dominantEdge
-          ? {
-              index: dominantEdge.index,
-              length: dominantEdge.length,
-              bearing: dominantEdge.bearing,
-            }
-          : null,
+        primaryFrontEdge,
+      });
+
+      if (verifiedBoundary.invalid) {
+        setValidationWarning(
+          verifiedBoundary.warnings?.[0] ||
+            "Manual boundary is invalid and has not been verified.",
+        );
+      } else if (validationWarning) {
+        setValidationWarning(null);
+      }
+
+      onBoundaryChange({
+        ...verifiedBoundary,
+        metrics: formattedMetrics,
+        dna,
+        geoJSON: verifiedBoundary.geoJSON || exportGeoJSON(),
+        primaryFrontEdge,
       });
     }
   }, [
@@ -270,6 +290,8 @@ export function SiteBoundaryEditorV2({
     onBoundaryChange,
     polygon,
     polygonLength,
+    validation,
+    validationWarning,
   ]);
 
   // ============================================================
