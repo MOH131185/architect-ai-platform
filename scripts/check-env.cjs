@@ -118,6 +118,16 @@ const OPTIONAL_PRESENTATION = [
     description:
       "Local-dev only compatibility fallback for REACT_APP_OPENAI_API_KEY",
   },
+  {
+    name: "CONTEXT_PROVIDERS_ENABLED",
+    description:
+      "Tri-state. 'true' = enabled, 'false' = disabled, unset = enabled only on Vercel/production. Server-only.",
+  },
+  {
+    name: "CONTEXT_PROVIDERS_TIMEOUT_MS",
+    description:
+      "Per-provider timeout for the UK context aggregator. Defaults to 8000ms.",
+  },
 ];
 
 const LEGACY_OPTIONAL = [

@@ -172,6 +172,26 @@ describe("enrichSiteContext", () => {
     ).toBeTruthy();
   });
 
+  test("activated path with successful providers does NOT carry CONTEXT_PROVIDERS_OFFLINE", async () => {
+    const fetchImpl = mockJsonFetch({
+      "dataset=conservation-area": { body: { entities: [] } },
+      "dataset=listed-building": { body: { entities: [] } },
+      floodAreas: { body: { items: [] } },
+      "overpass-api": { body: { elements: [] } },
+    });
+    const baseSite = {
+      lat: 51.5,
+      lon: -0.1,
+      data_quality: [],
+      heritage_flags: [],
+    };
+    const enriched = await enrichSiteContext(baseSite, { fetchImpl });
+    const offline = enriched.data_quality.find(
+      (q) => q.code === "CONTEXT_PROVIDERS_OFFLINE",
+    );
+    expect(offline).toBeUndefined();
+  });
+
   test("merges provider results into site context when fetch is supplied", async () => {
     const fetchImpl = mockJsonFetch({
       "dataset=conservation-area": {
@@ -225,5 +245,128 @@ describe("enrichSiteContext", () => {
     expect(warnCodes).toEqual(
       expect.arrayContaining(["EA_FLOOD_LOOKUP_ERROR", "OSM_OVERPASS_ERROR"]),
     );
+  });
+
+  test("per-provider timeout emits *_TIMEOUT warnings and does NOT fail the slice", async () => {
+    // A fetch that never resolves; settleWithin should bound it and emit
+    // *_TIMEOUT codes for every provider that actually attempted fetch.
+    // OS MasterMap requires OS_MASTERMAP_API_KEY to attempt fetch — we set
+    // it here so all four providers exercise the timeout path.
+    const originalKey = process.env.OS_MASTERMAP_API_KEY;
+    process.env.OS_MASTERMAP_API_KEY = "test-os-mastermap-key";
+    try {
+      const fetchImpl = jest.fn(
+        () => new Promise(() => {}), // hang forever
+      );
+      const baseSite = {
+        lat: 51.5,
+        lon: -0.1,
+        data_quality: [],
+        heritage_flags: [],
+      };
+      const enriched = await enrichSiteContext(baseSite, {
+        fetchImpl,
+        providerTimeoutMs: 25,
+      });
+      const codes = enriched.data_quality.map((q) => q.code);
+      expect(codes).toEqual(
+        expect.arrayContaining([
+          "PLANNING_DATA_TIMEOUT",
+          "EA_FLOOD_LOOKUP_TIMEOUT",
+          "OS_MASTERMAP_TIMEOUT",
+          "OSM_OVERPASS_TIMEOUT",
+        ]),
+      );
+      // Slice did not throw and returned a usable site object.
+      expect(enriched.heritage_flags).toEqual([]);
+      expect(enriched.providers).toEqual(expect.any(Array));
+      expect(enriched.providers.every((p) => p.status === "timeout")).toBe(
+        true,
+      );
+    } finally {
+      if (originalKey === undefined) {
+        delete process.env.OS_MASTERMAP_API_KEY;
+      } else {
+        process.env.OS_MASTERMAP_API_KEY = originalKey;
+      }
+    }
+  });
+
+  test("provenance manifest carries name + authority + fetched_at + status for every provider", async () => {
+    const fetchImpl = mockJsonFetch({
+      "dataset=conservation-area": {
+        body: { entities: [{ entity: 1, name: "Test CA" }] },
+      },
+      "dataset=listed-building": { body: { entities: [] } },
+      floodAreas: { body: { items: [] } },
+      "overpass-api": {
+        body: {
+          elements: [{ id: 1, tags: { building: "yes", height: "10" } }],
+        },
+      },
+    });
+    const baseSite = {
+      lat: 51.5,
+      lon: -0.1,
+      data_quality: [],
+      heritage_flags: [],
+    };
+    const enriched = await enrichSiteContext(baseSite, { fetchImpl });
+    expect(enriched.providers).toEqual(expect.any(Array));
+    const names = enriched.providers.map((p) => p.name);
+    expect(names).toEqual(
+      expect.arrayContaining([
+        "planning.data.gov.uk",
+        "environment-agency-flood-monitoring",
+        "os-mastermap-building-heights",
+        "openstreetmap-overpass",
+      ]),
+    );
+    for (const p of enriched.providers) {
+      expect(typeof p.name).toBe("string");
+      expect(["high", "medium", "low"]).toContain(p.authority);
+      expect(["ok", "error", "timeout", "not_used"]).toContain(p.status);
+      expect(p).toHaveProperty("fetched_at");
+      expect(Array.isArray(p.fields_supplied)).toBe(true);
+    }
+    // No factual provider may be branded as OpenAI / GPT.
+    expect(enriched.providers.some((p) => /openai|gpt/i.test(p.name))).toBe(
+      false,
+    );
+  });
+
+  test("browser-runtime guard refuses to invoke providers", async () => {
+    // Simulate a real browser runtime: jsdom already defines window+document;
+    // we strip process.versions.node so isRealBrowserRuntime() returns true.
+    const originalNode = process.versions.node;
+    Object.defineProperty(process.versions, "node", {
+      value: undefined,
+      configurable: true,
+      writable: true,
+    });
+    try {
+      const fetchImpl = jest.fn(async () => {
+        throw new Error("network fetch must not be called in browser guard");
+      });
+      const baseSite = {
+        lat: 51.5,
+        lon: -0.1,
+        data_quality: [],
+        heritage_flags: [],
+      };
+      const enriched = await enrichSiteContext(baseSite, { fetchImpl });
+      expect(
+        enriched.data_quality.find(
+          (q) => q.code === "CONTEXT_PROVIDERS_BROWSER_GUARD",
+        ),
+      ).toBeTruthy();
+      expect(fetchImpl).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(process.versions, "node", {
+        value: originalNode,
+        configurable: true,
+        writable: true,
+      });
+    }
   });
 });

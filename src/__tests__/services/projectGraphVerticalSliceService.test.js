@@ -512,6 +512,33 @@ describe("projectGraphVerticalSliceService", () => {
         imageProviderUsed: "deterministic",
       }),
     );
+    // Phase 1 amendment #9: provenance manifest is always present on the
+    // result. siteDataProviders is empty in this offline run; the assertion
+    // proves OpenAI is not a factual provider (amendment #1).
+    expect(result.provenanceManifest).toEqual(
+      expect.objectContaining({
+        schema_version: "provenance-manifest-v1",
+        siteDataProviders: expect.any(Array),
+        climateDataProviders: expect.any(Array),
+        dataQuality: expect.any(Array),
+        factualProviderAssertion: expect.objectContaining({
+          openaiAsFactualProvider: false,
+          factualFieldsList: expect.arrayContaining([
+            "site.heritage_flags",
+            "site.flood_risk",
+            "climate.weather_source",
+          ]),
+        }),
+      }),
+    );
+    // Offline run never invoked any factual provider, so siteDataProviders is
+    // empty and the OFFLINE flag is in dataQuality.
+    expect(result.provenanceManifest.siteDataProviders).toEqual([]);
+    expect(
+      result.provenanceManifest.dataQuality.some(
+        (q) => q.code === "CONTEXT_PROVIDERS_OFFLINE",
+      ),
+    ).toBe(true);
     // Phase 5B — visual identity validation report attached to artifacts
     // and to sheet metadata. Deterministic-fallback path must not fail.
     // The validator is report-only; it never modifies the export gate

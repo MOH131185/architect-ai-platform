@@ -9513,44 +9513,48 @@ export function validateProjectGraphVerticalSlice({
       visuals3d[panelType] || findPanelArtifact(panelArtifacts, panelType);
     return artifact && artifact.source_model_hash !== geometryHash;
   });
-  const placeholder3dPanels = required3dPanelTypes.map((panelType) => {
-    const artifact =
-      visuals3d[panelType] || findPanelArtifact(panelArtifacts, panelType);
-    if (!artifact) return null;
-    const svg = artifact.svgString || "";
-    const svgLength = svg.length;
-    const strength = evaluateVisual3DArtifactStrength(artifact);
-    const baseDetails = {
-      panelType,
-      svgLength,
-      isGeometryLockedImage: strength.details.isGeometryLockedImage,
-      primitiveCount: strength.details.primitiveCount,
-      hasCamera: strength.details.hasCamera,
-      geometryElementCount: strength.details.geometryElementCount,
-      hasImagePayload: strength.details.hasImagePayload,
-      hashMatches: strength.details.hashMatches,
-      sourceGeometryHash:
-        artifact.metadata?.sourceGeometryHash ||
-        artifact.metadata?.renderProvenance?.sourceGeometryHash ||
-        null,
-      artifactGeometryHash:
-        artifact.source_model_hash || artifact.geometryHash || null,
-    };
-    if (artifact.metadata?.source === "placeholder") {
-      return { ...baseDetails, reason: "metadata_source_placeholder" };
-    }
-    if (!strength.details.isGeometryLockedImage && svgLength < 1200) {
-      return { ...baseDetails, reason: "svg_too_short" };
-    }
-    const placeholderScanSvg = stripEmbeddedImageDataForPlaceholderScan(svg);
-    if (/1x1|placeholder_3d|geometryRenderService/i.test(placeholderScanSvg)) {
-      return { ...baseDetails, reason: "regex_match_placeholder" };
-    }
-    if (!strength.ok) {
-      return { ...baseDetails, reason: strength.reason || "too_weak" };
-    }
-    return null;
-  }).filter(Boolean);
+  const placeholder3dPanels = required3dPanelTypes
+    .map((panelType) => {
+      const artifact =
+        visuals3d[panelType] || findPanelArtifact(panelArtifacts, panelType);
+      if (!artifact) return null;
+      const svg = artifact.svgString || "";
+      const svgLength = svg.length;
+      const strength = evaluateVisual3DArtifactStrength(artifact);
+      const baseDetails = {
+        panelType,
+        svgLength,
+        isGeometryLockedImage: strength.details.isGeometryLockedImage,
+        primitiveCount: strength.details.primitiveCount,
+        hasCamera: strength.details.hasCamera,
+        geometryElementCount: strength.details.geometryElementCount,
+        hasImagePayload: strength.details.hasImagePayload,
+        hashMatches: strength.details.hashMatches,
+        sourceGeometryHash:
+          artifact.metadata?.sourceGeometryHash ||
+          artifact.metadata?.renderProvenance?.sourceGeometryHash ||
+          null,
+        artifactGeometryHash:
+          artifact.source_model_hash || artifact.geometryHash || null,
+      };
+      if (artifact.metadata?.source === "placeholder") {
+        return { ...baseDetails, reason: "metadata_source_placeholder" };
+      }
+      if (!strength.details.isGeometryLockedImage && svgLength < 1200) {
+        return { ...baseDetails, reason: "svg_too_short" };
+      }
+      const placeholderScanSvg = stripEmbeddedImageDataForPlaceholderScan(svg);
+      if (
+        /1x1|placeholder_3d|geometryRenderService/i.test(placeholderScanSvg)
+      ) {
+        return { ...baseDetails, reason: "regex_match_placeholder" };
+      }
+      if (!strength.ok) {
+        return { ...baseDetails, reason: strength.reason || "too_weak" };
+      }
+      return null;
+    })
+    .filter(Boolean);
   addCheck(
     checks,
     "REQUIRED_3D_PANELS_PRESENT",
@@ -10060,14 +10064,14 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
         : siteBoundarySanity.estimatedGeoBoundary || [],
     ),
   });
-  // Plan §6.2 / §14: opt-in enrichment via Planning Data, EA flood, OSM. The
-  // slice stays offline-safe by default; callers pass fetchImpl or
-  // useDefaultFetch=true to invoke real providers.
-  const site =
-    input.contextProviders &&
-    (input.contextProviders.fetchImpl || input.contextProviders.useDefaultFetch)
-      ? await enrichSiteContext(deterministicSite, input.contextProviders)
-      : deterministicSite;
+  // Plan §6.2 / §14 + Phase 1 amendment #2: every slice run goes through
+  // enrichSiteContext so the resulting `site` always carries the providers
+  // manifest. The aggregator handles the offline / browser-guard / bad-coords
+  // branches internally and stamps the appropriate data_quality codes.
+  const site = await enrichSiteContext(
+    deterministicSite,
+    input.contextProviders || {},
+  );
   __vsMark = __vsLog("site_context", __vsMark);
   const siteMapSnapshot = await resolveSiteMapSnapshot({ input, brief, site });
   __vsMark = __vsLog("site_map_snapshot", __vsMark);
@@ -10801,12 +10805,53 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
   finalGraph.project_graph_hash = computeCDSHashSync(finalGraph);
   __vsLog("vertical_slice_done", __vsRunStart, `qa_status=${qa.status}`);
 
+  // Phase 1 amendment #9: provenance manifest. Surfaces the list of factual
+  // data providers used for the site (Phase 1) and climate (Phase 3 placeholder),
+  // a consolidated data_quality view, and a statically-derived assertion that
+  // OpenAI / LLMs are not used as factual providers (amendment #1).
+  const siteDataProviders = Array.isArray(site.providers) ? site.providers : [];
+  const climateDataProviders = Array.isArray(climate?.providers)
+    ? climate.providers
+    : [];
+  const consolidatedDataQuality = [
+    ...(site.data_quality || []),
+    ...(climate?.data_quality || []),
+  ];
+  const allProviderNames = [
+    ...siteDataProviders.map((p) => String(p?.name || "")),
+    ...climateDataProviders.map((p) => String(p?.name || "")),
+  ];
+  const openaiAsFactualProvider = allProviderNames.some((name) =>
+    /openai|gpt|chatgpt/i.test(name),
+  );
+  const provenanceManifest = {
+    schema_version: "provenance-manifest-v1",
+    siteDataProviders,
+    climateDataProviders,
+    dataQuality: consolidatedDataQuality,
+    factualProviderAssertion: {
+      openaiAsFactualProvider,
+      factualFieldsList: [
+        "site.heritage_flags",
+        "site.flood_risk",
+        "site.neighbouring_buildings",
+        "site.context_height_stats",
+        "climate.weather_source",
+        "climate.wind",
+        "climate.rainfall",
+      ],
+      assertion_message:
+        "OpenAI / LLM models are not used as factual providers for site, boundary, planning, flood, footprint, weather, climate, or UKCP18 data. Interpretation only.",
+    },
+  };
+
   return {
     success: qa.status === "pass",
     pipelineVersion: PROJECT_GRAPH_VERTICAL_SLICE_VERSION,
     geometryHash: compiledProject.geometryHash,
     projectTypeSupport: brief.project_type_support || null,
     projectGraph: finalGraph,
+    provenanceManifest,
     artifacts: {
       ...artifacts,
       qaReport: {
