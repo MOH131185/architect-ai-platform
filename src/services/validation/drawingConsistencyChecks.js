@@ -2,6 +2,39 @@ function hasSvgPayload(entry) {
   return Boolean(entry?.svg && String(entry.svg).includes("<svg"));
 }
 
+// A plan SVG is "sheet-mode" when it is being composed inside the global A1
+// sheet (which renders ONE north arrow and ONE title block at the sheet
+// chrome level, not per panel). The plan renderer intentionally omits the
+// per-panel north-arrow / title-block in that case to avoid double-rendering.
+// We accept any of the well-known signals callers may attach so the check is
+// resilient to future plumbing tweaks:
+//   - explicit `entry.sheet_mode === true` (slice-level forwarded flag)
+//   - `entry.technicalQualityMetadata.sheet_mode === true`
+//     (camelCase key used by canonical pack builder)
+//   - `entry.technical_quality_metadata.sheet_mode === true`
+//     (snake_case key as the renderer originally emits it)
+//   - `entry.metadata.technicalQualityMetadata.sheet_mode === true`
+//   - `entry.metadata.technical_quality_metadata.sheet_mode === true`
+//   - SVG carries the `data-sheet-mode="true"` attribute (defensive — not
+//     emitted today, allows the renderer to opt in later without re-touching
+//     this validator).
+function isSheetModePlan(entry) {
+  if (!entry || typeof entry !== "object") return false;
+  if (entry.sheet_mode === true || entry.sheetMode === true) return true;
+  const metaCandidates = [
+    entry.technicalQualityMetadata,
+    entry.technical_quality_metadata,
+    entry.metadata?.technicalQualityMetadata,
+    entry.metadata?.technical_quality_metadata,
+  ];
+  for (const meta of metaCandidates) {
+    if (meta && meta.sheet_mode === true) return true;
+  }
+  const svg = String(entry.svg || "");
+  if (svg.includes('data-sheet-mode="true"')) return true;
+  return false;
+}
+
 function validateCollection(name, entries = [], minimumCount = 1) {
   const warnings = [];
   const errors = [];
@@ -38,10 +71,18 @@ function validatePlanCollection(entries = [], levelCount = 1) {
     }
 
     const svg = String(entry?.svg || "");
-    if (svg && !svg.includes('id="north-arrow"')) {
+    const sheetModeEntry = isSheetModePlan(entry);
+    // Per-panel north-arrow and title-block are required for STANDALONE
+    // technical exports (single-plan PDFs, vector previews, etc). They are
+    // INTENTIONALLY omitted when the plan is composed into the A1 sheet,
+    // because the sheet renders a single global north arrow + title block.
+    // Only relax these two specific marker requirements for sheet-mode —
+    // everything else (scale-bar, room-label, dimension-chain warnings,
+    // cross-view storey/window agreement, SVG payload presence) stays.
+    if (svg && !sheetModeEntry && !svg.includes('id="north-arrow"')) {
       errors.push(`drawings.plan[${index}] is missing the north-arrow marker.`);
     }
-    if (svg && !svg.includes('id="title-block"')) {
+    if (svg && !sheetModeEntry && !svg.includes('id="title-block"')) {
       errors.push(`drawings.plan[${index}] is missing the title-block marker.`);
     }
     // Reliability checks added 2026-05-02 to surface common A1 floor-plan

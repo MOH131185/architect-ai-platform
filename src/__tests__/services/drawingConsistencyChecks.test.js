@@ -128,6 +128,187 @@ describe("runDrawingConsistencyChecks — per-view reliability", () => {
       true,
     );
   });
+
+  // Hotfix coverage: in the A1 sheet, the global title-block + north arrow
+  // are rendered ONCE on the sheet chrome, so the per-panel plan SVGs
+  // intentionally omit those markers when sheetMode:true. Standalone exports
+  // (single-plan PDFs / vector previews) still must carry them.
+  describe("sheet-mode plan marker relaxation", () => {
+    test("standalone plan missing north-arrow still fails", () => {
+      const result = runDrawingConsistencyChecks({
+        projectGeometry: { levels: [{ id: 0 }] },
+        drawings: {
+          plan: [
+            {
+              level_id: "0",
+              svg: planSvg({ northArrow: false }),
+            },
+          ],
+          elevation: [{ svg: elevationSvg() }],
+          section: [{ svg: sectionSvg() }],
+        },
+        enableCrossViewChecks: false,
+      });
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.includes("north-arrow marker"))).toBe(
+        true,
+      );
+    });
+
+    test("standalone plan missing title-block still fails", () => {
+      const result = runDrawingConsistencyChecks({
+        projectGeometry: { levels: [{ id: 0 }] },
+        drawings: {
+          plan: [{ level_id: "0", svg: planSvg({ titleBlock: false }) }],
+          elevation: [{ svg: elevationSvg() }],
+          section: [{ svg: sectionSvg() }],
+        },
+        enableCrossViewChecks: false,
+      });
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.includes("title-block marker"))).toBe(
+        true,
+      );
+    });
+
+    test("sheet-mode plan missing north-arrow does NOT fail for that reason", () => {
+      const result = runDrawingConsistencyChecks({
+        projectGeometry: { levels: [{ id: 0 }] },
+        drawings: {
+          plan: [
+            {
+              level_id: "0",
+              sheet_mode: true,
+              svg: planSvg({ northArrow: false }),
+            },
+          ],
+          elevation: [{ svg: elevationSvg() }],
+          section: [{ svg: sectionSvg() }],
+        },
+        enableCrossViewChecks: false,
+      });
+      expect(result.errors.some((e) => e.includes("north-arrow marker"))).toBe(
+        false,
+      );
+    });
+
+    test("sheet-mode plan missing title-block does NOT fail for that reason", () => {
+      const result = runDrawingConsistencyChecks({
+        projectGeometry: { levels: [{ id: 0 }] },
+        drawings: {
+          plan: [
+            {
+              level_id: "0",
+              sheet_mode: true,
+              svg: planSvg({ titleBlock: false }),
+            },
+          ],
+          elevation: [{ svg: elevationSvg() }],
+          section: [{ svg: sectionSvg() }],
+        },
+        enableCrossViewChecks: false,
+      });
+      expect(result.errors.some((e) => e.includes("title-block marker"))).toBe(
+        false,
+      );
+    });
+
+    test("sheet-mode signal also accepted via technical_quality_metadata", () => {
+      const result = runDrawingConsistencyChecks({
+        projectGeometry: { levels: [{ id: 0 }] },
+        drawings: {
+          plan: [
+            {
+              level_id: "0",
+              technical_quality_metadata: { sheet_mode: true },
+              svg: planSvg({ northArrow: false, titleBlock: false }),
+            },
+          ],
+          elevation: [{ svg: elevationSvg() }],
+          section: [{ svg: sectionSvg() }],
+        },
+        enableCrossViewChecks: false,
+      });
+      expect(
+        result.errors.some(
+          (e) =>
+            e.includes("north-arrow marker") ||
+            e.includes("title-block marker"),
+        ),
+      ).toBe(false);
+    });
+
+    test("sheet-mode signal also accepted via camelCase technicalQualityMetadata", () => {
+      const result = runDrawingConsistencyChecks({
+        projectGeometry: { levels: [{ id: 0 }] },
+        drawings: {
+          plan: [
+            {
+              level_id: "0",
+              technicalQualityMetadata: { sheet_mode: true },
+              svg: planSvg({ northArrow: false, titleBlock: false }),
+            },
+          ],
+          elevation: [{ svg: elevationSvg() }],
+          section: [{ svg: sectionSvg() }],
+        },
+        enableCrossViewChecks: false,
+      });
+      expect(
+        result.errors.some(
+          (e) =>
+            e.includes("north-arrow marker") ||
+            e.includes("title-block marker"),
+        ),
+      ).toBe(false);
+    });
+
+    test("sheet-mode plan with another real error (missing SVG) still fails", () => {
+      const result = runDrawingConsistencyChecks({
+        projectGeometry: { levels: [{ id: 0 }] },
+        drawings: {
+          plan: [{ level_id: "0", sheet_mode: true /* svg omitted */ }],
+          elevation: [{ svg: elevationSvg() }],
+          section: [{ svg: sectionSvg() }],
+        },
+        enableCrossViewChecks: false,
+      });
+      // Sheet-mode plans still must carry SVG content; the relaxation is
+      // limited to the two specific marker checks.
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.includes("missing SVG content"))).toBe(
+        true,
+      );
+    });
+
+    test("sheet-mode does not silence cross-view storey/window inconsistency", () => {
+      // Cross-view warnings still fire — sheet-mode only relaxes the two
+      // chrome marker requirements, not the consistency checks themselves.
+      const warnings = validateCrossViewConsistency({
+        drawings: {
+          plan: [
+            {
+              sheet_mode: true,
+              window_count: 8,
+              svg: planSvg({ northArrow: false, titleBlock: false }),
+            },
+          ],
+          elevation: [
+            { svg: elevationSvg(), window_count: 2 },
+            { svg: elevationSvg(), window_count: 2 },
+          ],
+          section: [{ svg: sectionSvg() }],
+        },
+        projectGeometry: { levels: [{ id: 0 }] },
+      });
+      // 8 plan windows vs 4 elevation windows → mismatch warning still fires.
+      expect(
+        warnings.some(
+          (w) => w.includes("plan reports") && w.includes("windows"),
+        ),
+      ).toBe(true);
+    });
+  });
 });
 
 describe("validateCrossViewConsistency — Phase 5 cross-view checks", () => {
