@@ -193,6 +193,31 @@ function svgToDataUrl(svgString) {
   }
 }
 
+// PR-A: preserve adapter authority stamping (geometryHash, authorityUsed,
+// authoritySource, compiledProjectSchemaVersion, svgHash, etc.) so the
+// compose gate sees them. Both top-level fields and metadata are forwarded.
+function pickAuthorityFields(source = {}) {
+  if (!source || typeof source !== "object") {
+    return {};
+  }
+  const fields = {};
+  for (const key of [
+    "geometryHash",
+    "authorityUsed",
+    "authoritySource",
+    "compiledProjectSchemaVersion",
+    "panelAuthorityReason",
+    "generatorUsed",
+    "sourceType",
+    "svgHash",
+  ]) {
+    if (source[key] != null) {
+      fields[key] = source[key];
+    }
+  }
+  return fields;
+}
+
 function normalizeDeterministicSvgOutput(output) {
   if (!output) {
     return null;
@@ -212,10 +237,12 @@ function normalizeDeterministicSvgOutput(output) {
   }
 
   if (output.dataUrl) {
+    const authority = pickAuthorityFields(output);
     return {
       imageUrl: output.dataUrl,
       svg: output.svg || null,
-      metadata: output.metadata || {},
+      metadata: { ...(output.metadata || {}), ...authority },
+      ...authority,
     };
   }
 
@@ -225,10 +252,12 @@ function normalizeDeterministicSvgOutput(output) {
       return null;
     }
 
+    const authority = pickAuthorityFields(output);
     return {
       imageUrl: dataUrl,
       svg: output.svg,
-      metadata: output.metadata || {},
+      metadata: { ...(output.metadata || {}), ...authority },
+      ...authority,
     };
   }
 

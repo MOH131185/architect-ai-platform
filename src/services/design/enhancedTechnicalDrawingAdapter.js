@@ -22,6 +22,8 @@ import { isFeatureEnabled } from "../../config/featureFlags.js";
 import { embedFontInSVGSync } from "../../utils/svgFontEmbedder.js";
 import logger from "../core/logger.js";
 import { coerceToCanonicalProjectGeometry } from "../cad/geometryFactory.js";
+import { CANONICAL_PROJECT_GEOMETRY_VERSION } from "../cad/projectGeometrySchema.js";
+import { computeCDSHashSync } from "../validation/cdsHash.js";
 import { buildFacadeGrammar } from "../facade/facadeGrammarEngine.js";
 import { buildPlanGraphic } from "../drawing/planGraphicsService.js";
 import { buildElevationGraphic } from "../drawing/elevationGraphicsService.js";
@@ -96,8 +98,77 @@ function svgToDataUrl(svg) {
 }
 
 /**
- * Wrap SVG result in the format expected by CleanPanelOrchestrator
- * Returns { dataUrl, svg, metadata } object
+ * Default authority stamping for the canonical-geometry path. The compose
+ * gate at api/a1/compose.js enforces these exact strings, so changes here
+ * must stay in lock-step with composeRuntime.findPanelsWithDisallowedTechnicalAuthority.
+ */
+const CANONICAL_AUTHORITY_DEFAULTS = Object.freeze({
+  authorityUsed: "compiled_project_canonical_pack",
+  authoritySource: "compiled_project",
+  panelAuthorityReason:
+    "deterministic projection from compiled canonical geometry",
+  generatorUsed: "enhancedTechnicalDrawingAdapter",
+  sourceType: "deterministic_svg",
+});
+
+/**
+ * Authority stamping for the enhanced-only fallback path (no canonical
+ * geometry available). The compose gate will reject these; that is the
+ * intended behaviour — final A1 must come from the canonical pack.
+ */
+const ENHANCED_FALLBACK_AUTHORITY = Object.freeze({
+  authorityUsed: "enhanced_geometry_adapter",
+  authoritySource: "masterDNA",
+  panelAuthorityReason:
+    "canonical geometry unavailable, rendered from enhanced geometry adapter",
+  generatorUsed: "enhancedTechnicalDrawingAdapter",
+  sourceType: "deterministic_svg_fallback",
+});
+
+/**
+ * Compute a deterministic hash from a canonical project geometry object.
+ * Uses computeCDSHashSync (the same hasher that CanonicalGeometryPackService
+ * uses) so panels stamped here are comparable with panels stamped by the
+ * canonical pack builder.
+ */
+function computeGeometryHashFromCanonical(canonicalGeometry) {
+  if (!canonicalGeometry) {
+    return null;
+  }
+  try {
+    return computeCDSHashSync({
+      schema_version:
+        canonicalGeometry.schema_version || CANONICAL_PROJECT_GEOMETRY_VERSION,
+      project_id: canonicalGeometry.project_id || null,
+      levels: canonicalGeometry.levels || [],
+      rooms: canonicalGeometry.rooms || [],
+      walls: canonicalGeometry.walls || [],
+      doors: canonicalGeometry.doors || [],
+      windows: canonicalGeometry.windows || [],
+      footprints: canonicalGeometry.footprints || [],
+      roof_primitives: canonicalGeometry.roof_primitives || [],
+      foundations: canonicalGeometry.foundations || [],
+    });
+  } catch (error) {
+    logger.warn(
+      `[EnhancedAdapter] Geometry hash computation failed: ${error.message}`,
+    );
+    return null;
+  }
+}
+
+/**
+ * Wrap SVG result in the format expected by CleanPanelOrchestrator and the
+ * compose authority gate. Stamps geometryHash, svgHash, and authority fields
+ * on BOTH the top-level result and result.metadata so
+ * composeRuntime.readPanelAuthorityMetadata picks them up regardless of where
+ * downstream code looks.
+ *
+ * @param {string} svg
+ * @param {Object} metadata - drawing context. May include geometryHash,
+ *   compiledProjectSchemaVersion, authorityUsed, authoritySource,
+ *   panelAuthorityReason, generatorUsed, sourceType. When omitted, the
+ *   canonical-pack defaults are used.
  */
 function wrapSVGResult(svg, metadata = {}) {
   if (!svg) {
@@ -108,11 +179,34 @@ function wrapSVGResult(svg, metadata = {}) {
   if (!dataUrl) {
     return null;
   }
+
+  const isFallback =
+    metadata.authorityUsed === ENHANCED_FALLBACK_AUTHORITY.authorityUsed;
+  const defaults = isFallback
+    ? ENHANCED_FALLBACK_AUTHORITY
+    : CANONICAL_AUTHORITY_DEFAULTS;
+
+  const authority = {
+    geometryHash: metadata.geometryHash || null,
+    compiledProjectSchemaVersion:
+      metadata.compiledProjectSchemaVersion ||
+      CANONICAL_PROJECT_GEOMETRY_VERSION,
+    authorityUsed: metadata.authorityUsed || defaults.authorityUsed,
+    authoritySource: metadata.authoritySource || defaults.authoritySource,
+    panelAuthorityReason:
+      metadata.panelAuthorityReason || defaults.panelAuthorityReason,
+    generatorUsed: metadata.generatorUsed || defaults.generatorUsed,
+    sourceType: metadata.sourceType || defaults.sourceType,
+    svgHash: computeCDSHashSync(normalizedSvg),
+  };
+
   return {
     dataUrl,
     svg: normalizedSvg,
+    ...authority,
     metadata: {
       ...metadata,
+      ...authority,
       generator: "enhanced",
       timestamp: Date.now(),
     },
@@ -552,11 +646,20 @@ function tryBuildCanonicalPlanGraphic(
   if (!level) {
     return null;
   }
-  return buildPlanGraphic(canonicalGeometry, {
+  const drawing = buildPlanGraphic(canonicalGeometry, {
     levelId: level.id,
     width: context.targetWidth,
     height: context.targetHeight,
   });
+  if (!drawing?.svg) {
+    return drawing;
+  }
+  return {
+    ...drawing,
+    geometryHash: computeGeometryHashFromCanonical(canonicalGeometry),
+    compiledProjectSchemaVersion:
+      canonicalGeometry.schema_version || CANONICAL_PROJECT_GEOMETRY_VERSION,
+  };
 }
 
 function tryBuildCanonicalElevationGraphic(
@@ -568,14 +671,27 @@ function tryBuildCanonicalElevationGraphic(
   if (!canonicalGeometry?.levels?.length) {
     return null;
   }
-  return buildElevationGraphic(canonicalGeometry, extractStyleDNA(masterDNA), {
-    orientation,
-    width: context.targetWidth,
-    height: context.targetHeight,
-    facadeGrammar:
-      canonicalGeometry.metadata?.facade_grammar ||
-      deriveFacadeGrammarForElevation(masterDNA),
-  });
+  const drawing = buildElevationGraphic(
+    canonicalGeometry,
+    extractStyleDNA(masterDNA),
+    {
+      orientation,
+      width: context.targetWidth,
+      height: context.targetHeight,
+      facadeGrammar:
+        canonicalGeometry.metadata?.facade_grammar ||
+        deriveFacadeGrammarForElevation(masterDNA),
+    },
+  );
+  if (!drawing?.svg) {
+    return drawing;
+  }
+  return {
+    ...drawing,
+    geometryHash: computeGeometryHashFromCanonical(canonicalGeometry),
+    compiledProjectSchemaVersion:
+      canonicalGeometry.schema_version || CANONICAL_PROJECT_GEOMETRY_VERSION,
+  };
 }
 
 function tryBuildCanonicalSectionGraphic(
@@ -587,11 +703,24 @@ function tryBuildCanonicalSectionGraphic(
   if (!canonicalGeometry?.levels?.length) {
     return null;
   }
-  return buildSectionGraphic(canonicalGeometry, extractStyleDNA(masterDNA), {
-    sectionType,
-    width: context.targetWidth,
-    height: context.targetHeight,
-  });
+  const drawing = buildSectionGraphic(
+    canonicalGeometry,
+    extractStyleDNA(masterDNA),
+    {
+      sectionType,
+      width: context.targetWidth,
+      height: context.targetHeight,
+    },
+  );
+  if (!drawing?.svg) {
+    return drawing;
+  }
+  return {
+    ...drawing,
+    geometryHash: computeGeometryHashFromCanonical(canonicalGeometry),
+    compiledProjectSchemaVersion:
+      canonicalGeometry.schema_version || CANONICAL_PROJECT_GEOMETRY_VERSION,
+  };
 }
 
 /**
@@ -1364,6 +1493,9 @@ export function generateEnhancedFloorPlanSVG(
         type: "floor_plan",
         floor: floorIndex,
         renderer: canonicalPlan.renderer || "canonical-plan-graphic",
+        geometryHash: canonicalPlan.geometryHash,
+        compiledProjectSchemaVersion:
+          canonicalPlan.compiledProjectSchemaVersion,
         technical_quality_metadata:
           canonicalPlan.technical_quality_metadata || null,
       });
@@ -1403,7 +1535,22 @@ export function generateEnhancedFloorPlanSVG(
 
     // CRITICAL FIX: Wrap SVG in expected format { dataUrl, svg, metadata }
     // CleanPanelOrchestrator checks for result?.dataUrl - plain strings fail this check
-    return wrapSVGResult(svg, { type: "floor_plan", floor: floorIndex });
+    return wrapSVGResult(svg, {
+      type: "floor_plan",
+      floor: floorIndex,
+      authorityUsed: ENHANCED_FALLBACK_AUTHORITY.authorityUsed,
+      authoritySource: ENHANCED_FALLBACK_AUTHORITY.authoritySource,
+      panelAuthorityReason: ENHANCED_FALLBACK_AUTHORITY.panelAuthorityReason,
+      generatorUsed: ENHANCED_FALLBACK_AUTHORITY.generatorUsed,
+      sourceType: ENHANCED_FALLBACK_AUTHORITY.sourceType,
+      geometryHash: computeCDSHashSync({
+        kind: "enhanced_fallback_floor_plan",
+        floor: floorIndex,
+        rooms: geometry?.rooms || null,
+        walls: geometry?.walls || null,
+        dimensions: geometry?.dimensions || null,
+      }),
+    });
   } catch (error) {
     logger.error("[EnhancedAdapter] Floor plan generation failed:", error);
     return null; // Signal to use fallback
@@ -1445,6 +1592,9 @@ export function generateEnhancedElevationSVG(
         type: "elevation",
         orientation,
         renderer: canonicalElevation.renderer || "canonical-elevation-graphic",
+        geometryHash: canonicalElevation.geometryHash,
+        compiledProjectSchemaVersion:
+          canonicalElevation.compiledProjectSchemaVersion,
         technical_quality_metadata:
           canonicalElevation.technical_quality_metadata || null,
       });
@@ -1477,7 +1627,21 @@ export function generateEnhancedElevationSVG(
     );
 
     // CRITICAL FIX: Wrap SVG in expected format { dataUrl, svg, metadata }
-    return wrapSVGResult(svg, { type: "elevation", orientation });
+    return wrapSVGResult(svg, {
+      type: "elevation",
+      orientation,
+      authorityUsed: ENHANCED_FALLBACK_AUTHORITY.authorityUsed,
+      authoritySource: ENHANCED_FALLBACK_AUTHORITY.authoritySource,
+      panelAuthorityReason: ENHANCED_FALLBACK_AUTHORITY.panelAuthorityReason,
+      generatorUsed: ENHANCED_FALLBACK_AUTHORITY.generatorUsed,
+      sourceType: ENHANCED_FALLBACK_AUTHORITY.sourceType,
+      geometryHash: computeCDSHashSync({
+        kind: "enhanced_fallback_elevation",
+        orientation,
+        styleDNA: masterDNA?.styleDNA || masterDNA?.style_dna || null,
+        dimensions: masterDNA?.dimensions || null,
+      }),
+    });
   } catch (error) {
     logger.error("[EnhancedAdapter] Elevation generation failed:", error);
     return null;
@@ -1522,6 +1686,9 @@ export function generateEnhancedSectionSVG(
         type: "section",
         sectionType,
         renderer: canonicalSection.renderer || "canonical-section-graphic",
+        geometryHash: canonicalSection.geometryHash,
+        compiledProjectSchemaVersion:
+          canonicalSection.compiledProjectSchemaVersion,
         technical_quality_metadata:
           canonicalSection.technical_quality_metadata || null,
       });
@@ -1573,7 +1740,22 @@ export function generateEnhancedSectionSVG(
     );
 
     // CRITICAL FIX: Wrap SVG in expected format { dataUrl, svg, metadata }
-    return wrapSVGResult(svg, { type: "section", sectionType });
+    return wrapSVGResult(svg, {
+      type: "section",
+      sectionType,
+      authorityUsed: ENHANCED_FALLBACK_AUTHORITY.authorityUsed,
+      authoritySource: ENHANCED_FALLBACK_AUTHORITY.authoritySource,
+      panelAuthorityReason: ENHANCED_FALLBACK_AUTHORITY.panelAuthorityReason,
+      generatorUsed: ENHANCED_FALLBACK_AUTHORITY.generatorUsed,
+      sourceType: ENHANCED_FALLBACK_AUTHORITY.sourceType,
+      geometryHash: computeCDSHashSync({
+        kind: "enhanced_fallback_section",
+        sectionType,
+        cutPosition,
+        populatedGeometry: dnaForSection?.populatedGeometry || null,
+        dimensions: masterDNA?.dimensions || null,
+      }),
+    });
   } catch (error) {
     logger.error("[EnhancedAdapter] Section generation failed:", error);
     return null;

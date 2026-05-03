@@ -1014,7 +1014,7 @@ async function handleComposeRequest(req, res, trace) {
 
   if (!skipValidation) {
     if (authorityReadiness && authorityReadiness.ready !== true) {
-      return res.status(400).json({
+      return res.status(422).json({
         success: false,
         error: "AUTHORITY_READINESS_BLOCKED",
         message:
@@ -1024,7 +1024,7 @@ async function handleComposeRequest(req, res, trace) {
     }
 
     if (technicalPanelsMissingGeometryHash.length > 0) {
-      return res.status(400).json({
+      return res.status(422).json({
         success: false,
         error: "MISSING_TECHNICAL_PANEL_GEOMETRY_HASH",
         message:
@@ -1036,7 +1036,7 @@ async function handleComposeRequest(req, res, trace) {
     }
 
     if (technicalPanelsMissingAuthorityMetadata.length > 0) {
-      return res.status(400).json({
+      return res.status(422).json({
         success: false,
         error: "MISSING_TECHNICAL_PANEL_AUTHORITY_METADATA",
         message:
@@ -1048,7 +1048,7 @@ async function handleComposeRequest(req, res, trace) {
     }
 
     if (disallowedTechnicalAuthorityPanels.length > 0) {
-      return res.status(400).json({
+      return res.status(422).json({
         success: false,
         error: "DISALLOWED_TECHNICAL_PANEL_AUTHORITY",
         message:
@@ -1062,7 +1062,7 @@ async function handleComposeRequest(req, res, trace) {
     }
 
     if (technicalPanelGeometryHashes.length > 1) {
-      return res.status(400).json({
+      return res.status(422).json({
         success: false,
         error: "TECHNICAL_PANEL_GEOMETRY_HASH_MISMATCH",
         message:
@@ -1076,7 +1076,7 @@ async function handleComposeRequest(req, res, trace) {
     }
 
     if (panelGeometryHashes.length > 1) {
-      return res.status(400).json({
+      return res.status(422).json({
         success: false,
         error: "PANEL_GEOMETRY_HASH_MISMATCH",
         message:
@@ -1091,7 +1091,7 @@ async function handleComposeRequest(req, res, trace) {
 
     if (requestedHashes.geometryHash) {
       if (technicalPanelGeometryHashes.length === 0) {
-        return res.status(400).json({
+        return res.status(422).json({
           success: false,
           error: "MISSING_TECHNICAL_PANEL_GEOMETRY_HASH",
           message:
@@ -1103,7 +1103,7 @@ async function handleComposeRequest(req, res, trace) {
       }
 
       if (technicalPanelGeometryHashes[0] !== requestedHashes.geometryHash) {
-        return res.status(400).json({
+        return res.status(422).json({
           success: false,
           error: "TECHNICAL_GEOMETRY_HASH_MISMATCH",
           message:
@@ -1116,7 +1116,7 @@ async function handleComposeRequest(req, res, trace) {
       }
 
       if (panelGeometryHashes.length === 0) {
-        return res.status(400).json({
+        return res.status(422).json({
           success: false,
           error: "MISSING_PANEL_GEOMETRY_HASH",
           message:
@@ -1128,7 +1128,7 @@ async function handleComposeRequest(req, res, trace) {
       }
 
       if (panelGeometryHashes[0] !== requestedHashes.geometryHash) {
-        return res.status(400).json({
+        return res.status(422).json({
           success: false,
           error: "GEOMETRY_HASH_MISMATCH",
           message:
