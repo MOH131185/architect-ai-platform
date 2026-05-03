@@ -932,14 +932,16 @@ async function handleComposeRequest(req, res, trace) {
     const nonMissingErrors = validation.errors.filter(
       (err) => !err.startsWith("Missing panels:"),
     );
-    const blockingMissing = registry
-      ? missingPanels.filter((type) => {
-          const entry = registry.getRegistryEntry
-            ? registry.getRegistryEntry(type)
-            : null;
-          return entry ? entry.generator !== "data" : true;
-        })
-      : missingPanels;
+    const blockingMissing = skipMissingPanelCheck
+      ? []
+      : registry
+        ? missingPanels.filter((type) => {
+            const entry = registry.getRegistryEntry
+              ? registry.getRegistryEntry(type)
+              : null;
+            return entry ? entry.generator !== "data" : true;
+          })
+        : missingPanels;
 
     if (blockingMissing.length > 0 || nonMissingErrors.length > 0) {
       console.warn(
@@ -969,9 +971,13 @@ async function handleComposeRequest(req, res, trace) {
   // Ensures no floor plan has 0 rooms (which would result in empty borders)
   const DEBUG_RUNS = process.env.DEBUG_RUNS === "1";
 
-  // skipValidation: Skip ALL validation gates (for smoke tests, dev mode)
-  const skipValidation =
+  // skipValidation: Skip preview/dev validation gates only. Final A1 exports
+  // must still enforce authority and geometry gates even when callers send
+  // smoke-test bypass flags.
+  const requestedValidationBypass =
     skipMissingPanelCheck || requestBody.skipValidation === true;
+  const skipValidation =
+    requestedValidationBypass && renderContract.isFinalA1 !== true;
   const requireHashMetadata =
     requestBody.requireHashMetadata !== false && !skipValidation;
   const panelGeometryHashes = collectPanelGeometryHashes(panels);

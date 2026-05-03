@@ -30,17 +30,10 @@ import { getVerbatimPromptLock } from "../design/designFingerprintService.js";
  *
  * Returns true only when:
  *   - ALLOW_DEMO_TECHNICAL_FALLBACK env is "1" or "true" (explicit dev preview)
- *   - PIPELINE_MODE=multi_panel is explicitly selected (legacy debug mode)
  */
 export function isDiffusionFallbackAllowed() {
   const envFlag = process.env.ALLOW_DEMO_TECHNICAL_FALLBACK;
   if (envFlag === "1" || envFlag === "true") {
-    return true;
-  }
-  if (process.env.PIPELINE_MODE === "multi_panel") {
-    return true;
-  }
-  if (process.env.REACT_APP_USE_TOGETHER === "true") {
     return true;
   }
   return false;
@@ -55,7 +48,7 @@ export class DiffusionFallbackBlockedError extends Error {
   constructor(panelType, reason = "vector_generation_unavailable") {
     super(
       `DIFFUSION_FALLBACK_DISABLED_IN_FINAL_A1: panel=${panelType} reason=${reason}. ` +
-        "Set ALLOW_DEMO_TECHNICAL_FALLBACK=1 or PIPELINE_MODE=multi_panel for dev preview.",
+        "Set ALLOW_DEMO_TECHNICAL_FALLBACK=1 for dev preview.",
     );
     this.name = "DiffusionFallbackBlockedError";
     this.code = "DIFFUSION_FALLBACK_DISABLED_IN_FINAL_A1";
@@ -189,8 +182,7 @@ export class TechnicalPanelGenerator {
     }
 
     // Diffusion fallback is blocked in final A1 mode. Set
-    // ALLOW_DEMO_TECHNICAL_FALLBACK=1 (or PIPELINE_MODE=multi_panel) to
-    // enable it in dev preview only.
+    // ALLOW_DEMO_TECHNICAL_FALLBACK=1 to enable it in dev preview only.
     if (!isDiffusionFallbackAllowed()) {
       logger.error(
         `[TechnicalPanelGenerator] Diffusion fallback blocked for ${panelType} (no canonical/vector path available)`,

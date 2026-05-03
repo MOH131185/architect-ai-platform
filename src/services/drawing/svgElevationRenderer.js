@@ -9,6 +9,7 @@ import {
   resolveCompiledProjectGeometryInput,
   resolveCompiledProjectStyleDNA,
 } from "./drawingBounds.js";
+import { buildCanonicalRoofPitchInfo } from "./roofPitchResolver.js";
 
 const SHEET_ELEVATION_POLISH = Object.freeze({
   fontScale: 1.1,
@@ -235,11 +236,11 @@ function renderRoofPitchLabel(
   baseX,
   ridgeY,
   widthPx,
-  pitchDeg,
+  roofPitchInfo,
   theme,
   polish = {},
 ) {
-  const numericPitch = Number(pitchDeg);
+  const numericPitch = Number(roofPitchInfo?.pitchDeg);
   if (!Number.isFinite(numericPitch) || numericPitch <= 0) {
     return "";
   }
@@ -247,10 +248,35 @@ function renderRoofPitchLabel(
   const cx = baseX + widthPx / 2 + 28;
   const cy = ridgeY + 16;
   return `
-    <g id="phase14-elevation-roof-pitch" data-roof-pitch-deg="${numericPitch.toFixed(1)}">
+    <g id="phase14-elevation-roof-pitch" data-roof-pitch-deg="${numericPitch.toFixed(1)}" data-roof-pitch-source="${escapeXml(roofPitchInfo.source || "unknown")}" data-roof-span-m="${formatNumber(roofPitchInfo.spanM, 2)}" data-roof-rise-m="${formatNumber(roofPitchInfo.riseM, 2)}">
       <text x="${formatNumber(cx)}" y="${formatNumber(cy)}" font-size="${labelFont}" font-family="Arial, sans-serif" font-weight="700" fill="${theme.line}" data-text-role="roof-pitch">PITCH ${numericPitch.toFixed(0)}°</text>
     </g>
   `;
+}
+
+function renderRoofPitchDataAttributes(roofPitchInfo = {}) {
+  const attrs = [
+    `data-roof-pitch-status="${escapeXml(roofPitchInfo.status || "missing")}"`,
+  ];
+  if (roofPitchInfo.source) {
+    attrs.push(`data-roof-pitch-source="${escapeXml(roofPitchInfo.source)}"`);
+  }
+  if (
+    roofPitchInfo.pitchDeg != null &&
+    Number.isFinite(Number(roofPitchInfo.pitchDeg)) &&
+    Number(roofPitchInfo.pitchDeg) > 0
+  ) {
+    attrs.push(
+      `data-roof-pitch-deg="${Number(roofPitchInfo.pitchDeg).toFixed(1)}"`,
+    );
+  }
+  if (Number.isFinite(Number(roofPitchInfo.spanM))) {
+    attrs.push(`data-roof-span-m="${formatNumber(roofPitchInfo.spanM, 2)}"`);
+  }
+  if (Number.isFinite(Number(roofPitchInfo.riseM))) {
+    attrs.push(`data-roof-rise-m="${formatNumber(roofPitchInfo.riseM, 2)}"`);
+  }
+  return attrs.join(" ");
 }
 
 function renderRoof(
@@ -259,14 +285,19 @@ function renderRoof(
   widthPx,
   roofLanguage,
   theme,
-  pitchDeg = null,
+  roofPitchInfo = {},
   polish = {},
 ) {
   const flatRoof =
     roofLanguage.includes("flat") || roofLanguage.includes("parapet");
   if (flatRoof) {
     return `
-      <g id="phase14-section-roof">
+      <g id="phase14-section-roof" ${renderRoofPitchDataAttributes({
+        ...roofPitchInfo,
+        status: "flat",
+        pitchDeg: null,
+        riseM: null,
+      })}>
         <rect x="${formatNumber(baseX)}" y="${formatNumber(
           topY - 18,
         )}" width="${formatNumber(widthPx)}" height="4" fill="${theme.paper}" stroke="${theme.line}" stroke-width="1.2" />
@@ -287,18 +318,23 @@ function renderRoof(
     `;
   }
 
-  const ridgeY = topY - Math.max(46, Math.min(58, widthPx * 0.14));
+  const resolvedRisePx =
+    Number.isFinite(Number(roofPitchInfo?.risePx)) &&
+    Number(roofPitchInfo.risePx) > 0
+      ? Number(roofPitchInfo.risePx)
+      : Math.max(46, Math.min(58, widthPx * 0.14));
+  const ridgeY = topY - resolvedRisePx;
   const undersideY = ridgeY + 12;
   const pitchLabel = renderRoofPitchLabel(
     baseX,
     ridgeY,
     widthPx,
-    pitchDeg,
+    roofPitchInfo,
     theme,
     polish,
   );
   return `
-    <g id="phase14-section-roof">
+    <g id="phase14-section-roof" ${renderRoofPitchDataAttributes(roofPitchInfo)}>
       <path d="M ${formatNumber(baseX - 6)} ${formatNumber(
         topY,
       )} L ${formatNumber(baseX + widthPx / 2)} ${formatNumber(
@@ -1288,20 +1324,35 @@ export function renderElevationSvg(
     : { left: 80, top: 62, right: 94, bottom: 118 };
   const availableWidth = Math.max(1, width - layout.left - layout.right);
   const availableHeight = Math.max(1, height - layout.top - layout.bottom);
-  const scale = Math.min(
-    availableWidth / Math.max(metrics.width_m, 1),
-    availableHeight /
-      Math.max(metrics.total_height_m + (sheetMode ? 0.72 : 1.2), 1),
-  );
-  const widthPx = metrics.width_m * scale;
-  const heightPx = metrics.total_height_m * scale;
-  const baseX = layout.left + (availableWidth - widthPx) / 2;
-  const baseY = layout.top + heightPx;
   const roofLanguage = normalizeRoofLanguage(
     resolvedStyleDNA,
     facadeOrientation,
     geometry,
   );
+  const roofPitchInfoBase = buildCanonicalRoofPitchInfo(geometry, {
+    roofLanguage,
+    spanM: metrics.width_m,
+  });
+  const roofAllowanceM = Math.max(
+    sheetMode ? 0.72 : 1.2,
+    Number(roofPitchInfoBase.riseM || 0),
+  );
+  const scale = Math.min(
+    availableWidth / Math.max(metrics.width_m, 1),
+    availableHeight / Math.max(metrics.total_height_m + roofAllowanceM, 1),
+  );
+  const widthPx = metrics.width_m * scale;
+  const heightPx = metrics.total_height_m * scale;
+  const baseX = layout.left + (availableWidth - widthPx) / 2;
+  const baseY = layout.top + heightPx;
+  const roofPitchInfo = {
+    ...roofPitchInfoBase,
+    risePx:
+      Number.isFinite(Number(roofPitchInfoBase.riseM)) &&
+      Number(roofPitchInfoBase.riseM) > 0
+        ? roofPitchInfoBase.riseM * scale
+        : null,
+  };
   const palette = getCanonicalMaterialPalette({
     dna: resolvedStyleDNA,
     projectGeometry: geometry,
@@ -1319,12 +1370,9 @@ export function renderElevationSvg(
     scale,
     theme,
   );
-  // Phase 3 — derive a ridge datum so the elevation labels include the
-  // building peak ("RIDGE +X.XXm") matching the goal A1 sheet. The ridge
-  // height is taken from canonical roof truth when present; otherwise we
-  // approximate from the sum of level heights plus a typical pitched-roof
-  // contribution (half-width × tan(pitch_deg)). Flat / parapet roofs use
-  // the parapet line.
+  // Phase 3/PR-B — derive a ridge datum from canonical roof pitch when it is
+  // available. Missing pitch must stay explicit; final technical output should
+  // not silently invent a 35 degree roof.
   const flatRoofForDatum =
     String(roofLanguage || "")
       .toLowerCase()
@@ -1338,30 +1386,16 @@ export function renderElevationSvg(
   );
   const canonicalRoof =
     geometry.metadata?.canonical_construction_truth?.roof || null;
-  // Pull pitch once so both ridge-height inference AND the new pitch label
-  // share the same value. Also fall back to styleDNA.roofPitch since the
-  // adapter passes styleDNA separately from the canonical geometry.
-  const resolvedPitchDeg = flatRoofForDatum
-    ? null
-    : Number(
-        geometry.metadata?.geometry_rules?.roof_pitch_degrees ||
-          canonicalRoof?.pitch_deg ||
-          resolvedStyleDNA?.roofPitch ||
-          resolvedStyleDNA?.roof_pitch ||
-          35,
-      );
-  let ridgeHeightM =
-    Number(canonicalRoof?.ridge_height_m) ||
-    Number(canonicalRoof?.peak_height_m) ||
-    null;
+  let ridgeHeightM = Number.isFinite(Number(roofPitchInfo.riseM))
+    ? totalLevelHeightM + Number(roofPitchInfo.riseM)
+    : Number(canonicalRoof?.ridge_height_m) ||
+      Number(canonicalRoof?.peak_height_m) ||
+      null;
   if (!Number.isFinite(ridgeHeightM)) {
     if (flatRoofForDatum) {
       ridgeHeightM = totalLevelHeightM + 0.45; // parapet upstand
     } else {
-      const halfWidthM = Math.max(2, metrics.width_m / 2);
-      const radians = (resolvedPitchDeg * Math.PI) / 180;
-      const rise = halfWidthM * Math.tan(radians);
-      ridgeHeightM = totalLevelHeightM + Math.max(1.4, Math.min(rise, 4.5));
+      ridgeHeightM = null;
     }
   }
   const ridgeYpx = baseY - ridgeHeightM * scale;
@@ -1427,7 +1461,7 @@ export function renderElevationSvg(
     widthPx,
     roofLanguage,
     theme,
-    resolvedPitchDeg,
+    roofPitchInfo,
     sheetPolish,
   );
   const hasEnvelopeGeometry = metrics.width_m > 0 && levelProfiles.length > 0;
@@ -1534,6 +1568,11 @@ export function renderElevationSvg(
         explicit_side_coverage_ratio: sideFacade.explicitCoverageRatio,
         uses_canonical_material_palette: true,
         roof_language: roofLanguage,
+        roof_pitch_degrees: roofPitchInfo.pitchDeg,
+        roof_pitch_source: roofPitchInfo.source,
+        roof_pitch_status: roofPitchInfo.status,
+        roof_pitch_span_m: roofPitchInfo.spanM,
+        roof_pitch_rise_m: roofPitchInfo.riseM,
         facade_features: features,
         blueprint_theme: theme.name,
       },
@@ -1643,6 +1682,11 @@ export function renderElevationSvg(
       explicit_side_coverage_ratio: sideFacade.explicitCoverageRatio,
       uses_canonical_material_palette: true,
       roof_language: roofLanguage,
+      roof_pitch_degrees: roofPitchInfo.pitchDeg,
+      roof_pitch_source: roofPitchInfo.source,
+      roof_pitch_status: roofPitchInfo.status,
+      roof_pitch_span_m: roofPitchInfo.spanM,
+      roof_pitch_rise_m: roofPitchInfo.riseM,
       facade_features: features,
       opening_rhythm_count:
         facadeOrientation?.opening_rhythm?.opening_count ||

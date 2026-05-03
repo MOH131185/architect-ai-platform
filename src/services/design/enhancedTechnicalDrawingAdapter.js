@@ -125,6 +125,59 @@ const ENHANCED_FALLBACK_AUTHORITY = Object.freeze({
   sourceType: "deterministic_svg_fallback",
 });
 
+function hasCompiledProjectAuthority(metadata = {}) {
+  const source = String(metadata?.source || "").trim();
+  const authoritySource = String(metadata?.authoritySource || "").trim();
+  const compiledProjectSchemaVersion = String(
+    metadata?.compiledProjectSchemaVersion || "",
+  )
+    .trim()
+    .toLowerCase();
+
+  return (
+    source === "compiled_project" &&
+    authoritySource === "compiled_project" &&
+    compiledProjectSchemaVersion.startsWith("compiled-project")
+  );
+}
+
+function resolveGeometryAuthority(canonicalGeometry = {}) {
+  const metadata = canonicalGeometry?.metadata || {};
+  if (hasCompiledProjectAuthority(metadata)) {
+    return {
+      ...CANONICAL_AUTHORITY_DEFAULTS,
+      compiledProjectSchemaVersion: metadata.compiledProjectSchemaVersion,
+    };
+  }
+
+  return {
+    ...ENHANCED_FALLBACK_AUTHORITY,
+    compiledProjectSchemaVersion:
+      metadata.compiledProjectSchemaVersion ||
+      CANONICAL_PROJECT_GEOMETRY_VERSION,
+  };
+}
+
+function normalizeGeometryForHash(value, projectId = null) {
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeGeometryForHash(item, projectId));
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([key]) => key !== "project_id" && key !== "id")
+        .map(([key, entry]) => [
+          key,
+          normalizeGeometryForHash(entry, projectId),
+        ]),
+    );
+  }
+  if (projectId && typeof value === "string" && value.includes(projectId)) {
+    return value.split(projectId).join("__project__");
+  }
+  return value;
+}
+
 /**
  * Compute a deterministic hash from a canonical project geometry object.
  * Uses computeCDSHashSync (the same hasher that CanonicalGeometryPackService
@@ -136,18 +189,35 @@ function computeGeometryHashFromCanonical(canonicalGeometry) {
     return null;
   }
   try {
+    const projectId = canonicalGeometry.project_id
+      ? String(canonicalGeometry.project_id)
+      : null;
     return computeCDSHashSync({
       schema_version:
         canonicalGeometry.schema_version || CANONICAL_PROJECT_GEOMETRY_VERSION,
-      project_id: canonicalGeometry.project_id || null,
-      levels: canonicalGeometry.levels || [],
-      rooms: canonicalGeometry.rooms || [],
-      walls: canonicalGeometry.walls || [],
-      doors: canonicalGeometry.doors || [],
-      windows: canonicalGeometry.windows || [],
-      footprints: canonicalGeometry.footprints || [],
-      roof_primitives: canonicalGeometry.roof_primitives || [],
-      foundations: canonicalGeometry.foundations || [],
+      levels: normalizeGeometryForHash(
+        canonicalGeometry.levels || [],
+        projectId,
+      ),
+      rooms: normalizeGeometryForHash(canonicalGeometry.rooms || [], projectId),
+      walls: normalizeGeometryForHash(canonicalGeometry.walls || [], projectId),
+      doors: normalizeGeometryForHash(canonicalGeometry.doors || [], projectId),
+      windows: normalizeGeometryForHash(
+        canonicalGeometry.windows || [],
+        projectId,
+      ),
+      footprints: normalizeGeometryForHash(
+        canonicalGeometry.footprints || [],
+        projectId,
+      ),
+      roof_primitives: normalizeGeometryForHash(
+        canonicalGeometry.roof_primitives || [],
+        projectId,
+      ),
+      foundations: normalizeGeometryForHash(
+        canonicalGeometry.foundations || [],
+        projectId,
+      ),
     });
   } catch (error) {
     logger.warn(
@@ -654,11 +724,15 @@ function tryBuildCanonicalPlanGraphic(
   if (!drawing?.svg) {
     return drawing;
   }
+  const authority = resolveGeometryAuthority(canonicalGeometry);
   return {
     ...drawing,
     geometryHash: computeGeometryHashFromCanonical(canonicalGeometry),
     compiledProjectSchemaVersion:
-      canonicalGeometry.schema_version || CANONICAL_PROJECT_GEOMETRY_VERSION,
+      authority.compiledProjectSchemaVersion ||
+      canonicalGeometry.schema_version ||
+      CANONICAL_PROJECT_GEOMETRY_VERSION,
+    authority,
   };
 }
 
@@ -686,11 +760,15 @@ function tryBuildCanonicalElevationGraphic(
   if (!drawing?.svg) {
     return drawing;
   }
+  const authority = resolveGeometryAuthority(canonicalGeometry);
   return {
     ...drawing,
     geometryHash: computeGeometryHashFromCanonical(canonicalGeometry),
     compiledProjectSchemaVersion:
-      canonicalGeometry.schema_version || CANONICAL_PROJECT_GEOMETRY_VERSION,
+      authority.compiledProjectSchemaVersion ||
+      canonicalGeometry.schema_version ||
+      CANONICAL_PROJECT_GEOMETRY_VERSION,
+    authority,
   };
 }
 
@@ -715,11 +793,15 @@ function tryBuildCanonicalSectionGraphic(
   if (!drawing?.svg) {
     return drawing;
   }
+  const authority = resolveGeometryAuthority(canonicalGeometry);
   return {
     ...drawing,
     geometryHash: computeGeometryHashFromCanonical(canonicalGeometry),
     compiledProjectSchemaVersion:
-      canonicalGeometry.schema_version || CANONICAL_PROJECT_GEOMETRY_VERSION,
+      authority.compiledProjectSchemaVersion ||
+      canonicalGeometry.schema_version ||
+      CANONICAL_PROJECT_GEOMETRY_VERSION,
+    authority,
   };
 }
 
@@ -1496,6 +1578,7 @@ export function generateEnhancedFloorPlanSVG(
         geometryHash: canonicalPlan.geometryHash,
         compiledProjectSchemaVersion:
           canonicalPlan.compiledProjectSchemaVersion,
+        ...(canonicalPlan.authority || {}),
         technical_quality_metadata:
           canonicalPlan.technical_quality_metadata || null,
       });
@@ -1595,6 +1678,7 @@ export function generateEnhancedElevationSVG(
         geometryHash: canonicalElevation.geometryHash,
         compiledProjectSchemaVersion:
           canonicalElevation.compiledProjectSchemaVersion,
+        ...(canonicalElevation.authority || {}),
         technical_quality_metadata:
           canonicalElevation.technical_quality_metadata || null,
       });
@@ -1689,6 +1773,7 @@ export function generateEnhancedSectionSVG(
         geometryHash: canonicalSection.geometryHash,
         compiledProjectSchemaVersion:
           canonicalSection.compiledProjectSchemaVersion,
+        ...(canonicalSection.authority || {}),
         technical_quality_metadata:
           canonicalSection.technical_quality_metadata || null,
       });

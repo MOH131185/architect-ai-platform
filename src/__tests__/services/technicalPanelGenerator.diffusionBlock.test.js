@@ -36,14 +36,14 @@ describe("TechnicalPanelGenerator diffusion fallback gate", () => {
       expect(isDiffusionFallbackAllowed()).toBe(true);
     });
 
-    test("returns true with PIPELINE_MODE=multi_panel (legacy)", () => {
+    test("does not treat PIPELINE_MODE=multi_panel as a diffusion escape hatch", () => {
       process.env.PIPELINE_MODE = "multi_panel";
-      expect(isDiffusionFallbackAllowed()).toBe(true);
+      expect(isDiffusionFallbackAllowed()).toBe(false);
     });
 
-    test("returns true with REACT_APP_USE_TOGETHER=true (legacy)", () => {
+    test("does not treat REACT_APP_USE_TOGETHER=true as a diffusion escape hatch", () => {
       process.env.REACT_APP_USE_TOGETHER = "true";
-      expect(isDiffusionFallbackAllowed()).toBe(true);
+      expect(isDiffusionFallbackAllowed()).toBe(false);
     });
 
     test("ignores empty string env", () => {
@@ -83,7 +83,7 @@ describe("TechnicalPanelGenerator diffusion fallback gate", () => {
     });
   });
 
-  describe("generate() permits diffusion when explicitly allowed", () => {
+  describe("generate() respects the explicit demo fallback flag", () => {
     test("ALLOW_DEMO_TECHNICAL_FALLBACK=1 → diffusion result returned", async () => {
       process.env.ALLOW_DEMO_TECHNICAL_FALLBACK = "1";
 
@@ -100,18 +100,16 @@ describe("TechnicalPanelGenerator diffusion fallback gate", () => {
       expect(result.generationMethod).toBe("diffusion_strict_ortho");
     });
 
-    test("PIPELINE_MODE=multi_panel → diffusion permitted", async () => {
-      process.env.PIPELINE_MODE = "multi_panel";
+    test("production REACT_APP_USE_TOGETHER=true still blocks diffusion fallback", async () => {
+      process.env.NODE_ENV = "production";
+      process.env.REACT_APP_USE_TOGETHER = "true";
 
       const generator = new TechnicalPanelGenerator();
-      const result = await generator.generate(
-        "section_AA",
-        {},
-        { id: "fp-test" },
-        {},
-      );
 
-      expect(result.generationMethod).toBe("diffusion_strict_ortho");
+      expect(isDiffusionFallbackAllowed()).toBe(false);
+      await expect(
+        generator.generate("section_AA", {}, { id: "fp-test" }, {}),
+      ).rejects.toThrow(DiffusionFallbackBlockedError);
     });
   });
 });

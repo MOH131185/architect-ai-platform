@@ -15,7 +15,7 @@ const CANONICAL_AUTHORITY_USED = "compiled_project_canonical_pack";
 const CANONICAL_AUTHORITY_SOURCE = "compiled_project";
 const FALLBACK_AUTHORITY_USED = "enhanced_geometry_adapter";
 
-function makeMasterDNAWithGeometry() {
+function makeMasterDNAWithPopulatedGeometryOnly() {
   // Minimum shape that GeometryAdapter recognises as having populatedGeometry,
   // so buildCanonicalTechnicalGeometry will succeed.
   const groundFloor = {
@@ -109,19 +109,54 @@ function makeMasterDNAWithGeometry() {
   };
 }
 
-function makeMinimalMasterDNAForFallback() {
-  // No populatedGeometry → buildCanonicalTechnicalGeometry returns null,
-  // forcing the enhanced fallback path. ArchitecturalFloorPlanGenerator
-  // still produces SVG from masterDNA.rooms.
+function makeMasterDNAWithCompiledProjectGeometry(projectId = "compiled-a") {
+  const dna = makeMasterDNAWithPopulatedGeometryOnly();
+  const groundFloor = dna.populatedGeometry.floors[0];
   return {
-    rooms: [
-      { name: "Living", x: 0, y: 0, width: 4, height: 3, area: 12 },
-      { name: "Kitchen", x: 4, y: 0, width: 3, height: 3, area: 9 },
-    ],
-    dimensions: { width: 7, length: 3, floors: 1 },
-    styleDNA: {
-      roof_language: "flat",
-      materials: { primary: "render" },
+    ...dna,
+    canonicalGeometry: {
+      schema_version: "canonical-project-geometry-v2",
+      project_id: projectId,
+      site: {
+        boundary_polygon: groundFloor.polygon,
+        buildable_polygon: groundFloor.polygon,
+      },
+      levels: [
+        {
+          id: "level-0",
+          name: "Ground Floor",
+          level_number: 0,
+          height_m: 3.2,
+          polygon: groundFloor.polygon,
+          footprint: groundFloor.polygon,
+          rooms: groundFloor.rooms,
+          walls: groundFloor.walls,
+        },
+      ],
+      rooms: groundFloor.rooms.map((room) => ({
+        ...room,
+        level_id: "level-0",
+      })),
+      walls: groundFloor.walls.map((wall) => ({
+        ...wall,
+        level_id: "level-0",
+      })),
+      doors: [],
+      windows: [],
+      footprints: [
+        {
+          id: "footprint-0",
+          level_id: "level-0",
+          polygon: groundFloor.polygon,
+        },
+      ],
+      roof: { type: "gable", roof_language: "gable" },
+      metadata: {
+        source: "compiled_project",
+        authoritySource: "compiled_project",
+        compiledProjectSchemaVersion: "compiled-project-v1",
+        style_dna: dna.styleDNA,
+      },
     },
   };
 }
@@ -130,7 +165,7 @@ describe("enhancedTechnicalDrawingAdapter authority stamping", () => {
   describe("canonical path (geometry available)", () => {
     test("floor plan stamps geometryHash, authorityUsed, authoritySource, schemaVersion", () => {
       const result = generateEnhancedFloorPlanSVG(
-        makeMasterDNAWithGeometry(),
+        makeMasterDNAWithCompiledProjectGeometry(),
         0,
         {},
       );
@@ -162,7 +197,7 @@ describe("enhancedTechnicalDrawingAdapter authority stamping", () => {
 
     test("elevation stamps canonical authority", () => {
       const result = generateEnhancedElevationSVG(
-        makeMasterDNAWithGeometry(),
+        makeMasterDNAWithCompiledProjectGeometry(),
         "south",
         {},
       );
@@ -176,7 +211,7 @@ describe("enhancedTechnicalDrawingAdapter authority stamping", () => {
 
     test("section stamps canonical authority", () => {
       const result = generateEnhancedSectionSVG(
-        makeMasterDNAWithGeometry(),
+        makeMasterDNAWithCompiledProjectGeometry(),
         "longitudinal",
         {},
       );
@@ -190,20 +225,36 @@ describe("enhancedTechnicalDrawingAdapter authority stamping", () => {
 
     test("svgHash is deterministic — same input twice gives same hash", () => {
       const a = generateEnhancedFloorPlanSVG(
-        makeMasterDNAWithGeometry(),
+        makeMasterDNAWithCompiledProjectGeometry(),
         0,
         {},
       );
       const b = generateEnhancedFloorPlanSVG(
-        makeMasterDNAWithGeometry(),
+        makeMasterDNAWithCompiledProjectGeometry(),
         0,
         {},
       );
       expect(a.svgHash).toBe(b.svgHash);
     });
 
+    test("geometryHash ignores volatile projectId for identical compiled geometry", () => {
+      const a = generateEnhancedFloorPlanSVG(
+        makeMasterDNAWithCompiledProjectGeometry("compiled-project-a"),
+        0,
+        {},
+      );
+      const b = generateEnhancedFloorPlanSVG(
+        makeMasterDNAWithCompiledProjectGeometry("compiled-project-b"),
+        0,
+        {},
+      );
+
+      expect(a.geometryHash).toBeTruthy();
+      expect(a.geometryHash).toBe(b.geometryHash);
+    });
+
     test("panels from same canonical geometry share the same geometryHash", () => {
-      const dna = makeMasterDNAWithGeometry();
+      const dna = makeMasterDNAWithCompiledProjectGeometry();
       const plan = generateEnhancedFloorPlanSVG(dna, 0, {});
       const elev = generateEnhancedElevationSVG(dna, "south", {});
       const sect = generateEnhancedSectionSVG(dna, "longitudinal", {});
@@ -214,7 +265,7 @@ describe("enhancedTechnicalDrawingAdapter authority stamping", () => {
     });
 
     test("composed panels pass the gate validators", () => {
-      const dna = makeMasterDNAWithGeometry();
+      const dna = makeMasterDNAWithCompiledProjectGeometry();
       const panels = [
         {
           type: "floor_plan_ground",
@@ -237,20 +288,45 @@ describe("enhancedTechnicalDrawingAdapter authority stamping", () => {
   });
 
   describe("enhanced fallback path (no canonical geometry)", () => {
-    test("floor plan stamps fallback authority that the gate will reject", () => {
+    test("populatedGeometry-only output is rejected by the final A1 authority gate", () => {
       const result = generateEnhancedFloorPlanSVG(
-        makeMinimalMasterDNAForFallback(),
+        makeMasterDNAWithPopulatedGeometryOnly(),
         0,
         {},
       );
 
-      // Result may be null if even the enhanced generator fails — the
-      // important contract is that whatever metadata we stamp must NOT
-      // claim canonical authority.
-      if (result === null) {
-        return;
-      }
+      expect(result).not.toBeNull();
+      expect(result.authorityUsed).toBe(FALLBACK_AUTHORITY_USED);
+      expect(result.authoritySource).toBe("masterDNA");
 
+      const composePanel = { type: "floor_plan_ground", ...result };
+      expect(findTechnicalPanelsMissingGeometryHash([composePanel])).toEqual(
+        [],
+      );
+      expect(
+        findTechnicalPanelsMissingAuthorityMetadata([composePanel]),
+      ).toEqual([]);
+      expect(
+        findPanelsWithDisallowedTechnicalAuthority([composePanel]),
+      ).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            panelType: "floor_plan_ground",
+            authorityUsed: FALLBACK_AUTHORITY_USED,
+            authoritySource: "masterDNA",
+          }),
+        ]),
+      );
+    });
+
+    test("floor plan stamps fallback authority that the gate will reject", () => {
+      const result = generateEnhancedFloorPlanSVG(
+        makeMasterDNAWithPopulatedGeometryOnly(),
+        0,
+        {},
+      );
+
+      expect(result).not.toBeNull();
       expect(result.authorityUsed).toBe(FALLBACK_AUTHORITY_USED);
       expect(result.authoritySource).toBe("masterDNA");
       expect(result.geometryHash).toEqual(expect.any(String));
