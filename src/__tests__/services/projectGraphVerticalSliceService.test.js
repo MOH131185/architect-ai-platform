@@ -1142,6 +1142,120 @@ describe("projectGraphVerticalSliceService", () => {
     }
   });
 
+  // -------------------------------------------------------------------------
+  // Codex review (PR #84) blocker #4: provenanceManifest.climateDataProviders
+  // must be populated end-to-end through the full slice when weather is
+  // supplied — not only proven via a buildClimatePack unit test.
+  // This test exercises buildArchitectureProjectVerticalSlice with a mock
+  // fetch that makes Met Office DataHub succeed and asserts the manifest
+  // record propagates with all five required fields, matching
+  // projectGraph.climate.providers[0].
+  // -------------------------------------------------------------------------
+  test("provenanceManifest.climateDataProviders is populated end-to-end when Met Office succeeds (Codex blocker #4)", async () => {
+    const SAMPLE_METOFFICE_TIMESERIES = {
+      features: [
+        {
+          properties: {
+            timeSeries: [
+              {
+                screenTemperature: 12.5,
+                windSpeed10m: 4.2,
+                windDirectionFrom10m: 200,
+                totalPrecipAmount: 0.3,
+              },
+            ],
+          },
+        },
+      ],
+    };
+    const fetchImpl = jest.fn(async (url) => {
+      if (
+        typeof url === "string" &&
+        url.includes("data.hub.api.metoffice.gov.uk")
+      ) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => SAMPLE_METOFFICE_TIMESERIES,
+        };
+      }
+      // Site providers (Planning, EA, Overpass, OS MasterMap, OS NGD) and
+      // Open-Meteo / OpenWeather all receive empty-but-OK responses. The
+      // chain stops at Met Office success, so Open-Meteo + OpenWeather are
+      // never called; this branch only returns for the site aggregator.
+      return { ok: true, status: 200, json: async () => ({}) };
+    });
+    const originalKey = process.env.METOFFICE_DATAHUB_API_KEY;
+    process.env.METOFFICE_DATAHUB_API_KEY = "test-mo-key";
+    try {
+      const result = await buildArchitectureProjectVerticalSlice({
+        ...createReadingRoomBrief(),
+        contextProviders: { fetchImpl, providerTimeoutMs: 5000 },
+      });
+      expect(result.success).toBe(true);
+
+      // (a) climateDataProviders is non-empty (Codex: length > 0).
+      expect(
+        Array.isArray(result.provenanceManifest.climateDataProviders),
+      ).toBe(true);
+      expect(
+        result.provenanceManifest.climateDataProviders.length,
+      ).toBeGreaterThan(0);
+
+      // (b) Each record has all 5 required fields.
+      const manifestRecord = result.provenanceManifest.climateDataProviders[0];
+      expect(manifestRecord).toEqual(
+        expect.objectContaining({
+          name: expect.any(String),
+          authority: expect.stringMatching(/^(high|medium|low)$/),
+          status: expect.stringMatching(/^(ok|error|timeout|not_used)$/),
+          fields_supplied: expect.any(Array),
+        }),
+      );
+      expect(manifestRecord).toHaveProperty("fetched_at");
+
+      // (c) Met Office record is what landed: name + authority + status.
+      expect(manifestRecord.name).toBe("met-office-datahub");
+      expect(manifestRecord.authority).toBe("high");
+      expect(manifestRecord.status).toBe("ok");
+      expect(manifestRecord.fields_supplied).toEqual(
+        expect.arrayContaining([
+          "temperature",
+          "wind",
+          "precipitation",
+          "climateZone",
+        ]),
+      );
+
+      // (d) Manifest record matches projectGraph.climate.providers[0]
+      //     (Codex: "record name matches climate.providers[0].name" +
+      //     "record authority matches climate.providers[0].authority").
+      const climateProviders = result.projectGraph?.climate?.providers || [];
+      expect(climateProviders.length).toBeGreaterThan(0);
+      expect(manifestRecord.name).toBe(climateProviders[0].name);
+      expect(manifestRecord.authority).toBe(climateProviders[0].authority);
+
+      // (e) Manifest dataQuality includes a WEATHER_AUTHORITY_* code.
+      const codes = result.provenanceManifest.dataQuality.map((q) => q.code);
+      expect(codes).toContain("WEATHER_AUTHORITY_HIGH");
+
+      // (f) factualProviderAssertion stays clean.
+      expect(
+        result.provenanceManifest.factualProviderAssertion
+          .openaiAsFactualProvider,
+      ).toBe(false);
+
+      // (g) No climateDataProviders name includes openai/gpt/llm.
+      for (const p of result.provenanceManifest.climateDataProviders) {
+        expect(p.name).not.toMatch(/openai|gpt|llm/i);
+      }
+    } finally {
+      if (originalKey === undefined)
+        delete process.env.METOFFICE_DATAHUB_API_KEY;
+      else process.env.METOFFICE_DATAHUB_API_KEY = originalKey;
+    }
+  }, 240000);
+
   test("executes OpenAI reasoning checkpoints when a provider mock is supplied", async () => {
     const fetchImpl = createOpenAIReasoningFetchMock();
 

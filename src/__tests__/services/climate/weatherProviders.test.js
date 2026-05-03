@@ -543,4 +543,140 @@ describe("weatherService chain", () => {
     expect(codes).not.toContain("WEATHER_PROVIDER_TIMEOUT");
     expect(codes).not.toContain("WEATHER_PROVIDER_FALLBACK");
   });
+
+  // -------------------------------------------------------------------------
+  // Codex review (PR #84) blockers 1-3: end-to-end chain-order tests with
+  // explicit assertions on which providers were called and in what order via
+  // fetchImpl.mock.calls. Closes:
+  //   - Open-Meteo timeout → OpenWeather fallthrough must be exercised.
+  //   - OpenWeather error/timeout → deterministic fallback must be exercised.
+  //   - Provider call order must be asserted explicitly.
+  // -------------------------------------------------------------------------
+
+  function classifyUrlByProvider(url) {
+    if (typeof url !== "string") return "unknown";
+    if (url.includes("data.hub.api.metoffice.gov.uk"))
+      return "met-office-datahub";
+    if (url.includes("api.open-meteo.com")) return "open-meteo";
+    if (url.includes("api.openweathermap.org")) return "openweather";
+    return "unknown";
+  }
+  function callOrderOf(fetchImpl) {
+    return fetchImpl.mock.calls.map((args) => classifyUrlByProvider(args[0]));
+  }
+
+  test("E2E chain order — Met Office error → Open-Meteo timeout → OpenWeather success (final provider=openweather, authority=low)", async () => {
+    process.env.METOFFICE_DATAHUB_API_KEY = "test-mo-key";
+    process.env.OPENWEATHER_API_KEY = "test-ow-key";
+    const fetchImpl = jest.fn(async (url) => {
+      const provider = classifyUrlByProvider(url);
+      if (provider === "met-office-datahub") return jsonResponse({}, 503);
+      if (provider === "open-meteo") return new Promise(() => {}); // hang
+      if (provider === "openweather") return jsonResponse(SAMPLE_OPENWEATHER);
+      return jsonResponse({});
+    });
+    const out = await weatherService.getClimateData(51.5, -0.1, {
+      fetchImpl,
+      providerTimeoutMs: 25,
+    });
+    // Explicit call-order assertion (Codex blocker #3).
+    expect(callOrderOf(fetchImpl)).toEqual([
+      "met-office-datahub",
+      "open-meteo",
+      "openweather",
+    ]);
+    // Final selected provider is openweather with authority=low.
+    expect(out.provider).toBe("openweather");
+    expect(out.authority).toBe("low");
+    // Codes specifically required by Codex.
+    const codes = out.data_quality.map((q) => q.code);
+    expect(codes).toContain("WEATHER_PROVIDER_ERROR"); // Met Office HTTP 503
+    expect(codes).toContain("WEATHER_PROVIDER_TIMEOUT"); // Open-Meteo hung
+    expect(codes).toContain("WEATHER_PROVIDER_FALLBACK"); // chain advanced
+    expect(codes).toContain("WEATHER_AUTHORITY_LOW"); // OpenWeather succeeded
+    // Open-Meteo provider record marks the timeout.
+    const openMeteoRecord = out.providers.find((p) => p.name === "open-meteo");
+    expect(openMeteoRecord).toBeDefined();
+    expect(openMeteoRecord.status).toBe("timeout");
+    expect(openMeteoRecord.fields_supplied).toEqual([]);
+    // OpenWeather final record marks ok.
+    const owRecord = out.providers.find((p) => p.name === "openweather");
+    expect(owRecord.status).toBe("ok");
+    expect(owRecord.authority).toBe("low");
+    expect(owRecord.fields_supplied).toEqual(
+      expect.arrayContaining([
+        "temperature",
+        "wind",
+        "precipitation",
+        "climateZone",
+      ]),
+    );
+  });
+
+  test("E2E chain order — Met Office error → Open-Meteo error → OpenWeather timeout → deterministic fallback (final provider=deterministic-fallback)", async () => {
+    process.env.METOFFICE_DATAHUB_API_KEY = "test-mo-key";
+    process.env.OPENWEATHER_API_KEY = "test-ow-key";
+    const fetchImpl = jest.fn(async (url) => {
+      const provider = classifyUrlByProvider(url);
+      if (provider === "met-office-datahub") return jsonResponse({}, 503);
+      if (provider === "open-meteo") return jsonResponse({}, 502);
+      if (provider === "openweather") return new Promise(() => {}); // hang
+      return jsonResponse({});
+    });
+    const out = await weatherService.getClimateData(51.5, -0.1, {
+      fetchImpl,
+      providerTimeoutMs: 25,
+    });
+    // Explicit call-order assertion: every provider attempted exactly once.
+    expect(callOrderOf(fetchImpl)).toEqual([
+      "met-office-datahub",
+      "open-meteo",
+      "openweather",
+    ]);
+    // Final provider is deterministic-fallback.
+    expect(out.provider).toBe("deterministic-fallback");
+    expect(out.authority).toBe("low");
+    const codes = out.data_quality.map((q) => q.code);
+    expect(codes).toContain("WEATHER_PROVIDER_ERROR"); // Met Office HTTP 503
+    // Note: Open-Meteo HTTP 502 also emits WEATHER_PROVIDER_ERROR.
+    expect(codes.filter((c) => c === "WEATHER_PROVIDER_ERROR").length).toBe(2);
+    expect(codes).toContain("WEATHER_PROVIDER_TIMEOUT"); // OpenWeather hung
+    expect(codes).toContain("WEATHER_PROVIDER_FALLBACK"); // chain → fallback warning
+    expect(codes).toContain("WEATHER_AUTHORITY_LOW");
+    // The fallback warning is severity=warning (final), not just info chain advance.
+    const fallbackWarnings = out.data_quality.filter(
+      (q) => q.code === "WEATHER_PROVIDER_FALLBACK" && q.severity === "warning",
+    );
+    expect(fallbackWarnings.length).toBeGreaterThan(0);
+    // Provider records for all four entries.
+    const names = out.providers.map((p) => p.name);
+    expect(names).toEqual([
+      "met-office-datahub",
+      "open-meteo",
+      "openweather",
+      "deterministic-fallback",
+    ]);
+    expect(out.providers.find((p) => p.name === "openweather").status).toBe(
+      "timeout",
+    );
+    expect(
+      out.providers.find((p) => p.name === "deterministic-fallback").status,
+    ).toBe("ok");
+  });
+
+  test("E2E chain order — Met Office success short-circuits chain (Open-Meteo + OpenWeather never called)", async () => {
+    process.env.METOFFICE_DATAHUB_API_KEY = "test-mo-key";
+    process.env.OPENWEATHER_API_KEY = "test-ow-key";
+    const fetchImpl = jest.fn(async (url) => {
+      const provider = classifyUrlByProvider(url);
+      if (provider === "met-office-datahub")
+        return jsonResponse(SAMPLE_METOFFICE_TIMESERIES);
+      // If anything else gets called the test should fail.
+      throw new Error(`Chain leaked to ${provider}; should have stopped`);
+    });
+    const out = await weatherService.getClimateData(51.5, -0.1, { fetchImpl });
+    expect(callOrderOf(fetchImpl)).toEqual(["met-office-datahub"]);
+    expect(out.provider).toBe("met-office-datahub");
+    expect(out.authority).toBe("high");
+  });
 });
