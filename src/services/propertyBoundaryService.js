@@ -4,6 +4,14 @@
  * Supports polygons, triangles, irregular shapes, and complex geometries
  */
 
+import {
+  BOUNDARY_POLICY_VERSION,
+  classifyParcelCandidate,
+  classifyBuildingCandidate,
+  normalizeBoundaryAreaFields,
+  polygonAreaM2,
+} from "./site/boundaryPolicy.js";
+
 const API_ENDPOINTS = {
   OVERPASS: "https://overpass-api.de/api/interpreter",
   NOMINATIM: "https://nominatim.openstreetmap.org/search",
@@ -162,22 +170,27 @@ export async function fetchSiteBoundaryFromProxy({
       // NOT promote `polygon: null` from the proxy to anything else.
       return null;
     }
-    return {
+    return normalizeBoundaryAreaFields({
       polygon: json.polygon,
       shapeType: analyzeShapeType(json.polygon),
       source: json.source,
       confidence: Number(json.confidence) || 0,
-      area: Number(json.areaM2) || 0,
+      areaM2: Number(json.areaM2) || 0,
       boundaryAuthoritative: Boolean(json.boundaryAuthoritative),
       boundaryConfidence: Number(json.confidence) || 0,
       boundarySource: json.source,
+      estimateReason: json.estimateReason || null,
+      estimatedOnly: json.boundaryAuthoritative !== true,
+      policyVersion: json.policyVersion || BOUNDARY_POLICY_VERSION,
+      hash: json.hash || null,
       metadata: {
         ...(json.metadata || {}),
         proxyHash: json.hash,
         proxyCached: Boolean(json.cached),
         proxySchemaVersion: json.schemaVersion,
+        policyVersion: json.policyVersion || BOUNDARY_POLICY_VERSION,
       },
-    };
+    });
   } catch (error) {
     console.warn(
       `[site-boundary-proxy] fetch failed (${error?.name || "error"}: ${error?.message || error}); falling through to existing chain`,
@@ -368,16 +381,73 @@ async function detectFromOSMParcel(coordinates) {
     if (closestParcel) {
       const polygon = extractPolygonFromElement(closestParcel);
       const shapeType = analyzeShapeType(polygon);
+      // Reuse the shared classifier so the legacy path applies the same
+      // demotion rules as the modern proxy: landuse-district tags, oversized
+      // polygons (>1500 m² for residential), or excessive vertex counts.
+      // The polygon shape from extractPolygonFromElement is { lat, lng } so
+      // it matches what classifyParcelCandidate expects.
+      const polygonForClassifier = polygon
+        .map((point) =>
+          point && Number.isFinite(point.lat) && Number.isFinite(point.lng)
+            ? { lat: Number(point.lat), lng: Number(point.lng) }
+            : null,
+        )
+        .filter(Boolean);
+      const estimateReason = classifyParcelCandidate({
+        polygon: polygonForClassifier,
+        element: closestParcel,
+      });
+      const measuredAreaM2 = polygonAreaM2(polygonForClassifier);
+      const fallbackAreaM2 = calculatePolygonArea(polygon);
+      const areaM2 =
+        Number.isFinite(measuredAreaM2) && measuredAreaM2 > 0
+          ? measuredAreaM2
+          : fallbackAreaM2;
+
+      // When the parcel is implausible (oversized landuse district, etc.)
+      // we still return the polygon so downstream UI has *something* to
+      // render, but mark it as estimated and lower confidence so the
+      // gating logic / UI label treats it as contextual, not authoritative.
+      if (estimateReason) {
+        return {
+          polygon,
+          shapeType,
+          source: "OSM Parcel (estimated)",
+          confidence: 0.55,
+          area: areaM2,
+          areaM2,
+          surfaceAreaM2: areaM2,
+          boundaryAuthoritative: false,
+          boundaryConfidence: 0.55,
+          boundarySource: "OSM Parcel (estimated)",
+          estimatedOnly: true,
+          estimateReason,
+          policyVersion: BOUNDARY_POLICY_VERSION,
+          metadata: {
+            landuse: closestParcel.tags?.landuse,
+            osmId: closestParcel.id,
+            estimateReason,
+            policyVersion: BOUNDARY_POLICY_VERSION,
+          },
+        };
+      }
 
       return {
         polygon,
         shapeType,
         source: "OSM Parcel",
         confidence: 0.95,
-        area: calculatePolygonArea(polygon),
+        area: areaM2,
+        areaM2,
+        surfaceAreaM2: areaM2,
+        boundaryAuthoritative: true,
+        boundaryConfidence: 0.95,
+        boundarySource: "OSM Parcel",
+        policyVersion: BOUNDARY_POLICY_VERSION,
         metadata: {
           landuse: closestParcel.tags?.landuse,
           osmId: closestParcel.id,
+          policyVersion: BOUNDARY_POLICY_VERSION,
         },
       };
     }
@@ -423,16 +493,74 @@ async function detectFromOSMBuilding(coordinates) {
       // Expand building footprint by 15% to estimate property boundary
       const expandedPolygon = expandPolygon(buildingPolygon, 1.15);
       const shapeType = analyzeShapeType(expandedPolygon);
+      // Same demotion logic as detectFromOSMParcel: oversized buildings
+      // (>600 m² for residential) are almost certainly multi-unit blocks
+      // and should not be treated as authoritative single-house footprints.
+      const polygonForClassifier = buildingPolygon
+        .map((point) =>
+          point && Number.isFinite(point.lat) && Number.isFinite(point.lng)
+            ? { lat: Number(point.lat), lng: Number(point.lng) }
+            : null,
+        )
+        .filter(Boolean);
+      const buildingEstimateReason = classifyBuildingCandidate({
+        polygon: polygonForClassifier,
+      });
+      const measuredAreaM2 = polygonAreaM2(
+        expandedPolygon
+          .map((point) =>
+            point && Number.isFinite(point.lat) && Number.isFinite(point.lng)
+              ? { lat: Number(point.lat), lng: Number(point.lng) }
+              : null,
+          )
+          .filter(Boolean),
+      );
+      const fallbackAreaM2 = calculatePolygonArea(expandedPolygon);
+      const areaM2 =
+        Number.isFinite(measuredAreaM2) && measuredAreaM2 > 0
+          ? measuredAreaM2
+          : fallbackAreaM2;
+
+      if (buildingEstimateReason) {
+        return {
+          polygon: expandedPolygon,
+          shapeType,
+          source: "OSM Building (expanded, estimated)",
+          confidence: 0.55,
+          area: areaM2,
+          areaM2,
+          surfaceAreaM2: areaM2,
+          boundaryAuthoritative: false,
+          boundaryConfidence: 0.55,
+          boundarySource: "OSM Building (expanded, estimated)",
+          estimatedOnly: true,
+          estimateReason: buildingEstimateReason,
+          policyVersion: BOUNDARY_POLICY_VERSION,
+          metadata: {
+            buildingType: closestBuilding.tags?.building,
+            osmId: closestBuilding.id,
+            estimateReason: buildingEstimateReason,
+            policyVersion: BOUNDARY_POLICY_VERSION,
+          },
+        };
+      }
 
       return {
         polygon: expandedPolygon,
         shapeType,
         source: "OSM Building (expanded)",
         confidence: 0.75,
-        area: calculatePolygonArea(expandedPolygon),
+        area: areaM2,
+        areaM2,
+        surfaceAreaM2: areaM2,
+        boundaryAuthoritative: true,
+        boundaryConfidence: 0.75,
+        boundarySource: "OSM Building (expanded)",
+        policyVersion: BOUNDARY_POLICY_VERSION,
         metadata: {
           buildingType: closestBuilding.tags?.building,
           osmId: closestBuilding.id,
+          policyVersion: BOUNDARY_POLICY_VERSION,
         },
       };
     }
@@ -486,13 +614,21 @@ async function detectFromNearbyFeatures(coordinates) {
 
     if (polygon && polygon.length >= 3) {
       const shapeType = analyzeShapeType(polygon);
+      const areaM2 = calculatePolygonArea(polygon);
 
       return {
         polygon,
         shapeType,
         source: "Nearby Features",
         confidence: 0.6,
-        area: calculatePolygonArea(polygon),
+        area: areaM2,
+        areaM2,
+        surfaceAreaM2: areaM2,
+        boundaryAuthoritative: false,
+        boundaryConfidence: 0.6,
+        boundarySource: "Nearby Features",
+        estimatedOnly: true,
+        policyVersion: BOUNDARY_POLICY_VERSION,
       };
     }
   }
@@ -551,6 +687,8 @@ function generateIntelligentFallback(coordinates, address) {
     }
   }
 
+  const areaM2 = calculatePolygonArea(polygon);
+
   return {
     polygon,
     shapeType,
@@ -561,10 +699,16 @@ function generateIntelligentFallback(coordinates, address) {
     boundarySource: INTELLIGENT_FALLBACK_BOUNDARY_SOURCE,
     fallbackReason: "No real boundary data available",
     estimatedOnly: true,
-    area: calculatePolygonArea(polygon),
+    area: areaM2,
+    areaM2,
+    surfaceAreaM2: areaM2,
+    policyVersion: BOUNDARY_POLICY_VERSION,
     metadata: buildEstimatedBoundaryMetadata({
       reason: "No real boundary data available",
       addressAnalysis: { isUrban, isCorner },
+      areaM2,
+      surfaceAreaM2: areaM2,
+      policyVersion: BOUNDARY_POLICY_VERSION,
     }),
   };
 }

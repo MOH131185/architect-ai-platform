@@ -38,6 +38,11 @@ import {
 import buildingFootprintService from "../services/buildingFootprintService.js";
 import { resolveUiSiteBoundaryAuthority } from "../services/siteBoundaryUiAuthority.js";
 import { selectContextualBoundaryPolygon } from "../services/siteBoundaryAutoDetectPolicy.js";
+import { resolveMainEntryDirection } from "../services/site/mainEntryDirectionService.js";
+import {
+  BOUNDARY_POLICY_VERSION,
+  normalizeBoundaryAreaFields,
+} from "../services/site/boundaryPolicy.js";
 import { buildSiteContext } from "../rings/ring1-site/siteContextBuilder.js";
 import { captureSnapshotForPersistence } from "../services/siteMapSnapshotService.js";
 import { buildProjectPipelineV2Bundle } from "../services/project/projectPipelineV2Service.js";
@@ -213,6 +218,63 @@ const normalizeSitePolygonForUi = (polygon = []) => {
   if (!Array.isArray(polygon)) return [];
   const normalized = polygon.map(normalizeLatLngPoint).filter(Boolean);
   return normalized.length >= 3 ? normalized : [];
+};
+
+const FULL_DIRECTION_TO_SHORT = Object.freeze({
+  north: "N",
+  northeast: "NE",
+  east: "E",
+  southeast: "SE",
+  south: "S",
+  southwest: "SW",
+  west: "W",
+  northwest: "NW",
+});
+
+const normalizeMainEntryDirectionCode = (orientation) => {
+  const raw = String(orientation || "").trim();
+  if (!raw) return "";
+  const upper = raw.toUpperCase();
+  if (FULL_DIRECTION_TO_SHORT[raw.toLowerCase()]) {
+    return FULL_DIRECTION_TO_SHORT[raw.toLowerCase()];
+  }
+  return upper;
+};
+
+const getManualMainEntryEdgeIndex = (projectDetails = {}) => {
+  const candidates = [
+    projectDetails.manualMainEntryEdgeIndex,
+    projectDetails.manualFrontageEdgeIndex,
+    projectDetails.mainEntryEdgeIndex,
+    projectDetails.frontageEdgeIndex,
+  ];
+  const match = candidates.find((value) => Number.isFinite(Number(value)));
+  return match === undefined ? null : Number(match);
+};
+
+const hasManualEntranceDirection = (projectDetails = {}) =>
+  Boolean(projectDetails.entranceManualOverride) ||
+  (projectDetails.entranceAutoDetected === false &&
+    Boolean(projectDetails.entranceDirection) &&
+    !["", "N"].includes(String(projectDetails.entranceDirection)));
+
+const buildMainEntryForWizard = ({
+  projectDetails = {},
+  sitePolygon = [],
+  roadSegments = null,
+  sunPath = null,
+} = {}) => {
+  const manualEdgeIndex = getManualMainEntryEdgeIndex(projectDetails);
+  const manualDirection = hasManualEntranceDirection(projectDetails)
+    ? projectDetails.entranceDirection
+    : null;
+  return resolveMainEntryDirection({
+    sitePolygon,
+    roadSegments,
+    sunPath,
+    manualEdgeIndex,
+    manualDirection,
+  });
 };
 
 export function resolveWizardProjectTypeSupport(projectDetails = {}) {
@@ -889,6 +951,8 @@ const ArchitectAIWizardContainer = () => {
         boundaryEstimated: boundaryResolution.boundaryEstimated,
         boundaryWarning: siteBoundaryWarning,
         boundaryWarningCode: siteAnalysis?.boundaryWarningCode || null,
+        boundarySource: siteAnalysis?.boundarySource || null,
+        boundaryConfidence: siteAnalysis?.boundaryConfidence || null,
         estimatedSiteBoundary: contextualEstimatedBoundary,
         contextualSiteBoundary: contextualEstimatedBoundary,
         estimatedSurfaceArea: siteAnalysis.estimatedSurfaceArea || null,
@@ -901,6 +965,13 @@ const ArchitectAIWizardContainer = () => {
         surfaceArea: boundaryResolution.boundaryAuthoritative
           ? siteAnalysis.surfaceArea
           : null,
+        areaM2: boundaryResolution.boundaryAuthoritative
+          ? siteAnalysis.areaM2 || siteAnalysis.surfaceArea
+          : null,
+        surfaceAreaM2: boundaryResolution.boundaryAuthoritative
+          ? siteAnalysis.surfaceAreaM2 || siteAnalysis.surfaceArea
+          : null,
+        policyVersion: siteAnalysis?.policyVersion || BOUNDARY_POLICY_VERSION,
         climateSummary: {
           prevailingWind: climateBundle.wind.direction,
           avgSummerTemp: climateBundle.climate?.seasonal?.summer?.avgTemp || "",
@@ -950,17 +1021,146 @@ const ArchitectAIWizardContainer = () => {
     (boundaryData) => {
       if (!boundaryData) return;
 
-      const polygon = normalizeSitePolygonForUi(boundaryData.polygon || []);
-      if (polygonsEqual(sitePolygon, polygon)) {
+      const normalizedBoundary = normalizeBoundaryAreaFields(boundaryData);
+      if (normalizedBoundary.invalid) {
+        const warning =
+          normalizedBoundary.warnings?.[0] ||
+          "Manual boundary is invalid and was not saved as verified.";
+        // PR-C re-review blocker 1: when the editor signals
+        // clearManualVerified (polygon was cleared, became invalid, or
+        // self-intersected) drop ANY previously stored manual_verified
+        // boundary from authoritative state so the parent does not keep
+        // a stale verified polygon.
+        const shouldClearManualVerified =
+          boundaryData.clearManualVerified === true ||
+          normalizedBoundary.clearManualVerified === true ||
+          normalizedBoundary.manualVerified === false;
+        setLocationData((prev) => {
+          const prevSiteAnalysis = prev?.siteAnalysis || {};
+          const wasManualVerified =
+            prev?.manualVerifiedBoundary != null ||
+            prev?.boundarySource === "manual_verified" ||
+            prevSiteAnalysis.boundarySource === "manual_verified";
+          const clearManualState =
+            shouldClearManualVerified && wasManualVerified;
+          return {
+            ...(prev || {}),
+            manualBoundaryInvalid: true,
+            manualBoundaryWarning: warning,
+            ...(clearManualState
+              ? {
+                  manualVerifiedBoundary: null,
+                  boundaryAuthoritative: false,
+                  boundarySource: null,
+                  boundaryConfidence: null,
+                  surfaceArea: null,
+                  areaM2: null,
+                  surfaceAreaM2: null,
+                }
+              : {
+                  boundaryAuthoritative: prev?.boundaryAuthoritative || false,
+                }),
+            siteAnalysis: {
+              ...prevSiteAnalysis,
+              manualBoundaryInvalid: true,
+              manualBoundaryWarning: warning,
+              ...(clearManualState
+                ? {
+                    manualVerifiedBoundary: null,
+                    authoritativeSiteBoundary: null,
+                    boundaryAuthoritative: false,
+                    boundarySource: null,
+                    boundaryConfidence: null,
+                    surfaceArea: null,
+                    areaM2: null,
+                    surfaceAreaM2: null,
+                    authoritativeSurfaceArea: null,
+                  }
+                : {}),
+            },
+          };
+        });
+        if (shouldClearManualVerified) {
+          setSitePolygon([]);
+          setSiteMetrics(null);
+        }
         return;
       }
 
+      const polygon = normalizeSitePolygonForUi(boundaryData.polygon || []);
+      const isManualVerified =
+        normalizedBoundary.boundarySource === "manual_verified" &&
+        normalizedBoundary.boundaryAuthoritative === true;
+      if (polygonsEqual(sitePolygon, polygon) && !isManualVerified) {
+        return;
+      }
+
+      const baseMetrics =
+        polygon && polygon.length >= 3 ? computeSiteMetrics(polygon) : null;
+      const nextMetrics = baseMetrics
+        ? {
+            ...baseMetrics,
+            areaM2: normalizedBoundary.areaM2 || baseMetrics.areaM2,
+            area: normalizedBoundary.areaM2 || baseMetrics.areaM2,
+            surfaceAreaM2:
+              normalizedBoundary.surfaceAreaM2 ||
+              normalizedBoundary.areaM2 ||
+              baseMetrics.areaM2,
+            perimeterM: normalizedBoundary.perimeterM || baseMetrics.perimeterM,
+            boundaryAuthoritative:
+              normalizedBoundary.boundaryAuthoritative === true,
+            boundarySource: normalizedBoundary.boundarySource,
+            boundaryConfidence: normalizedBoundary.boundaryConfidence,
+            boundaryHash: normalizedBoundary.hash || null,
+            policyVersion:
+              normalizedBoundary.policyVersion || BOUNDARY_POLICY_VERSION,
+          }
+        : null;
+
       setSitePolygon(polygon);
-      setSiteMetrics(
-        polygon && polygon.length >= 3 ? computeSiteMetrics(polygon) : null,
-      );
+      setSiteMetrics(nextMetrics);
+
+      if (isManualVerified) {
+        setLocationData((prev) => ({
+          ...(prev || {}),
+          siteBoundary: polygon,
+          surfaceArea: normalizedBoundary.areaM2,
+          areaM2: normalizedBoundary.areaM2,
+          surfaceAreaM2: normalizedBoundary.surfaceAreaM2,
+          boundaryAuthoritative: true,
+          boundaryEstimated: false,
+          boundarySource: "manual_verified",
+          boundaryConfidence: 1,
+          manualBoundaryInvalid: false,
+          manualBoundaryWarning: null,
+          manualVerifiedBoundary: normalizedBoundary,
+          siteAnalysis: {
+            ...(prev?.siteAnalysis || {}),
+            siteBoundary: polygon,
+            authoritativeSiteBoundary: polygon,
+            estimatedSiteBoundary: null,
+            contextualSiteBoundary: prev?.siteAnalysis?.contextualSiteBoundary,
+            area: normalizedBoundary.areaM2,
+            areaM2: normalizedBoundary.areaM2,
+            surfaceArea: normalizedBoundary.areaM2,
+            surfaceAreaM2: normalizedBoundary.surfaceAreaM2,
+            authoritativeSurfaceArea: normalizedBoundary.areaM2,
+            estimatedSurfaceArea: null,
+            boundaryAuthoritative: true,
+            boundaryEstimated: false,
+            estimatedOnly: false,
+            boundarySource: "manual_verified",
+            boundaryConfidence: 1,
+            fallbackReason: null,
+            estimateReason: null,
+            boundaryWarning: null,
+            boundaryWarningCode: null,
+            manualVerifiedBoundary: normalizedBoundary,
+          },
+        }));
+      }
     },
-    [setSiteMetrics, setSitePolygon, sitePolygon],
+    [setLocationData, setSiteMetrics, setSitePolygon, sitePolygon],
   );
 
   /**
@@ -1678,9 +1878,6 @@ const ArchitectAIWizardContainer = () => {
     });
 
     try {
-      const { inferEntranceDirection } =
-        await import("../utils/entranceOrientation");
-
       let roadSegments = null;
       let roadLookupOk = false;
       try {
@@ -1716,14 +1913,17 @@ const ArchitectAIWizardContainer = () => {
         );
       }
 
-      const result = inferEntranceDirection({
+      const result = buildMainEntryForWizard({
+        projectDetails,
         sitePolygon,
         roadSegments,
         sunPath: locationData?.sunPath,
       });
 
-      logger.info("[Entrance] inferEntranceDirection returned", {
-        direction: result?.direction,
+      logger.info("[Entrance] resolveMainEntryDirection returned", {
+        orientation: result?.orientation,
+        bearingDeg: result?.bearingDeg,
+        source: result?.source,
         confidence: result?.confidence,
         rationale: result?.rationale?.[0]?.message || null,
         roadSegmentsUsed: roadLookupOk
@@ -1742,29 +1942,51 @@ const ArchitectAIWizardContainer = () => {
       // implicitly because the user typed a direction).
       if (result.confidence >= 0.5) {
         logger.info("[Entrance] applying auto-detected direction", {
-          direction: result.direction,
+          orientation: result.orientation,
+          bearingDeg: result.bearingDeg,
+          source: result.source,
           confidence: result.confidence,
           needsReview: result.confidence < 0.7,
         });
         setProjectDetails((prev) => ({
           ...prev,
-          entranceDirection: result.direction,
-          entranceAutoDetected: true,
+          entranceDirection: normalizeMainEntryDirectionCode(
+            result.orientation,
+          ),
+          entranceAutoDetected: result.source !== "manual",
           entranceConfidence: result.confidence,
           entranceNeedsReview: result.confidence < 0.7,
+          mainEntry: result,
+          mainEntryDirection: result,
+          mainEntryBearingDeg: result.bearingDeg,
+          frontageEdgeId: result.frontageEdgeId,
+          mainEntryEdgeId: result.mainEntryEdgeId,
+        }));
+        setLocationData((prev) => ({
+          ...(prev || {}),
+          mainEntry: result,
+          mainEntryDirection: result,
+          siteAnalysis: {
+            ...(prev?.siteAnalysis || {}),
+            mainEntry: result,
+            mainEntryDirection: result,
+          },
         }));
       } else {
         logger.warn(
           "[Entrance] auto-detected confidence below 0.5 threshold — direction NOT applied; user must pick manually",
           {
-            direction: result.direction,
+            orientation: result.orientation,
+            bearingDeg: result.bearingDeg,
             confidence: result.confidence,
           },
         );
       }
 
       logger.success("Entrance orientation detected", {
-        direction: result.direction,
+        orientation: result.orientation,
+        bearingDeg: result.bearingDeg,
+        source: result.source,
         confidence: result.confidence,
       });
     } catch (err) {
@@ -1774,8 +1996,10 @@ const ArchitectAIWizardContainer = () => {
     }
   }, [
     locationData,
+    projectDetails,
     setAutoDetectResult,
     setIsDetectingEntrance,
+    setLocationData,
     setProjectDetails,
     siteMetrics,
     sitePolygon,
@@ -1941,10 +2165,11 @@ const ArchitectAIWizardContainer = () => {
                 fillOpacity: 0.18,
               }
             : {
-                strokeColor: "#1976D2",
+                strokeColor: "#F59E0B",
                 strokeWeight: 2,
-                fillColor: "#1976D2",
-                fillOpacity: 0.1,
+                fillColor: "#F59E0B",
+                fillOpacity: 0.08,
+                strokeDasharray: "8 6",
               },
           zoom: locationData?.mapZoom || 17,
           mapType: siteSnapshotMapType,
@@ -1982,6 +2207,14 @@ const ArchitectAIWizardContainer = () => {
           boundaryEstimated:
             !siteSnapshotBoundaryAuthoritative &&
             siteSnapshotDisplayPolygon.length >= 3,
+          boundarySource:
+            locationData?.boundarySource ||
+            locationData?.siteAnalysis?.boundarySource ||
+            null,
+          boundaryConfidence:
+            locationData?.boundaryConfidence ??
+            locationData?.siteAnalysis?.boundaryConfidence ??
+            null,
           siteSnapshotPolygonRole: siteSnapshotMode,
           contextualBoundaryOverlayUsed:
             !siteSnapshotBoundaryAuthoritative &&
@@ -1995,6 +2228,11 @@ const ArchitectAIWizardContainer = () => {
           climateAnalysis: locationData.climate,
           siteAnalysis: locationData.siteAnalysis,
           siteDNA: locationData.siteDNA,
+          mainEntry: projectDetails.mainEntry || locationData.mainEntry || null,
+          mainEntryDirection:
+            projectDetails.mainEntryDirection ||
+            locationData.mainEntryDirection ||
+            null,
           climateSummary: locationData.climateSummary,
         },
       });
@@ -2068,6 +2306,39 @@ const ArchitectAIWizardContainer = () => {
         maxFloors: projectDetails?.floorMetrics?.maxFloorsAllowed || null,
       });
       const designFloorCount = designFloorAuth.floorCount;
+      const generationMainEntry =
+        projectDetails.mainEntry ||
+        locationData?.mainEntry ||
+        buildMainEntryForWizard({
+          projectDetails,
+          sitePolygon,
+          sunPath: locationData?.sunPath || locationData?.siteDNA?.solar,
+        });
+      const generationSiteMetrics = siteMetrics
+        ? {
+            ...siteMetrics,
+            boundarySource:
+              siteMetrics.boundarySource ||
+              locationData?.boundarySource ||
+              locationData?.siteAnalysis?.boundarySource ||
+              null,
+            boundaryConfidence:
+              siteMetrics.boundaryConfidence ??
+              locationData?.boundaryConfidence ??
+              locationData?.siteAnalysis?.boundaryConfidence ??
+              null,
+            boundaryAuthoritative:
+              siteMetrics.boundaryAuthoritative ??
+              locationData?.boundaryAuthoritative ??
+              locationData?.siteAnalysis?.boundaryAuthoritative ??
+              null,
+            policyVersion:
+              siteMetrics.policyVersion ||
+              locationData?.policyVersion ||
+              locationData?.siteAnalysis?.policyVersion ||
+              BOUNDARY_POLICY_VERSION,
+          }
+        : siteMetrics;
 
       const designSpec = {
         buildingProgram:
@@ -2092,8 +2363,14 @@ const ArchitectAIWizardContainer = () => {
         floorCountLocked: Boolean(projectDetails.floorCountLocked),
         autoDetectedFloorCount: projectDetails.autoDetectedFloorCount ?? null,
         floorCountAuthoritySource: designFloorAuth.source,
-        entranceOrientation: projectDetails.entranceDirection,
+        entranceOrientation:
+          generationMainEntry?.orientation || projectDetails.entranceDirection,
         entranceDirection: projectDetails.entranceDirection, // Maintain backward compatibility
+        mainEntry: generationMainEntry,
+        mainEntryDirection: generationMainEntry,
+        mainEntryBearingDeg: generationMainEntry?.bearingDeg ?? null,
+        frontageEdgeId: generationMainEntry?.frontageEdgeId || null,
+        mainEntryEdgeId: generationMainEntry?.mainEntryEdgeId || null,
         programSpaces: effectiveProgramSpaces,
         programGeneratorMeta: {
           autoDetected: projectDetails.entranceAutoDetected,
@@ -2103,8 +2380,8 @@ const ArchitectAIWizardContainer = () => {
             v2Bundle?.pipelineVersion || projectTypePipelineVersion,
         },
         sitePolygon,
-        siteMetrics, // Alias for downstream generators expecting `siteMetrics`
-        sitePolygonMetrics: siteMetrics,
+        siteMetrics: generationSiteMetrics, // Alias for downstream generators expecting `siteMetrics`
+        sitePolygonMetrics: generationSiteMetrics,
         pipelineVersion:
           v2Bundle?.pipelineVersion || projectTypePipelineVersion,
         portfolioBlend: {
@@ -2114,7 +2391,11 @@ const ArchitectAIWizardContainer = () => {
           localStyle: locationData?.recommendedStyle,
           climateStyle: locationData?.climate?.type,
         },
-        siteAnalysis: locationData?.siteAnalysis,
+        siteAnalysis: {
+          ...(locationData?.siteAnalysis || {}),
+          mainEntry: generationMainEntry,
+          mainEntryDirection: generationMainEntry,
+        },
         siteDNA: locationData?.siteDNA,
         localMaterials: locationData?.localMaterials,
         programBrief: v2Bundle?.programBrief || null,
@@ -2320,8 +2601,14 @@ const ArchitectAIWizardContainer = () => {
       floorMetrics: null,
       footprintArea: "",
       entranceDirection: "N",
+      entranceManualOverride: false,
       entranceAutoDetected: false,
       entranceConfidence: 0,
+      mainEntry: null,
+      mainEntryDirection: null,
+      mainEntryBearingDeg: null,
+      frontageEdgeId: null,
+      mainEntryEdgeId: null,
       program: "",
       qualityTier: "mid",
       pipelineVersion: UK_RESIDENTIAL_V2_PIPELINE_VERSION,

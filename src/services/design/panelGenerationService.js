@@ -2536,6 +2536,10 @@ export async function generateA1PanelsSequential(
           }
 
           imageUrl = floorPlanResult?.dataUrl || floorPlanResult;
+          // PR-A: capture adapter authority metadata so panelResult below
+          // exposes geometryHash / authorityUsed / authoritySource /
+          // compiledProjectSchemaVersion / svgHash for the compose gate.
+          job._svgAuthorityMetadata = floorPlanResult?.metadata || null;
           logger.success(
             `✅ ${job.type} SVG floor plan generated (${floorLevel})`,
           );
@@ -2658,6 +2662,8 @@ export async function generateA1PanelsSequential(
           }
 
           imageUrl = elevationResult?.dataUrl || elevationResult;
+          // PR-A: capture adapter authority metadata for the compose gate.
+          job._svgAuthorityMetadata = elevationResult?.metadata || null;
           logger.success(
             `✅ ${job.type} SVG elevation generated (${orientation})`,
           );
@@ -2784,6 +2790,8 @@ export async function generateA1PanelsSequential(
           }
 
           imageUrl = sectionResult?.dataUrl || sectionResult;
+          // PR-A: capture adapter authority metadata for the compose gate.
+          job._svgAuthorityMetadata = sectionResult?.metadata || null;
           logger.success(
             `✅ ${job.type} SVG section generated (${sectionType})`,
           );
@@ -3789,6 +3797,23 @@ export async function generateA1PanelsSequential(
       }
 
       // Build panel result object
+      // PR-A: merge SVG-adapter authority metadata (authorityUsed,
+      // authoritySource, compiledProjectSchemaVersion, svgHash,
+      // panelAuthorityReason, generatorUsed, sourceType) into the panel so
+      // the compose gate at api/a1/compose.js:1015-1143 finds them via
+      // composeRuntime.readPanelAuthorityMetadata.
+      //
+      // geometryHash priority: the canonical-pack hash threaded onto the
+      // job MUST win over the adapter's per-panel hash so technical and
+      // visual panels share one geometryHash (otherwise compose returns
+      // PANEL_GEOMETRY_HASH_MISMATCH). The adapter's hash is kept only as
+      // a fallback for the canonical-absent case.
+      const svgAuthorityMeta = job._svgAuthorityMetadata || {};
+      const resolvedGeometryHash =
+        job._canonicalGeometryHash ||
+        job.meta?.canonicalDesignState?.geometryHash ||
+        svgAuthorityMeta.geometryHash ||
+        null;
       let panelResult = {
         id: job.id || job.type,
         type: job.type,
@@ -3799,12 +3824,20 @@ export async function generateA1PanelsSequential(
         prompt: job.prompt,
         negativePrompt: job.negativePrompt,
         dnaSnapshot: job.dnaSnapshot || null,
-        meta: job.meta,
-        // Geometry authority: thread canonical geometry hash into every panel
-        geometryHash:
-          job._canonicalGeometryHash ||
-          job.meta?.canonicalDesignState?.geometryHash ||
-          null,
+        meta: {
+          ...(job.meta || {}),
+          ...svgAuthorityMeta,
+          geometryHash: resolvedGeometryHash,
+        },
+        geometryHash: resolvedGeometryHash,
+        authorityUsed: svgAuthorityMeta.authorityUsed || null,
+        authoritySource: svgAuthorityMeta.authoritySource || null,
+        compiledProjectSchemaVersion:
+          svgAuthorityMeta.compiledProjectSchemaVersion || null,
+        panelAuthorityReason: svgAuthorityMeta.panelAuthorityReason || null,
+        generatorUsed: svgAuthorityMeta.generatorUsed || null,
+        sourceType: svgAuthorityMeta.sourceType || null,
+        svgHash: svgAuthorityMeta.svgHash || null,
         cdsHash:
           job.meta?.cdsFingerprint ||
           job.meta?.canonicalDesignState?.hash ||

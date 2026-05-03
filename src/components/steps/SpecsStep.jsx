@@ -194,9 +194,12 @@ const SpecsStep = ({
       onProjectDetailsChange({
         ...projectDetails,
         entranceDirection: direction,
+        entranceManualOverride: true,
         entranceAutoDetected: false,
         entranceConfidence: 1,
         entranceNeedsReview: false,
+        mainEntry: null,
+        mainEntryDirection: null,
       });
     },
     [projectDetails, onProjectDetailsChange],

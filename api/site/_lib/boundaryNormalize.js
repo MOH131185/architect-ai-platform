@@ -16,6 +16,7 @@
  */
 
 export const PROXY_RESPONSE_SCHEMA_VERSION = "site-boundary-proxy-v1";
+export const BOUNDARY_POLICY_VERSION = "site-boundary-policy-v3";
 
 export const BOUNDARY_SOURCE = Object.freeze({
   // Digital Land's real-time `title-boundary` API (republished HMLR
@@ -145,7 +146,7 @@ export function classifyParcelCandidate({ polygon, element }) {
   if (landuseTag && DISTRICT_LANDUSE_TAGS.has(String(landuseTag))) {
     return ESTIMATE_REASON.PARCEL_LANDUSE_DISTRICT;
   }
-  if (Number.isFinite(areaM2) && areaM2 > RESIDENTIAL_PARCEL_MAX_M2) {
+  if (Number.isFinite(areaM2) && areaM2 >= RESIDENTIAL_PARCEL_MAX_M2) {
     return ESTIMATE_REASON.PARCEL_OVERSIZED;
   }
   if (vertexCount > RESIDENTIAL_PARCEL_MAX_VERTICES) {
@@ -468,6 +469,7 @@ export function buildBoundaryResponse({
 
   return {
     schemaVersion: PROXY_RESPONSE_SCHEMA_VERSION,
+    policyVersion: BOUNDARY_POLICY_VERSION,
     polygon: hasShape ? polygon : null,
     source: resolvedSource,
     confidence,
@@ -511,6 +513,7 @@ export function buildEmptyResponse({
 } = {}) {
   return {
     schemaVersion: PROXY_RESPONSE_SCHEMA_VERSION,
+    policyVersion: BOUNDARY_POLICY_VERSION,
     polygon: null,
     source: BOUNDARY_SOURCE.NONE,
     confidence: 0,

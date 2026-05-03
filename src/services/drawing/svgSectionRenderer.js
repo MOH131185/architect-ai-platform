@@ -18,6 +18,7 @@ import {
   resolveCompiledProjectGeometryInput,
   resolveCompiledProjectStyleDNA,
 } from "./drawingBounds.js";
+import { buildCanonicalRoofPitchInfo } from "./roofPitchResolver.js";
 
 const SECTION_THEME = getBlueprintTheme();
 const SHEET_SECTION_POLISH = Object.freeze({
@@ -603,6 +604,45 @@ function renderFoundation(
   `;
 }
 
+function renderRoofPitchLabel(baseX, ridgeY, widthPx, roofPitchInfo) {
+  const numericPitch = Number(roofPitchInfo?.pitchDeg);
+  if (!Number.isFinite(numericPitch) || numericPitch <= 0) {
+    return "";
+  }
+  const cx = baseX + widthPx / 2 + 32;
+  const cy = ridgeY + 18;
+  return `
+    <g id="phase14-section-roof-pitch" data-roof-pitch-deg="${numericPitch.toFixed(1)}" data-roof-pitch-source="${escapeXml(roofPitchInfo.source || "unknown")}" data-roof-span-m="${formatNumber(roofPitchInfo.spanM, 2)}" data-roof-rise-m="${formatNumber(roofPitchInfo.riseM, 2)}">
+      <text x="${cx}" y="${cy}" font-size="10" font-family="Arial, sans-serif" font-weight="700" fill="${SECTION_THEME.line}" data-text-role="roof-pitch">PITCH ${numericPitch.toFixed(0)}°</text>
+    </g>
+  `;
+}
+
+function renderRoofPitchDataAttributes(roofPitchInfo = {}) {
+  const attrs = [
+    `data-roof-pitch-status="${escapeXml(roofPitchInfo.status || "missing")}"`,
+  ];
+  if (roofPitchInfo.source) {
+    attrs.push(`data-roof-pitch-source="${escapeXml(roofPitchInfo.source)}"`);
+  }
+  if (
+    roofPitchInfo.pitchDeg != null &&
+    Number.isFinite(Number(roofPitchInfo.pitchDeg)) &&
+    Number(roofPitchInfo.pitchDeg) > 0
+  ) {
+    attrs.push(
+      `data-roof-pitch-deg="${Number(roofPitchInfo.pitchDeg).toFixed(1)}"`,
+    );
+  }
+  if (Number.isFinite(Number(roofPitchInfo.spanM))) {
+    attrs.push(`data-roof-span-m="${formatNumber(roofPitchInfo.spanM, 2)}"`);
+  }
+  if (Number.isFinite(Number(roofPitchInfo.riseM))) {
+    attrs.push(`data-roof-rise-m="${formatNumber(roofPitchInfo.riseM, 2)}"`);
+  }
+  return attrs.join(" ");
+}
+
 function renderRoof(
   baseX,
   topY,
@@ -611,6 +651,7 @@ function renderRoof(
   lineweights = {},
   roofTruthQuality = "weak",
   roofGeometry = null,
+  roofPitchInfo = {},
 ) {
   const quality = String(roofTruthQuality || "weak").toLowerCase();
   const truthMode = String(roofGeometry?.supportMode || "missing");
@@ -667,7 +708,14 @@ function renderRoof(
     .join("");
   if (flat) {
     return `
-      <g id="phase14-section-roof" data-truth="${quality}" data-truth-mode="${truthMode}" data-truth-state="${truthState}">
+      <g id="phase14-section-roof" data-truth="${quality}" data-truth-mode="${truthMode}" data-truth-state="${truthState}" ${renderRoofPitchDataAttributes(
+        {
+          ...roofPitchInfo,
+          status: "flat",
+          pitchDeg: null,
+          riseM: null,
+        },
+      )}>
       <rect x="${roofX}" y="${topY - 16}" width="${roofWidth}" height="4" fill="${SECTION_THEME.paper}" stroke="${SECTION_THEME.line}" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.secondary || 1}"${dasharray} />
       <rect x="${roofX}" y="${topY - 12}" width="${roofWidth}" height="12" fill="${SECTION_THEME.fillSoft}" fill-opacity="${quality === "blocked" ? 0.45 : quality === "weak" ? 0.68 : 1}" stroke="${SECTION_THEME.line}" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.primary || 1.6}"${dasharray} />
       <line x1="${roofX}" y1="${topY - 12}" x2="${roofX + roofWidth}" y2="${topY - 12}" stroke="${SECTION_THEME.line}" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.cutOutline || 2}"${dasharray} />
@@ -683,10 +731,21 @@ function renderRoof(
     `;
   }
 
-  const ridgeY = topY - 52;
+  const resolvedRisePx =
+    Number.isFinite(Number(roofPitchInfo?.risePx)) &&
+    Number(roofPitchInfo.risePx) > 0
+      ? Number(roofPitchInfo.risePx)
+      : 52;
+  const ridgeY = topY - resolvedRisePx;
   const undersideY = ridgeY + 12;
+  const pitchLabel = renderRoofPitchLabel(
+    roofX,
+    ridgeY,
+    roofWidth,
+    roofPitchInfo,
+  );
   return `
-    <g id="phase14-section-roof" data-truth="${quality}" data-truth-mode="${truthMode}" data-truth-state="${truthState}">
+    <g id="phase14-section-roof" data-truth="${quality}" data-truth-mode="${truthMode}" data-truth-state="${truthState}" ${renderRoofPitchDataAttributes(roofPitchInfo)}>
     <path d="M ${roofX - 4} ${topY} L ${roofX + roofWidth / 2} ${ridgeY} L ${roofX + roofWidth + 4} ${topY} L ${roofX + roofWidth - 12} ${topY} L ${roofX + roofWidth / 2} ${undersideY} L ${roofX + 12} ${topY} Z" fill="${SECTION_THEME.fillSoft}" fill-opacity="${quality === "blocked" ? 0.42 : quality === "weak" ? 0.66 : 0.92}" stroke="${SECTION_THEME.lineMuted}" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.primary || 1.4}"${dasharray} />
     <path d="M ${roofX} ${topY} L ${roofX + roofWidth / 2} ${ridgeY} L ${roofX + roofWidth} ${topY}" fill="none" stroke="${SECTION_THEME.line}" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.cutOutline || 2}"${dasharray} />
     <path d="M ${roofX + 12} ${topY} L ${roofX + roofWidth / 2} ${undersideY} L ${roofX + roofWidth - 12} ${topY}" fill="none" stroke="${SECTION_THEME.lineMuted}" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.primary || 1.2}"${dasharray} />
@@ -698,6 +757,7 @@ function renderRoof(
     ${valleyMarkup}
     ${attachmentMarkup}
     </g>
+    ${pitchLabel}
   `;
 }
 
@@ -1045,11 +1105,28 @@ export function renderSectionSvg(
       (sum, level) => sum + Number(level.height_m || 3.2),
       0,
     ) || 3.2;
+  const roofLanguage =
+    resolvedStyleDNA.roof_language || geometry.roof?.type || "pitched gable";
+  const roofPitchInfoBase = buildCanonicalRoofPitchInfo(geometry, {
+    roofLanguage,
+    spanM: horizontalExtent,
+  });
+  const roofAllowanceM = Math.max(
+    sheetMode ? 0.82 : 1.4,
+    Number(roofPitchInfoBase.riseM || 0),
+  );
   const scale = Math.min(
     (width - padding * 2) / Math.max(horizontalExtent, 1),
-    (height - padding * 2) /
-      Math.max(totalHeight + (sheetMode ? 0.82 : 1.4), 1),
+    (height - padding * 2) / Math.max(totalHeight + roofAllowanceM, 1),
   );
+  const roofPitchInfo = {
+    ...roofPitchInfoBase,
+    risePx:
+      Number.isFinite(Number(roofPitchInfoBase.riseM)) &&
+      Number(roofPitchInfoBase.riseM) > 0
+        ? roofPitchInfoBase.riseM * scale
+        : null,
+  };
   const baseX = (width - horizontalExtent * scale) / 2;
   const sectionHeightPx = totalHeight * scale;
   const availableHeightPx = Math.max(1, height - padding * 2);
@@ -1280,10 +1357,11 @@ export function renderSectionSvg(
     baseX,
     baseY - totalHeight * scale,
     horizontalExtent * scale,
-    resolvedStyleDNA.roof_language || geometry.roof?.type || "pitched gable",
+    roofLanguage,
     lineweights,
     roofTruthQuality,
     constructionGeometry.roof,
+    roofPitchInfo,
   );
   const evidenceUsefulnessScore = Math.max(
     Number(sectionSemantics?.scores?.usefulness || 0),
@@ -1412,6 +1490,11 @@ export function renderSectionSvg(
       ground_hatch_visible: groundHatch.count > 0,
       stair_tread_count: stairMarkup.treadCount,
       roof_profile_visible: true,
+      roof_pitch_degrees: roofPitchInfo.pitchDeg,
+      roof_pitch_source: roofPitchInfo.source,
+      roof_pitch_status: roofPitchInfo.status,
+      roof_pitch_span_m: roofPitchInfo.spanM,
+      roof_pitch_rise_m: roofPitchInfo.riseM,
       section_usefulness_score: usefulnessScore,
       section_candidate_quality:
         sectionProfile?.sectionCandidateQuality || null,

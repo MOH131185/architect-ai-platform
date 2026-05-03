@@ -24,6 +24,11 @@ import {
   detectPropertyBoundary,
   analyzeShapeType,
 } from "./propertyBoundaryService.js";
+import {
+  BOUNDARY_POLICY_VERSION,
+  normalizeBoundaryAreaFields,
+  readBoundaryAreaM2,
+} from "./site/boundaryPolicy.js";
 import runtimeEnv from "../utils/runtimeEnv.js";
 import logger from "../utils/logger.js";
 
@@ -58,10 +63,7 @@ export function assessSiteBoundaryAuthority(boundary = null, options = {}) {
       boundary?.metadata?.boundaryConfidence,
     0.4,
   );
-  const areaM2 = toFiniteNumber(
-    boundary?.area ?? boundary?.surfaceArea ?? boundary?.areaM2,
-    null,
-  );
+  const areaM2 = readBoundaryAreaM2(boundary || {});
   const plotAreaEstimateM2 = toFiniteNumber(options.plotAreaM2, null);
   const areaOutlierLimit = Math.max(
     10000,
@@ -235,7 +237,7 @@ class SiteAnalysisService {
 
     // Generate cache key from address and coordinates
     const cacheKey =
-      `${this.cachePrefix}${address}_${coordinates.lat}_${coordinates.lng}`.replace(
+      `${this.cachePrefix}${BOUNDARY_POLICY_VERSION}_${address}_${coordinates.lat}_${coordinates.lng}`.replace(
         /[^a-zA-Z0-9_]/g,
         "_",
       );
@@ -315,7 +317,10 @@ class SiteAnalysisService {
           siteBoundary: authoritativeBoundary?.polygon || null,
           authoritativeSiteBoundary: authoritativeBoundary?.polygon || null,
           estimatedSiteBoundary: estimatedBoundary,
+          area: surfaceArea,
+          areaM2: surfaceArea,
           surfaceArea,
+          surfaceAreaM2: surfaceArea,
           authoritativeSurfaceArea: boundaryAuthority.boundaryAuthoritative
             ? surfaceArea
             : null,
@@ -445,7 +450,10 @@ class SiteAnalysisService {
         enhancedBoundary.polygon &&
         enhancedBoundary.polygon.length >= 3
       ) {
-        const boundaryAuthority = assessSiteBoundaryAuthority(enhancedBoundary);
+        const normalizedBoundary =
+          normalizeBoundaryAreaFields(enhancedBoundary);
+        const boundaryAuthority =
+          assessSiteBoundaryAuthority(normalizedBoundary);
 
         if (boundaryAuthority.boundaryAuthoritative) {
           logger.success(" Property boundary detected via enhanced service");
@@ -455,20 +463,22 @@ class SiteAnalysisService {
           );
         }
 
-        logger.info(`   📐 Shape: ${enhancedBoundary.shapeType}`);
-        logger.info(`   📐 Area: ${enhancedBoundary.area}m²`);
-        logger.info(`   📊 Source: ${enhancedBoundary.source}`);
+        logger.info(`   📐 Shape: ${normalizedBoundary.shapeType}`);
+        logger.info(`   📐 Area: ${normalizedBoundary.areaM2}m²`);
+        logger.info(`   📊 Source: ${normalizedBoundary.source}`);
         logger.info(
-          `   🎯 Confidence: ${(enhancedBoundary.confidence * 100).toFixed(0)}%`,
+          `   🎯 Confidence: ${(normalizedBoundary.confidence * 100).toFixed(0)}%`,
         );
 
         return {
-          polygon: enhancedBoundary.polygon,
-          area: enhancedBoundary.area,
+          polygon: normalizedBoundary.polygon,
+          area: normalizedBoundary.areaM2,
+          areaM2: normalizedBoundary.areaM2,
+          surfaceAreaM2: normalizedBoundary.surfaceAreaM2,
           unit: "m²",
-          source: enhancedBoundary.source,
-          shapeType: enhancedBoundary.shapeType,
-          confidence: enhancedBoundary.confidence,
+          source: normalizedBoundary.source,
+          shapeType: normalizedBoundary.shapeType,
+          confidence: normalizedBoundary.confidence,
           boundaryAuthoritative: boundaryAuthority.boundaryAuthoritative,
           boundaryConfidence: boundaryAuthority.boundaryConfidence,
           boundarySource: boundaryAuthority.boundarySource,
@@ -477,8 +487,11 @@ class SiteAnalysisService {
           boundaryEstimated: boundaryAuthority.boundaryEstimated,
           boundaryWarningCode: boundaryAuthority.boundaryWarningCode,
           boundaryWarning: boundaryAuthority.boundaryWarning,
+          policyVersion:
+            normalizedBoundary.policyVersion || BOUNDARY_POLICY_VERSION,
+          hash: normalizedBoundary.hash || null,
           metadata: {
-            ...(enhancedBoundary.metadata || {}),
+            ...(normalizedBoundary.metadata || {}),
             boundaryAuthoritative: boundaryAuthority.boundaryAuthoritative,
             boundaryConfidence: boundaryAuthority.boundaryConfidence,
             boundarySource: boundaryAuthority.boundarySource,
@@ -487,6 +500,10 @@ class SiteAnalysisService {
             boundaryEstimated: boundaryAuthority.boundaryEstimated,
             boundaryWarningCode: boundaryAuthority.boundaryWarningCode,
             boundaryAuthorityReasons: boundaryAuthority.reasons,
+            areaM2: normalizedBoundary.areaM2,
+            surfaceAreaM2: normalizedBoundary.surfaceAreaM2,
+            policyVersion:
+              normalizedBoundary.policyVersion || BOUNDARY_POLICY_VERSION,
           },
         };
       }
@@ -1587,7 +1604,10 @@ class SiteAnalysisService {
       siteBoundary: null,
       authoritativeSiteBoundary: null,
       estimatedSiteBoundary: null,
+      area: 450,
+      areaM2: 450,
       surfaceArea: 450,
+      surfaceAreaM2: 450,
       authoritativeSurfaceArea: null,
       estimatedSurfaceArea: 450,
       surfaceAreaUnit: "m²",

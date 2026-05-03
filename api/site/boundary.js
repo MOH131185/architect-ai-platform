@@ -45,6 +45,7 @@ import {
   OverpassTimeoutError,
 } from "./_lib/overpassClient.js";
 import {
+  BOUNDARY_POLICY_VERSION,
   buildBoundaryResponse,
   buildEmptyResponse,
   selectBestBoundaryCandidate,
@@ -61,6 +62,7 @@ const cache = new Map();
 
 function cacheKey({ lat, lng, buildingRadiusM, parcelRadiusM, postcode }) {
   return [
+    BOUNDARY_POLICY_VERSION,
     Number(lat).toFixed(6),
     Number(lng).toFixed(6),
     Number(buildingRadiusM),

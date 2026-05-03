@@ -932,14 +932,16 @@ async function handleComposeRequest(req, res, trace) {
     const nonMissingErrors = validation.errors.filter(
       (err) => !err.startsWith("Missing panels:"),
     );
-    const blockingMissing = registry
-      ? missingPanels.filter((type) => {
-          const entry = registry.getRegistryEntry
-            ? registry.getRegistryEntry(type)
-            : null;
-          return entry ? entry.generator !== "data" : true;
-        })
-      : missingPanels;
+    const blockingMissing = skipMissingPanelCheck
+      ? []
+      : registry
+        ? missingPanels.filter((type) => {
+            const entry = registry.getRegistryEntry
+              ? registry.getRegistryEntry(type)
+              : null;
+            return entry ? entry.generator !== "data" : true;
+          })
+        : missingPanels;
 
     if (blockingMissing.length > 0 || nonMissingErrors.length > 0) {
       console.warn(
@@ -969,9 +971,13 @@ async function handleComposeRequest(req, res, trace) {
   // Ensures no floor plan has 0 rooms (which would result in empty borders)
   const DEBUG_RUNS = process.env.DEBUG_RUNS === "1";
 
-  // skipValidation: Skip ALL validation gates (for smoke tests, dev mode)
-  const skipValidation =
+  // skipValidation: Skip preview/dev validation gates only. Final A1 exports
+  // must still enforce authority and geometry gates even when callers send
+  // smoke-test bypass flags.
+  const requestedValidationBypass =
     skipMissingPanelCheck || requestBody.skipValidation === true;
+  const skipValidation =
+    requestedValidationBypass && renderContract.isFinalA1 !== true;
   const requireHashMetadata =
     requestBody.requireHashMetadata !== false && !skipValidation;
   const panelGeometryHashes = collectPanelGeometryHashes(panels);
@@ -1014,7 +1020,7 @@ async function handleComposeRequest(req, res, trace) {
 
   if (!skipValidation) {
     if (authorityReadiness && authorityReadiness.ready !== true) {
-      return res.status(400).json({
+      return res.status(422).json({
         success: false,
         error: "AUTHORITY_READINESS_BLOCKED",
         message:
@@ -1024,7 +1030,7 @@ async function handleComposeRequest(req, res, trace) {
     }
 
     if (technicalPanelsMissingGeometryHash.length > 0) {
-      return res.status(400).json({
+      return res.status(422).json({
         success: false,
         error: "MISSING_TECHNICAL_PANEL_GEOMETRY_HASH",
         message:
@@ -1036,7 +1042,7 @@ async function handleComposeRequest(req, res, trace) {
     }
 
     if (technicalPanelsMissingAuthorityMetadata.length > 0) {
-      return res.status(400).json({
+      return res.status(422).json({
         success: false,
         error: "MISSING_TECHNICAL_PANEL_AUTHORITY_METADATA",
         message:
@@ -1048,7 +1054,7 @@ async function handleComposeRequest(req, res, trace) {
     }
 
     if (disallowedTechnicalAuthorityPanels.length > 0) {
-      return res.status(400).json({
+      return res.status(422).json({
         success: false,
         error: "DISALLOWED_TECHNICAL_PANEL_AUTHORITY",
         message:
@@ -1062,7 +1068,7 @@ async function handleComposeRequest(req, res, trace) {
     }
 
     if (technicalPanelGeometryHashes.length > 1) {
-      return res.status(400).json({
+      return res.status(422).json({
         success: false,
         error: "TECHNICAL_PANEL_GEOMETRY_HASH_MISMATCH",
         message:
@@ -1076,7 +1082,7 @@ async function handleComposeRequest(req, res, trace) {
     }
 
     if (panelGeometryHashes.length > 1) {
-      return res.status(400).json({
+      return res.status(422).json({
         success: false,
         error: "PANEL_GEOMETRY_HASH_MISMATCH",
         message:
@@ -1091,7 +1097,7 @@ async function handleComposeRequest(req, res, trace) {
 
     if (requestedHashes.geometryHash) {
       if (technicalPanelGeometryHashes.length === 0) {
-        return res.status(400).json({
+        return res.status(422).json({
           success: false,
           error: "MISSING_TECHNICAL_PANEL_GEOMETRY_HASH",
           message:
@@ -1103,7 +1109,7 @@ async function handleComposeRequest(req, res, trace) {
       }
 
       if (technicalPanelGeometryHashes[0] !== requestedHashes.geometryHash) {
-        return res.status(400).json({
+        return res.status(422).json({
           success: false,
           error: "TECHNICAL_GEOMETRY_HASH_MISMATCH",
           message:
@@ -1116,7 +1122,7 @@ async function handleComposeRequest(req, res, trace) {
       }
 
       if (panelGeometryHashes.length === 0) {
-        return res.status(400).json({
+        return res.status(422).json({
           success: false,
           error: "MISSING_PANEL_GEOMETRY_HASH",
           message:
@@ -1128,7 +1134,7 @@ async function handleComposeRequest(req, res, trace) {
       }
 
       if (panelGeometryHashes[0] !== requestedHashes.geometryHash) {
-        return res.status(400).json({
+        return res.status(422).json({
           success: false,
           error: "GEOMETRY_HASH_MISMATCH",
           message:
@@ -2439,6 +2445,20 @@ async function handleComposeRequest(req, res, trace) {
     sheetSetPlan: resolvedSheetSetPlan,
     sheetSetArtifacts,
     finalA1ExportGate,
+    // PR-D finishing — pass boundary + mainEntry context if the request
+    // body included them so manifest.authority can summarise the full
+    // authority surface (technical + visual + boundary + main entry).
+    // Both fields are optional; the manifest builder tolerates null.
+    boundaryAuthority:
+      req.body?.boundary ||
+      req.body?.siteBoundary ||
+      req.body?.metadata?.boundary ||
+      null,
+    mainEntryAuthority:
+      req.body?.mainEntry ||
+      req.body?.metadata?.mainEntry ||
+      req.body?.metadata?.mainEntryDirection ||
+      null,
   });
   const manifestFile = writeComposeArtifactManifest({
     manifest,

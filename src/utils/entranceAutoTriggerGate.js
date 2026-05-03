@@ -42,6 +42,13 @@ export function shouldAutoTriggerEntranceDetection({
   if (projectDetails.entranceAutoDetected === true) {
     return { shouldFire: false, reason: "already_auto_detected" };
   }
+  if (projectDetails.entranceManualOverride === true) {
+    return {
+      shouldFire: false,
+      reason: "manual_direction_set",
+      direction: projectDetails.entranceDirection,
+    };
+  }
   const direction = projectDetails.entranceDirection;
   if (
     direction &&

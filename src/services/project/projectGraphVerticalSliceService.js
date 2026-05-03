@@ -21,7 +21,10 @@ import {
   getBlockedOpenAIReasoningCalls,
 } from "../openaiReasoningExecutor.js";
 import { computeCDSHashSync } from "../validation/cdsHash.js";
-import { rasteriseSheetArtifact } from "../render/svgRasteriser.js";
+import {
+  rasteriseSheetArtifact,
+  isRasterStubModeAllowed,
+} from "../render/svgRasteriser.js";
 import {
   buildVectorPdfFromSheetSvg,
   VECTOR_PDF_RENDER_MODE,
@@ -101,6 +104,7 @@ import {
   buildProjectTypeSupportMetadata,
   getProjectTypeSupport,
 } from "./projectTypeSupportRegistry.js";
+import { resolveMainEntryDirection } from "../site/mainEntryDirectionService.js";
 
 export const PROJECT_GRAPH_SCHEMA_VERSION = "project-graph-v1";
 export const PROJECT_GRAPH_VERTICAL_SLICE_VERSION =
@@ -3431,11 +3435,61 @@ function isSiteAreaOutlierForBrief(areaM2, brief = {}) {
   return numericArea > 0 && numericArea > siteAreaOutlierLimitForBrief(brief);
 }
 
+function normalizeMainEntryForProjectGraph(input = {}, sitePolygon = []) {
+  const supplied =
+    input.mainEntry ||
+    input.mainEntryDirection ||
+    input.projectDetails?.mainEntry ||
+    input.projectDetails?.mainEntryDirection ||
+    input.locationData?.mainEntry ||
+    input.locationData?.mainEntryDirection ||
+    input.siteAnalysis?.mainEntry ||
+    input.siteSnapshot?.metadata?.mainEntry ||
+    null;
+  if (supplied && typeof supplied === "object") {
+    const bearingDeg = toFiniteMetric(
+      supplied.bearingDeg ?? supplied.bearing,
+      0,
+    );
+    const confidence = toFiniteMetric(supplied.confidence, 0.5);
+    return {
+      orientation: supplied.orientation || supplied.direction || "north",
+      bearingDeg,
+      frontageEdgeId: supplied.frontageEdgeId || null,
+      mainEntryEdgeId: supplied.mainEntryEdgeId || null,
+      source: supplied.source || "provided",
+      confidence,
+      warnings: Array.isArray(supplied.warnings) ? supplied.warnings : [],
+    };
+  }
+
+  const manualDirection =
+    input.projectDetails?.entranceManualOverride === true
+      ? input.projectDetails?.entranceDirection
+      : null;
+  const resolved = resolveMainEntryDirection({
+    sitePolygon,
+    manualDirection,
+    sunPath:
+      input.locationData?.sunPath || input.siteSnapshot?.metadata?.sunPath,
+  });
+  return {
+    orientation: resolved.orientation,
+    bearingDeg: resolved.bearingDeg,
+    frontageEdgeId: resolved.frontageEdgeId,
+    mainEntryEdgeId: resolved.mainEntryEdgeId,
+    source: resolved.source,
+    confidence: resolved.confidence,
+    warnings: resolved.warnings || [],
+  };
+}
+
 function buildSiteContext({
   brief,
   sitePolygon = [],
   siteMetrics = {},
   siteBoundarySanity = null,
+  mainEntry = null,
 } = {}) {
   const boundarySanity = siteBoundarySanity || {};
   const authoritativeBoundaryAllowed =
@@ -3541,11 +3595,18 @@ function buildSiteContext({
       ? []
       : boundarySanity.estimatedGeoBoundary || [],
     boundary_authority_reasons: boundarySanity.reasons || [],
+    main_entry: mainEntry,
     access_edges: [
       {
-        edge_id: "street-edge-primary",
-        label: "Assumed primary street edge",
-        source: boundaryAuthoritative ? "site_polygon" : "estimated_context",
+        edge_id: mainEntry?.frontageEdgeId || "street-edge-primary",
+        main_entry_edge_id: mainEntry?.mainEntryEdgeId || null,
+        label: "Primary frontage / main entry edge",
+        orientation: mainEntry?.orientation || null,
+        bearing_deg: mainEntry?.bearingDeg ?? null,
+        source:
+          mainEntry?.source ||
+          (boundaryAuthoritative ? "site_polygon" : "estimated_context"),
+        confidence: mainEntry?.confidence ?? null,
       },
     ],
     adjacent_roads: [],
@@ -3607,31 +3668,48 @@ function resolveSiteBoundarySanity(input = {}, brief = {}) {
     (submittedGeoBoundary.length >= 3
       ? "site_polygon"
       : "deterministic_context");
+  const manualVerifiedBoundary =
+    boundarySource === "manual_verified" ||
+    siteAnalysis.boundarySource === "manual_verified" ||
+    siteMetrics.boundarySource === "manual_verified" ||
+    input.locationData?.boundarySource === "manual_verified";
   const boundaryConfidence =
     toFiniteMetric(
       siteAnalysis.boundaryConfidence ??
         siteMetrics.boundaryConfidence ??
         input.locationData?.boundaryConfidence,
       null,
-    ) ?? (submittedGeoBoundary.length >= 3 ? 1 : 0.4);
+    ) ??
+    (manualVerifiedBoundary ? 1 : submittedGeoBoundary.length >= 3 ? 1 : 0.4);
   const sourceAreaM2 = toFiniteMetric(
     siteMetrics.areaM2 ??
+      siteMetrics.area ??
+      siteMetrics.surfaceAreaM2 ??
+      siteAnalysis.areaM2 ??
+      siteAnalysis.area ??
+      siteAnalysis.surfaceAreaM2 ??
       siteAnalysis.surfaceArea ??
       siteAnalysis.estimatedSurfaceArea ??
+      input.locationData?.areaM2 ??
+      input.locationData?.surfaceAreaM2 ??
       input.locationData?.surfaceArea,
     null,
   );
-  const explicitNonAuthoritative =
-    siteAnalysis.boundaryAuthoritative === false ||
-    siteMetrics.boundaryAuthoritative === false ||
-    input.locationData?.boundaryAuthoritative === false ||
-    siteAnalysis.boundaryEstimated === true ||
-    siteAnalysis.estimatedOnly === true ||
-    input.locationData?.boundaryEstimated === true;
+  const explicitNonAuthoritative = manualVerifiedBoundary
+    ? false
+    : siteAnalysis.boundaryAuthoritative === false ||
+      siteMetrics.boundaryAuthoritative === false ||
+      input.locationData?.boundaryAuthoritative === false ||
+      siteAnalysis.boundaryEstimated === true ||
+      siteAnalysis.estimatedOnly === true ||
+      input.locationData?.boundaryEstimated === true;
   const lowConfidence =
+    !manualVerifiedBoundary &&
     boundaryConfidence < SITE_BOUNDARY_AUTHORITY_CONFIDENCE_THRESHOLD;
-  const fallbackSource = boundarySourceLooksEstimated(boundarySource);
-  const areaOutlier = isSiteAreaOutlierForBrief(sourceAreaM2, brief);
+  const fallbackSource =
+    !manualVerifiedBoundary && boundarySourceLooksEstimated(boundarySource);
+  const areaOutlier =
+    !manualVerifiedBoundary && isSiteAreaOutlierForBrief(sourceAreaM2, brief);
   const hasSubmittedBoundary = submittedGeoBoundary.length >= 3;
   const reasons = [];
 
@@ -3641,23 +3719,31 @@ function resolveSiteBoundarySanity(input = {}, brief = {}) {
   if (lowConfidence) reasons.push("low_confidence");
   if (areaOutlier) reasons.push("area_outlier");
 
-  const boundaryAuthoritative =
-    hasSubmittedBoundary &&
-    !explicitNonAuthoritative &&
-    !fallbackSource &&
-    !lowConfidence &&
-    !areaOutlier;
+  const boundaryAuthoritative = manualVerifiedBoundary
+    ? hasSubmittedBoundary
+    : hasSubmittedBoundary &&
+      !explicitNonAuthoritative &&
+      !fallbackSource &&
+      !lowConfidence &&
+      !areaOutlier;
   const sanitizedSiteMetrics = { ...siteMetrics };
   if (!boundaryAuthoritative) {
     delete sanitizedSiteMetrics.areaM2;
   }
   sanitizedSiteMetrics.boundaryAuthoritative = boundaryAuthoritative;
-  sanitizedSiteMetrics.boundaryConfidence = boundaryConfidence;
+  sanitizedSiteMetrics.boundaryConfidence = manualVerifiedBoundary
+    ? 1
+    : boundaryConfidence;
   sanitizedSiteMetrics.boundarySource = boundarySource;
+  if (Number(sourceAreaM2 || 0) > 0) {
+    sanitizedSiteMetrics.area = sourceAreaM2;
+    sanitizedSiteMetrics.areaM2 = sourceAreaM2;
+    sanitizedSiteMetrics.surfaceAreaM2 = sourceAreaM2;
+  }
 
   return {
     boundaryAuthoritative,
-    boundaryConfidence,
+    boundaryConfidence: manualVerifiedBoundary ? 1 : boundaryConfidence,
     boundarySource,
     fallbackReason:
       siteAnalysis.fallbackReason ||
@@ -3799,24 +3885,19 @@ async function resolveSiteMapSnapshot({ input = {}, brief, site }) {
       ? "contextual_estimated_boundary"
       : "context_only";
 
-  // Site boundary stroke is Material Blue 700 in both states. The
-  // boundaryAuthoritative semantic stays exactly as before — the colour
-  // change is purely visual. Estimated boundaries get a slightly thinner
-  // stroke and lower fill opacity so they remain readable but the user
-  // can tell at a glance that the polygon is non-authoritative; the
-  // metadata block below still carries `boundaryAuthoritative` and
-  // `boundaryEstimated` flags for downstream gating.
+  // Authoritative/manual boundaries use solid blue; estimated/contextual
+  // boundaries use amber so stale landuse polygons are visibly provisional.
   const blueAuthoritative = {
     strokeColor: "#1976D2",
     strokeWeight: 3,
     fillColor: "#1976D2",
     fillOpacity: 0.18,
   };
-  const blueEstimated = {
-    strokeColor: "#1976D2",
+  const amberEstimated = {
+    strokeColor: "#F59E0B",
     strokeWeight: 2,
-    fillColor: "#1976D2",
-    fillOpacity: 0.1,
+    fillColor: "#F59E0B",
+    fillOpacity: 0.08,
   };
 
   try {
@@ -3831,7 +3912,7 @@ async function resolveSiteMapSnapshot({ input = {}, brief, site }) {
       // The visual style and the `boundaryEstimated` metadata flag below
       // continue to differentiate the two states.
       drawPolygonOverlay: polygon.length >= 3,
-      polygonStyle: boundaryAuthoritative ? blueAuthoritative : blueEstimated,
+      polygonStyle: boundaryAuthoritative ? blueAuthoritative : amberEstimated,
       zoom: Number(input.siteSnapshot?.zoom || 18),
       size: [1200, 780],
       mapType: "roadmap",
@@ -4118,6 +4199,7 @@ function addRoomWallsAndOpenings({
   walls,
   doors,
   windows,
+  mainEntryOrientation = null,
 }) {
   const polygon = room.polygon;
   const edges = [
@@ -4168,7 +4250,13 @@ function addRoomWallsAndOpenings({
       Number(wall.end?.y || 0) - Number(wall.start?.y || 0),
     );
   const roomName = String(room.name || "").toLowerCase();
+  const preferredEntryOrientation = String(mainEntryOrientation || "")
+    .toLowerCase()
+    .trim();
   const entranceWall =
+    exteriorWalls.find(
+      (wall) => wall.orientation === preferredEntryOrientation,
+    ) ||
     exteriorWalls.find((wall) => wall.orientation === "south") ||
     exteriorWalls.find((wall) => wall.orientation === "west") ||
     exteriorWalls[0];
@@ -4216,6 +4304,7 @@ function layoutRoomsForLevel({
   walls,
   doors,
   windows,
+  mainEntryOrientation = null,
 }) {
   const levelId = `level-${levelIndex}`;
   const rooms = [];
@@ -4265,6 +4354,7 @@ function layoutRoomsForLevel({
         walls,
         doors,
         windows,
+        mainEntryOrientation,
       });
       rooms.push(room);
       cursorX += roomWidth;
@@ -4344,6 +4434,7 @@ function buildProjectGeometryFromProgramme({
       walls,
       doors,
       windows,
+      mainEntryOrientation: site?.main_entry?.orientation || null,
     });
     rooms.push(...layout.rooms);
     if (layout.stair && levelIndex + 1 < levelCount) {
@@ -4981,6 +5072,80 @@ function polygonPath(points = [], bbox, width, height, padding = 12) {
   return `${segments.join(" ")} Z`;
 }
 
+function mapLocalPointToSiteSvg(point, bbox, width, height, padding = 12) {
+  if (!point || !bbox) return null;
+  const scale = Math.min(
+    (width - padding * 2) / Math.max(1, Number(bbox.width || 1)),
+    (height - padding * 2) / Math.max(1, Number(bbox.height || 1)),
+  );
+  const offsetX = (width - Number(bbox.width || 0) * scale) / 2;
+  const offsetY = (height - Number(bbox.height || 0) * scale) / 2;
+  const x = offsetX + (Number(point?.x || 0) - Number(bbox.min_x || 0)) * scale;
+  const y =
+    height -
+    (offsetY + (Number(point?.y || 0) - Number(bbox.min_y || 0)) * scale);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return { x, y };
+}
+
+function parseBoundaryEdgeIndex(edgeId = null) {
+  const match = String(edgeId || "").match(/edge-(\d+)/i);
+  return match ? Number(match[1]) : null;
+}
+
+function resolveMainEntryAnchor(site, bbox, width, height) {
+  const boundary = site?.local_boundary_polygon || [];
+  if (!Array.isArray(boundary) || boundary.length < 3) return null;
+  const edgeIndex = parseBoundaryEdgeIndex(
+    site?.main_entry?.mainEntryEdgeId || site?.main_entry?.frontageEdgeId,
+  );
+  if (Number.isFinite(edgeIndex)) {
+    const start = boundary[edgeIndex % boundary.length];
+    const end = boundary[(edgeIndex + 1) % boundary.length];
+    return mapLocalPointToSiteSvg(
+      {
+        x: (Number(start?.x || 0) + Number(end?.x || 0)) / 2,
+        y: (Number(start?.y || 0) + Number(end?.y || 0)) / 2,
+      },
+      bbox,
+      width,
+      height,
+    );
+  }
+  const bearing = Number(site?.main_entry?.bearingDeg || 0);
+  const radians = (bearing * Math.PI) / 180;
+  const scorePoint = (point) =>
+    Number(point?.x || 0) * Math.sin(radians) +
+    Number(point?.y || 0) * Math.cos(radians);
+  const selected = [...boundary].sort(
+    (a, b) => scorePoint(b) - scorePoint(a),
+  )[0];
+  return mapLocalPointToSiteSvg(selected, bbox, width, height);
+}
+
+function buildMainEntryArrowSvg(site, bbox) {
+  const mainEntry = site?.main_entry || {};
+  const anchor = resolveMainEntryAnchor(site, bbox, 812, 646);
+  if (!anchor) return "";
+  const bearingDeg = Number(mainEntry.bearingDeg || 0);
+  const radians = (bearingDeg * Math.PI) / 180;
+  const length = 82;
+  const dx = Math.sin(radians) * length;
+  const dy = -Math.cos(radians) * length;
+  const startX = round(anchor.x - dx * 0.24, 2);
+  const startY = round(anchor.y - dy * 0.24, 2);
+  const endX = round(anchor.x + dx * 0.76, 2);
+  const endY = round(anchor.y + dy * 0.76, 2);
+  const labelX = round(anchor.x + dx * 0.92, 2);
+  const labelY = round(anchor.y + dy * 0.92, 2);
+  const orientation = mainEntry.orientation || "north";
+  return `<g transform="translate(44 66)" data-main-entry-source="${escapeXml(mainEntry.source || "unknown")}" data-main-entry-orientation="${escapeXml(orientation)}" data-main-entry-bearing="${escapeXml(String(round(bearingDeg, 1)))}">
+    <line x1="${startX}" y1="${startY}" x2="${endX}" y2="${endY}" stroke="#1976D2" stroke-width="7" stroke-linecap="round" marker-end="url(#main-entry-arrowhead)"/>
+    <text x="${labelX}" y="${labelY}" font-family="Arial, sans-serif" font-size="18" font-weight="700" text-anchor="middle" fill="#1976D2">MAIN ENTRY</text>
+    <text x="${labelX}" y="${labelY + 22}" font-family="Arial, sans-serif" font-size="13" text-anchor="middle" fill="#1976D2">${escapeXml(orientation)} ${escapeXml(String(round(bearingDeg, 0)))} deg</text>
+  </g>`;
+}
+
 function buildSiteContextPanelArtifact({
   projectGraphId,
   site,
@@ -5004,9 +5169,16 @@ function buildSiteContextPanelArtifact({
   const proposedFootprintPath = polygonPath(proposedFootprint, bbox, 812, 646);
   const boundaryEstimated =
     site?.boundary_authoritative === false || site?.boundary_estimated === true;
+  const boundaryLabel =
+    site?.boundary_source === "manual_verified"
+      ? "MANUAL VERIFIED"
+      : boundaryEstimated
+        ? "ESTIMATED / CONTEXTUAL - VERIFY"
+        : "AUTHORITATIVE";
   const sitePlanMode = boundaryEstimated
     ? "contextual_estimated_boundary"
     : "authoritative_boundary";
+  const mainEntryArrowSvg = buildMainEntryArrowSvg(site, bbox);
   const hasMapImage = Boolean(siteSnapshot?.dataUrl);
   const mapSource = hasMapImage
     ? siteSnapshot.sourceUrl || siteSnapshot.source || "provided-site-snapshot"
@@ -5027,9 +5199,9 @@ function buildSiteContextPanelArtifact({
   <g transform="translate(44 66)">
     <path d="${sitePath}" fill="#b7d7a833" stroke="#e87524" stroke-width="4" stroke-dasharray="16 10"/>
     <path d="${buildablePath}" fill="none" stroke="#111111" stroke-width="3" stroke-dasharray="8 8"/>
-    <path d="${proposedFootprintPath}" fill="#facc1533" stroke="#d9a300" stroke-width="4"/>
+    <path d="${proposedFootprintPath}" fill="#11111133" stroke="#111111" stroke-width="4"/>
   </g>
-  <text x="450" y="104" font-family="Arial, sans-serif" font-size="26" font-weight="700" text-anchor="middle" fill="#111111">CONTEXTUAL SITE PLAN</text>
+  <text x="450" y="104" font-family="Arial, sans-serif" font-size="26" font-weight="700" text-anchor="middle" fill="#111111">${boundaryLabel}</text>
   <text x="450" y="136" font-family="Arial, sans-serif" font-size="16" text-anchor="middle" fill="#555555">Boundary estimated - verify with measured survey before planning submission</text>`
       : `<rect x="28" y="52" width="844" height="676" fill="#f7f6f0"/>
   <rect x="28" y="52" width="844" height="676" fill="none" stroke="#111111" stroke-width="3"/>
@@ -5038,32 +5210,42 @@ function buildSiteContextPanelArtifact({
   <path d="M 112 142 L 196 186 L 282 152 L 372 206 L 470 166 L 590 222 L 770 190" fill="none" stroke="#c7cfbf" stroke-width="14" opacity="0.7"/>
   <path d="M 130 506 L 246 452 L 372 474 L 520 424 L 712 444" fill="none" stroke="#c7cfbf" stroke-width="12" opacity="0.6"/>
   <g transform="translate(44 66)">
-    <path d="${sitePath}" fill="#f9fbf7" stroke="#5d6657" stroke-width="4" stroke-dasharray="16 10"/>
+    <path d="${sitePath}" fill="#fff7ed" stroke="#e87524" stroke-width="4" stroke-dasharray="16 10"/>
     <path d="${buildablePath}" fill="none" stroke="#29332a" stroke-width="3" stroke-dasharray="8 8"/>
     <path d="${proposedFootprintPath}" fill="#11111122" stroke="#111111" stroke-width="4"/>
   </g>
-  <text x="450" y="104" font-family="Arial, sans-serif" font-size="26" font-weight="700" text-anchor="middle" fill="#111111">CONTEXTUAL SITE PLAN</text>
+  <text x="450" y="104" font-family="Arial, sans-serif" font-size="26" font-weight="700" text-anchor="middle" fill="#111111">${boundaryLabel}</text>
   <text x="450" y="136" font-family="Arial, sans-serif" font-size="16" text-anchor="middle" fill="#555555">Boundary estimated - verify with measured survey before planning submission</text>`
     : hasMapImage
       ? `<image x="28" y="52" width="844" height="676" href="${escapeXml(siteSnapshot.dataUrl)}" preserveAspectRatio="xMidYMid slice"/>
   <rect x="28" y="52" width="844" height="676" fill="none" stroke="#111111" stroke-width="3"/>
   <g transform="translate(44 66)" opacity="0.88">
-    <path d="${sitePath}" fill="#a9c58d66" stroke="#d64d35" stroke-width="5" stroke-dasharray="18 10"/>
+    <path d="${sitePath}" fill="#1976D222" stroke="#1976D2" stroke-width="5"/>
     <path d="${buildablePath}" fill="none" stroke="#111111" stroke-width="3"/>
-  </g>`
+    <path d="${proposedFootprintPath}" fill="#11111133" stroke="#111111" stroke-width="4"/>
+  </g>
+  <text x="450" y="104" font-family="Arial, sans-serif" font-size="26" font-weight="700" text-anchor="middle" fill="#111111">${boundaryLabel}</text>`
       : `<rect x="28" y="52" width="844" height="676" fill="#f3efe4" stroke="#111111" stroke-width="3"/>
   <g transform="translate(44 66)">
-    <path d="${sitePath}" fill="#dfe8d0" stroke="#d64d35" stroke-width="5" stroke-dasharray="18 10"/>
+    <path d="${sitePath}" fill="#1976D222" stroke="#1976D2" stroke-width="5"/>
     <path d="${buildablePath}" fill="none" stroke="#111111" stroke-width="3"/>
+    <path d="${proposedFootprintPath}" fill="#11111133" stroke="#111111" stroke-width="4"/>
   </g>
   <path d="M 64 642 C 186 600 272 620 354 574 C 440 526 552 540 806 488" fill="none" stroke="#c8c8c8" stroke-width="28" opacity="0.55"/>
-  <path d="M 64 642 C 186 600 272 620 354 574 C 440 526 552 540 806 488" fill="none" stroke="#ffffff" stroke-width="18" opacity="0.85"/>`;
+  <path d="M 64 642 C 186 600 272 620 354 574 C 440 526 552 540 806 488" fill="none" stroke="#ffffff" stroke-width="18" opacity="0.85"/>
+  <text x="450" y="104" font-family="Arial, sans-serif" font-size="26" font-weight="700" text-anchor="middle" fill="#111111">${boundaryLabel}</text>`;
   const areaLabel = boundaryEstimated
-    ? `Context area ${site.area_m2} m2; parcel area not authoritative`
-    : `Area ${site.area_m2} m2`;
-  const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="site_context" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-site-map-source="${escapeXml(mapSource)}" data-site-map-image="${hasMapImage ? "true" : "false"}">
+    ? `Site area: ${site.area_m2} m2 (context) | Boundary source: ${site.boundary_source || "estimated"} | Confidence: ${site.boundary_confidence ?? "n/a"} | Main entry: ${site.main_entry?.orientation || "north"} (${site.main_entry?.source || "fallback"})`
+    : `Site area: ${site.area_m2} m2 | Boundary source: ${site.boundary_source || "site_polygon"} | Confidence: ${site.boundary_confidence ?? "n/a"} | Main entry: ${site.main_entry?.orientation || "north"} (${site.main_entry?.source || "fallback"})`;
+  const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="site_context" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-site-map-source="${escapeXml(mapSource)}" data-site-map-image="${hasMapImage ? "true" : "false"}" data-boundary-source="${escapeXml(site.boundary_source || "")}" data-boundary-confidence="${escapeXml(String(site.boundary_confidence ?? ""))}" data-main-entry-orientation="${escapeXml(site.main_entry?.orientation || "")}">
+  <defs>
+    <marker id="main-entry-arrowhead" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M 0 0 L 12 6 L 0 12 z" fill="#1976D2"/>
+    </marker>
+  </defs>
   <rect width="${width}" height="${height}" fill="#ffffff"/>
   ${mapLayer}
+  ${mainEntryArrowSvg}
   <path d="M 806 142 L 806 70 L 784 116 M 806 70 L 828 116" fill="none" stroke="#111111" stroke-width="5" stroke-linecap="round"/>
   <circle cx="806" cy="112" r="46" fill="none" stroke="#111111" stroke-width="2"/>
   <text x="806" y="58" font-family="Arial, sans-serif" font-size="32" font-weight="700" text-anchor="middle" fill="#111111">N</text>
@@ -5113,8 +5295,14 @@ function buildSiteContextPanelArtifact({
       boundaryEstimated,
       boundaryConfidence: site.boundary_confidence ?? null,
       boundarySource: site.boundary_source || null,
+      boundaryLabel,
       boundaryWarningCode: site.boundary_warning_code || null,
       fallbackReason: site.fallback_reason || null,
+      siteAreaM2: site.area_m2 ?? null,
+      mainEntry: site.main_entry || null,
+      mainEntryOrientation: site.main_entry?.orientation || null,
+      mainEntryBearingDeg: site.main_entry?.bearingDeg ?? null,
+      mainEntrySource: site.main_entry?.source || null,
       authoritativeAreaM2: site.authoritative_area_m2 || null,
       estimatedAreaM2: site.estimated_area_m2 || null,
       svgHash,
@@ -7477,7 +7665,31 @@ async function buildA1Sheet({
 
 const MM_TO_PT = 72 / 25.4;
 
-async function analyseRenderedSheetPng(pngBuffer) {
+async function analyseRenderedSheetPng(pngBuffer, options = {}) {
+  // PR-D follow-up: when stub raster mode is on the heavy 280M-iteration
+  // pixel walk would still run on the 1×1 stub PNG (cheap) but its result
+  // would report nonBackgroundPixelRatio=0 and fail the
+  // MIN_RENDERED_SHEET_INK_RATIO gate. Return synthetic healthy metrics
+  // that report the dimensions a full render would have produced so the
+  // gate passes and the test asserts metadata / layout / geometry only.
+  //
+  // Codex integration finding: forward isFinalA1 (when known by the caller)
+  // through the production-safety gate so synthetic ink metrics can NEVER
+  // be substituted into a final A1 export — even if A1_TEST_RASTER_MODE=stub
+  // is somehow set in production / Vercel.
+  if (isRasterStubModeAllowed({ isFinalA1: options.isFinalA1 === true })) {
+    const widthPx = Number(options.expectedWidthPx) || 9933;
+    const heightPx = Number(options.expectedHeightPx) || 7016;
+    return {
+      widthPx,
+      heightPx,
+      pixelCount: widthPx * heightPx,
+      backgroundRgb: [243, 239, 229],
+      nonWhitePixelRatio: 0.18,
+      nonBackgroundPixelRatio: 0.18,
+      stub: true,
+    };
+  }
   try {
     const sharp = (await import("sharp")).default;
     const raw = await sharp(pngBuffer)
@@ -7665,9 +7877,12 @@ async function buildA1PdfArtifact({
   const targetDensityDpi = isFinalA1
     ? FINAL_A1_RASTER_DPI
     : PREVIEW_A1_RASTER_DPI;
+  // Codex integration finding: forward isFinalA1 so the raster stub gate
+  // refuses to substitute a 1×1 PNG even if A1_TEST_RASTER_MODE=stub is set.
   const renderedSheet = await rasteriseSheetArtifact({
     sheetArtifact,
     densityDpi: targetDensityDpi,
+    isFinalA1,
   });
   __pdfMark = __a1pdfLog(
     "rasterise_sheet",
@@ -7684,7 +7899,16 @@ async function buildA1PdfArtifact({
     geometryHash,
   });
   __pdfMark = __a1pdfLog("hash_png", __pdfMark);
-  const occupancy = await analyseRenderedSheetPng(renderedPngBytes);
+  // Pass expected dims so the stub-mode shortcut returns metrics matching
+  // the dimensions the stub raster claimed (otherwise the stub would always
+  // report 9933×7016 even for the preview 144 DPI path).
+  const occupancy = await analyseRenderedSheetPng(renderedPngBytes, {
+    expectedWidthPx: Number(renderedSheet.metadata?.width_px) || undefined,
+    expectedHeightPx: Number(renderedSheet.metadata?.height_px) || undefined,
+    // Codex integration finding: forward isFinalA1 so synthetic ink metrics
+    // can never substitute for the real ink walk on a final A1 export.
+    isFinalA1,
+  });
   __pdfMark = __a1pdfLog("analyse_png", __pdfMark);
   const panelOccupancy = buildPanelRenderSummary(sheetArtifact);
   const textRenderStatus = await analyseRenderedTextProof({
@@ -9826,6 +10050,12 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       : [],
     siteMetrics: siteBoundarySanity.siteMetrics,
     siteBoundarySanity,
+    mainEntry: normalizeMainEntryForProjectGraph(
+      input,
+      siteBoundarySanity.boundaryAuthoritative
+        ? input.sitePolygon || input.site_boundary || []
+        : siteBoundarySanity.estimatedGeoBoundary || [],
+    ),
   });
   // Plan §6.2 / §14: opt-in enrichment via Planning Data, EA flood, OSM. The
   // slice stays offline-safe by default; callers pass fetchImpl or
@@ -10024,7 +10254,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     localStyle?.styleDNA || localStyle?.style_dna || null;
   const visualManifest = buildVisualManifest({
     compiledProject,
-    projectGraph: { projectGraphId, id: projectGraphId },
+    projectGraph: { projectGraphId, id: projectGraphId, site },
     brief,
     masterDNA: input?.masterDNA || null,
     siteSnapshot: siteMapSnapshot,
