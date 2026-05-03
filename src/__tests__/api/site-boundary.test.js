@@ -103,6 +103,11 @@ describe("api/site/boundary — Overpass success path", () => {
     expect(r.body.confidence).toBeGreaterThan(0.9);
     expect(r.body.boundaryAuthoritative).toBe(true);
     expect(r.body.areaM2).toBeGreaterThan(0);
+    expect(r.body.surfaceAreaM2).toBe(r.body.areaM2);
+    expect(r.body.perimeterM).toBeGreaterThan(0);
+    expect(r.body.segments).toHaveLength(4);
+    expect(r.body.angles).toHaveLength(4);
+    expect(r.body.metadata.siteMetrics.segmentCount).toBe(4);
     expect(r.body.metadata.osmId).toBe(111);
     expect(r.body.metadata.addrHousenumber).toBe("97");
     expect(r.body.metadata.addrStreet).toBe("Bradford St");

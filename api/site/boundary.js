@@ -60,7 +60,14 @@ const CACHE_NEGATIVE_TTL_MS = 60 * 60 * 1000; // 1 hour for negatives
 
 const cache = new Map();
 
-function cacheKey({ lat, lng, buildingRadiusM, parcelRadiusM, postcode }) {
+function cacheKey({
+  lat,
+  lng,
+  buildingRadiusM,
+  parcelRadiusM,
+  postcode,
+  address,
+}) {
   return [
     BOUNDARY_POLICY_VERSION,
     Number(lat).toFixed(6),
@@ -72,6 +79,11 @@ function cacheKey({ lat, lng, buildingRadiusM, parcelRadiusM, postcode }) {
     // different postcodes (rare but happens at ward boundaries) must
     // not share a cache slot.
     String(postcode || ""),
+    // Address can influence exact building-footprint selection when OSM
+    // carries addr:* tags for multiple nearby footprints.
+    String(address || "")
+      .toLowerCase()
+      .trim(),
   ].join("|");
 }
 
@@ -112,6 +124,8 @@ function parseLatLng(req) {
       parcelRadiusM: Number(req.query?.parcelRadiusM) || 50,
       postcode:
         typeof req.query?.postcode === "string" ? req.query.postcode : null,
+      address:
+        typeof req.query?.address === "string" ? req.query.address : null,
     };
   }
   const body = req.body || {};
@@ -121,6 +135,7 @@ function parseLatLng(req) {
     buildingRadiusM: Number(body.buildingRadiusM) || 30,
     parcelRadiusM: Number(body.parcelRadiusM) || 50,
     postcode: typeof body.postcode === "string" ? body.postcode : null,
+    address: typeof body.address === "string" ? body.address : null,
   };
 }
 
@@ -155,6 +170,7 @@ export async function resolveBoundaryRequest({
   buildingRadiusM = 30,
   parcelRadiusM = 50,
   postcode = null,
+  address = null,
   fetchImpl,
   useCache = true,
   enableTitleBoundaryLookup = true,
@@ -175,6 +191,7 @@ export async function resolveBoundaryRequest({
     buildingRadiusM,
     parcelRadiusM,
     postcode,
+    address,
   });
   if (useCache) {
     const cached = cacheGet(key);
@@ -273,6 +290,7 @@ export async function resolveBoundaryRequest({
     buildingElements,
     parcelElements,
     point: { lat, lng },
+    address,
   });
 
   if (!best) {

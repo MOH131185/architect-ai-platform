@@ -1,4 +1,5 @@
 import {
+  buildBoundaryMeasurements,
   classifyParcelCandidate,
   ESTIMATE_REASON,
   polygonAreaM2,
@@ -36,5 +37,18 @@ describe("site boundary policy", () => {
     expect(classifyParcelCandidate({ polygon, element: {} })).toBe(
       ESTIMATE_REASON.PARCEL_OVERSIZED,
     );
+  });
+
+  test("returns surface, perimeter, segment, and angle measurements", () => {
+    const polygon = squarePolygonAround(POINT.lat, POINT.lng, 5);
+    const measurements = buildBoundaryMeasurements(polygon);
+
+    expect(measurements.surfaceAreaM2).toBe(measurements.areaM2);
+    expect(measurements.perimeterM).toBeGreaterThan(35);
+    expect(measurements.segments).toHaveLength(4);
+    expect(measurements.angles).toHaveLength(4);
+    expect(measurements.segments[0]).toHaveProperty("lengthM");
+    expect(measurements.segments[0]).toHaveProperty("bearingDeg");
+    expect(measurements.angles[0]).toHaveProperty("angleDeg");
   });
 });

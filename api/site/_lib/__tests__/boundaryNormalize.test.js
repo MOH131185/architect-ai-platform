@@ -4,6 +4,7 @@ import {
   RESIDENTIAL_BUILDING_MAX_M2,
   RESIDENTIAL_PARCEL_MAX_M2,
   RESIDENTIAL_PARCEL_MAX_VERTICES,
+  buildBoundaryMeasurements,
   buildBoundaryResponse,
   classifyBuildingCandidate,
   classifyParcelCandidate,
@@ -192,6 +193,36 @@ describe("selectBestOverpassWay", () => {
     expect(result?.source).toBe(BOUNDARY_SOURCE.OVERPASS_BUILDING_CONTAINS);
     expect(result?.estimateReason).toBeNull();
   });
+
+  test("nearest fallback scores by polygon edge distance, not centroid only", () => {
+    const edgeCloseLongBuilding = wayWithGeometry(
+      [
+        { lat: POINT.lat + 0.00008, lng: POINT.lng - 0.00025 },
+        { lat: POINT.lat + 0.00008, lng: POINT.lng + 0.00025 },
+        { lat: POINT.lat + 0.00014, lng: POINT.lng + 0.00025 },
+        { lat: POINT.lat + 0.00014, lng: POINT.lng - 0.00025 },
+      ],
+      { building: "apartments" },
+      501,
+    );
+    const centroidCloserButEdgeFarther = wayWithGeometry(
+      [
+        { lat: POINT.lat + 0.0001, lng: POINT.lng + 0.00018 },
+        { lat: POINT.lat + 0.0001, lng: POINT.lng + 0.00028 },
+        { lat: POINT.lat + 0.0002, lng: POINT.lng + 0.00028 },
+        { lat: POINT.lat + 0.0002, lng: POINT.lng + 0.00018 },
+      ],
+      { building: "house" },
+      502,
+    );
+    const result = selectBestOverpassWay({
+      parcelElements: [],
+      buildingElements: [centroidCloserButEdgeFarther, edgeCloseLongBuilding],
+      point: POINT,
+    });
+    expect(result?.element?.id).toBe(501);
+    expect(result?.source).toBe(BOUNDARY_SOURCE.OVERPASS_BUILDING_NEAREST);
+  });
 });
 
 describe("selectBestBoundaryCandidate (INSPIRE precedence)", () => {
@@ -266,6 +297,25 @@ describe("INSPIRE confidence in buildBoundaryResponse", () => {
 });
 
 describe("buildBoundaryResponse", () => {
+  test("returns site surface, perimeter, segment, and angle measurements", () => {
+    const polygon = squarePolygonAround(POINT.lat, POINT.lng, 5);
+    const measurements = buildBoundaryMeasurements(polygon);
+    const body = buildBoundaryResponse({
+      polygon,
+      source: BOUNDARY_SOURCE.OVERPASS_BUILDING_CONTAINS,
+    });
+
+    expect(measurements.areaM2).toBeGreaterThan(90);
+    expect(body.surfaceAreaM2).toBe(body.areaM2);
+    expect(body.perimeterM).toBeGreaterThan(35);
+    expect(body.segments).toHaveLength(4);
+    expect(body.angles).toHaveLength(4);
+    expect(body.metadata.siteMetrics.segmentCount).toBe(4);
+    expect(body.segments[0]).toHaveProperty("lengthM");
+    expect(body.segments[0]).toHaveProperty("bearingDeg");
+    expect(body.angles[0]).toHaveProperty("angleDeg");
+  });
+
   test("preserves authoritative semantics for a small parcel", () => {
     const polygon = squarePolygonAround(POINT.lat, POINT.lng, 12);
     const body = buildBoundaryResponse({

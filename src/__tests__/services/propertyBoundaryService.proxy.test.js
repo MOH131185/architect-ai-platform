@@ -46,6 +46,20 @@ function authoritativeProxyBody() {
     confidence: 0.92,
     boundaryAuthoritative: true,
     areaM2: 240,
+    surfaceAreaM2: 240,
+    perimeterM: 64,
+    segments: [
+      { index: 1, lengthM: 12, bearingDeg: 90 },
+      { index: 2, lengthM: 20, bearingDeg: 0 },
+      { index: 3, lengthM: 12, bearingDeg: 270 },
+      { index: 4, lengthM: 20, bearingDeg: 180 },
+    ],
+    angles: [
+      { index: 1, angleDeg: 90 },
+      { index: 2, angleDeg: 90 },
+      { index: 3, angleDeg: 90 },
+      { index: 4, angleDeg: 90 },
+    ],
     hash: "deadbeef",
     cached: false,
     timestamp: "2026-05-02T14:00:00.000Z",
@@ -55,6 +69,13 @@ function authoritativeProxyBody() {
       addrHousenumber: "97",
       addrStreet: "Bradford St",
       overpassQueryRadiusM: 30,
+      siteMetrics: {
+        areaM2: 240,
+        surfaceAreaM2: 240,
+        perimeterM: 64,
+        segmentCount: 4,
+        angleCount: 4,
+      },
     },
   };
 }
@@ -129,10 +150,16 @@ describe("fetchSiteBoundaryFromProxy", () => {
     );
     expect(result.confidence).toBeCloseTo(0.92, 2);
     expect(result.boundaryAuthoritative).toBe(true);
+    expect(result.surfaceAreaM2).toBe(240);
+    expect(result.perimeterM).toBe(64);
+    expect(result.segments).toHaveLength(4);
+    expect(result.angles).toHaveLength(4);
     expect(result.metadata.proxyHash).toBe("deadbeef");
     expect(result.metadata.proxyCached).toBe(false);
+    expect(result.metadata.siteMetrics.segmentCount).toBe(4);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(fetchImpl.mock.calls[0][0]).toBe("/api/site/boundary");
+    expect(JSON.parse(fetchImpl.mock.calls[0][1].body).address).toBe(ADDRESS);
   });
 
   test("returns null when proxy responds with polygon: null", async () => {
@@ -199,17 +226,15 @@ describe("detectPropertyBoundary — browser proxy wiring", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  test("falls through to Intelligent Fallback when proxy returns low-confidence", async () => {
+  test("uses measured proxy polygon when proxy returns non-authoritative exact geometry", async () => {
     const fetchImpl = jest
       .fn()
       .mockResolvedValue(makeProxyResponse(lowConfidenceProxyBody()));
     const result = await detectPropertyBoundary(POINT, ADDRESS, { fetchImpl });
-    // Low-confidence proxy → not used; existing chain runs and ends in
-    // INTELLIGENT_FALLBACK_BOUNDARY_SOURCE because Google Maps returns null
-    // and the browser chain has no Overpass.
-    expect(result.source).toBe(INTELLIGENT_FALLBACK_BOUNDARY_SOURCE);
+    expect(result.source).toBe("openstreetmap-overpass-building-nearest");
     expect(isEstimatedBoundaryResult(result)).toBe(true);
     expect(result.boundaryAuthoritative).toBe(false);
+    expect(result.polygon).toHaveLength(4);
   });
 
   test("falls through to Intelligent Fallback when proxy returns no polygon", async () => {

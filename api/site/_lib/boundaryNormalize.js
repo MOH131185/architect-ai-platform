@@ -16,7 +16,7 @@
  */
 
 export const PROXY_RESPONSE_SCHEMA_VERSION = "site-boundary-proxy-v1";
-export const BOUNDARY_POLICY_VERSION = "site-boundary-policy-v4";
+export const BOUNDARY_POLICY_VERSION = "site-boundary-policy-v5";
 
 export const BOUNDARY_SOURCE = Object.freeze({
   // Digital Land's real-time `title-boundary` API (republished HMLR
@@ -76,6 +76,8 @@ export const RESIDENTIAL_PARCEL_MAX_VERTICES = 30;
 // block being treated as a single building, or a non-residential structure
 // at that postcode. Demote it to estimated like an oversized parcel.
 export const RESIDENTIAL_BUILDING_MAX_M2 = 600;
+export const RESIDENTIAL_NEAREST_BUILDING_MAX_DISTANCE_M = 18;
+export const RESIDENTIAL_TARGET_BUILDING_AREA_M2 = 80;
 
 // `landuse` tag values that almost always indicate zoning districts rather
 // than legal parcel boundaries. Treat any parcel candidate carrying one of
@@ -194,6 +196,106 @@ export function polygonAreaM2(polygon) {
   return Math.abs((sum * earthRadiusM * earthRadiusM) / 2);
 }
 
+function roundMetric(value, digits = 2) {
+  if (!Number.isFinite(Number(value))) return 0;
+  const factor = 10 ** digits;
+  return Math.round(Number(value) * factor) / factor;
+}
+
+export function polygonPerimeterM(polygon) {
+  if (!Array.isArray(polygon) || polygon.length < 2) return 0;
+  let perimeter = 0;
+  for (let i = 0; i < polygon.length; i += 1) {
+    perimeter += distanceM(polygon[i], polygon[(i + 1) % polygon.length]);
+  }
+  return perimeter;
+}
+
+export function bearingDegrees(a, b) {
+  if (!a || !b) return 0;
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const toDeg = (rad) => (rad * 180) / Math.PI;
+  const lat1 = toRad(Number(a.lat));
+  const lat2 = toRad(Number(b.lat));
+  const dLng = toRad(Number(b.lng) - Number(a.lng));
+  const y = Math.sin(dLng) * Math.cos(lat2);
+  const x =
+    Math.cos(lat1) * Math.sin(lat2) -
+    Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+  return roundMetric((toDeg(Math.atan2(y, x)) + 360) % 360, 2);
+}
+
+export function polygonSegmentDetails(polygon) {
+  if (!Array.isArray(polygon) || polygon.length < 2) return [];
+  return polygon.map((start, index) => {
+    const end = polygon[(index + 1) % polygon.length];
+    return {
+      index: index + 1,
+      lengthM: roundMetric(distanceM(start, end), 2),
+      bearingDeg: bearingDegrees(start, end),
+      start,
+      end,
+    };
+  });
+}
+
+function localVectorMeters(origin, point) {
+  const latScaleM = 111_320;
+  const lngScaleM =
+    111_320 * Math.cos((Number(origin?.lat || 0) * Math.PI) / 180);
+  return {
+    x: (Number(point.lng) - Number(origin.lng)) * lngScaleM,
+    y: (Number(point.lat) - Number(origin.lat)) * latScaleM,
+  };
+}
+
+export function polygonInteriorAngles(polygon) {
+  if (!Array.isArray(polygon) || polygon.length < 3) return [];
+  return polygon.map((vertex, index) => {
+    const previous = polygon[(index - 1 + polygon.length) % polygon.length];
+    const next = polygon[(index + 1) % polygon.length];
+    const a = localVectorMeters(vertex, previous);
+    const b = localVectorMeters(vertex, next);
+    const dot = a.x * b.x + a.y * b.y;
+    const magA = Math.sqrt(a.x * a.x + a.y * a.y);
+    const magB = Math.sqrt(b.x * b.x + b.y * b.y);
+    const cosine =
+      magA > 0 && magB > 0 ? Math.max(-1, Math.min(1, dot / (magA * magB))) : 1;
+    return {
+      index: index + 1,
+      angleDeg: roundMetric((Math.acos(cosine) * 180) / Math.PI, 2),
+      vertex,
+    };
+  });
+}
+
+export function buildBoundaryMeasurements(polygon) {
+  const hasShape = Array.isArray(polygon) && polygon.length >= 3;
+  if (!hasShape) {
+    return {
+      areaM2: 0,
+      surfaceAreaM2: 0,
+      perimeterM: 0,
+      segmentCount: 0,
+      angleCount: 0,
+      segments: [],
+      angles: [],
+    };
+  }
+  const areaM2 = Math.round(polygonAreaM2(polygon));
+  const segments = polygonSegmentDetails(polygon);
+  const angles = polygonInteriorAngles(polygon);
+  return {
+    areaM2,
+    surfaceAreaM2: areaM2,
+    perimeterM: roundMetric(polygonPerimeterM(polygon), 2),
+    segmentCount: segments.length,
+    angleCount: angles.length,
+    segments,
+    angles,
+  };
+}
+
 /**
  * Return true when the polygon contains the given point. Uses the ray-
  * casting algorithm; treats the polygon as closed (does NOT require the
@@ -227,15 +329,114 @@ export function polygonContainsPoint(polygon, point) {
   return inside;
 }
 
-function polygonCentroid(polygon) {
-  if (!Array.isArray(polygon) || polygon.length === 0) return null;
-  let lat = 0;
-  let lng = 0;
-  for (const p of polygon) {
-    lat += Number(p.lat);
-    lng += Number(p.lng);
+function pointToSegmentDistanceM(point, a, b) {
+  if (!point || !a || !b) return Infinity;
+  const p = localVectorMeters(point, point);
+  const start = localVectorMeters(point, a);
+  const end = localVectorMeters(point, b);
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq <= Number.EPSILON) {
+    return Math.sqrt(
+      (p.x - start.x) * (p.x - start.x) + (p.y - start.y) * (p.y - start.y),
+    );
   }
-  return { lat: lat / polygon.length, lng: lng / polygon.length };
+  const t = Math.max(
+    0,
+    Math.min(1, ((p.x - start.x) * dx + (p.y - start.y) * dy) / lenSq),
+  );
+  const projected = {
+    x: start.x + t * dx,
+    y: start.y + t * dy,
+  };
+  return Math.sqrt(
+    (p.x - projected.x) * (p.x - projected.x) +
+      (p.y - projected.y) * (p.y - projected.y),
+  );
+}
+
+function pointToPolygonDistanceM(polygon, point) {
+  if (!Array.isArray(polygon) || polygon.length < 3 || !point) return Infinity;
+  if (polygonContainsPoint(polygon, point)) return 0;
+  let minDistance = Infinity;
+  for (let i = 0; i < polygon.length; i += 1) {
+    minDistance = Math.min(
+      minDistance,
+      pointToSegmentDistanceM(
+        point,
+        polygon[i],
+        polygon[(i + 1) % polygon.length],
+      ),
+    );
+  }
+  return minDistance;
+}
+
+function normalizeSearchText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function addressMatchScore(element, address) {
+  const normalizedAddress = normalizeSearchText(address);
+  if (!normalizedAddress) return 0;
+  const tags = element?.tags || {};
+  let score = 0;
+  const houseNumber = normalizeSearchText(tags["addr:housenumber"]);
+  const street = normalizeSearchText(tags["addr:street"]);
+  const name = normalizeSearchText(tags.name);
+  if (houseNumber && normalizedAddress.split(" ").includes(houseNumber)) {
+    score += 5;
+  }
+  if (street && normalizedAddress.includes(street)) {
+    score += 3;
+  }
+  if (name && normalizedAddress.includes(name)) {
+    score += 1;
+  }
+  return score;
+}
+
+function collectPlausibleBuildingCandidates({
+  buildingElements = [],
+  point,
+  address = null,
+}) {
+  return buildingElements
+    .map((element) => {
+      const polygon = extractPolygonFromOverpassWay(element);
+      if (polygon.length < 3) return null;
+      const estimateReason = classifyBuildingCandidate({ polygon });
+      const containsPoint = polygonContainsPoint(polygon, point);
+      return {
+        element,
+        polygon,
+        estimateReason,
+        containsPoint,
+        distanceToPointM: pointToPolygonDistanceM(polygon, point),
+        areaM2: polygonAreaM2(polygon),
+        addressScore: addressMatchScore(element, address),
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      if (b.addressScore !== a.addressScore) {
+        return b.addressScore - a.addressScore;
+      }
+      if (Number(b.containsPoint) !== Number(a.containsPoint)) {
+        return Number(b.containsPoint) - Number(a.containsPoint);
+      }
+      if (a.distanceToPointM !== b.distanceToPointM) {
+        return a.distanceToPointM - b.distanceToPointM;
+      }
+      return (
+        Math.abs(a.areaM2 - RESIDENTIAL_TARGET_BUILDING_AREA_M2) -
+        Math.abs(b.areaM2 - RESIDENTIAL_TARGET_BUILDING_AREA_M2)
+      );
+    });
 }
 
 /**
@@ -282,10 +483,16 @@ export function selectBestBoundaryCandidate({
   buildingElements = [],
   parcelElements = [],
   point,
+  address = null,
 }) {
   const checkPoint = point;
   let demotedParcel = null;
   let demotedReason = null;
+  const buildingCandidates = collectPlausibleBuildingCandidates({
+    buildingElements,
+    point: checkPoint,
+    address,
+  });
 
   // 0. INSPIRE / Digital Land title-boundary containing the point.
   // Both source kinds flow through this list; we tell them apart by
@@ -349,42 +556,33 @@ export function selectBestBoundaryCandidate({
   // magnitude. We capture it as `demotedParcel` so callers can render it
   // as a faint reference, then fall through to the nearest-building
   // search and ultimately to a null result that prompts manual drawing.
-  for (const el of buildingElements) {
-    const polygon = extractPolygonFromOverpassWay(el);
-    if (polygon.length < 3 || !polygonContainsPoint(polygon, checkPoint)) {
-      continue;
-    }
-    const buildingReason = classifyBuildingCandidate({ polygon });
-    if (!buildingReason) {
+  for (const candidate of buildingCandidates) {
+    if (!candidate.containsPoint) continue;
+    if (!candidate.estimateReason) {
       return {
-        element: el,
-        polygon,
+        element: candidate.element,
+        polygon: candidate.polygon,
         source: BOUNDARY_SOURCE.OVERPASS_BUILDING_CONTAINS,
         estimateReason: demotedReason || null,
         demotedParcel,
       };
     }
     if (!demotedParcel) {
-      demotedParcel = { element: el, polygon };
-      demotedReason = demotedReason || buildingReason;
+      demotedParcel = {
+        element: candidate.element,
+        polygon: candidate.polygon,
+      };
+      demotedReason = demotedReason || candidate.estimateReason;
     }
   }
   // 3. nearest building within 25 m, with the same plausibility check —
   // an oversized building does not become a plausible site boundary just
   // because no closer candidate exists.
-  let nearest = null;
-  let nearestDistance = Infinity;
-  for (const el of buildingElements) {
-    const polygon = extractPolygonFromOverpassWay(el);
-    if (polygon.length < 3) continue;
-    if (classifyBuildingCandidate({ polygon })) continue;
-    const centroid = polygonCentroid(polygon);
-    const d = distanceM(centroid, checkPoint);
-    if (d < nearestDistance && d <= 25) {
-      nearest = { element: el, polygon };
-      nearestDistance = d;
-    }
-  }
+  const nearest = buildingCandidates.find(
+    (candidate) =>
+      !candidate.estimateReason &&
+      candidate.distanceToPointM <= RESIDENTIAL_NEAREST_BUILDING_MAX_DISTANCE_M,
+  );
   if (nearest) {
     return {
       element: nearest.element,
@@ -476,7 +674,8 @@ export function buildBoundaryResponse({
   const confidence = isEstimatedByDemotion
     ? Math.min(baseConfidence, 0.7)
     : baseConfidence;
-  const areaM2 = hasShape ? polygonAreaM2(polygon) : 0;
+  const measurements = buildBoundaryMeasurements(hasShape ? polygon : []);
+  const areaM2 = measurements.areaM2;
   const hash = hashBoundaryShape({ polygon, source: resolvedSource });
 
   return {
@@ -487,7 +686,11 @@ export function buildBoundaryResponse({
     confidence,
     boundaryAuthoritative,
     estimateReason: estimateReason || null,
-    areaM2: Math.round(areaM2),
+    areaM2,
+    surfaceAreaM2: measurements.surfaceAreaM2,
+    perimeterM: measurements.perimeterM,
+    segments: measurements.segments,
+    angles: measurements.angles,
     hash,
     cached: Boolean(cached),
     timestamp: now || new Date().toISOString(),
@@ -507,6 +710,13 @@ export function buildBoundaryResponse({
             areaM2: Math.round(polygonAreaM2(demotedParcel.polygon || [])),
           }
         : null,
+      siteMetrics: {
+        areaM2,
+        surfaceAreaM2: measurements.surfaceAreaM2,
+        perimeterM: measurements.perimeterM,
+        segmentCount: measurements.segmentCount,
+        angleCount: measurements.angleCount,
+      },
     },
   };
 }
@@ -532,12 +742,23 @@ export function buildEmptyResponse({
     boundaryAuthoritative: false,
     estimateReason: null,
     areaM2: 0,
+    surfaceAreaM2: 0,
+    perimeterM: 0,
+    segments: [],
+    angles: [],
     hash: hashBoundaryShape({ polygon: [], source: null }),
     cached: Boolean(cached),
     timestamp: now || new Date().toISOString(),
     metadata: {
       reason,
       overpassQueryRadiusM: queryRadiusM,
+      siteMetrics: {
+        areaM2: 0,
+        surfaceAreaM2: 0,
+        perimeterM: 0,
+        segmentCount: 0,
+        angleCount: 0,
+      },
     },
   };
 }

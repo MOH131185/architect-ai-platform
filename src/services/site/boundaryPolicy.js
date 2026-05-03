@@ -6,11 +6,13 @@
  * tripping CRA's "outside src" restriction.
  */
 
-export const BOUNDARY_POLICY_VERSION = "site-boundary-policy-v4";
+export const BOUNDARY_POLICY_VERSION = "site-boundary-policy-v5";
 
 export const RESIDENTIAL_PARCEL_MAX_M2 = 1000;
 export const RESIDENTIAL_PARCEL_MAX_VERTICES = 30;
 export const RESIDENTIAL_BUILDING_MAX_M2 = 600;
+export const RESIDENTIAL_NEAREST_BUILDING_MAX_DISTANCE_M = 18;
+export const RESIDENTIAL_TARGET_BUILDING_AREA_M2 = 80;
 
 const DISTRICT_LANDUSE_TAGS = Object.freeze(
   new Set([
@@ -174,6 +176,97 @@ export function polygonPerimeterM(polygon) {
     perimeter += distanceM(polygon[i], polygon[(i + 1) % polygon.length]);
   }
   return perimeter;
+}
+
+function roundMetric(value, digits = 2) {
+  if (!Number.isFinite(Number(value))) return 0;
+  const factor = 10 ** digits;
+  return Math.round(Number(value) * factor) / factor;
+}
+
+export function bearingDegrees(a, b) {
+  if (!a || !b) return 0;
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const toDeg = (rad) => (rad * 180) / Math.PI;
+  const lat1 = toRad(Number(a.lat));
+  const lat2 = toRad(Number(b.lat));
+  const dLng = toRad(Number(b.lng) - Number(a.lng));
+  const y = Math.sin(dLng) * Math.cos(lat2);
+  const x =
+    Math.cos(lat1) * Math.sin(lat2) -
+    Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+  return roundMetric((toDeg(Math.atan2(y, x)) + 360) % 360, 2);
+}
+
+export function polygonSegmentDetails(polygon) {
+  if (!Array.isArray(polygon) || polygon.length < 2) return [];
+  return polygon.map((start, index) => {
+    const end = polygon[(index + 1) % polygon.length];
+    return {
+      index: index + 1,
+      lengthM: roundMetric(distanceM(start, end), 2),
+      bearingDeg: bearingDegrees(start, end),
+      start,
+      end,
+    };
+  });
+}
+
+function localVectorMeters(origin, point) {
+  const latScaleM = 111_320;
+  const lngScaleM =
+    111_320 * Math.cos((Number(origin?.lat || 0) * Math.PI) / 180);
+  return {
+    x: (Number(point.lng) - Number(origin.lng)) * lngScaleM,
+    y: (Number(point.lat) - Number(origin.lat)) * latScaleM,
+  };
+}
+
+export function polygonInteriorAngles(polygon) {
+  if (!Array.isArray(polygon) || polygon.length < 3) return [];
+  return polygon.map((vertex, index) => {
+    const previous = polygon[(index - 1 + polygon.length) % polygon.length];
+    const next = polygon[(index + 1) % polygon.length];
+    const a = localVectorMeters(vertex, previous);
+    const b = localVectorMeters(vertex, next);
+    const dot = a.x * b.x + a.y * b.y;
+    const magA = Math.sqrt(a.x * a.x + a.y * a.y);
+    const magB = Math.sqrt(b.x * b.x + b.y * b.y);
+    const cosine =
+      magA > 0 && magB > 0 ? Math.max(-1, Math.min(1, dot / (magA * magB))) : 1;
+    return {
+      index: index + 1,
+      angleDeg: roundMetric((Math.acos(cosine) * 180) / Math.PI, 2),
+      vertex,
+    };
+  });
+}
+
+export function buildBoundaryMeasurements(polygon) {
+  const hasShape = Array.isArray(polygon) && polygon.length >= 3;
+  if (!hasShape) {
+    return {
+      areaM2: 0,
+      surfaceAreaM2: 0,
+      perimeterM: 0,
+      segmentCount: 0,
+      angleCount: 0,
+      segments: [],
+      angles: [],
+    };
+  }
+  const areaM2 = Math.round(polygonAreaM2(polygon));
+  const segments = polygonSegmentDetails(polygon);
+  const angles = polygonInteriorAngles(polygon);
+  return {
+    areaM2,
+    surfaceAreaM2: areaM2,
+    perimeterM: roundMetric(polygonPerimeterM(polygon), 2),
+    segmentCount: segments.length,
+    angleCount: angles.length,
+    segments,
+    angles,
+  };
 }
 
 export function hashBoundaryShape({
@@ -394,12 +487,18 @@ export default {
   RESIDENTIAL_PARCEL_MAX_M2,
   RESIDENTIAL_PARCEL_MAX_VERTICES,
   RESIDENTIAL_BUILDING_MAX_M2,
+  RESIDENTIAL_NEAREST_BUILDING_MAX_DISTANCE_M,
+  RESIDENTIAL_TARGET_BUILDING_AREA_M2,
   classifyParcelCandidate,
   classifyBuildingCandidate,
   polygonAreaM2,
   polygonContainsPoint,
   distanceM,
   polygonPerimeterM,
+  bearingDegrees,
+  polygonSegmentDetails,
+  polygonInteriorAngles,
+  buildBoundaryMeasurements,
   hashBoundaryShape,
   normalizeBoundaryAreaFields,
   readBoundaryAreaM2,
