@@ -6,6 +6,8 @@ import siteAnalysisService from "../services/siteAnalysisService.js";
 import logger from "../utils/logger.js";
 import { buildSiteContext } from "../rings/ring1-site/siteContextBuilder.js";
 import { resolveUiSiteBoundaryAuthority } from "../services/siteBoundaryUiAuthority.js";
+import { BOUNDARY_POLICY_VERSION } from "../services/site/boundaryPolicy.js";
+import { readBoundaryAreaM2 } from "../utils/boundaryFields.js";
 
 /**
  * useLocationData - Location Analysis Hook
@@ -366,14 +368,23 @@ export const useLocationData = () => {
 
       if (boundaryResolution.boundaryAuthoritative) {
         setSitePolygon(authoritativeSitePolygon);
+        // PR-C re-review blocker 2: route every area read through the shared
+        // normalizer so a payload that only carries surfaceAreaM2 (or only
+        // surfaceArea) still resolves to the canonical numeric area.
+        const resolvedAreaM2 = readBoundaryAreaM2(siteAnalysis);
         setSiteMetrics({
-          areaM2: siteAnalysis.surfaceArea,
+          area: resolvedAreaM2,
+          areaM2: resolvedAreaM2,
+          surfaceAreaM2: resolvedAreaM2,
           unit: siteAnalysis.surfaceAreaUnit,
           source: siteAnalysis.boundarySource,
           shapeType: siteAnalysis.boundaryShapeType,
           confidence: siteAnalysis.boundaryConfidence || 0.4,
           vertexCount: siteAnalysis.siteBoundary?.length,
           boundaryAuthoritative: true,
+          boundaryConfidence: siteAnalysis.boundaryConfidence || 0.4,
+          boundarySource: siteAnalysis.boundarySource,
+          policyVersion: siteAnalysis.policyVersion || BOUNDARY_POLICY_VERSION,
         });
       } else {
         setSitePolygon([]);
@@ -456,13 +467,27 @@ export const useLocationData = () => {
         boundaryEstimated: boundaryResolution.boundaryEstimated,
         boundaryWarning: boundaryResolution.siteBoundaryWarning,
         boundaryWarningCode: siteAnalysis?.boundaryWarningCode || null,
+        boundarySource: siteAnalysis?.boundarySource || null,
+        boundaryConfidence: siteAnalysis?.boundaryConfidence ?? null,
         estimatedSiteBoundary: boundaryResolution.contextualEstimatedBoundary,
         contextualSiteBoundary: boundaryResolution.contextualEstimatedBoundary,
         estimatedSurfaceArea: siteAnalysis?.estimatedSurfaceArea || null,
         siteBoundary: authoritativeSitePolygon,
-        surfaceArea: boundaryResolution.boundaryAuthoritative
-          ? siteAnalysis?.surfaceArea
-          : null,
+        // PR-C re-review blocker 2: resolve area via the shared normalizer so
+        // surfaceAreaM2-only payloads still propagate the correct number.
+        // readBoundaryAreaM2 walks areaM2 → area → surfaceAreaM2 →
+        // surfaceArea (and the metadata.* equivalents) in priority order.
+        ...(() => {
+          const resolved = boundaryResolution.boundaryAuthoritative
+            ? readBoundaryAreaM2(siteAnalysis)
+            : null;
+          return {
+            surfaceArea: resolved,
+            areaM2: resolved,
+            surfaceAreaM2: resolved,
+          };
+        })(),
+        policyVersion: siteAnalysis?.policyVersion || BOUNDARY_POLICY_VERSION,
         siteMapUrl: siteMapUrl,
         mapImageUrl: siteMapUrl,
         siteDNA,

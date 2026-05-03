@@ -1026,17 +1026,64 @@ const ArchitectAIWizardContainer = () => {
         const warning =
           normalizedBoundary.warnings?.[0] ||
           "Manual boundary is invalid and was not saved as verified.";
-        setLocationData((prev) => ({
-          ...(prev || {}),
-          manualBoundaryInvalid: true,
-          manualBoundaryWarning: warning,
-          boundaryAuthoritative: prev?.boundaryAuthoritative || false,
-          siteAnalysis: {
-            ...(prev?.siteAnalysis || {}),
+        // PR-C re-review blocker 1: when the editor signals
+        // clearManualVerified (polygon was cleared, became invalid, or
+        // self-intersected) drop ANY previously stored manual_verified
+        // boundary from authoritative state so the parent does not keep
+        // a stale verified polygon.
+        const shouldClearManualVerified =
+          boundaryData.clearManualVerified === true ||
+          normalizedBoundary.clearManualVerified === true ||
+          normalizedBoundary.manualVerified === false;
+        setLocationData((prev) => {
+          const prevSiteAnalysis = prev?.siteAnalysis || {};
+          const wasManualVerified =
+            prev?.manualVerifiedBoundary != null ||
+            prev?.boundarySource === "manual_verified" ||
+            prevSiteAnalysis.boundarySource === "manual_verified";
+          const clearManualState =
+            shouldClearManualVerified && wasManualVerified;
+          return {
+            ...(prev || {}),
             manualBoundaryInvalid: true,
             manualBoundaryWarning: warning,
-          },
-        }));
+            ...(clearManualState
+              ? {
+                  manualVerifiedBoundary: null,
+                  boundaryAuthoritative: false,
+                  boundarySource: null,
+                  boundaryConfidence: null,
+                  surfaceArea: null,
+                  areaM2: null,
+                  surfaceAreaM2: null,
+                }
+              : {
+                  boundaryAuthoritative: prev?.boundaryAuthoritative || false,
+                }),
+            siteAnalysis: {
+              ...prevSiteAnalysis,
+              manualBoundaryInvalid: true,
+              manualBoundaryWarning: warning,
+              ...(clearManualState
+                ? {
+                    manualVerifiedBoundary: null,
+                    authoritativeSiteBoundary: null,
+                    boundaryAuthoritative: false,
+                    boundarySource: null,
+                    boundaryConfidence: null,
+                    surfaceArea: null,
+                    areaM2: null,
+                    surfaceAreaM2: null,
+                    authoritativeSurfaceArea: null,
+                  }
+                : {}),
+            },
+          };
+        });
+        if (shouldClearManualVerified) {
+          setSitePolygon([]);
+          setSiteMetrics(null);
+        }
         return;
       }
 

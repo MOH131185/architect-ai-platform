@@ -237,51 +237,77 @@ export function SiteBoundaryEditorV2({
   // ============================================================
 
   useEffect(() => {
-    if (onBoundaryChange && polygonLength >= 3) {
-      const formattedMetrics = getFormattedMetrics();
-      const dna = convertToDNA();
+    if (!onBoundaryChange) return;
 
-      // Find dominant edge (longest, likely street-facing)
-      const segments = metrics.segments || [];
-      let dominantEdge = null;
-      if (segments.length > 0) {
-        dominantEdge = segments.reduce((longest, seg) =>
-          seg.length > longest.length ? seg : longest,
-        );
-      }
-
-      const primaryFrontEdge = dominantEdge
-        ? {
-            index: dominantEdge.index,
-            length: dominantEdge.length,
-            bearing: dominantEdge.bearing,
-          }
-        : null;
-      const verifiedBoundary = buildManualVerifiedBoundary({
-        polygon,
-        metrics: formattedMetrics,
-        validation,
-        geoJSON: exportGeoJSON(),
-        primaryFrontEdge,
+    // PR-C re-review blocker 1: emit on EVERY change, not just polygon >= 3.
+    // When the polygon is cleared or drops below 3 vertices, emit a
+    // manual_invalid payload (clearManualVerified: true) so the parent
+    // drops any previously stored manual_verified boundary instead of
+    // keeping it indefinitely.
+    if (polygonLength < 3) {
+      const clearPayload = buildManualVerifiedBoundary({
+        polygon: [],
+        metrics: null,
+        validation: null,
+        geoJSON: null,
+        primaryFrontEdge: null,
       });
-
-      if (verifiedBoundary.invalid) {
-        setValidationWarning(
-          verifiedBoundary.warnings?.[0] ||
-            "Manual boundary is invalid and has not been verified.",
-        );
-      } else if (validationWarning) {
+      if (validationWarning) {
         setValidationWarning(null);
       }
-
       onBoundaryChange({
-        ...verifiedBoundary,
-        metrics: formattedMetrics,
-        dna,
-        geoJSON: verifiedBoundary.geoJSON || exportGeoJSON(),
-        primaryFrontEdge,
+        ...clearPayload,
+        metrics: null,
+        dna: null,
+        geoJSON: null,
+        primaryFrontEdge: null,
       });
+      return;
     }
+
+    const formattedMetrics = getFormattedMetrics();
+    const dna = convertToDNA();
+
+    // Find dominant edge (longest, likely street-facing)
+    const segments = metrics.segments || [];
+    let dominantEdge = null;
+    if (segments.length > 0) {
+      dominantEdge = segments.reduce((longest, seg) =>
+        seg.length > longest.length ? seg : longest,
+      );
+    }
+
+    const primaryFrontEdge = dominantEdge
+      ? {
+          index: dominantEdge.index,
+          length: dominantEdge.length,
+          bearing: dominantEdge.bearing,
+        }
+      : null;
+    const verifiedBoundary = buildManualVerifiedBoundary({
+      polygon,
+      metrics: formattedMetrics,
+      validation,
+      geoJSON: exportGeoJSON(),
+      primaryFrontEdge,
+    });
+
+    if (verifiedBoundary.invalid) {
+      setValidationWarning(
+        verifiedBoundary.warnings?.[0] ||
+          "Manual boundary is invalid and has not been verified.",
+      );
+    } else if (validationWarning) {
+      setValidationWarning(null);
+    }
+
+    onBoundaryChange({
+      ...verifiedBoundary,
+      metrics: formattedMetrics,
+      dna,
+      geoJSON: verifiedBoundary.geoJSON || exportGeoJSON(),
+      primaryFrontEdge,
+    });
   }, [
     convertToDNA,
     exportGeoJSON,

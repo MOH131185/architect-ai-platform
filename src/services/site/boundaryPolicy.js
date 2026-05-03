@@ -319,6 +319,10 @@ export function buildManualVerifiedBoundary({
   const normalizedPolygon = normalizedValidation.polygon;
 
   if (!normalizedValidation.valid || normalizedPolygon.length < 3) {
+    // PR-C re-review blocker 1: include explicit manualVerified=false +
+    // clearManualVerified=true so parents that previously saved a
+    // manual_verified boundary know to drop it from authoritative state
+    // when the polygon is cleared, becomes invalid, or self-intersects.
     return {
       polygon: normalizedPolygon,
       areaM2: 0,
@@ -333,6 +337,9 @@ export function buildManualVerifiedBoundary({
       confidence: 0,
       estimateReason: normalizedValidation.reason || "manual_boundary_invalid",
       estimatedOnly: true,
+      manualVerified: false,
+      clearManualVerified: true,
+      reason: "manual_boundary_invalid_or_cleared",
       policyVersion: BOUNDARY_POLICY_VERSION,
       invalid: true,
       validation: normalizedValidation,
@@ -368,6 +375,8 @@ export function buildManualVerifiedBoundary({
     confidence: 1,
     estimateReason: null,
     estimatedOnly: false,
+    manualVerified: true,
+    clearManualVerified: false,
     policyVersion: BOUNDARY_POLICY_VERSION,
     geoJSON,
     primaryFrontEdge,

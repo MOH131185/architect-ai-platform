@@ -320,7 +320,12 @@ const IntelligenceReport = () => {
               shapeType={siteMetrics.shapeType}
               confidence={siteMetrics.confidence}
               source={siteMetrics.source}
-              area={siteMetrics.areaM2}
+              // PR-C re-review blocker 2: pass every area shape so a
+              // payload that only carries surfaceAreaM2 (or only
+              // surfaceArea) still displays the area inside SiteBoundaryInfo.
+              area={siteMetrics.area ?? siteMetrics.areaM2}
+              areaM2={siteMetrics.areaM2}
+              surfaceAreaM2={siteMetrics.surfaceAreaM2}
               vertexCount={siteMetrics.vertexCount}
             />
           )}
