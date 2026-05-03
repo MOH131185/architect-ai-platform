@@ -2445,6 +2445,20 @@ async function handleComposeRequest(req, res, trace) {
     sheetSetPlan: resolvedSheetSetPlan,
     sheetSetArtifacts,
     finalA1ExportGate,
+    // PR-D finishing — pass boundary + mainEntry context if the request
+    // body included them so manifest.authority can summarise the full
+    // authority surface (technical + visual + boundary + main entry).
+    // Both fields are optional; the manifest builder tolerates null.
+    boundaryAuthority:
+      req.body?.boundary ||
+      req.body?.siteBoundary ||
+      req.body?.metadata?.boundary ||
+      null,
+    mainEntryAuthority:
+      req.body?.mainEntry ||
+      req.body?.metadata?.mainEntry ||
+      req.body?.metadata?.mainEntryDirection ||
+      null,
   });
   const manifestFile = writeComposeArtifactManifest({
     manifest,

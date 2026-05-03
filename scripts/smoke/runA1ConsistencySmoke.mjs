@@ -391,7 +391,60 @@ async function main() {
   );
 
   // -------------------------------------------------------------------------
-  // 9. Feature flag aliases stay in sync.
+  // 9. Manifest carries the A1 hardening buildStamp + authority block.
+  // -------------------------------------------------------------------------
+  const composeTrace = await import(fileUrl("src/services/a1/composeTrace.js"));
+  const hardeningStamp = await import(
+    fileUrl("src/services/a1/a1HardeningStamp.js")
+  );
+  const manifest = composeTrace.buildComposeArtifactManifest({
+    panelsByKey: {
+      floor_plan_ground: { type: "floor_plan_ground", ...plan },
+      elevation_south: { type: "elevation_south", ...elev },
+      section_AA: { type: "section_AA", ...sect },
+    },
+    geometryHash: plan.geometryHash,
+    dnaHash: "smoke-dna",
+    programHash: "smoke-program",
+    boundaryAuthority: {
+      boundarySource: "compiled_project",
+      boundaryAuthoritative: true,
+      areaM2: 425,
+      policyVersion: "site-boundary-policy-v3",
+    },
+    mainEntryAuthority: med
+      .resolveMainEntryDirection({ sitePolygon, manualDirection: "south" }),
+  });
+  assert(
+    manifest.buildStamp?.version === hardeningStamp.A1_HARDENING_VERSION,
+    `Manifest carries A1 hardening buildStamp ${hardeningStamp.A1_HARDENING_VERSION}`,
+  );
+  assert(
+    manifest.buildStamp?.prs?.length === 4,
+    "Manifest buildStamp lists all 4 PRs (PR-A through PR-D)",
+  );
+  assert(
+    manifest.authority?.technicalPanelsAuthority ===
+      "compiled_project_canonical_pack",
+    "Manifest authority.technicalPanelsAuthority === compiled_project_canonical_pack",
+  );
+  assert(
+    manifest.authority?.geometryHash === plan.geometryHash,
+    "Manifest authority.geometryHash matches the canonical geometry hash",
+  );
+  assert(
+    manifest.authority?.boundaryAuthority?.authoritative === true &&
+      manifest.authority?.boundaryAuthority?.areaM2 === 425,
+    "Manifest authority.boundaryAuthority summarises the boundary input",
+  );
+  assert(
+    manifest.authority?.mainEntryAuthority?.direction === "south" &&
+      manifest.authority?.mainEntryAuthority?.source === "manual",
+    "Manifest authority.mainEntryAuthority summarises the manual override",
+  );
+
+  // -------------------------------------------------------------------------
+  // 10. Feature flag aliases stay in sync.
   // -------------------------------------------------------------------------
   const flagsModule = await import(fileUrl("src/config/featureFlags.js"));
   const FF = flagsModule.FEATURE_FLAGS;
