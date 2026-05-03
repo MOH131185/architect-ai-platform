@@ -4,15 +4,25 @@
  */
 
 import React from "react";
+import { readBoundaryAreaM2 } from "../utils/boundaryFields.js";
 
 const SiteBoundaryInfo = ({
   shapeType,
   confidence,
   source,
   area,
+  areaM2,
+  surfaceAreaM2,
   vertexCount,
+  estimateReason,
+  boundaryAuthoritative,
   onRefine,
 }) => {
+  // PR-C Phase 9: read area from any of the supported field names so the
+  // legacy `area` UI prop and the modern proxy `areaM2` field both work.
+  const resolvedAreaM2 = readBoundaryAreaM2({ area, areaM2, surfaceAreaM2 });
+  const isEstimated =
+    boundaryAuthoritative === false || Boolean(estimateReason);
   // Get shape icon
   const getShapeIcon = (shape) => {
     const icons = {
@@ -101,11 +111,31 @@ const SiteBoundaryInfo = ({
         </div>
 
         {/* Area */}
-        {area && (
+        {resolvedAreaM2 > 0 && (
           <div className="flex items-center justify-between liquid-glass rounded px-2 py-1.5 border border-white/20 bg-white/5">
             <span className="text-sm text-white/90 font-medium">Area:</span>
             <span className="text-sm font-semibold text-blue-200">
-              {Math.round(area)} m²
+              {Math.round(resolvedAreaM2)} m²
+              {isEstimated && (
+                <span className="ml-1 text-xs text-orange-200">
+                  (estimated)
+                </span>
+              )}
+            </span>
+          </div>
+        )}
+
+        {/* Estimate reason banner — surfaces the specific demotion cause
+            (e.g. parcel_oversized, parcel_landuse_district) so the user can
+            verify the boundary manually rather than trusting the contextual
+            estimate. */}
+        {isEstimated && estimateReason && (
+          <div className="flex items-center justify-between liquid-glass rounded px-2 py-1.5 border border-orange-400/40 bg-orange-500/10">
+            <span className="text-xs text-orange-100 font-medium">
+              Estimate reason:
+            </span>
+            <span className="text-xs font-semibold text-orange-100">
+              {String(estimateReason).replace(/_/g, " ")}
             </span>
           </div>
         )}

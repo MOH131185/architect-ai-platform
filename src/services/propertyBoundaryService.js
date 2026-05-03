@@ -4,6 +4,18 @@
  * Supports polygons, triangles, irregular shapes, and complex geometries
  */
 
+import {
+  classifyParcelCandidate,
+  classifyBuildingCandidate,
+  ESTIMATE_REASON,
+  polygonAreaM2,
+} from "../../api/site/_lib/boundaryNormalize.js";
+
+// PR-C Phase 8: bumping this invalidates any cached boundary that pre-dates
+// the legacy-path landuse demotion. Cache layers MUST embed this in their
+// keys so old high-confidence-but-wrong results are not served from cache.
+export const BOUNDARY_POLICY_VERSION = "site-boundary-policy-v2";
+
 const API_ENDPOINTS = {
   OVERPASS: "https://overpass-api.de/api/interpreter",
   NOMINATIM: "https://nominatim.openstreetmap.org/search",
@@ -368,16 +380,66 @@ async function detectFromOSMParcel(coordinates) {
     if (closestParcel) {
       const polygon = extractPolygonFromElement(closestParcel);
       const shapeType = analyzeShapeType(polygon);
+      // Reuse the shared classifier so the legacy path applies the same
+      // demotion rules as the modern proxy: landuse-district tags, oversized
+      // polygons (>1500 m² for residential), or excessive vertex counts.
+      // The polygon shape from extractPolygonFromElement is { lat, lng } so
+      // it matches what classifyParcelCandidate expects.
+      const polygonForClassifier = polygon
+        .map((point) =>
+          point && Number.isFinite(point.lat) && Number.isFinite(point.lng)
+            ? { lat: Number(point.lat), lng: Number(point.lng) }
+            : null,
+        )
+        .filter(Boolean);
+      const estimateReason = classifyParcelCandidate({
+        polygon: polygonForClassifier,
+        element: closestParcel,
+      });
+      const measuredAreaM2 = polygonAreaM2(polygonForClassifier);
+      const fallbackAreaM2 = calculatePolygonArea(polygon);
+      const areaM2 =
+        Number.isFinite(measuredAreaM2) && measuredAreaM2 > 0
+          ? measuredAreaM2
+          : fallbackAreaM2;
+
+      // When the parcel is implausible (oversized landuse district, etc.)
+      // we still return the polygon so downstream UI has *something* to
+      // render, but mark it as estimated and lower confidence so the
+      // gating logic / UI label treats it as contextual, not authoritative.
+      if (estimateReason) {
+        return {
+          polygon,
+          shapeType,
+          source: "OSM Parcel (estimated)",
+          confidence: 0.55,
+          area: areaM2,
+          areaM2,
+          boundaryAuthoritative: false,
+          estimateReason,
+          policyVersion: BOUNDARY_POLICY_VERSION,
+          metadata: {
+            landuse: closestParcel.tags?.landuse,
+            osmId: closestParcel.id,
+            estimateReason,
+            policyVersion: BOUNDARY_POLICY_VERSION,
+          },
+        };
+      }
 
       return {
         polygon,
         shapeType,
         source: "OSM Parcel",
         confidence: 0.95,
-        area: calculatePolygonArea(polygon),
+        area: areaM2,
+        areaM2,
+        boundaryAuthoritative: true,
+        policyVersion: BOUNDARY_POLICY_VERSION,
         metadata: {
           landuse: closestParcel.tags?.landuse,
           osmId: closestParcel.id,
+          policyVersion: BOUNDARY_POLICY_VERSION,
         },
       };
     }
@@ -423,16 +485,67 @@ async function detectFromOSMBuilding(coordinates) {
       // Expand building footprint by 15% to estimate property boundary
       const expandedPolygon = expandPolygon(buildingPolygon, 1.15);
       const shapeType = analyzeShapeType(expandedPolygon);
+      // Same demotion logic as detectFromOSMParcel: oversized buildings
+      // (>600 m² for residential) are almost certainly multi-unit blocks
+      // and should not be treated as authoritative single-house footprints.
+      const polygonForClassifier = buildingPolygon
+        .map((point) =>
+          point && Number.isFinite(point.lat) && Number.isFinite(point.lng)
+            ? { lat: Number(point.lat), lng: Number(point.lng) }
+            : null,
+        )
+        .filter(Boolean);
+      const buildingEstimateReason = classifyBuildingCandidate({
+        polygon: polygonForClassifier,
+      });
+      const measuredAreaM2 = polygonAreaM2(
+        expandedPolygon
+          .map((point) =>
+            point && Number.isFinite(point.lat) && Number.isFinite(point.lng)
+              ? { lat: Number(point.lat), lng: Number(point.lng) }
+              : null,
+          )
+          .filter(Boolean),
+      );
+      const fallbackAreaM2 = calculatePolygonArea(expandedPolygon);
+      const areaM2 =
+        Number.isFinite(measuredAreaM2) && measuredAreaM2 > 0
+          ? measuredAreaM2
+          : fallbackAreaM2;
+
+      if (buildingEstimateReason) {
+        return {
+          polygon: expandedPolygon,
+          shapeType,
+          source: "OSM Building (expanded, estimated)",
+          confidence: 0.55,
+          area: areaM2,
+          areaM2,
+          boundaryAuthoritative: false,
+          estimateReason: buildingEstimateReason,
+          policyVersion: BOUNDARY_POLICY_VERSION,
+          metadata: {
+            buildingType: closestBuilding.tags?.building,
+            osmId: closestBuilding.id,
+            estimateReason: buildingEstimateReason,
+            policyVersion: BOUNDARY_POLICY_VERSION,
+          },
+        };
+      }
 
       return {
         polygon: expandedPolygon,
         shapeType,
         source: "OSM Building (expanded)",
         confidence: 0.75,
-        area: calculatePolygonArea(expandedPolygon),
+        area: areaM2,
+        areaM2,
+        boundaryAuthoritative: true,
+        policyVersion: BOUNDARY_POLICY_VERSION,
         metadata: {
           buildingType: closestBuilding.tags?.building,
           osmId: closestBuilding.id,
+          policyVersion: BOUNDARY_POLICY_VERSION,
         },
       };
     }
