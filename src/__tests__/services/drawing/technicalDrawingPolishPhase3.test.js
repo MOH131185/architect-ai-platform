@@ -256,7 +256,7 @@ describe("Phase 3 — furnitureSymbolService", () => {
         "stair_arrow",
       ]),
     );
-    expect(FURNITURE_SYMBOL_VERSION).toBe("phase3-furniture-symbol-v1");
+    expect(FURNITURE_SYMBOL_VERSION).toBe("phase3-furniture-symbol-v2");
   });
 
   test("resolveFurnitureToken matches by room name keywords", () => {
