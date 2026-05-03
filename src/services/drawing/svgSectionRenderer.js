@@ -603,6 +603,20 @@ function renderFoundation(
   `;
 }
 
+function renderRoofPitchLabel(baseX, ridgeY, widthPx, pitchDeg) {
+  const numericPitch = Number(pitchDeg);
+  if (!Number.isFinite(numericPitch) || numericPitch <= 0) {
+    return "";
+  }
+  const cx = baseX + widthPx / 2 + 32;
+  const cy = ridgeY + 18;
+  return `
+    <g id="phase14-section-roof-pitch" data-roof-pitch-deg="${numericPitch.toFixed(1)}">
+      <text x="${cx}" y="${cy}" font-size="10" font-family="Arial, sans-serif" font-weight="700" fill="${SECTION_THEME.line}" data-text-role="roof-pitch">PITCH ${numericPitch.toFixed(0)}°</text>
+    </g>
+  `;
+}
+
 function renderRoof(
   baseX,
   topY,
@@ -611,6 +625,7 @@ function renderRoof(
   lineweights = {},
   roofTruthQuality = "weak",
   roofGeometry = null,
+  pitchDeg = null,
 ) {
   const quality = String(roofTruthQuality || "weak").toLowerCase();
   const truthMode = String(roofGeometry?.supportMode || "missing");
@@ -685,6 +700,7 @@ function renderRoof(
 
   const ridgeY = topY - 52;
   const undersideY = ridgeY + 12;
+  const pitchLabel = renderRoofPitchLabel(roofX, ridgeY, roofWidth, pitchDeg);
   return `
     <g id="phase14-section-roof" data-truth="${quality}" data-truth-mode="${truthMode}" data-truth-state="${truthState}">
     <path d="M ${roofX - 4} ${topY} L ${roofX + roofWidth / 2} ${ridgeY} L ${roofX + roofWidth + 4} ${topY} L ${roofX + roofWidth - 12} ${topY} L ${roofX + roofWidth / 2} ${undersideY} L ${roofX + 12} ${topY} Z" fill="${SECTION_THEME.fillSoft}" fill-opacity="${quality === "blocked" ? 0.42 : quality === "weak" ? 0.66 : 0.92}" stroke="${SECTION_THEME.lineMuted}" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.primary || 1.4}"${dasharray} />
@@ -698,6 +714,7 @@ function renderRoof(
     ${valleyMarkup}
     ${attachmentMarkup}
     </g>
+    ${pitchLabel}
   `;
 }
 
@@ -1276,6 +1293,22 @@ export function renderSectionSvg(
     lineweights,
     slabTruthQuality,
   );
+  const sectionResolvedPitchDeg = (() => {
+    const lang = String(
+      resolvedStyleDNA.roof_language || geometry.roof?.type || "pitched gable",
+    ).toLowerCase();
+    if (lang.includes("flat") || lang.includes("parapet")) {
+      return null;
+    }
+    return Number(
+      geometry.metadata?.geometry_rules?.roof_pitch_degrees ||
+        geometry.metadata?.canonical_construction_truth?.roof?.pitch_deg ||
+        constructionGeometry.roof?.pitchDeg ||
+        resolvedStyleDNA?.roofPitch ||
+        resolvedStyleDNA?.roof_pitch ||
+        35,
+    );
+  })();
   const roof = renderRoof(
     baseX,
     baseY - totalHeight * scale,
@@ -1284,6 +1317,7 @@ export function renderSectionSvg(
     lineweights,
     roofTruthQuality,
     constructionGeometry.roof,
+    sectionResolvedPitchDeg,
   );
   const evidenceUsefulnessScore = Math.max(
     Number(sectionSemantics?.scores?.usefulness || 0),

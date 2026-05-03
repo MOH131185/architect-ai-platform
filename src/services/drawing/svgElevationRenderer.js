@@ -231,7 +231,37 @@ function resolveFacadeZoneLabel(zone = {}, palette = {}, index = 0) {
   return String(zone.material || zone.name || zone.type || fallback);
 }
 
-function renderRoof(baseX, topY, widthPx, roofLanguage, theme) {
+function renderRoofPitchLabel(
+  baseX,
+  ridgeY,
+  widthPx,
+  pitchDeg,
+  theme,
+  polish = {},
+) {
+  const numericPitch = Number(pitchDeg);
+  if (!Number.isFinite(numericPitch) || numericPitch <= 0) {
+    return "";
+  }
+  const labelFont = polishSize(8, polish.fontScale || 1);
+  const cx = baseX + widthPx / 2 + 28;
+  const cy = ridgeY + 16;
+  return `
+    <g id="phase14-elevation-roof-pitch" data-roof-pitch-deg="${numericPitch.toFixed(1)}">
+      <text x="${formatNumber(cx)}" y="${formatNumber(cy)}" font-size="${labelFont}" font-family="Arial, sans-serif" font-weight="700" fill="${theme.line}" data-text-role="roof-pitch">PITCH ${numericPitch.toFixed(0)}°</text>
+    </g>
+  `;
+}
+
+function renderRoof(
+  baseX,
+  topY,
+  widthPx,
+  roofLanguage,
+  theme,
+  pitchDeg = null,
+  polish = {},
+) {
   const flatRoof =
     roofLanguage.includes("flat") || roofLanguage.includes("parapet");
   if (flatRoof) {
@@ -259,6 +289,14 @@ function renderRoof(baseX, topY, widthPx, roofLanguage, theme) {
 
   const ridgeY = topY - Math.max(46, Math.min(58, widthPx * 0.14));
   const undersideY = ridgeY + 12;
+  const pitchLabel = renderRoofPitchLabel(
+    baseX,
+    ridgeY,
+    widthPx,
+    pitchDeg,
+    theme,
+    polish,
+  );
   return `
     <g id="phase14-section-roof">
       <path d="M ${formatNumber(baseX - 6)} ${formatNumber(
@@ -297,6 +335,7 @@ function renderRoof(baseX, topY, widthPx, roofLanguage, theme) {
         topY - 6,
       )}" stroke="${theme.lineLight}" stroke-width="1" stroke-dasharray="5 3" />
     </g>
+    ${pitchLabel}
   `;
 }
 
@@ -1299,6 +1338,18 @@ export function renderElevationSvg(
   );
   const canonicalRoof =
     geometry.metadata?.canonical_construction_truth?.roof || null;
+  // Pull pitch once so both ridge-height inference AND the new pitch label
+  // share the same value. Also fall back to styleDNA.roofPitch since the
+  // adapter passes styleDNA separately from the canonical geometry.
+  const resolvedPitchDeg = flatRoofForDatum
+    ? null
+    : Number(
+        geometry.metadata?.geometry_rules?.roof_pitch_degrees ||
+          canonicalRoof?.pitch_deg ||
+          resolvedStyleDNA?.roofPitch ||
+          resolvedStyleDNA?.roof_pitch ||
+          35,
+      );
   let ridgeHeightM =
     Number(canonicalRoof?.ridge_height_m) ||
     Number(canonicalRoof?.peak_height_m) ||
@@ -1307,13 +1358,8 @@ export function renderElevationSvg(
     if (flatRoofForDatum) {
       ridgeHeightM = totalLevelHeightM + 0.45; // parapet upstand
     } else {
-      const pitchDeg = Number(
-        geometry.metadata?.geometry_rules?.roof_pitch_degrees ||
-          canonicalRoof?.pitch_deg ||
-          35,
-      );
       const halfWidthM = Math.max(2, metrics.width_m / 2);
-      const radians = (pitchDeg * Math.PI) / 180;
+      const radians = (resolvedPitchDeg * Math.PI) / 180;
       const rise = halfWidthM * Math.tan(radians);
       ridgeHeightM = totalLevelHeightM + Math.max(1.4, Math.min(rise, 4.5));
     }
@@ -1381,6 +1427,8 @@ export function renderElevationSvg(
     widthPx,
     roofLanguage,
     theme,
+    resolvedPitchDeg,
+    sheetPolish,
   );
   const hasEnvelopeGeometry = metrics.width_m > 0 && levelProfiles.length > 0;
   const explicitExteriorWallCount = (geometry.walls || []).filter(
