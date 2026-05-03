@@ -343,29 +343,42 @@ export function selectBestBoundaryCandidate({
     }
   }
 
-  // 2. building containing the point. We still return the building even
-  // when it fails the size classifier — it is better than nothing — but
-  // the response is tagged with `BUILDING_OVERSIZED` so downstream code
-  // (and the map UI) can render it as estimated rather than authoritative.
+  // 2. building containing the point. A plausibly-sized building wins
+  // immediately. An oversized building (terraced row joined into one OSM
+  // polygon, factory shed, school block, etc.) is NOT returned as the
+  // primary candidate — it would mis-set the user's site by an order of
+  // magnitude. We capture it as `demotedParcel` so callers can render it
+  // as a faint reference, then fall through to the nearest-building
+  // search and ultimately to a null result that prompts manual drawing.
   for (const el of buildingElements) {
     const polygon = extractPolygonFromOverpassWay(el);
-    if (polygon.length >= 3 && polygonContainsPoint(polygon, checkPoint)) {
-      const buildingReason = classifyBuildingCandidate({ polygon });
+    if (polygon.length < 3 || !polygonContainsPoint(polygon, checkPoint)) {
+      continue;
+    }
+    const buildingReason = classifyBuildingCandidate({ polygon });
+    if (!buildingReason) {
       return {
         element: el,
         polygon,
         source: BOUNDARY_SOURCE.OVERPASS_BUILDING_CONTAINS,
-        estimateReason: demotedReason || buildingReason || null,
+        estimateReason: demotedReason || null,
         demotedParcel,
       };
     }
+    if (!demotedParcel) {
+      demotedParcel = { element: el, polygon };
+      demotedReason = demotedReason || buildingReason;
+    }
   }
-  // 3. nearest building within 25 m
+  // 3. nearest building within 25 m, with the same plausibility check —
+  // an oversized building does not become a plausible site boundary just
+  // because no closer candidate exists.
   let nearest = null;
   let nearestDistance = Infinity;
   for (const el of buildingElements) {
     const polygon = extractPolygonFromOverpassWay(el);
     if (polygon.length < 3) continue;
+    if (classifyBuildingCandidate({ polygon })) continue;
     const centroid = polygonCentroid(polygon);
     const d = distanceM(centroid, checkPoint);
     if (d < nearestDistance && d <= 25) {
