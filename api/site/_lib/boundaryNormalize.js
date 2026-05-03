@@ -16,7 +16,7 @@
  */
 
 export const PROXY_RESPONSE_SCHEMA_VERSION = "site-boundary-proxy-v1";
-export const BOUNDARY_POLICY_VERSION = "site-boundary-policy-v3";
+export const BOUNDARY_POLICY_VERSION = "site-boundary-policy-v4";
 
 export const BOUNDARY_SOURCE = Object.freeze({
   // Digital Land's real-time `title-boundary` API (republished HMLR
@@ -59,13 +59,12 @@ const AUTHORITATIVE_BY_SOURCE = Object.freeze({
 // of the address. Demote those candidates to "estimated" and prefer the
 // building-contains polygon.
 //
-// Tuned 2026-05-02 from 5000 → 1500 m² after a Birmingham residential test
-// case (17 Kensington Rd, DN15 8BQ) returned a ~1500 m² polygon spanning
-// ~5 houses — under the previous threshold and so escaping demotion.
-// Typical UK residential lots: 100–500 m². Generous large villas: 800–
-// 1200 m². 1500 m² gives headroom while still rejecting multi-house
-// returns.
-export const RESIDENTIAL_PARCEL_MAX_M2 = 1500;
+// Tuned 2026-05-03 from 1500 → 1000 m² after 17 Kensington Rd, DN15 8BQ
+// returned a ~1257 m² title/parcel polygon for an apartment/single-address
+// case whose expected footprint is closer to ~67 m². Typical UK residential
+// lots are 100–500 m²; 1000 m² keeps generous lots while rejecting multi-unit
+// blocks and terrace-row title polygons before they become authoritative.
+export const RESIDENTIAL_PARCEL_MAX_M2 = 1000;
 
 // Vertex-count cap mirrors the same heuristic — district polygons frequently
 // have 50+ vertices, while typical lot polygons sit well under this.

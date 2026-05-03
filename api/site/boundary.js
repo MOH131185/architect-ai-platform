@@ -157,6 +157,7 @@ export async function resolveBoundaryRequest({
   postcode = null,
   fetchImpl,
   useCache = true,
+  enableTitleBoundaryLookup = true,
 } = {}) {
   if (!isValidPoint(lat, lng)) {
     return {
@@ -192,15 +193,16 @@ export async function resolveBoundaryRequest({
   // kept as a secondary source; on cold-start the synthetic placeholder
   // returns empty, which is fine: Digital Land is the new primary.
   const isUk = isEnglandOrWales({ postcode, lat, lng });
-  const digitalLandPromise = isUk
-    ? fetchTitleBoundariesNear({ lat, lng, fetchImpl }).catch((err) => {
-        console.warn(
-          "[/api/site/boundary] Digital Land title-boundary error:",
-          err?.message || err,
-        );
-        return [];
-      })
-    : Promise.resolve([]);
+  const digitalLandPromise =
+    isUk && enableTitleBoundaryLookup !== false
+      ? fetchTitleBoundariesNear({ lat, lng, fetchImpl }).catch((err) => {
+          console.warn(
+            "[/api/site/boundary] Digital Land title-boundary error:",
+            err?.message || err,
+          );
+          return [];
+        })
+      : Promise.resolve([]);
 
   let inspireElements = [];
   if (isUk) {

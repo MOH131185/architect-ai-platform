@@ -79,14 +79,24 @@ describe("classifyParcelCandidate", () => {
     expect(reason).toBe(ESTIMATE_REASON.PARCEL_TOO_COMPLEX);
   });
 
-  test("rejects a multi-house terrace block (~1500 m²) under the tightened threshold", () => {
-    // 17 Kensington Rd DN15 8BQ regression: a polygon spanning ~5 terraced
-    // houses came back at roughly 1500 m². Under the previous 5000 m²
-    // threshold this slipped through; the tightened 1500 m² threshold
-    // (with strict-greater comparison) now demotes it.
+  test("rejects a multi-house terrace block under the tightened threshold", () => {
     const polygon = squarePolygonAround(POINT.lat, POINT.lng, 25); // ~2500 m²
     const reason = classifyParcelCandidate({ polygon, element: {} });
     expect(reason).toBe(ESTIMATE_REASON.PARCEL_OVERSIZED);
+  });
+
+  test("rejects Kensington-style apartment/title polygon around 1260 m²", () => {
+    // 17 Kensington Rd, DN15 8BQ regression: the UI accepted a ~1257 m²
+    // title/parcel polygon for an apartment/single-address case closer to
+    // ~67 m², producing a site boundary about an order of magnitude too large.
+    const polygon = squarePolygonAround(POINT.lat, POINT.lng, 17.75);
+    const areaM2 = polygonAreaM2(polygon);
+
+    expect(areaM2).toBeGreaterThan(1200);
+    expect(areaM2).toBeLessThan(1500);
+    expect(classifyParcelCandidate({ polygon, element: {} })).toBe(
+      ESTIMATE_REASON.PARCEL_OVERSIZED,
+    );
   });
 });
 

@@ -1,4 +1,6 @@
-import shouldAutoTriggerEntranceDetection from "../../utils/entranceAutoTriggerGate.js";
+import shouldAutoTriggerEntranceDetection, {
+  buildEntranceAutoTriggerHeldLogKey,
+} from "../../utils/entranceAutoTriggerGate.js";
 
 const validPolygon = [
   { lat: 52.49, lng: -1.88 },
@@ -92,5 +94,46 @@ describe("shouldAutoTriggerEntranceDetection", () => {
       reason: "no_polygon",
       polygonLength: 0,
     });
+  });
+
+  test("held log key is stable across equivalent rerenders", () => {
+    const first = buildEntranceAutoTriggerHeldLogKey({
+      decision: { shouldFire: false, reason: "already_auto_detected" },
+      isDetectingEntrance: false,
+      projectDetails: {
+        entranceDirection: "S",
+        entranceAutoDetected: true,
+      },
+    });
+    const second = buildEntranceAutoTriggerHeldLogKey({
+      decision: { shouldFire: false, reason: "already_auto_detected" },
+      isDetectingEntrance: false,
+      projectDetails: {
+        entranceDirection: "S",
+        entranceAutoDetected: true,
+        unrelatedRenderCounter: 12,
+      },
+    });
+
+    expect(second).toBe(first);
+  });
+
+  test("held log key changes when the held reason changes", () => {
+    const alreadyDetecting = buildEntranceAutoTriggerHeldLogKey({
+      decision: { shouldFire: false, reason: "already_detecting" },
+      isDetectingEntrance: true,
+      projectDetails: { entranceDirection: "N" },
+    });
+    const manualDirection = buildEntranceAutoTriggerHeldLogKey({
+      decision: {
+        shouldFire: false,
+        reason: "manual_direction_set",
+        direction: "SE",
+      },
+      isDetectingEntrance: false,
+      projectDetails: { entranceDirection: "SE" },
+    });
+
+    expect(manualDirection).not.toBe(alreadyDetecting);
   });
 });

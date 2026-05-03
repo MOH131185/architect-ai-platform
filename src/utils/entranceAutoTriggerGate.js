@@ -63,4 +63,18 @@ export function shouldAutoTriggerEntranceDetection({
   return { shouldFire: true, reason: "ready" };
 }
 
+export function buildEntranceAutoTriggerHeldLogKey({
+  decision = {},
+  isDetectingEntrance = false,
+  projectDetails = {},
+} = {}) {
+  return JSON.stringify({
+    reason: decision.reason || "unknown",
+    polygonLength: decision.polygonLength ?? null,
+    direction: decision.direction ?? projectDetails.entranceDirection ?? null,
+    entranceAutoDetected: projectDetails.entranceAutoDetected === true,
+    isDetectingEntrance: isDetectingEntrance === true,
+  });
+}
+
 export default shouldAutoTriggerEntranceDetection;

@@ -31,6 +31,7 @@ import {
 } from "../../../api/site/_lib/overpassClient.js";
 
 const POINT = { lat: 52.4722, lng: -1.8839 }; // Bradford St area, but fictional polygon
+const OVERPASS_ONLY = { enableTitleBoundaryLookup: false };
 
 function makeBuildingWay(id, points, tags = {}) {
   return {
@@ -87,6 +88,7 @@ describe("api/site/boundary — Overpass success path", () => {
       .mockResolvedValueOnce(makeOverpassResponse([])); // parcel query empty
 
     const r = await resolveBoundaryRequest({
+      ...OVERPASS_ONLY,
       lat: POINT.lat,
       lng: POINT.lng,
       fetchImpl,
@@ -122,6 +124,7 @@ describe("api/site/boundary — Overpass success path", () => {
       .mockResolvedValueOnce(makeOverpassResponse([]));
 
     const r = await resolveBoundaryRequest({
+      ...OVERPASS_ONLY,
       lat: POINT.lat,
       lng: POINT.lng,
       fetchImpl,
@@ -240,6 +243,7 @@ describe("api/site/boundary — caching", () => {
       .mockResolvedValueOnce(makeOverpassResponse([]));
 
     const first = await resolveBoundaryRequest({
+      ...OVERPASS_ONLY,
       lat: POINT.lat,
       lng: POINT.lng,
       fetchImpl,
@@ -250,6 +254,7 @@ describe("api/site/boundary — caching", () => {
 
     // Cached call: no further fetch invocations
     const second = await resolveBoundaryRequest({
+      ...OVERPASS_ONLY,
       lat: POINT.lat,
       lng: POINT.lng,
       fetchImpl,

@@ -20,7 +20,10 @@ import { useWizardState } from "../hooks/useWizardState.js";
 import { getDemoProject, buildDemoResult } from "../data/demoProjects.js";
 import { normalizeSiteSnapshot } from "../types/schemas.js";
 import { computeSiteMetrics } from "../utils/geometry.js";
-import { shouldAutoTriggerEntranceDetection } from "../utils/entranceAutoTriggerGate.js";
+import {
+  buildEntranceAutoTriggerHeldLogKey,
+  shouldAutoTriggerEntranceDetection,
+} from "../utils/entranceAutoTriggerGate.js";
 import { locationIntelligence } from "../services/locationIntelligence.js";
 import siteAnalysisService from "../services/siteAnalysisService.js";
 import autoLevelAssignmentService from "../services/autoLevelAssignmentService.js";
@@ -378,6 +381,7 @@ const ArchitectAIWizardContainer = () => {
   // Refs
   const fileInputRef = useRef(null);
   const mapRef = useRef(null);
+  const lastEntranceGateHeldLogKeyRef = useRef(null);
   const [generationStartAtMs, setGenerationStartAtMs] = useState(null);
   const [generationElapsedSeconds, setGenerationElapsedSeconds] = useState(0);
   const [isGenerationTimerRunning, setIsGenerationTimerRunning] =
@@ -2022,7 +2026,15 @@ const ArchitectAIWizardContainer = () => {
       // Only emit the log line when the polygon is present (otherwise
       // every render before location-detect finishes spams the console).
       if (sitePolygon?.length >= 3) {
-        logger.info("[Entrance] auto-trigger gate held", decision);
+        const heldLogKey = buildEntranceAutoTriggerHeldLogKey({
+          decision,
+          isDetectingEntrance,
+          projectDetails,
+        });
+        if (heldLogKey !== lastEntranceGateHeldLogKeyRef.current) {
+          logger.info("[Entrance] auto-trigger gate held", decision);
+          lastEntranceGateHeldLogKeyRef.current = heldLogKey;
+        }
       }
       return;
     }

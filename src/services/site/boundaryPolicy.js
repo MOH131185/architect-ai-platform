@@ -6,9 +6,9 @@
  * tripping CRA's "outside src" restriction.
  */
 
-export const BOUNDARY_POLICY_VERSION = "site-boundary-policy-v3";
+export const BOUNDARY_POLICY_VERSION = "site-boundary-policy-v4";
 
-export const RESIDENTIAL_PARCEL_MAX_M2 = 1500;
+export const RESIDENTIAL_PARCEL_MAX_M2 = 1000;
 export const RESIDENTIAL_PARCEL_MAX_VERTICES = 30;
 export const RESIDENTIAL_BUILDING_MAX_M2 = 600;
 
