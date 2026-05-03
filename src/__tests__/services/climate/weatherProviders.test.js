@@ -220,6 +220,20 @@ describe("openMeteoProvider", () => {
     expect(out.data).toBeNull();
     expect(out.envelope.error).toMatch(/HTTP 502/);
   });
+
+  test("times out after providerTimeoutMs and returns timeout envelope", async () => {
+    const fetchImpl = jest.fn(() => new Promise(() => {}));
+    const out = await fetchOpenMeteo({
+      lat: 51.5,
+      lon: -0.1,
+      fetchImpl,
+      timeoutMs: 25,
+    });
+    expect(out.__timedOut).toBe(true);
+    expect(out.envelope.error).toMatch(/timeout/);
+    expect(out.provider).toBe("open-meteo");
+    expect(out.authority).toBe("medium");
+  });
 });
 
 describe("openWeatherProvider", () => {
@@ -249,6 +263,29 @@ describe("openWeatherProvider", () => {
     expect(out.data.precipitation.daily).toBe(0.2);
     expect(out.authority).toBe("low");
     expect(out.envelope.error).toBeNull();
+  });
+
+  test("propagates HTTP 401 as error envelope (invalid key)", async () => {
+    process.env.OPENWEATHER_API_KEY = "test-ow-key";
+    const fetchImpl = jest.fn(async () => jsonResponse({}, 401));
+    const out = await fetchOpenWeather({ lat: 51.5, lon: -0.1, fetchImpl });
+    expect(out.data).toBeNull();
+    expect(out.envelope.error).toMatch(/HTTP 401/);
+    expect(out.provider).toBe("openweather");
+    expect(out.authority).toBe("low");
+  });
+
+  test("times out after providerTimeoutMs and returns timeout envelope", async () => {
+    process.env.OPENWEATHER_API_KEY = "test-ow-key";
+    const fetchImpl = jest.fn(() => new Promise(() => {}));
+    const out = await fetchOpenWeather({
+      lat: 51.5,
+      lon: -0.1,
+      fetchImpl,
+      timeoutMs: 25,
+    });
+    expect(out.__timedOut).toBe(true);
+    expect(out.envelope.error).toMatch(/timeout/);
   });
 });
 
@@ -401,5 +438,109 @@ describe("weatherService chain", () => {
         "climateZone",
       ]),
     );
+  });
+
+  // --- Codex review additions: explicit timeout + chain-fallthrough coverage ---
+
+  test("Met Office error + Open-Meteo timeout → OpenWeather (LOW) with WEATHER_PROVIDER_TIMEOUT", async () => {
+    process.env.METOFFICE_DATAHUB_API_KEY = "test-mo-key";
+    process.env.OPENWEATHER_API_KEY = "test-ow-key";
+    const fetchImpl = chainFetch({
+      metOffice: jsonResponse({}, 503),
+      openMeteo: new Promise(() => {}), // hang only this provider
+      openWeather: jsonResponse(SAMPLE_OPENWEATHER),
+    });
+    const out = await weatherService.getClimateData(51.5, -0.1, {
+      fetchImpl,
+      providerTimeoutMs: 25,
+    });
+    expect(out.provider).toBe("openweather");
+    expect(out.authority).toBe("low");
+    const codes = out.data_quality.map((q) => q.code);
+    expect(codes).toContain("WEATHER_PROVIDER_ERROR"); // Met Office HTTP 503
+    expect(codes).toContain("WEATHER_PROVIDER_TIMEOUT"); // Open-Meteo hung
+    expect(codes).toContain("WEATHER_PROVIDER_FALLBACK"); // chain advanced
+    expect(codes).toContain("WEATHER_AUTHORITY_LOW"); // OpenWeather succeeded
+    const names = out.providers.map((p) => p.name);
+    expect(names).toEqual(["met-office-datahub", "open-meteo", "openweather"]);
+    // The Open-Meteo record reflects the timeout outcome.
+    const openMeteoRecord = out.providers.find((p) => p.name === "open-meteo");
+    expect(openMeteoRecord.status).toBe("timeout");
+    expect(openMeteoRecord.fields_supplied).toEqual([]);
+  });
+
+  test("Met Office error + Open-Meteo error + OpenWeather error → deterministic fallback", async () => {
+    process.env.METOFFICE_DATAHUB_API_KEY = "test-mo-key";
+    process.env.OPENWEATHER_API_KEY = "test-ow-key";
+    const fetchImpl = chainFetch({
+      metOffice: jsonResponse({}, 503),
+      openMeteo: jsonResponse({}, 502),
+      openWeather: jsonResponse({}, 401),
+    });
+    const out = await weatherService.getClimateData(51.5, -0.1, { fetchImpl });
+    expect(out.provider).toBe("deterministic-fallback");
+    expect(out.authority).toBe("low");
+    const codes = out.data_quality.map((q) => q.code);
+    // Each upstream provider emits its own WEATHER_PROVIDER_ERROR code.
+    expect(codes.filter((c) => c === "WEATHER_PROVIDER_ERROR").length).toBe(3);
+    expect(codes).toContain("WEATHER_PROVIDER_FALLBACK");
+    expect(codes).toContain("WEATHER_AUTHORITY_LOW");
+    // Backwards-compatible shape preserved on full-error fallback.
+    expect(out.temperature.unit).toBe("°C");
+    expect(out.summary).toMatch(/unavailable|fallback/i);
+  });
+
+  test("Met Office error + Open-Meteo error + OpenWeather timeout → deterministic fallback", async () => {
+    process.env.METOFFICE_DATAHUB_API_KEY = "test-mo-key";
+    process.env.OPENWEATHER_API_KEY = "test-ow-key";
+    const fetchImpl = chainFetch({
+      metOffice: jsonResponse({}, 503),
+      openMeteo: jsonResponse({}, 502),
+      openWeather: new Promise(() => {}), // hang only OpenWeather
+    });
+    const out = await weatherService.getClimateData(51.5, -0.1, {
+      fetchImpl,
+      providerTimeoutMs: 25,
+    });
+    expect(out.provider).toBe("deterministic-fallback");
+    expect(out.authority).toBe("low");
+    const codes = out.data_quality.map((q) => q.code);
+    expect(codes).toContain("WEATHER_PROVIDER_TIMEOUT");
+    expect(codes).toContain("WEATHER_PROVIDER_FALLBACK");
+    expect(codes).toContain("WEATHER_AUTHORITY_LOW");
+    const owRecord = out.providers.find((p) => p.name === "openweather");
+    expect(owRecord.status).toBe("timeout");
+    // Deterministic-fallback record present and marked ok with full fields.
+    const fallbackRecord = out.providers.find(
+      (p) => p.name === "deterministic-fallback",
+    );
+    expect(fallbackRecord.status).toBe("ok");
+    expect(fallbackRecord.fields_supplied).toEqual(
+      expect.arrayContaining([
+        "temperature",
+        "wind",
+        "precipitation",
+        "climateZone",
+      ]),
+    );
+  });
+
+  test("Met Office success + Open-Meteo timeout never invoked (chain stops at first success)", async () => {
+    // Sanity: a hanging Open-Meteo mock should not affect a Met Office success
+    // because the chain must short-circuit.
+    process.env.METOFFICE_DATAHUB_API_KEY = "test-mo-key";
+    const fetchImpl = chainFetch({
+      metOffice: jsonResponse(SAMPLE_METOFFICE_TIMESERIES),
+      openMeteo: new Promise(() => {}),
+    });
+    const out = await weatherService.getClimateData(51.5, -0.1, {
+      fetchImpl,
+      providerTimeoutMs: 25,
+    });
+    expect(out.provider).toBe("met-office-datahub");
+    expect(out.providers).toHaveLength(1);
+    const codes = out.data_quality.map((q) => q.code);
+    expect(codes).not.toContain("WEATHER_PROVIDER_TIMEOUT");
+    expect(codes).not.toContain("WEATHER_PROVIDER_FALLBACK");
   });
 });

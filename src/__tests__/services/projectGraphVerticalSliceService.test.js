@@ -531,9 +531,10 @@ describe("projectGraphVerticalSliceService", () => {
         }),
       }),
     );
-    // Offline run never invoked any factual provider, so siteDataProviders is
-    // empty and the OFFLINE flag is in dataQuality.
+    // Offline run never invoked any factual provider, so siteDataProviders +
+    // climateDataProviders are empty and the OFFLINE flag is in dataQuality.
     expect(result.provenanceManifest.siteDataProviders).toEqual([]);
+    expect(result.provenanceManifest.climateDataProviders).toEqual([]);
     expect(
       result.provenanceManifest.dataQuality.some(
         (q) => q.code === "CONTEXT_PROVIDERS_OFFLINE",
@@ -876,6 +877,269 @@ describe("projectGraphVerticalSliceService", () => {
     expect(result.qa.categoryScores.regulation.max).toBe(10);
     expect(result.qa.categoryScores.architecture.max).toBe(10);
     expect(result.qa.categoryScores.graphic.max).toBe(10);
+  });
+
+  // Phase 3 / Codex review: prove that climate.providers[] propagates through
+  // buildClimatePack and feeds the slice's provenanceManifest.climateDataProviders.
+  // This is a focused unit test against the internals to avoid a second ~80s
+  // full slice run while still asserting every required field per record.
+  test("buildClimatePack propagates weather.providers[] into climate.providers[] for the manifest", () => {
+    const { buildClimatePack, normalizeBrief, buildSiteContext } =
+      __projectGraphVerticalSliceInternals;
+    const brief = normalizeBrief({
+      project_name: "Climate Provenance Probe",
+      building_type: "dwelling",
+      site_input: {
+        address: "1 Test Street",
+        postcode: "N1 1AA",
+        lat: 51.5,
+        lon: -0.1,
+      },
+      target_gia_m2: 120,
+      target_storeys: 2,
+      client_goals: ["compact dwelling"],
+      style_keywords: ["red brick"],
+      sustainability_ambition: "low_energy",
+    });
+    const site = buildSiteContext({
+      brief,
+      sitePolygon: [
+        { lat: 51.5005, lng: -0.1005 },
+        { lat: 51.5005, lng: -0.0995 },
+        { lat: 51.4995, lng: -0.0995 },
+        { lat: 51.4995, lng: -0.1005 },
+      ],
+      siteMetrics: { areaM2: 1000, orientationDeg: 0 },
+      siteBoundarySanity: {
+        boundaryAuthoritative: true,
+        siteMetrics: { areaM2: 1000, orientationDeg: 0 },
+      },
+      mainEntry: null,
+    });
+
+    // Synthesised weather chain result mirroring what weatherService produces
+    // on a Met Office success: the chain stamps a single provider record and
+    // forwards WEATHER_AUTHORITY_HIGH onto data_quality.
+    const synthWeather = {
+      temperature: { current: 12, min: 10, max: 14, unit: "°C" },
+      wind: {
+        speed: 5,
+        direction: 200,
+        cardinal: "S",
+        prevailing: "S",
+        unit: "m/s",
+      },
+      precipitation: { daily: 0.5, daily_sum: 0.5, unit: "mm" },
+      climateZone: "Temperate",
+      summary: "synth",
+      provider: "met-office-datahub",
+      authority: "high",
+      providers: [
+        {
+          name: "met-office-datahub",
+          authority: "high",
+          fetched_at: "2026-05-03T12:00:00.000Z",
+          status: "ok",
+          fields_supplied: [
+            "temperature",
+            "wind",
+            "precipitation",
+            "climateZone",
+          ],
+        },
+      ],
+      data_quality: [
+        {
+          code: "WEATHER_AUTHORITY_HIGH",
+          severity: "info",
+          message: "synth Met Office record",
+          source: "met-office-datahub",
+        },
+      ],
+    };
+
+    const climate = buildClimatePack(brief, site, { weather: synthWeather });
+
+    // climate.providers === weather.providers — this is the array the slice
+    // service reads as `Array.isArray(climate?.providers) ? climate.providers : []`
+    // and assigns to provenanceManifest.climateDataProviders.
+    expect(climate.providers).toEqual(synthWeather.providers);
+    expect(climate.providers).toHaveLength(1);
+    const record = climate.providers[0];
+    // Per Codex request: every record must carry these five fields.
+    expect(record).toEqual(
+      expect.objectContaining({
+        name: expect.any(String),
+        authority: expect.stringMatching(/^(high|medium|low)$/),
+        fetched_at: expect.any(String),
+        status: expect.stringMatching(/^(ok|error|timeout|not_used)$/),
+        fields_supplied: expect.any(Array),
+      }),
+    );
+    expect(record.name).toBe("met-office-datahub");
+    expect(record.authority).toBe("high");
+    expect(record.fields_supplied).toEqual(
+      expect.arrayContaining([
+        "temperature",
+        "wind",
+        "precipitation",
+        "climateZone",
+      ]),
+    );
+    // Climate keeps its own data_quality array; it should carry both the
+    // pack-level CLIMATE_PACK_WEATHER_LIVE marker and forward the chain's
+    // WEATHER_AUTHORITY_HIGH entry.
+    const codes = climate.data_quality.map((q) => q.code);
+    expect(codes).toContain("CLIMATE_PACK_WEATHER_LIVE");
+    expect(codes).toContain("WEATHER_AUTHORITY_HIGH");
+    // Live weather populates wind/rainfall sources — these flow into the slice
+    // result and ultimately into the A1 sheet's climate panel.
+    expect(climate.weather_source).toBe("met-office-datahub");
+    expect(climate.weather_authority).toBe("high");
+    expect(climate.wind.source).toBe("met-office-datahub");
+    expect(climate.rainfall.source).toBe("met-office-datahub");
+    // OpenAI guardrail: no provider in the manifest may be branded as OpenAI.
+    for (const p of climate.providers) {
+      expect(p.name).not.toMatch(/openai|gpt|chatgpt/i);
+    }
+  });
+
+  test("buildClimatePack with deterministic-fallback weather forwards the fallback record into climate.providers[]", () => {
+    const { buildClimatePack, normalizeBrief, buildSiteContext } =
+      __projectGraphVerticalSliceInternals;
+    const brief = normalizeBrief({
+      project_name: "Fallback Provenance Probe",
+      building_type: "dwelling",
+      site_input: {
+        address: "2 Test Street",
+        postcode: "N1 1AA",
+        lat: 51.5,
+        lon: -0.1,
+      },
+      target_gia_m2: 120,
+      target_storeys: 2,
+      client_goals: ["compact dwelling"],
+      style_keywords: ["red brick"],
+      sustainability_ambition: "low_energy",
+    });
+    const site = buildSiteContext({
+      brief,
+      sitePolygon: [
+        { lat: 51.5005, lng: -0.1005 },
+        { lat: 51.5005, lng: -0.0995 },
+        { lat: 51.4995, lng: -0.0995 },
+        { lat: 51.4995, lng: -0.1005 },
+      ],
+      siteMetrics: { areaM2: 1000, orientationDeg: 0 },
+      siteBoundarySanity: {
+        boundaryAuthoritative: true,
+        siteMetrics: { areaM2: 1000, orientationDeg: 0 },
+      },
+      mainEntry: null,
+    });
+
+    // Synthesised "all upstream providers failed" chain result.
+    const synthFallback = {
+      temperature: { current: 15, min: 10, max: 20, unit: "°C" },
+      wind: {
+        speed: 10,
+        direction: 225,
+        cardinal: "SW",
+        prevailing: "SW",
+        unit: "km/h",
+      },
+      precipitation: { daily: 0, daily_sum: 0, unit: "mm" },
+      climateZone: "Temperate",
+      summary: "fallback",
+      provider: "deterministic-fallback",
+      authority: "low",
+      providers: [
+        {
+          name: "met-office-datahub",
+          authority: "high",
+          fetched_at: null,
+          status: "error",
+          fields_supplied: [],
+        },
+        {
+          name: "open-meteo",
+          authority: "medium",
+          fetched_at: null,
+          status: "error",
+          fields_supplied: [],
+        },
+        {
+          name: "openweather",
+          authority: "low",
+          fetched_at: null,
+          status: "timeout",
+          fields_supplied: [],
+        },
+        {
+          name: "deterministic-fallback",
+          authority: "low",
+          fetched_at: null,
+          status: "ok",
+          fields_supplied: [
+            "temperature",
+            "wind",
+            "precipitation",
+            "climateZone",
+          ],
+        },
+      ],
+      data_quality: [
+        {
+          code: "WEATHER_PROVIDER_ERROR",
+          severity: "warning",
+          message: "synth",
+          source: "met-office-datahub",
+        },
+        {
+          code: "WEATHER_PROVIDER_FALLBACK",
+          severity: "warning",
+          message: "synth",
+          source: "deterministic-fallback",
+        },
+        {
+          code: "WEATHER_AUTHORITY_LOW",
+          severity: "warning",
+          message: "synth",
+          source: "deterministic-fallback",
+        },
+      ],
+    };
+
+    const climate = buildClimatePack(brief, site, { weather: synthFallback });
+
+    // climate.providers reflects all four chain records, including the
+    // deterministic-fallback marker. The slice service maps these directly
+    // onto provenanceManifest.climateDataProviders.
+    expect(climate.providers).toEqual(synthFallback.providers);
+    const names = climate.providers.map((p) => p.name);
+    expect(names).toEqual([
+      "met-office-datahub",
+      "open-meteo",
+      "openweather",
+      "deterministic-fallback",
+    ]);
+    // weather_source flips to fallback and the pack emits the fallback marker.
+    expect(climate.weather_source).toBe("fallback");
+    const codes = climate.data_quality.map((q) => q.code);
+    expect(codes).toContain("CLIMATE_PACK_WEATHER_FALLBACK");
+    expect(codes).toContain("WEATHER_AUTHORITY_LOW");
+    // Each forwarded record still satisfies the required-fields contract.
+    for (const p of climate.providers) {
+      expect(p).toEqual(
+        expect.objectContaining({
+          name: expect.any(String),
+          authority: expect.stringMatching(/^(high|medium|low)$/),
+          status: expect.stringMatching(/^(ok|error|timeout|not_used)$/),
+          fields_supplied: expect.any(Array),
+        }),
+      );
+      expect(p).toHaveProperty("fetched_at");
+    }
   });
 
   test("executes OpenAI reasoning checkpoints when a provider mock is supplied", async () => {
