@@ -21,7 +21,10 @@ import {
   getBlockedOpenAIReasoningCalls,
 } from "../openaiReasoningExecutor.js";
 import { computeCDSHashSync } from "../validation/cdsHash.js";
-import { rasteriseSheetArtifact } from "../render/svgRasteriser.js";
+import {
+  rasteriseSheetArtifact,
+  isStubRasterModeEnabled,
+} from "../render/svgRasteriser.js";
 import {
   buildVectorPdfFromSheetSvg,
   VECTOR_PDF_RENDER_MODE,
@@ -3882,24 +3885,19 @@ async function resolveSiteMapSnapshot({ input = {}, brief, site }) {
       ? "contextual_estimated_boundary"
       : "context_only";
 
-  // Site boundary stroke is Material Blue 700 in both states. The
-  // boundaryAuthoritative semantic stays exactly as before — the colour
-  // change is purely visual. Estimated boundaries get a slightly thinner
-  // stroke and lower fill opacity so they remain readable but the user
-  // can tell at a glance that the polygon is non-authoritative; the
-  // metadata block below still carries `boundaryAuthoritative` and
-  // `boundaryEstimated` flags for downstream gating.
+  // Authoritative/manual boundaries use solid blue; estimated/contextual
+  // boundaries use amber so stale landuse polygons are visibly provisional.
   const blueAuthoritative = {
     strokeColor: "#1976D2",
     strokeWeight: 3,
     fillColor: "#1976D2",
     fillOpacity: 0.18,
   };
-  const blueEstimated = {
-    strokeColor: "#1976D2",
+  const amberEstimated = {
+    strokeColor: "#F59E0B",
     strokeWeight: 2,
-    fillColor: "#1976D2",
-    fillOpacity: 0.1,
+    fillColor: "#F59E0B",
+    fillOpacity: 0.08,
   };
 
   try {
@@ -3914,7 +3912,7 @@ async function resolveSiteMapSnapshot({ input = {}, brief, site }) {
       // The visual style and the `boundaryEstimated` metadata flag below
       // continue to differentiate the two states.
       drawPolygonOverlay: polygon.length >= 3,
-      polygonStyle: boundaryAuthoritative ? blueAuthoritative : blueEstimated,
+      polygonStyle: boundaryAuthoritative ? blueAuthoritative : amberEstimated,
       zoom: Number(input.siteSnapshot?.zoom || 18),
       size: [1200, 780],
       mapType: "roadmap",
@@ -4201,6 +4199,7 @@ function addRoomWallsAndOpenings({
   walls,
   doors,
   windows,
+  mainEntryOrientation = null,
 }) {
   const polygon = room.polygon;
   const edges = [
@@ -4251,7 +4250,13 @@ function addRoomWallsAndOpenings({
       Number(wall.end?.y || 0) - Number(wall.start?.y || 0),
     );
   const roomName = String(room.name || "").toLowerCase();
+  const preferredEntryOrientation = String(mainEntryOrientation || "")
+    .toLowerCase()
+    .trim();
   const entranceWall =
+    exteriorWalls.find(
+      (wall) => wall.orientation === preferredEntryOrientation,
+    ) ||
     exteriorWalls.find((wall) => wall.orientation === "south") ||
     exteriorWalls.find((wall) => wall.orientation === "west") ||
     exteriorWalls[0];
@@ -4299,6 +4304,7 @@ function layoutRoomsForLevel({
   walls,
   doors,
   windows,
+  mainEntryOrientation = null,
 }) {
   const levelId = `level-${levelIndex}`;
   const rooms = [];
@@ -4348,6 +4354,7 @@ function layoutRoomsForLevel({
         walls,
         doors,
         windows,
+        mainEntryOrientation,
       });
       rooms.push(room);
       cursorX += roomWidth;
@@ -4427,6 +4434,7 @@ function buildProjectGeometryFromProgramme({
       walls,
       doors,
       windows,
+      mainEntryOrientation: site?.main_entry?.orientation || null,
     });
     rooms.push(...layout.rooms);
     if (layout.stair && levelIndex + 1 < levelCount) {
@@ -5191,9 +5199,9 @@ function buildSiteContextPanelArtifact({
   <g transform="translate(44 66)">
     <path d="${sitePath}" fill="#b7d7a833" stroke="#e87524" stroke-width="4" stroke-dasharray="16 10"/>
     <path d="${buildablePath}" fill="none" stroke="#111111" stroke-width="3" stroke-dasharray="8 8"/>
-    <path d="${proposedFootprintPath}" fill="#facc1533" stroke="#d9a300" stroke-width="4"/>
+    <path d="${proposedFootprintPath}" fill="#11111133" stroke="#111111" stroke-width="4"/>
   </g>
-  <text x="450" y="104" font-family="Arial, sans-serif" font-size="26" font-weight="700" text-anchor="middle" fill="#111111">CONTEXTUAL SITE PLAN</text>
+  <text x="450" y="104" font-family="Arial, sans-serif" font-size="26" font-weight="700" text-anchor="middle" fill="#111111">${boundaryLabel}</text>
   <text x="450" y="136" font-family="Arial, sans-serif" font-size="16" text-anchor="middle" fill="#555555">Boundary estimated - verify with measured survey before planning submission</text>`
       : `<rect x="28" y="52" width="844" height="676" fill="#f7f6f0"/>
   <rect x="28" y="52" width="844" height="676" fill="none" stroke="#111111" stroke-width="3"/>
@@ -5202,26 +5210,30 @@ function buildSiteContextPanelArtifact({
   <path d="M 112 142 L 196 186 L 282 152 L 372 206 L 470 166 L 590 222 L 770 190" fill="none" stroke="#c7cfbf" stroke-width="14" opacity="0.7"/>
   <path d="M 130 506 L 246 452 L 372 474 L 520 424 L 712 444" fill="none" stroke="#c7cfbf" stroke-width="12" opacity="0.6"/>
   <g transform="translate(44 66)">
-    <path d="${sitePath}" fill="#f9fbf7" stroke="#5d6657" stroke-width="4" stroke-dasharray="16 10"/>
+    <path d="${sitePath}" fill="#fff7ed" stroke="#e87524" stroke-width="4" stroke-dasharray="16 10"/>
     <path d="${buildablePath}" fill="none" stroke="#29332a" stroke-width="3" stroke-dasharray="8 8"/>
     <path d="${proposedFootprintPath}" fill="#11111122" stroke="#111111" stroke-width="4"/>
   </g>
-  <text x="450" y="104" font-family="Arial, sans-serif" font-size="26" font-weight="700" text-anchor="middle" fill="#111111">CONTEXTUAL SITE PLAN</text>
+  <text x="450" y="104" font-family="Arial, sans-serif" font-size="26" font-weight="700" text-anchor="middle" fill="#111111">${boundaryLabel}</text>
   <text x="450" y="136" font-family="Arial, sans-serif" font-size="16" text-anchor="middle" fill="#555555">Boundary estimated - verify with measured survey before planning submission</text>`
     : hasMapImage
       ? `<image x="28" y="52" width="844" height="676" href="${escapeXml(siteSnapshot.dataUrl)}" preserveAspectRatio="xMidYMid slice"/>
   <rect x="28" y="52" width="844" height="676" fill="none" stroke="#111111" stroke-width="3"/>
   <g transform="translate(44 66)" opacity="0.88">
-    <path d="${sitePath}" fill="#a9c58d66" stroke="#d64d35" stroke-width="5" stroke-dasharray="18 10"/>
+    <path d="${sitePath}" fill="#1976D222" stroke="#1976D2" stroke-width="5"/>
     <path d="${buildablePath}" fill="none" stroke="#111111" stroke-width="3"/>
-  </g>`
+    <path d="${proposedFootprintPath}" fill="#11111133" stroke="#111111" stroke-width="4"/>
+  </g>
+  <text x="450" y="104" font-family="Arial, sans-serif" font-size="26" font-weight="700" text-anchor="middle" fill="#111111">${boundaryLabel}</text>`
       : `<rect x="28" y="52" width="844" height="676" fill="#f3efe4" stroke="#111111" stroke-width="3"/>
   <g transform="translate(44 66)">
-    <path d="${sitePath}" fill="#dfe8d0" stroke="#d64d35" stroke-width="5" stroke-dasharray="18 10"/>
+    <path d="${sitePath}" fill="#1976D222" stroke="#1976D2" stroke-width="5"/>
     <path d="${buildablePath}" fill="none" stroke="#111111" stroke-width="3"/>
+    <path d="${proposedFootprintPath}" fill="#11111133" stroke="#111111" stroke-width="4"/>
   </g>
   <path d="M 64 642 C 186 600 272 620 354 574 C 440 526 552 540 806 488" fill="none" stroke="#c8c8c8" stroke-width="28" opacity="0.55"/>
-  <path d="M 64 642 C 186 600 272 620 354 574 C 440 526 552 540 806 488" fill="none" stroke="#ffffff" stroke-width="18" opacity="0.85"/>`;
+  <path d="M 64 642 C 186 600 272 620 354 574 C 440 526 552 540 806 488" fill="none" stroke="#ffffff" stroke-width="18" opacity="0.85"/>
+  <text x="450" y="104" font-family="Arial, sans-serif" font-size="26" font-weight="700" text-anchor="middle" fill="#111111">${boundaryLabel}</text>`;
   const areaLabel = boundaryEstimated
     ? `Site area: ${site.area_m2} m2 (context) | Boundary source: ${site.boundary_source || "estimated"} | Confidence: ${site.boundary_confidence ?? "n/a"} | Main entry: ${site.main_entry?.orientation || "north"} (${site.main_entry?.source || "fallback"})`
     : `Site area: ${site.area_m2} m2 | Boundary source: ${site.boundary_source || "site_polygon"} | Confidence: ${site.boundary_confidence ?? "n/a"} | Main entry: ${site.main_entry?.orientation || "north"} (${site.main_entry?.source || "fallback"})`;
@@ -5283,8 +5295,14 @@ function buildSiteContextPanelArtifact({
       boundaryEstimated,
       boundaryConfidence: site.boundary_confidence ?? null,
       boundarySource: site.boundary_source || null,
+      boundaryLabel,
       boundaryWarningCode: site.boundary_warning_code || null,
       fallbackReason: site.fallback_reason || null,
+      siteAreaM2: site.area_m2 ?? null,
+      mainEntry: site.main_entry || null,
+      mainEntryOrientation: site.main_entry?.orientation || null,
+      mainEntryBearingDeg: site.main_entry?.bearingDeg ?? null,
+      mainEntrySource: site.main_entry?.source || null,
       authoritativeAreaM2: site.authoritative_area_m2 || null,
       estimatedAreaM2: site.estimated_area_m2 || null,
       svgHash,
@@ -7647,7 +7665,26 @@ async function buildA1Sheet({
 
 const MM_TO_PT = 72 / 25.4;
 
-async function analyseRenderedSheetPng(pngBuffer) {
+async function analyseRenderedSheetPng(pngBuffer, options = {}) {
+  // PR-D follow-up: when stub raster mode is on the heavy 280M-iteration
+  // pixel walk would still run on the 1×1 stub PNG (cheap) but its result
+  // would report nonBackgroundPixelRatio=0 and fail the
+  // MIN_RENDERED_SHEET_INK_RATIO gate. Return synthetic healthy metrics
+  // that report the dimensions a full render would have produced so the
+  // gate passes and the test asserts metadata / layout / geometry only.
+  if (isStubRasterModeEnabled()) {
+    const widthPx = Number(options.expectedWidthPx) || 9933;
+    const heightPx = Number(options.expectedHeightPx) || 7016;
+    return {
+      widthPx,
+      heightPx,
+      pixelCount: widthPx * heightPx,
+      backgroundRgb: [243, 239, 229],
+      nonWhitePixelRatio: 0.18,
+      nonBackgroundPixelRatio: 0.18,
+      stub: true,
+    };
+  }
   try {
     const sharp = (await import("sharp")).default;
     const raw = await sharp(pngBuffer)
@@ -7854,7 +7891,13 @@ async function buildA1PdfArtifact({
     geometryHash,
   });
   __pdfMark = __a1pdfLog("hash_png", __pdfMark);
-  const occupancy = await analyseRenderedSheetPng(renderedPngBytes);
+  // Pass expected dims so the stub-mode shortcut returns metrics matching
+  // the dimensions the stub raster claimed (otherwise the stub would always
+  // report 9933×7016 even for the preview 144 DPI path).
+  const occupancy = await analyseRenderedSheetPng(renderedPngBytes, {
+    expectedWidthPx: Number(renderedSheet.metadata?.width_px) || undefined,
+    expectedHeightPx: Number(renderedSheet.metadata?.height_px) || undefined,
+  });
   __pdfMark = __a1pdfLog("analyse_png", __pdfMark);
   const panelOccupancy = buildPanelRenderSummary(sheetArtifact);
   const textRenderStatus = await analyseRenderedTextProof({

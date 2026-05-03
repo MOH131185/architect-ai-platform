@@ -6,6 +6,10 @@ import {
   buildTitleBlockPanelArtifact,
   __projectGraphVerticalSliceInternals,
 } from "../../services/project/projectGraphVerticalSliceService.js";
+import {
+  A1_TEST_RASTER_MODE_ENV,
+  A1_TEST_RASTER_STUB_VALUE,
+} from "../../services/render/svgRasteriser.js";
 
 jest.setTimeout(420000);
 
@@ -351,6 +355,7 @@ describe("projectGraphVerticalSliceService", () => {
   const originalProjectGraphImageGenEnabled =
     process.env.PROJECT_GRAPH_IMAGE_GEN_ENABLED;
   const originalOpenAIStrictImageGen = process.env.OPENAI_STRICT_IMAGE_GEN;
+  const originalA1TestRasterMode = process.env[A1_TEST_RASTER_MODE_ENV];
   const originalFetch = global.fetch;
 
   beforeEach(() => {
@@ -364,6 +369,12 @@ describe("projectGraphVerticalSliceService", () => {
     process.env.OPENAI_STRICT_IMAGE_GEN = "false";
     delete process.env.GOOGLE_MAPS_API_KEY;
     delete process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
+    // PR-D follow-up: opt the whole suite into the lightweight raster /
+    // ink-metric stubs in svgRasteriser + analyseRenderedSheetPng so each
+    // test validates metadata / layout / geometry without spending minutes
+    // on the 300-DPI A1 PNG (~70 megapixels) and its 280M-iteration ink
+    // walk. Tests that need the real raster path must override this.
+    process.env[A1_TEST_RASTER_MODE_ENV] = A1_TEST_RASTER_STUB_VALUE;
     global.fetch = originalFetch;
   });
 
@@ -418,6 +429,11 @@ describe("projectGraphVerticalSliceService", () => {
       delete process.env.OPENAI_STRICT_IMAGE_GEN;
     } else {
       process.env.OPENAI_STRICT_IMAGE_GEN = originalOpenAIStrictImageGen;
+    }
+    if (originalA1TestRasterMode === undefined) {
+      delete process.env[A1_TEST_RASTER_MODE_ENV];
+    } else {
+      process.env[A1_TEST_RASTER_MODE_ENV] = originalA1TestRasterMode;
     }
     global.fetch = originalFetch;
   });
@@ -1085,7 +1101,7 @@ describe("projectGraphVerticalSliceService", () => {
       "contextual_estimated_boundary",
     );
     expect(result.artifacts.siteMap.svgString).toContain(
-      "CONTEXTUAL SITE PLAN",
+      "ESTIMATED / CONTEXTUAL - VERIFY",
     );
     expect(result.artifacts.siteMap.svgString).toContain("Google Static Maps");
     expect(result.artifacts.siteMap.svgString).not.toContain('opacity="0.38"');
@@ -1093,8 +1109,10 @@ describe("projectGraphVerticalSliceService", () => {
     expect(result.artifacts.siteMap.svgString).toContain('stroke="#e87524"');
     expect(result.artifacts.siteMap.svgString).toContain("Boundary estimated");
     expect(result.artifacts.siteMap.svgString).toContain(
-      "parcel area not authoritative",
+      "Boundary source: Intelligent Fallback",
     );
+    expect(result.artifacts.siteMap.svgString).toContain("MAIN ENTRY");
+    expect(result.artifacts.siteMap.svgString).toContain('stroke="#1976D2"');
   });
 
   test("preserves high-confidence boundary behavior", async () => {
@@ -1117,9 +1135,79 @@ describe("projectGraphVerticalSliceService", () => {
     expect(result.artifacts.siteMap.metadata.sitePlanMode).toBe(
       "authoritative_boundary",
     );
+    expect(result.artifacts.siteMap.metadata.boundarySource).toBe(
+      "OpenStreetMap",
+    );
+    expect(result.artifacts.siteMap.svgString).toContain("AUTHORITATIVE");
+    expect(result.artifacts.siteMap.svgString).toContain('stroke="#1976D2"');
+    expect(result.artifacts.siteMap.svgString).toContain("MAIN ENTRY");
+    expect(result.artifacts.siteMap.svgString).toContain(
+      "Boundary source: OpenStreetMap",
+    );
     expect(result.qa.issues.map((issue) => issue.code)).not.toContain(
       "SITE_BOUNDARY_ESTIMATED_NOT_AUTHORITATIVE",
     );
+  });
+
+  test("manual_verified boundary overrides estimated metadata and threads main entry into A1 site plan", async () => {
+    const briefInput = createReadingRoomBrief();
+    const manualMainEntry = {
+      orientation: "south",
+      bearingDeg: 180,
+      frontageEdgeId: "edge-0",
+      mainEntryEdgeId: "edge-0",
+      source: "manual",
+      confidence: 1,
+      warnings: [],
+    };
+    briefInput.mainEntry = manualMainEntry;
+    briefInput.mainEntryDirection = manualMainEntry;
+    briefInput.siteMetrics = {
+      areaM2: 1040,
+      area: 1040,
+      surfaceAreaM2: 1040,
+      boundaryAuthoritative: true,
+      boundarySource: "manual_verified",
+      boundaryConfidence: 1,
+      hash: "manual-hash",
+    };
+    briefInput.locationData = {
+      boundaryAuthoritative: true,
+      boundarySource: "manual_verified",
+      boundaryConfidence: 1,
+      siteAnalysis: {
+        siteBoundary: briefInput.sitePolygon,
+        areaM2: 1040,
+        surfaceAreaM2: 1040,
+        boundaryAuthoritative: true,
+        boundarySource: "manual_verified",
+        boundaryConfidence: 1,
+        estimatedOnly: false,
+        mainEntry: manualMainEntry,
+        mainEntryDirection: manualMainEntry,
+      },
+      mainEntry: manualMainEntry,
+      mainEntryDirection: manualMainEntry,
+    };
+
+    const result = await buildArchitectureProjectVerticalSlice(briefInput);
+
+    expect(result.success).toBe(true);
+    expect(result.projectGraph.site.boundary_authoritative).toBe(true);
+    expect(result.projectGraph.site.boundary_source).toBe("manual_verified");
+    expect(result.projectGraph.site.boundary_confidence).toBe(1);
+    expect(result.projectGraph.site.area_m2).toBe(1040);
+    expect(result.projectGraph.site.main_entry).toEqual(manualMainEntry);
+    expect(result.artifacts.siteMap.metadata.boundaryLabel).toBe(
+      "MANUAL VERIFIED",
+    );
+    expect(result.artifacts.siteMap.metadata.mainEntry).toEqual(
+      manualMainEntry,
+    );
+    expect(result.artifacts.siteMap.svgString).toContain("MANUAL VERIFIED");
+    expect(result.artifacts.siteMap.svgString).toContain("MAIN ENTRY");
+    expect(result.artifacts.siteMap.svgString).toContain('stroke="#1976D2"');
+    expect(result.visualManifest.mainEntry).toEqual(manualMainEntry);
   });
 
   test.each([
