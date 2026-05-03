@@ -26,8 +26,55 @@ export const STUB_RASTERISER_VERSION = "stub-svg-rasteriser-v1";
 export const A1_TEST_RASTER_MODE_ENV = "A1_TEST_RASTER_MODE";
 export const A1_TEST_RASTER_STUB_VALUE = "stub";
 
-export function isStubRasterModeEnabled() {
-  return process.env[A1_TEST_RASTER_MODE_ENV] === A1_TEST_RASTER_STUB_VALUE;
+/**
+ * Hard production safety gate for the raster stub.
+ *
+ * Codex integration finding: A1_TEST_RASTER_MODE=stub alone is too easy to
+ * leak into a production runtime — once set, final A1 PDFs would emit a
+ * 1×1 stub PNG with synthetic healthy ink metrics and pass the 300-DPI gate
+ * with fabricated dimensions. Tighten the predicate so stub mode can only
+ * activate inside a test runtime AND never inside a production / Vercel /
+ * final-A1 context, regardless of what the env flag says.
+ *
+ * Stub mode runs only when ALL of the following hold:
+ *   - process.env.A1_TEST_RASTER_MODE === "stub"
+ *   - one of: NODE_ENV === "test" / JEST_WORKER_ID set / VITEST set
+ *   - none of: NODE_ENV === "production" / VERCEL_ENV === "production"
+ *               / VERCEL === "1" / options.isFinalA1 === true
+ *
+ * Callers that have a final-A1 context (e.g. the projectGraph A1 PDF path)
+ * should pass `{ isFinalA1: true }` so the gate refuses regardless of how
+ * the test env was set.
+ *
+ * @param {{ isFinalA1?: boolean }} [options]
+ * @returns {boolean}
+ */
+export function isRasterStubModeAllowed(options = {}) {
+  const requested =
+    process.env[A1_TEST_RASTER_MODE_ENV] === A1_TEST_RASTER_STUB_VALUE;
+  if (!requested) return false;
+
+  const isTestRuntime =
+    process.env.NODE_ENV === "test" ||
+    Boolean(process.env.JEST_WORKER_ID) ||
+    Boolean(process.env.VITEST);
+
+  const isProductionRuntime =
+    process.env.NODE_ENV === "production" ||
+    process.env.VERCEL_ENV === "production" ||
+    process.env.VERCEL === "1" ||
+    options.isFinalA1 === true;
+
+  return isTestRuntime && !isProductionRuntime;
+}
+
+/**
+ * @deprecated since the production-safety gate landed. Kept as a thin alias
+ * so external callers do not break; new code should use
+ * isRasterStubModeAllowed(options) and pass an `isFinalA1` hint when known.
+ */
+export function isStubRasterModeEnabled(options = {}) {
+  return isRasterStubModeAllowed(options);
 }
 
 let sharpModule = null;
@@ -140,21 +187,24 @@ export async function rasteriseSvgToPng({
  * Convenience: render the A1 sheet SVG produced by buildA1Sheet into a
  * deterministic PNG render asset for download / preview. No 3D lighting.
  *
- * In stub mode (A1_TEST_RASTER_MODE=stub) returns a 1×1 PNG with metadata
- * REPORTING the dimensions a full render would have produced. Suitable for
- * tests that validate metadata / layout / geometry contracts but not the
- * raster pixels themselves.
+ * In stub mode (A1_TEST_RASTER_MODE=stub, ONLY in a test runtime) returns
+ * a 1×1 PNG with metadata REPORTING the dimensions a full render would have
+ * produced. Suitable for tests that validate metadata / layout / geometry
+ * contracts but not the raster pixels themselves. Callers that already know
+ * they are inside a final-A1 export path should pass `{ isFinalA1: true }`
+ * so the safety gate refuses stub mode regardless of test-env detection.
  */
 export async function rasteriseSheetArtifact({
   sheetArtifact,
   densityDpi = 150,
+  isFinalA1 = false,
 }) {
   if (!sheetArtifact?.svgString) {
     throw new Error(
       "rasteriseSheetArtifact requires sheetArtifact.svgString (no fallback)",
     );
   }
-  if (isStubRasterModeEnabled()) {
+  if (isRasterStubModeAllowed({ isFinalA1 })) {
     return buildStubSheetRaster({ sheetArtifact, densityDpi });
   }
   return rasteriseSvgToPng({

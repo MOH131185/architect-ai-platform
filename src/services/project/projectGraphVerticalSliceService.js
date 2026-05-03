@@ -23,7 +23,7 @@ import {
 import { computeCDSHashSync } from "../validation/cdsHash.js";
 import {
   rasteriseSheetArtifact,
-  isStubRasterModeEnabled,
+  isRasterStubModeAllowed,
 } from "../render/svgRasteriser.js";
 import {
   buildVectorPdfFromSheetSvg,
@@ -7672,7 +7672,12 @@ async function analyseRenderedSheetPng(pngBuffer, options = {}) {
   // MIN_RENDERED_SHEET_INK_RATIO gate. Return synthetic healthy metrics
   // that report the dimensions a full render would have produced so the
   // gate passes and the test asserts metadata / layout / geometry only.
-  if (isStubRasterModeEnabled()) {
+  //
+  // Codex integration finding: forward isFinalA1 (when known by the caller)
+  // through the production-safety gate so synthetic ink metrics can NEVER
+  // be substituted into a final A1 export — even if A1_TEST_RASTER_MODE=stub
+  // is somehow set in production / Vercel.
+  if (isRasterStubModeAllowed({ isFinalA1: options.isFinalA1 === true })) {
     const widthPx = Number(options.expectedWidthPx) || 9933;
     const heightPx = Number(options.expectedHeightPx) || 7016;
     return {
@@ -7872,9 +7877,12 @@ async function buildA1PdfArtifact({
   const targetDensityDpi = isFinalA1
     ? FINAL_A1_RASTER_DPI
     : PREVIEW_A1_RASTER_DPI;
+  // Codex integration finding: forward isFinalA1 so the raster stub gate
+  // refuses to substitute a 1×1 PNG even if A1_TEST_RASTER_MODE=stub is set.
   const renderedSheet = await rasteriseSheetArtifact({
     sheetArtifact,
     densityDpi: targetDensityDpi,
+    isFinalA1,
   });
   __pdfMark = __a1pdfLog(
     "rasterise_sheet",
@@ -7897,6 +7905,9 @@ async function buildA1PdfArtifact({
   const occupancy = await analyseRenderedSheetPng(renderedPngBytes, {
     expectedWidthPx: Number(renderedSheet.metadata?.width_px) || undefined,
     expectedHeightPx: Number(renderedSheet.metadata?.height_px) || undefined,
+    // Codex integration finding: forward isFinalA1 so synthetic ink metrics
+    // can never substitute for the real ink walk on a final A1 export.
+    isFinalA1,
   });
   __pdfMark = __a1pdfLog("analyse_png", __pdfMark);
   const panelOccupancy = buildPanelRenderSummary(sheetArtifact);
@@ -10243,7 +10254,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     localStyle?.styleDNA || localStyle?.style_dna || null;
   const visualManifest = buildVisualManifest({
     compiledProject,
-    projectGraph: { projectGraphId, id: projectGraphId },
+    projectGraph: { projectGraphId, id: projectGraphId, site },
     brief,
     masterDNA: input?.masterDNA || null,
     siteSnapshot: siteMapSnapshot,

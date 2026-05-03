@@ -1,5 +1,6 @@
 import {
   rasteriseSheetArtifact,
+  isRasterStubModeAllowed,
   isStubRasterModeEnabled,
   STUB_RASTERISER_VERSION,
   A1_TEST_RASTER_MODE_ENV,
@@ -12,6 +13,11 @@ import {
 // rasterisation with a 1×1 PNG that REPORTS realistic metadata. These
 // tests verify the contract: env gating, dimension reporting, and that
 // downstream gates can rely on the metadata shape unchanged.
+//
+// Codex integration finding (this commit): the stub MUST refuse to activate
+// in production / Vercel / final-A1 contexts even when A1_TEST_RASTER_MODE=
+// stub is set, so a stray env var can never silently substitute a 1×1 PNG
+// for a real A1 export.
 
 const SHEET_ARTIFACT = Object.freeze({
   svgString: `<svg xmlns="http://www.w3.org/2000/svg" width="841mm" height="594mm"><rect width="841" height="594" fill="#f3efe5"/></svg>`,
@@ -25,17 +31,100 @@ const SHEET_ARTIFACT = Object.freeze({
 
 describe("svgRasteriser stub mode (PR-D follow-up)", () => {
   const originalEnv = process.env[A1_TEST_RASTER_MODE_ENV];
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalVercelEnv = process.env.VERCEL_ENV;
+  const originalVercel = process.env.VERCEL;
+  const originalJestWorker = process.env.JEST_WORKER_ID;
+
+  function restoreOriginal(name, original) {
+    if (original === undefined) {
+      delete process.env[name];
+    } else {
+      process.env[name] = original;
+    }
+  }
 
   afterEach(() => {
-    if (originalEnv === undefined) {
-      delete process.env[A1_TEST_RASTER_MODE_ENV];
-    } else {
-      process.env[A1_TEST_RASTER_MODE_ENV] = originalEnv;
-    }
+    restoreOriginal(A1_TEST_RASTER_MODE_ENV, originalEnv);
+    restoreOriginal("NODE_ENV", originalNodeEnv);
+    restoreOriginal("VERCEL_ENV", originalVercelEnv);
+    restoreOriginal("VERCEL", originalVercel);
+    restoreOriginal("JEST_WORKER_ID", originalJestWorker);
   });
 
-  describe("isStubRasterModeEnabled", () => {
-    test("returns true when env is set to 'stub'", () => {
+  describe("isRasterStubModeAllowed (production-safety gate)", () => {
+    test("allows stub mode in jest test runtime", () => {
+      process.env[A1_TEST_RASTER_MODE_ENV] = A1_TEST_RASTER_STUB_VALUE;
+      // Jest already sets JEST_WORKER_ID; the gate must allow.
+      expect(isRasterStubModeAllowed()).toBe(true);
+      // isStubRasterModeEnabled is a deprecated alias that delegates here.
+      expect(isStubRasterModeEnabled()).toBe(true);
+    });
+
+    test("REGRESSION: stub mode is IGNORED with NODE_ENV=production even when A1_TEST_RASTER_MODE=stub", () => {
+      process.env[A1_TEST_RASTER_MODE_ENV] = A1_TEST_RASTER_STUB_VALUE;
+      process.env.NODE_ENV = "production";
+      expect(isRasterStubModeAllowed()).toBe(false);
+      expect(isStubRasterModeEnabled()).toBe(false);
+    });
+
+    test("REGRESSION: stub mode is IGNORED with VERCEL=1", () => {
+      process.env[A1_TEST_RASTER_MODE_ENV] = A1_TEST_RASTER_STUB_VALUE;
+      process.env.VERCEL = "1";
+      // Even with NODE_ENV unset / test, VERCEL=1 means production runtime.
+      expect(isRasterStubModeAllowed()).toBe(false);
+    });
+
+    test("REGRESSION: stub mode is IGNORED with VERCEL_ENV=production", () => {
+      process.env[A1_TEST_RASTER_MODE_ENV] = A1_TEST_RASTER_STUB_VALUE;
+      process.env.VERCEL_ENV = "production";
+      expect(isRasterStubModeAllowed()).toBe(false);
+    });
+
+    test("REGRESSION: stub mode is IGNORED when caller passes isFinalA1=true", () => {
+      process.env[A1_TEST_RASTER_MODE_ENV] = A1_TEST_RASTER_STUB_VALUE;
+      // Even in jest, the final-A1 export path must never accept a stub.
+      expect(isRasterStubModeAllowed({ isFinalA1: true })).toBe(false);
+      expect(isStubRasterModeEnabled({ isFinalA1: true })).toBe(false);
+    });
+
+    test("isFinalA1=false (or omitted) does not affect the test-runtime allow", () => {
+      process.env[A1_TEST_RASTER_MODE_ENV] = A1_TEST_RASTER_STUB_VALUE;
+      expect(isRasterStubModeAllowed({ isFinalA1: false })).toBe(true);
+      expect(isRasterStubModeAllowed({})).toBe(true);
+    });
+
+    test("test runtime is detected via NODE_ENV=test even without JEST_WORKER_ID", () => {
+      process.env[A1_TEST_RASTER_MODE_ENV] = A1_TEST_RASTER_STUB_VALUE;
+      delete process.env.JEST_WORKER_ID;
+      process.env.NODE_ENV = "test";
+      expect(isRasterStubModeAllowed()).toBe(true);
+    });
+
+    test("requires both env=stub AND a test runtime", () => {
+      process.env[A1_TEST_RASTER_MODE_ENV] = A1_TEST_RASTER_STUB_VALUE;
+      delete process.env.JEST_WORKER_ID;
+      delete process.env.VITEST;
+      delete process.env.NODE_ENV;
+      // No test-runtime signal → refuse even outside production.
+      expect(isRasterStubModeAllowed()).toBe(false);
+    });
+
+    test("rasteriseSheetArtifact refuses stub when isFinalA1=true (full call)", async () => {
+      process.env[A1_TEST_RASTER_MODE_ENV] = A1_TEST_RASTER_STUB_VALUE;
+      const result = await rasteriseSheetArtifact({
+        sheetArtifact: SHEET_ARTIFACT,
+        densityDpi: 300,
+        isFinalA1: true,
+      });
+      // Real raster path runs; rasteriser tag is NOT the stub version.
+      expect(result.metadata.rasteriser).not.toBe(STUB_RASTERISER_VERSION);
+      expect(result.metadata.stub).toBeUndefined();
+    });
+  });
+
+  describe("isStubRasterModeEnabled (legacy alias, still env-gated)", () => {
+    test("returns true when env is set to 'stub' in jest", () => {
       process.env[A1_TEST_RASTER_MODE_ENV] = A1_TEST_RASTER_STUB_VALUE;
       expect(isStubRasterModeEnabled()).toBe(true);
     });
