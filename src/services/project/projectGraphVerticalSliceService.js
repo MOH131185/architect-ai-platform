@@ -78,6 +78,7 @@ import {
   detectA1GlyphIntegrity,
   detectA1RasterGlyphIntegrity,
   evaluateFinalA1ExportGate,
+  extractTechnicalGroupBlockers,
   resolveA1RenderContract,
 } from "../a1/a1FinalExportContract.js";
 import {
@@ -7190,6 +7191,71 @@ function applyOpenAIReasoningBlockersToQa(qa, blockedCalls = []) {
   };
 }
 
+// Phase 4: fold technical-group blockers from the upstream A1 export gate
+// into qa. Mirrors applyOpenAIReasoningBlockersToQa. Visual-panel blockers
+// are intentionally NOT included here — they remain warning-only on
+// sheetArtifact.quality.exportGate per Phase 4 scope.
+//
+// Codes raised by this helper:
+//   PANEL_CONTENT_EMPTY        → technical drawing missing/blank
+//   CROSS_VIEW_INCONSISTENT    → drawingConsistencyChecks errors
+//   A1_REQUIRED_PANEL_MISSING  → required-panel registry mismatch
+//   A1_LAYOUT_BROKEN           → layout evaluator failure
+//   A1_SHEET_SPLIT_REQUIRED    → A1-01 overflow without companion
+//
+// All folded under a single qa issue code to keep the slice's response
+// shape stable: A1_EXPORT_GATE_TECHNICAL_BLOCKED. Per-source detail is
+// preserved on the issue.details + the addCheck payload.
+function applyUpstreamGateTechnicalBlockersToQa(qa, exportGate) {
+  if (!exportGate) return qa;
+  const summary = extractTechnicalGroupBlockers(exportGate);
+  if (!summary.blocked) return qa;
+  const checks = [...(qa.checks || [])];
+  addCheck(
+    checks,
+    "A1_EXPORT_GATE_TECHNICAL_PANELS_PASS",
+    false,
+    {
+      sources: summary.sources,
+      codes: summary.codes,
+      blockerCount: summary.blockers.length,
+      blockedPanels: summary.blockedPanels,
+      blockers: summary.blockers,
+    },
+    "graphic",
+    0,
+  );
+  const issues = [
+    ...(qa.issues || []),
+    buildIssue(
+      "A1_EXPORT_GATE_TECHNICAL_BLOCKED",
+      "error",
+      "A1 final export blocked by technical-panel evidence (content-empty or cross-view inconsistent).",
+      {
+        sources: summary.sources,
+        codes: summary.codes,
+        blockedPanels: summary.blockedPanels,
+        blockers: summary.blockers,
+      },
+    ),
+  ];
+  const warningCount = issues.filter(
+    (issue) => issue.severity === "warning",
+  ).length;
+  const errorCount = issues.filter(
+    (issue) => issue.severity === "error",
+  ).length;
+  return {
+    ...qa,
+    status: "fail",
+    checks,
+    issues,
+    score: Math.max(0, 100 - errorCount * 18 - warningCount * 6),
+    upstreamGateTechnicalBlocked: true,
+    upstreamGateTechnicalSummary: summary,
+  };
+}
+
 // Phase B closeout: per-panel-type fit policy for presentation-v3.
 // Technical drawings cropped tight to contentBounds (with small padding) so
 // drawings fill 80–92% of the slot; site/3D/data panels keep the previous
@@ -10590,6 +10656,26 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
         hasSvg: placement.status === "ready",
       }),
     );
+    // Phase 4: bucket the deterministic drawing SVGs by drawing type so the
+    // gate's cross-view evidence evaluator (drawingConsistencyChecks) can
+    // inspect them. Only artifacts with an `svgString` participate; the
+    // checker reads `svg` so we forward it through.
+    const drawingsForGate = { plan: [], elevation: [], section: [] };
+    for (const artifact of Object.values(drawingArtifacts || {})) {
+      const dt = artifact?.drawingType || artifact?.metadata?.drawingType;
+      const svg = artifact?.svgString;
+      if (!svg || !dt) continue;
+      if (dt === "plan") {
+        drawingsForGate.plan.push({
+          level_id: artifact?.metadata?.level_id || null,
+          svg,
+        });
+      } else if (dt === "elevation") {
+        drawingsForGate.elevation.push({ svg, window_count: 0 });
+      } else if (dt === "section") {
+        drawingsForGate.section.push({ svg, stair_count: 0 });
+      }
+    }
     const upstreamRenderContract = resolveA1RenderContract({
       renderIntent: "final_a1",
     });
@@ -10608,6 +10694,9 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
         process.env.OPENAI_STRICT_IMAGE_GEN === "true",
       imageGenEnabled: process.env.PROJECT_GRAPH_IMAGE_GEN_ENABLED === "true",
       scope: "upstream_partial",
+      // Phase 4: cross-view consistency evidence inputs.
+      drawings: drawingsForGate,
+      projectGeometry,
     });
     sheetArtifact.quality = {
       ...(sheetArtifact.quality || {}),
@@ -10789,6 +10878,15 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
   qa = applyOpenAIReasoningBlockersToQa(
     qa,
     getBlockedOpenAIReasoningCalls(providerCalls),
+  );
+  // Phase 4: fold the upstream A1 export gate's technical-group blockers
+  // (PANEL_CONTENT_EMPTY, CROSS_VIEW_INCONSISTENT, A1_REQUIRED_PANEL_MISSING,
+  // A1_LAYOUT_BROKEN, A1_SHEET_SPLIT_REQUIRED) into qa so the slice returns
+  // success: false → API maps to 422. Visual-panel blockers stay warning-only
+  // on sheetArtifact.quality.exportGate per Phase 4 scope.
+  qa = applyUpstreamGateTechnicalBlockersToQa(
+    qa,
+    artifacts?.a1Sheet?.quality?.exportGate || null,
   );
   qa.openai = openaiQaMetadata;
   __vsMark = __vsLog("validate_qa", __vsMark, `qa_status=${qa.status}`);
@@ -10979,6 +11077,8 @@ export const __projectGraphVerticalSliceInternals = Object.freeze({
   buildProjectGeometryFromProgramme,
   syncProgrammeActuals,
   compileProject,
+  // Phase 4: exposed for unit testing the upstream-gate technical-blocker fold.
+  applyUpstreamGateTechnicalBlockersToQa,
 });
 
 export default {
