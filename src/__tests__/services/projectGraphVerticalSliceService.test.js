@@ -1563,6 +1563,47 @@ describe("projectGraphVerticalSliceService", () => {
     );
   });
 
+  test("QA uses the active presentation-v3 registry for required 3D panels", async () => {
+    const briefInput = createReadingRoomBrief();
+    briefInput.brief.building_type = "dwelling";
+    briefInput.brief.project_name = "Presentation V3 Dwelling";
+
+    const result = await buildArchitectureProjectVerticalSlice(briefInput);
+    expect(result.artifacts.a1Sheet.layoutTemplate).toBe("presentation-v3");
+
+    const strippedPanelArtifacts = Object.fromEntries(
+      Object.entries(result.artifacts.panelArtifacts).filter(
+        ([, artifact]) => artifact.panel_type !== "exterior_render",
+      ),
+    );
+    const visuals3d = Object.fromEntries(
+      Object.entries(result.artifacts.visuals3d).filter(
+        ([panelType]) => panelType !== "exterior_render",
+      ),
+    );
+
+    const qa = validateProjectGraphVerticalSlice({
+      projectGraph: result.projectGraph,
+      artifacts: {
+        ...result.artifacts,
+        visuals3d,
+        panelArtifacts: strippedPanelArtifacts,
+      },
+    });
+    const required3dCheck = qa.checks.find(
+      (check) => check.code === "REQUIRED_3D_PANELS_PRESENT",
+    );
+
+    expect(qa.status).toBe("pass");
+    expect(qa.issues.map((issue) => issue.code)).not.toContain(
+      "REQUIRED_3D_PANEL_MISSING",
+    );
+    expect(required3dCheck.status).toBe("pass");
+    expect(required3dCheck.details.expected.sort()).toEqual(
+      ["axonometric", "hero_3d", "interior_3d"].sort(),
+    );
+  });
+
   test("QA accepts geometry-locked OpenAI image wrappers with compiled 3D control provenance", async () => {
     const result = await buildArchitectureProjectVerticalSlice(
       createReadingRoomBrief(),

@@ -9499,18 +9499,21 @@ export function validateProjectGraphVerticalSlice({
     }
   }
 
+  const required3dPanelTypes = REQUIRED_3D_A1_PANEL_TYPES.filter((panelType) =>
+    expectedPanels.includes(panelType),
+  );
   const visuals3d = artifacts.visuals3d || {};
-  const missing3dPanels = REQUIRED_3D_A1_PANEL_TYPES.filter((panelType) => {
+  const missing3dPanels = required3dPanelTypes.filter((panelType) => {
     const artifact =
       visuals3d[panelType] || findPanelArtifact(panelArtifacts, panelType);
     return !artifact || !svgLooksRenderable(artifact.svgString || "");
   });
-  const wrong3dHashPanels = REQUIRED_3D_A1_PANEL_TYPES.filter((panelType) => {
+  const wrong3dHashPanels = required3dPanelTypes.filter((panelType) => {
     const artifact =
       visuals3d[panelType] || findPanelArtifact(panelArtifacts, panelType);
     return artifact && artifact.source_model_hash !== geometryHash;
   });
-  const placeholder3dPanels = REQUIRED_3D_A1_PANEL_TYPES.map((panelType) => {
+  const placeholder3dPanels = required3dPanelTypes.map((panelType) => {
     const artifact =
       visuals3d[panelType] || findPanelArtifact(panelArtifacts, panelType);
     if (!artifact) return null;
@@ -9555,7 +9558,7 @@ export function validateProjectGraphVerticalSlice({
     {
       missing3dPanels,
       wrong3dHashPanels,
-      expected: REQUIRED_3D_A1_PANEL_TYPES,
+      expected: required3dPanelTypes,
       primitiveMinimum: MIN_3D_PRIMITIVE_COUNT,
     },
     "consistency_2d_3d",
