@@ -92,6 +92,24 @@ const OPTIONAL_DATA = [
   "OPENAI_IMAGES_API_KEY",
 ];
 
+// Keys whose absence does NOT fail the pipeline but downgrades data authority
+// from 'high' to 'medium' on the A1 sheet's data_quality manifest. Surfaced
+// here so operators don't ship to RIBA reviewers without knowing.
+const AUTHORITY_HINTS = [
+  {
+    name: "METOFFICE_DATAHUB_API_KEY",
+    impact:
+      "Climate authority drops from 'high' (Met Office) to 'medium' (Open-Meteo).",
+    docs: "https://www.metoffice.gov.uk/services/data/datapoint",
+  },
+  {
+    name: "OS_NGD_API_KEY",
+    impact:
+      "Building-footprint authority drops from 'high' (OS NGD polygons) to 'medium' (OS MasterMap heights only).",
+    docs: "https://osdatahub.os.uk/",
+  },
+];
+
 const OPTIONAL_PRESENTATION = [
   {
     name: "PROJECT_GRAPH_OPENAI_REASONING_MODE",
@@ -179,6 +197,35 @@ function checkOptionalList(title, names) {
   }
 }
 
+function checkAuthorityHints(entries) {
+  const downgraded = entries.filter((e) => !isSet(e.name));
+  if (!downgraded.length) return;
+  console.log("\nAuthority hints");
+  console.log("───────────────");
+  for (const entry of downgraded) {
+    console.log(`  ⚠️  ${entry.name} unset — ${entry.impact}`);
+    console.log(`      docs: ${entry.docs}`);
+  }
+}
+
+function checkLocalDevProviderHint() {
+  const onVercel = Boolean(process.env.VERCEL);
+  const isProd = process.env.NODE_ENV === "production";
+  const flag = String(process.env.CONTEXT_PROVIDERS_ENABLED || "")
+    .trim()
+    .toLowerCase();
+  if (onVercel || isProd) return;
+  if (flag === "true" || flag === "false") return;
+  console.log("\nLocal-dev hint");
+  console.log("──────────────");
+  console.log(
+    "  ○  CONTEXT_PROVIDERS_ENABLED unset — UK context aggregator is OFF locally.",
+  );
+  console.log(
+    "      Set CONTEXT_PROVIDERS_ENABLED=true in .env to exercise the full pipeline.",
+  );
+}
+
 function main() {
   console.log("Environment Variable Validation: RIBA A1 ProjectGraph pipeline");
   console.log("Secrets are redacted by design.");
@@ -193,6 +240,8 @@ function main() {
     required: false,
   });
   checkOptionalList("Optional UK data providers", OPTIONAL_DATA);
+  checkAuthorityHints(AUTHORITY_HINTS);
+  checkLocalDevProviderHint();
   checkOptionalList("Legacy/optional image providers", LEGACY_OPTIONAL);
 
   const failures = [
