@@ -125,9 +125,13 @@ export function polygonContainsPoint(polygon, point) {
     const yi = Number(polygon[i].lat);
     const xj = Number(polygon[j].lng);
     const yj = Number(polygon[j].lat);
-    const intersects =
-      yi > y !== yj > y &&
-      x < ((xj - xi) * (y - yi)) / (yj - yi + Number.EPSILON) + xi;
+    // Named intermediates so prettier doesn't strip parens we'd need to satisfy
+    // eslint-no-mixed-operators. Pure ray-casting algorithm.
+    const yiAbove = yi > y;
+    const yjAbove = yj > y;
+    const straddlesY = yiAbove !== yjAbove;
+    const intercept = ((xj - xi) * (y - yi)) / (yj - yi + Number.EPSILON) + xi;
+    const intersects = straddlesY && x < intercept;
     if (intersects) inside = !inside;
   }
   return inside;
