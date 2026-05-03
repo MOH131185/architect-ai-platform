@@ -1,6 +1,10 @@
 import { fetchPlanningHeritageFlags } from "../../../services/context/providers/planningDataClient.js";
 import { fetchFloodRisk } from "../../../services/context/providers/floodMapClient.js";
 import { fetchNeighbouringContext } from "../../../services/context/providers/overpassClient.js";
+import {
+  fetchBuildingFootprints,
+  fetchOsNgdContext,
+} from "../../../services/context/providers/osNgdClient.js";
 import { enrichSiteContext } from "../../../services/context/contextAggregator.js";
 
 function mockJsonFetch(map) {
@@ -250,10 +254,13 @@ describe("enrichSiteContext", () => {
   test("per-provider timeout emits *_TIMEOUT warnings and does NOT fail the slice", async () => {
     // A fetch that never resolves; settleWithin should bound it and emit
     // *_TIMEOUT codes for every provider that actually attempted fetch.
-    // OS MasterMap requires OS_MASTERMAP_API_KEY to attempt fetch — we set
-    // it here so all four providers exercise the timeout path.
-    const originalKey = process.env.OS_MASTERMAP_API_KEY;
+    // OS MasterMap and OS NGD both require their respective env keys to
+    // attempt fetch — we set both so all five providers exercise the
+    // timeout path.
+    const originalMmKey = process.env.OS_MASTERMAP_API_KEY;
+    const originalNgdKey = process.env.OS_NGD_API_KEY;
     process.env.OS_MASTERMAP_API_KEY = "test-os-mastermap-key";
+    process.env.OS_NGD_API_KEY = "test-os-ngd-key";
     try {
       const fetchImpl = jest.fn(
         () => new Promise(() => {}), // hang forever
@@ -274,6 +281,7 @@ describe("enrichSiteContext", () => {
           "PLANNING_DATA_TIMEOUT",
           "EA_FLOOD_LOOKUP_TIMEOUT",
           "OS_MASTERMAP_TIMEOUT",
+          "OS_NGD_TIMEOUT",
           "OSM_OVERPASS_TIMEOUT",
         ]),
       );
@@ -284,10 +292,15 @@ describe("enrichSiteContext", () => {
         true,
       );
     } finally {
-      if (originalKey === undefined) {
+      if (originalMmKey === undefined) {
         delete process.env.OS_MASTERMAP_API_KEY;
       } else {
-        process.env.OS_MASTERMAP_API_KEY = originalKey;
+        process.env.OS_MASTERMAP_API_KEY = originalMmKey;
+      }
+      if (originalNgdKey === undefined) {
+        delete process.env.OS_NGD_API_KEY;
+      } else {
+        process.env.OS_NGD_API_KEY = originalNgdKey;
       }
     }
   });
@@ -319,6 +332,7 @@ describe("enrichSiteContext", () => {
         "planning.data.gov.uk",
         "environment-agency-flood-monitoring",
         "os-mastermap-building-heights",
+        "os-ngd-buildings",
         "openstreetmap-overpass",
       ]),
     );
@@ -368,5 +382,220 @@ describe("enrichSiteContext", () => {
         writable: true,
       });
     }
+  });
+});
+
+// ----- OS NGD building footprints (Phase 2a) ----------------------------------
+
+function ngdSampleFeature(id, height, originLat, originLon) {
+  // Tiny ~5m square ring around (originLat, originLon).
+  const d = 0.00005;
+  return {
+    id,
+    geometry: {
+      type: "Polygon",
+      coordinates: [
+        [
+          [originLon - d, originLat - d],
+          [originLon + d, originLat - d],
+          [originLon + d, originLat + d],
+          [originLon - d, originLat + d],
+          [originLon - d, originLat - d],
+        ],
+      ],
+    },
+    properties: {
+      osid: id,
+      relativeheightmaximum: height,
+      description: "residential",
+    },
+  };
+}
+
+describe("osNgdClient", () => {
+  const originalKey = process.env.OS_NGD_API_KEY;
+  afterEach(() => {
+    if (originalKey === undefined) delete process.env.OS_NGD_API_KEY;
+    else process.env.OS_NGD_API_KEY = originalKey;
+  });
+
+  test("returns empty envelope with reason when OS_NGD_API_KEY absent", async () => {
+    delete process.env.OS_NGD_API_KEY;
+    const fetchImpl = jest.fn();
+    const out = await fetchBuildingFootprints({
+      lat: 51.5,
+      lon: -0.1,
+      fetchImpl,
+    });
+    expect(out.data).toBeNull();
+    expect(out.error).toBe("no-os-ngd-key");
+    expect(out.confidence).toBe(0);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  test("normalises NGD GeoJSON features into building polygons + heights", async () => {
+    process.env.OS_NGD_API_KEY = "test-os-ngd-key";
+    const fetchImpl = mockJsonFetch({
+      "api.os.uk/features/ngd": {
+        body: {
+          features: [
+            ngdSampleFeature("osid-1", 9, 51.5, -0.1),
+            ngdSampleFeature("osid-2", 12, 51.5, -0.1),
+          ],
+        },
+      },
+    });
+    const out = await fetchOsNgdContext({
+      lat: 51.5,
+      lon: -0.1,
+      fetchImpl,
+    });
+    expect(out.building_footprints).toHaveLength(2);
+    expect(out.building_footprints[0].outline_polygon.length).toBeGreaterThan(
+      3,
+    );
+    expect(out.building_footprints[0].height_m).toBe(9);
+    expect(out.building_footprints[0].storey_count_estimated).toBeGreaterThan(
+      0,
+    );
+    expect(out.neighbouring_buildings.length).toBe(2);
+    expect(out.context_height_stats.sample_count).toBe(2);
+    expect(out.envelope.confidence).toBeGreaterThanOrEqual(0.9);
+  });
+
+  test("propagates HTTP error gracefully", async () => {
+    process.env.OS_NGD_API_KEY = "test-os-ngd-key";
+    const fetchImpl = mockJsonFetch({
+      "api.os.uk/features/ngd": { status: 503, body: {} },
+    });
+    const out = await fetchBuildingFootprints({
+      lat: 51.5,
+      lon: -0.1,
+      fetchImpl,
+    });
+    expect(out.data).toBeNull();
+    expect(out.error).toMatch(/HTTP 503/);
+  });
+});
+
+describe("enrichSiteContext + OS NGD", () => {
+  const originalKey = process.env.OS_NGD_API_KEY;
+  afterEach(() => {
+    if (originalKey === undefined) delete process.env.OS_NGD_API_KEY;
+    else process.env.OS_NGD_API_KEY = originalKey;
+  });
+
+  test("OS_NGD_API_KEY absent -> OS_NGD_NOT_USED, slice still completes", async () => {
+    delete process.env.OS_NGD_API_KEY;
+    const fetchImpl = mockJsonFetch({
+      "dataset=conservation-area": { body: { entities: [] } },
+      "dataset=listed-building": { body: { entities: [] } },
+      floodAreas: { body: { items: [] } },
+      "overpass-api": { body: { elements: [] } },
+    });
+    const enriched = await enrichSiteContext(
+      { lat: 51.5, lon: -0.1, data_quality: [], heritage_flags: [] },
+      { fetchImpl },
+    );
+    const codes = enriched.data_quality.map((q) => q.code);
+    expect(codes).toContain("OS_NGD_NOT_USED");
+    expect(codes).not.toContain("OS_NGD_TIMEOUT");
+    expect(codes).not.toContain("OS_NGD_ERROR");
+    const ngdProvider = enriched.providers.find(
+      (p) => p.name === "os-ngd-buildings",
+    );
+    expect(ngdProvider).toBeDefined();
+    expect(ngdProvider.status).toBe("not_used");
+    expect(ngdProvider.authority).toBe("high");
+    expect(ngdProvider.fields_supplied).toEqual([]);
+  });
+
+  test("successful OS NGD response -> OS_NGD_OK, populates neighbouring_buildings + building_footprints", async () => {
+    process.env.OS_NGD_API_KEY = "test-os-ngd-key";
+    const fetchImpl = mockJsonFetch({
+      "dataset=conservation-area": { body: { entities: [] } },
+      "dataset=listed-building": { body: { entities: [] } },
+      floodAreas: { body: { items: [] } },
+      "overpass-api": { body: { elements: [] } },
+      "api.os.uk/features/ngd": {
+        body: {
+          features: [
+            ngdSampleFeature("osid-A", 10, 51.5, -0.1),
+            ngdSampleFeature("osid-B", 14, 51.5, -0.1),
+            ngdSampleFeature("osid-C", 18, 51.5, -0.1),
+          ],
+        },
+      },
+    });
+    const enriched = await enrichSiteContext(
+      {
+        lat: 51.5,
+        lon: -0.1,
+        data_quality: [],
+        heritage_flags: [],
+        neighbouring_buildings: [],
+      },
+      { fetchImpl },
+    );
+    const codes = enriched.data_quality.map((q) => q.code);
+    expect(codes).toContain("OS_NGD_OK");
+    expect(enriched.building_footprints).toHaveLength(3);
+    expect(enriched.building_footprints[0]).toEqual(
+      expect.objectContaining({
+        source: "os-ngd-buildings",
+        height_m: expect.any(Number),
+        outline_polygon: expect.any(Array),
+      }),
+    );
+    expect(enriched.neighbouring_buildings.length).toBeGreaterThan(0);
+    expect(enriched.neighbouring_buildings[0].source).toBe("os-ngd-buildings");
+    const ngdProvider = enriched.providers.find(
+      (p) => p.name === "os-ngd-buildings",
+    );
+    expect(ngdProvider.status).toBe("ok");
+    expect(ngdProvider.fields_supplied).toEqual(
+      expect.arrayContaining([
+        "building_footprints",
+        "neighbouring_buildings",
+        "context_height_stats",
+      ]),
+    );
+    // OS MasterMap and OSM should NOT also claim neighbouring_buildings —
+    // OS NGD is the highest authority and supplied them.
+    const mmProvider = enriched.providers.find(
+      (p) => p.name === "os-mastermap-building-heights",
+    );
+    const osmProvider = enriched.providers.find(
+      (p) => p.name === "openstreetmap-overpass",
+    );
+    expect(mmProvider.fields_supplied).not.toContain("neighbouring_buildings");
+    expect(osmProvider.fields_supplied).not.toContain("neighbouring_buildings");
+  });
+
+  test("OS NGD timeout emits OS_NGD_TIMEOUT warning without failing the slice", async () => {
+    process.env.OS_NGD_API_KEY = "test-os-ngd-key";
+    const fetchImpl = jest.fn((url) => {
+      if (url.includes("api.os.uk/features/ngd")) {
+        return new Promise(() => {}); // hang OS NGD only
+      }
+      // Return a plausible empty response for all other providers.
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({}),
+      });
+    });
+    const enriched = await enrichSiteContext(
+      { lat: 51.5, lon: -0.1, data_quality: [], heritage_flags: [] },
+      { fetchImpl, providerTimeoutMs: 25 },
+    );
+    const codes = enriched.data_quality.map((q) => q.code);
+    expect(codes).toContain("OS_NGD_TIMEOUT");
+    const ngdProvider = enriched.providers.find(
+      (p) => p.name === "os-ngd-buildings",
+    );
+    expect(ngdProvider.status).toBe("timeout");
+    // Slice still produces a usable site object.
+    expect(enriched.building_footprints).toEqual([]);
   });
 });
