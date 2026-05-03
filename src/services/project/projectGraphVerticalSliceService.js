@@ -10659,16 +10659,23 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     // Phase 4: bucket the deterministic drawing SVGs by drawing type so the
     // gate's cross-view evidence evaluator (drawingConsistencyChecks) can
     // inspect them. Only artifacts with an `svgString` participate; the
-    // checker reads `svg` so we forward it through.
+    // checker reads `svg` so we forward it through. We also forward
+    // `sheet_mode` for plan entries so the validator can relax the per-panel
+    // north-arrow / title-block marker requirements that the sheet composes
+    // globally (the plan renderer omits them when sheetMode:true was used).
     const drawingsForGate = { plan: [], elevation: [], section: [] };
     for (const artifact of Object.values(drawingArtifacts || {})) {
       const dt = artifact?.drawingType || artifact?.metadata?.drawingType;
       const svg = artifact?.svgString;
       if (!svg || !dt) continue;
       if (dt === "plan") {
+        const planSheetMode =
+          artifact?.technicalQualityMetadata?.sheet_mode === true ||
+          artifact?.metadata?.technicalQualityMetadata?.sheet_mode === true;
         drawingsForGate.plan.push({
           level_id: artifact?.metadata?.level_id || null,
           svg,
+          sheet_mode: planSheetMode,
         });
       } else if (dt === "elevation") {
         drawingsForGate.elevation.push({ svg, window_count: 0 });
