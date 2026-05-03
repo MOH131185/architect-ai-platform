@@ -14,23 +14,32 @@
  *   #2 Provenance: site.providers[] manifest carries
  *      { name, authority, fetched_at, status, fields_supplied } for every
  *      provider invocation.
+ *
+ * Phase 2a (2026-05-03):
+ *   Adds OS NGD building footprints. Additive only — the user-drawn boundary
+ *   (site.local_boundary_polygon) is never replaced. OS NGD is preferred for
+ *   neighbouring_buildings when available (richest source: full polygons +
+ *   heights) and supplies a new site.building_footprints field.
  */
 
 import { fetchPlanningHeritageFlags } from "./providers/planningDataClient.js";
 import { fetchFloodRisk } from "./providers/floodMapClient.js";
 import { fetchNeighbouringContext } from "./providers/overpassClient.js";
 import { fetchOsHeightContext } from "./providers/osMastermapClient.js";
+import { fetchOsNgdContext } from "./providers/osNgdClient.js";
 import { errorEnvelope } from "./providers/providerInterface.js";
 
 const PLANNING_SOURCE = "planning.data.gov.uk";
 const FLOOD_SOURCE = "environment-agency-flood-monitoring";
 const OS_SOURCE = "os-mastermap-building-heights";
+const OS_NGD_SOURCE = "os-ngd-buildings";
 const OSM_SOURCE = "openstreetmap-overpass";
 
 const PROVIDER_AUTHORITY = Object.freeze({
   [PLANNING_SOURCE]: "high",
   [FLOOD_SOURCE]: "high",
   [OS_SOURCE]: "high",
+  [OS_NGD_SOURCE]: "high",
   [OSM_SOURCE]: "medium",
 });
 
@@ -135,6 +144,17 @@ const offlineOsHeights = () => ({
   envelope: errorEnvelope({ source: OS_SOURCE, error: "timeout" }),
 });
 
+const offlineOsNgd = () => ({
+  neighbouring_buildings: [],
+  building_footprints: [],
+  context_height_stats: {
+    sample_count: 0,
+    source: OS_NGD_SOURCE,
+    confidence: 0,
+  },
+  envelope: errorEnvelope({ source: OS_NGD_SOURCE, error: "timeout" }),
+});
+
 const offlineNeighbours = () => ({
   neighbouring_buildings: [],
   context_height_stats: { source: OSM_SOURCE, confidence: 0 },
@@ -149,8 +169,10 @@ function buildProviderManifest({
   planning,
   flood,
   osHeights,
+  osNgd,
   neighbours,
   useOsHeights,
+  useOsNgd,
 }) {
   const planningEnvelopes = (planning.sources || []).map((s) => s.envelope);
   const planningTimedOut = Boolean(planning.__timedOut);
@@ -170,10 +192,24 @@ function buildProviderManifest({
       ? "error"
       : "ok";
 
+  const ngdTimedOut = Boolean(osNgd.__timedOut);
+  const ngdHasKnownNonError =
+    osNgd.envelope?.error && osNgd.envelope.error !== "no-os-ngd-key";
+  const ngdStatus = ngdTimedOut
+    ? "timeout"
+    : ngdHasKnownNonError
+      ? "error"
+      : useOsNgd
+        ? "ok"
+        : "not_used";
+
   const osTimedOut = Boolean(osHeights.__timedOut);
+  const osHasKnownNonError =
+    osHeights.envelope?.error &&
+    osHeights.envelope.error !== "no-os-mastermap-key";
   const osStatus = osTimedOut
     ? "timeout"
-    : osHeights.envelope?.error
+    : osHasKnownNonError
       ? "error"
       : useOsHeights
         ? "ok"
@@ -205,12 +241,26 @@ function buildProviderManifest({
       fields_supplied: floodStatus === "ok" ? ["flood_risk"] : [],
     },
     {
+      name: OS_NGD_SOURCE,
+      authority: PROVIDER_AUTHORITY[OS_NGD_SOURCE],
+      fetched_at: envelopeFetchedAt(osNgd.envelope),
+      status: ngdStatus,
+      fields_supplied:
+        ngdStatus === "ok"
+          ? [
+              "building_footprints",
+              "neighbouring_buildings",
+              "context_height_stats",
+            ]
+          : [],
+    },
+    {
       name: OS_SOURCE,
       authority: PROVIDER_AUTHORITY[OS_SOURCE],
       fetched_at: envelopeFetchedAt(osHeights.envelope),
       status: osStatus,
       fields_supplied:
-        osStatus === "ok"
+        osStatus === "ok" && !useOsNgd
           ? ["neighbouring_buildings", "context_height_stats"]
           : [],
     },
@@ -220,7 +270,7 @@ function buildProviderManifest({
       fetched_at: envelopeFetchedAt(neighbours.envelope),
       status: osmStatus,
       fields_supplied:
-        osmStatus === "ok" && !useOsHeights
+        osmStatus === "ok" && !useOsHeights && !useOsNgd
           ? ["neighbouring_buildings", "context_height_stats"]
           : [],
     },
@@ -296,7 +346,7 @@ export async function enrichSiteContext(site, options = {}) {
 
   const timeoutMs = resolveTimeoutMs(options);
 
-  const [planning, flood, osHeights, neighbours] = await Promise.all([
+  const [planning, flood, osHeights, osNgd, neighbours] = await Promise.all([
     settleWithin(
       fetchPlanningHeritageFlags({ lat, lon, fetchImpl }),
       offlinePlanning,
@@ -318,18 +368,39 @@ export async function enrichSiteContext(site, options = {}) {
       timeoutMs,
     ),
     settleWithin(
+      fetchOsNgdContext({
+        lat,
+        lon,
+        apiKey: options.osNgdApiKey,
+        fetchImpl,
+      }),
+      offlineOsNgd,
+      timeoutMs,
+    ),
+    settleWithin(
       fetchNeighbouringContext({ lat, lon, fetchImpl }),
       offlineNeighbours,
       timeoutMs,
     ),
   ]);
 
-  // OS MasterMap is preferred over OSM Overpass when an authoritative
-  // result was returned (confidence ≥ 0.9). OSM stays as fallback.
+  // Phase 2a: OS NGD is the highest-fidelity source (full polygons + heights)
+  // and is preferred for neighbouring_buildings + building_footprints when it
+  // returns data with confidence ≥ 0.9. OS MasterMap heights remain the next
+  // tier; OSM Overpass is the open-data fallback.
+  const useOsNgd =
+    osNgd?.envelope?.confidence >= 0.9 &&
+    Array.isArray(osNgd.building_footprints) &&
+    osNgd.building_footprints.length > 0;
   const useOsHeights =
+    !useOsNgd &&
     osHeights?.envelope?.confidence >= 0.9 &&
     osHeights.neighbouring_buildings.length > 0;
-  const heightContext = useOsHeights ? osHeights : neighbours;
+  const heightContext = useOsNgd
+    ? osNgd
+    : useOsHeights
+      ? osHeights
+      : neighbours;
 
   const dataQuality = [...(site.data_quality || [])];
 
@@ -406,6 +477,42 @@ export async function enrichSiteContext(site, options = {}) {
     });
   }
 
+  if (osNgd.__timedOut) {
+    dataQuality.push({
+      code: "OS_NGD_TIMEOUT",
+      severity: "warning",
+      message: `OS NGD building-footprints lookup timed out after ${osNgd.__timeoutMs}ms; deterministic fallback used.`,
+      source: OS_NGD_SOURCE,
+    });
+  } else if (
+    osNgd?.envelope?.error &&
+    osNgd.envelope.error !== "no-os-ngd-key"
+  ) {
+    dataQuality.push({
+      code: "OS_NGD_ERROR",
+      severity: "warning",
+      message: `OS NGD building-footprints lookup failed: ${osNgd.envelope.error}`,
+      source: osNgd.envelope.source,
+    });
+  } else if (useOsNgd) {
+    dataQuality.push({
+      code: "OS_NGD_OK",
+      severity: "info",
+      message: `OS NGD returned ${osNgd.building_footprints.length} authoritative building footprint(s); preferring over OS MasterMap heights and OSM Overpass for neighbouring_buildings.`,
+      source: osNgd.envelope.source,
+    });
+  } else {
+    dataQuality.push({
+      code: "OS_NGD_NOT_USED",
+      severity: "info",
+      message:
+        osNgd?.envelope?.error === "no-os-ngd-key"
+          ? "OS NGD key not configured; falling back to OS MasterMap / OSM Overpass for neighbouring buildings."
+          : "OS NGD returned no authoritative footprints; falling back to OS MasterMap / OSM Overpass for neighbouring buildings.",
+      source: osNgd?.envelope?.source || OS_NGD_SOURCE,
+    });
+  }
+
   if (osHeights.__timedOut) {
     dataQuality.push({
       code: "OS_MASTERMAP_TIMEOUT",
@@ -413,7 +520,10 @@ export async function enrichSiteContext(site, options = {}) {
       message: `OS MasterMap lookup timed out after ${osHeights.__timeoutMs}ms; deterministic fallback used.`,
       source: OS_SOURCE,
     });
-  } else if (osHeights?.envelope?.error) {
+  } else if (
+    osHeights?.envelope?.error &&
+    osHeights.envelope.error !== "no-os-mastermap-key"
+  ) {
     dataQuality.push({
       code: "OS_MASTERMAP_ERROR",
       severity: "warning",
@@ -434,7 +544,9 @@ export async function enrichSiteContext(site, options = {}) {
       message:
         osHeights?.envelope?.error === "no-os-mastermap-key"
           ? "OS MasterMap key not configured; falling back to OSM Overpass."
-          : "OS MasterMap returned no authoritative heights; falling back to OSM Overpass.",
+          : useOsNgd
+            ? "OS NGD already supplied authoritative footprints; OS MasterMap heights not consulted."
+            : "OS MasterMap returned no authoritative heights; falling back to OSM Overpass.",
       source: osHeights?.envelope?.source || OS_SOURCE,
     });
   }
@@ -443,8 +555,10 @@ export async function enrichSiteContext(site, options = {}) {
     planning,
     flood,
     osHeights,
+    osNgd,
     neighbours,
     useOsHeights,
+    useOsNgd,
   });
 
   return {
@@ -462,6 +576,10 @@ export async function enrichSiteContext(site, options = {}) {
       heightContext.context_height_stats?.sample_count > 0
         ? heightContext.context_height_stats
         : site.context_height_stats,
+    building_footprints:
+      useOsNgd && Array.isArray(osNgd.building_footprints)
+        ? osNgd.building_footprints
+        : site.building_footprints || [],
     data_quality: dataQuality,
     providers: [...(site.providers || []), ...providers],
   };
@@ -474,6 +592,7 @@ export const __aggregatorInternals = Object.freeze({
   PLANNING_SOURCE,
   FLOOD_SOURCE,
   OS_SOURCE,
+  OS_NGD_SOURCE,
   OSM_SOURCE,
 });
 

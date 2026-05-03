@@ -10836,6 +10836,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
         "site.flood_risk",
         "site.neighbouring_buildings",
         "site.context_height_stats",
+        "site.building_footprints",
         "climate.weather_source",
         "climate.wind",
         "climate.rainfall",
