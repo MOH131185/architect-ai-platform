@@ -156,7 +156,11 @@ describe("selectBestOverpassWay", () => {
     expect(result).toBeNull();
   });
 
-  test("flags an oversized building polygon as estimated", () => {
+  test("rejects an oversized building polygon (terraced row joined as one OSM building)", () => {
+    // Returning a 1600 m² terrace polygon as the user's site boundary is
+    // wildly wrong for an individual ~67 m² house. The selector must
+    // refuse the oversized candidate and return null so the caller can
+    // prompt the user to draw manually.
     const oversizedBuilding = squarePolygonAround(POINT.lat, POINT.lng, 20); // ~1600 m²
     const result = selectBestOverpassWay({
       parcelElements: [],
@@ -165,8 +169,7 @@ describe("selectBestOverpassWay", () => {
       ],
       point: POINT,
     });
-    expect(result?.source).toBe(BOUNDARY_SOURCE.OVERPASS_BUILDING_CONTAINS);
-    expect(result?.estimateReason).toBe(ESTIMATE_REASON.BUILDING_OVERSIZED);
+    expect(result).toBeNull();
   });
 
   test("a small building stays authoritative when no parcel was demoted", () => {

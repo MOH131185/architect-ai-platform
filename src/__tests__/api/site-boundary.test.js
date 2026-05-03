@@ -360,6 +360,58 @@ describe("api/site/boundary — pure helpers", () => {
     expect(best?.element?.id).toBe(1);
     expect(best?.source).toBe(BOUNDARY_SOURCE.OVERPASS_BUILDING_CONTAINS);
   });
+
+  // Regression: 17 Kensington Rd DN15 8BQ — UK terraced house ~67 m² where
+  // OS/OSM treats the whole row as one ~1260 m² building polygon. Returning
+  // that polygon as the user's site boundary mis-sets area by ~19x. The
+  // selector must reject the oversized candidate so the caller can surface
+  // a "please draw" prompt instead of an authoritative-looking wrong shape.
+  test("selectBestOverpassWay rejects an oversized building polygon (terrace block)", () => {
+    // ~40 m × 30 m polygon centred on POINT → ~1200 m² (well above 600 m²
+    // RESIDENTIAL_BUILDING_MAX_M2 threshold). At lat 52.4722, 1° lat ≈ 111 km
+    // and 1° lng ≈ 67.6 km, so 0.00018° lat ≈ 20 m and 0.00022° lng ≈ 15 m.
+    const oversizedTerrace = makeBuildingWay(99, [
+      [52.4722 - 0.00018, -1.8839 - 0.00022],
+      [52.4722 - 0.00018, -1.8839 + 0.00022],
+      [52.4722 + 0.00018, -1.8839 + 0.00022],
+      [52.4722 + 0.00018, -1.8839 - 0.00022],
+    ]);
+    const best = selectBestOverpassWay({
+      buildingElements: [oversizedTerrace],
+      parcelElements: [],
+      point: POINT,
+    });
+    expect(best).toBeNull();
+  });
+
+  test("selectBestOverpassWay falls through oversized building to a plausible neighbour", () => {
+    const oversizedTerrace = makeBuildingWay(99, [
+      [52.4722 - 0.00018, -1.8839 - 0.00022],
+      [52.4722 - 0.00018, -1.8839 + 0.00022],
+      [52.4722 + 0.00018, -1.8839 + 0.00022],
+      [52.4722 + 0.00018, -1.8839 - 0.00022],
+    ]);
+    // Plausible ~7 m × 7 m house (~49 m²) ~10 m east of POINT, well within
+    // the 25 m nearest-fallback radius and well under 600 m².
+    const eastLngOffset = 10 / 67_600; // ~10 m east
+    const smallNeighbour = makeBuildingWay(
+      100,
+      [
+        [52.4722 - 0.00003, -1.8839 + eastLngOffset - 0.00005],
+        [52.4722 - 0.00003, -1.8839 + eastLngOffset + 0.00005],
+        [52.4722 + 0.00003, -1.8839 + eastLngOffset + 0.00005],
+        [52.4722 + 0.00003, -1.8839 + eastLngOffset - 0.00005],
+      ],
+      { building: "house" },
+    );
+    const best = selectBestOverpassWay({
+      buildingElements: [oversizedTerrace, smallNeighbour],
+      parcelElements: [],
+      point: POINT,
+    });
+    expect(best?.element?.id).toBe(100);
+    expect(best?.source).toBe(BOUNDARY_SOURCE.OVERPASS_BUILDING_NEAREST);
+  });
 });
 
 describe("api/site/boundary — Overpass query construction", () => {
