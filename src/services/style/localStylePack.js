@@ -186,6 +186,14 @@ const CLIMATE_PALETTES_BY_RISK = Object.freeze({
 });
 
 function localContextPalette(brief, site) {
+  // UK regional vernacular pack (paper §4.3 transfer-by-curation): when a
+  // resolved pack is present on the site, its materials lead the palette so
+  // London-stucco, Edinburgh-tenement, etc. don't collapse to one nationwide
+  // dwelling default.
+  const vernacularPack = site?.uk_vernacular_pack || null;
+  const vernacularMaterials = Array.isArray(vernacularPack?.materials)
+    ? vernacularPack.materials
+    : [];
   const list =
     LOCAL_PALETTES_BY_TYPE[brief.building_type] ||
     LOCAL_PALETTES_BY_TYPE.community;
@@ -201,6 +209,7 @@ function localContextPalette(brief, site) {
   if (heritageFlagged) {
     return [
       ...new Set([
+        ...vernacularMaterials,
         ...list,
         ...explicitLocal,
         "lime mortar",
@@ -209,7 +218,7 @@ function localContextPalette(brief, site) {
       ]),
     ];
   }
-  return [...new Set([...list, ...explicitLocal])];
+  return [...new Set([...vernacularMaterials, ...list, ...explicitLocal])];
 }
 
 function userPalette(brief) {
@@ -344,6 +353,26 @@ export function buildLocalStylePackV2({
   const avoidKeywords = Array.isArray(brief?.user_intent?.avoid_keywords)
     ? brief.user_intent.avoid_keywords
     : [];
+  const vernacularPack = site?.uk_vernacular_pack || null;
+  const styleProvenance = vernacularPack
+    ? {
+        ukVernacularPackId: vernacularPack.packId || null,
+        packLabel: vernacularPack.label || null,
+        region: vernacularPack.region || null,
+        descriptive_narrative: vernacularPack.descriptive_narrative || null,
+        historical_period: vernacularPack.historical_period || null,
+        resolution_source: vernacularPack.resolution_source || null,
+        source: "ukVernacularPacks",
+      }
+    : {
+        ukVernacularPackId: null,
+        packLabel: null,
+        region: null,
+        descriptive_narrative: null,
+        historical_period: null,
+        resolution_source: null,
+        source: "buildingTypeDefault",
+      };
   return {
     style_pack_id: createStableId
       ? createStableId(
@@ -365,6 +394,9 @@ export function buildLocalStylePackV2({
       `climate suitability contributes ${(blend.weights.climate * 100).toFixed(1)}% (overheating risk=${climate?.overheating?.risk_level || "unknown"})`,
       `portfolio mood contributes ${(blend.weights.portfolio * 100).toFixed(1)}% to style (slider innovation_strength=${brief?.user_intent?.innovation_strength ?? 0.5}, mood=${brief?.user_intent?.portfolio_mood || "riba_stage2"})`,
       `material palette uses ${(blend.material_weights.local * 100).toFixed(1)}% local material and ${(blend.material_weights.portfolio * 100).toFixed(1)}% portfolio material`,
+      vernacularPack
+        ? `UK vernacular pack: ${vernacularPack.label} (${vernacularPack.packId}) — ${vernacularPack.descriptive_narrative || ""}`
+        : "UK vernacular pack: none (per-building-type default palette)",
     ],
     climate_notes: Array.isArray(climate?.material_weathering_notes)
       ? climate.material_weathering_notes
@@ -372,6 +404,7 @@ export function buildLocalStylePackV2({
     local_blend_strength: brief?.user_intent?.local_blend_strength ?? 0.5,
     innovation_strength: brief?.user_intent?.innovation_strength ?? 0.5,
     data_quality: Array.isArray(site?.data_quality) ? site.data_quality : [],
+    style_provenance: styleProvenance,
   };
 }
 

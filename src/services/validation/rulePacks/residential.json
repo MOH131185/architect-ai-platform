@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "packId": "residential-v1",
+  "appliesTo": ["dwelling", "multi_residential"],
+  "rules": [
+    {
+      "id": "kitchen-near-dining",
+      "kind": "must_adjoin",
+      "from": "kitchen",
+      "to": ["dining", "living_room"],
+      "weight": 8,
+      "rationale": "Kitchen must be adjacent to a dining or living space (daily-use adjacency)."
+    },
+    {
+      "id": "kitchen-near-utility",
+      "kind": "must_adjoin",
+      "from": "kitchen",
+      "to": ["utility", "scullery"],
+      "weight": 4,
+      "optional": true,
+      "rationale": "Utility/scullery typically adjoins the kitchen."
+    },
+    {
+      "id": "primary-bedroom-near-bath",
+      "kind": "must_adjoin",
+      "from": "bedroom_primary",
+      "to": ["bathroom", "ensuite"],
+      "weight": 7,
+      "rationale": "Primary bedroom expected within one room of a bathroom."
+    },
+    {
+      "id": "bedroom-not-direct-from-kitchen",
+      "kind": "must_not_adjoin",
+      "from": "bedroom",
+      "to": ["kitchen"],
+      "weight": 6,
+      "rationale": "Bedroom should not open directly off a kitchen (privacy + odour separation)."
+    },
+    {
+      "id": "primary-bedroom-not-direct-from-kitchen",
+      "kind": "must_not_adjoin",
+      "from": "bedroom_primary",
+      "to": ["kitchen"],
+      "weight": 6,
+      "rationale": "Primary bedroom should not open directly off a kitchen."
+    },
+    {
+      "id": "wc-not-direct-from-living",
+      "kind": "must_not_adjoin",
+      "from": "wc",
+      "to": ["living_room", "dining"],
+      "weight": 4,
+      "rationale": "WC should be reached via circulation, not directly off a habitable room."
+    },
+    {
+      "id": "bathroom-not-direct-from-living",
+      "kind": "must_not_adjoin",
+      "from": "bathroom",
+      "to": ["living_room", "dining", "kitchen"],
+      "weight": 4,
+      "rationale": "Bathroom should be reached via circulation, not directly off a habitable room."
+    },
+    {
+      "id": "entrance-near-circulation",
+      "kind": "must_adjoin",
+      "from": "entrance_hall",
+      "to": ["circulation", "living_room", "stair"],
+      "weight": 5,
+      "rationale": "Entrance hall must connect to circulation or main living space."
+    },
+    {
+      "id": "stair-on-every-multi-level",
+      "kind": "min_per_level",
+      "type": "stair",
+      "minCount": 1,
+      "appliesIf": { "levelCountAtLeast": 2 },
+      "weight": 9,
+      "rationale": "Every floor of a multi-level dwelling must have a stair."
+    },
+    {
+      "id": "primary-bedroom-count",
+      "kind": "min_count",
+      "type": "bedroom_primary",
+      "minCount": 1,
+      "weight": 5,
+      "rationale": "Every dwelling should have a primary bedroom designated."
+    },
+    {
+      "id": "bathroom-count",
+      "kind": "min_count",
+      "type": "bathroom",
+      "minCount": 1,
+      "weight": 6,
+      "rationale": "Every dwelling must have at least one bathroom."
+    },
+    {
+      "id": "wet-zone-stacking",
+      "kind": "wet_zone_stacked",
+      "minOverlapPct": 0.4,
+      "weight": 3,
+      "optional": true,
+      "rationale": "Stacked wet cores reduce service runs (warning only when poor)."
+    }
+  ]
+}

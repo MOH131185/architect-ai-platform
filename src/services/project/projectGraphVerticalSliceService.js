@@ -21,6 +21,8 @@ import {
   getBlockedOpenAIReasoningCalls,
 } from "../openaiReasoningExecutor.js";
 import { computeCDSHashSync } from "../validation/cdsHash.js";
+import { validateProgrammeAdjacency } from "../validation/programmeAdjacencyValidator.js";
+import { computeQuantitativeMetrics } from "../validation/qaScorers/quantitativeScorer.js";
 import {
   rasteriseSheetArtifact,
   isRasterStubModeAllowed,
@@ -58,6 +60,7 @@ import {
   summarizeRuleResults,
 } from "../regulation/runRules.js";
 import { buildLocalStylePackV2 } from "../style/localStylePack.js";
+import { resolveUKVernacular } from "../style/ukVernacularPacks.js";
 import { generateRectangularOptions } from "../design/optionGenerator.js";
 import { scoreOption, selectBestOption } from "../design/optionScorer.js";
 import { runWithRepair } from "../design/repairLoop.js";
@@ -208,6 +211,7 @@ const REFERENCE_MATCH_SECTION_MIN_SLOT_OCCUPANCY = 0.12;
 const REFERENCE_MATCH_ELEVATION_MIN_SLOT_OCCUPANCY = 0.08;
 const REFERENCE_MATCH_MIN_SECTION_USEFULNESS = 0.45;
 const REFERENCE_MATCH_MIN_ELEVATION_RICHNESS = 0.18;
+const DESIGN_VARIANT_SCORE_TOLERANCE = 0.12;
 
 function isTruthyFlag(value) {
   if (value === true) return true;
@@ -261,6 +265,109 @@ function round(value, precision = 3) {
   }
   const factor = 10 ** precision;
   return Math.round(numeric * factor) / factor;
+}
+
+function normalizeGenerationSeed(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return Math.abs(Math.trunc(numeric)) % 2147483647;
+}
+
+function resolveGenerationSeed(input = {}, sourceBrief = {}) {
+  return normalizeGenerationSeed(
+    input.baseSeed ??
+      input.seed ??
+      input.generationSeed ??
+      input.projectDetails?.baseSeed ??
+      input.projectDetails?.generationSeed ??
+      sourceBrief.baseSeed ??
+      sourceBrief.generation_seed ??
+      sourceBrief.generationSeed ??
+      sourceBrief.seed,
+  );
+}
+
+function seededIndex(seed, length, salt = "design-option") {
+  if (!(length > 0)) return 0;
+  const hash = computeCDSHashSync({ seed, salt });
+  const numeric = Number.parseInt(String(hash).slice(0, 8), 16);
+  return (Number.isFinite(numeric) ? numeric : Number(seed || 0)) % length;
+}
+
+/**
+ * Seeded fraction in [0, 1) — used to pick a window position along a wall, a
+ * band-order rotation, etc. Returns a deterministic value for the same
+ * (seed, salt) pair. When seed is null, returns 0.5 so behaviour matches the
+ * pre-seeded default (midpoint placement).
+ */
+function seededFraction(seed, salt = "fraction") {
+  if (seed === null || seed === undefined) return 0.5;
+  const hash = computeCDSHashSync({ seed, salt });
+  const numeric = Number.parseInt(String(hash).slice(0, 8), 16);
+  if (!Number.isFinite(numeric)) return 0.5;
+  return (numeric % 1000000) / 1000000;
+}
+
+/**
+ * Seeded array rotation. Same input + same seed → same output. With seed
+ * null the array is returned unchanged. Used to vary band order and within-
+ * band placement so two generations with different seeds produce visibly
+ * different floor plans without breaking determinism.
+ */
+function seededRotation(items, seed, salt = "rotation") {
+  if (!Array.isArray(items) || items.length <= 1) return items;
+  if (seed === null || seed === undefined) return items;
+  const offset = seededIndex(seed, items.length, salt);
+  if (!offset) return items;
+  return [...items.slice(offset), ...items.slice(0, offset)];
+}
+
+function selectDesignOptionForRun(scoredOptions = [], brief = {}) {
+  const best = selectBestOption(scoredOptions) || scoredOptions[0] || null;
+  if (!best) return null;
+  const generationSeed = normalizeGenerationSeed(brief.generation_seed);
+  if (generationSeed === null) {
+    return {
+      selected: best,
+      variantPool: [best],
+      variantEnabled: false,
+      variantReason: "no_explicit_generation_seed",
+    };
+  }
+
+  const eligible = scoredOptions.filter((option) => option.fits_buildable);
+  const pool = (eligible.length ? eligible : scoredOptions)
+    .filter(
+      (option) =>
+        Number(best.aggregate_score || 0) -
+          Number(option.aggregate_score || 0) <=
+        DESIGN_VARIANT_SCORE_TOLERANCE,
+    )
+    .sort((left, right) => {
+      if (right.aggregate_score !== left.aggregate_score) {
+        return right.aggregate_score - left.aggregate_score;
+      }
+      return String(left.option_id).localeCompare(String(right.option_id));
+    });
+  const variantPool = pool.length ? pool : [best];
+  const selected =
+    variantPool[
+      seededIndex(
+        generationSeed,
+        variantPool.length,
+        `${brief.brief_input_hash || brief.project_name || ""}:design-option`,
+      )
+    ] || best;
+
+  return {
+    selected,
+    variantPool,
+    variantEnabled: variantPool.length > 1,
+    variantReason:
+      variantPool.length > 1
+        ? "seeded_high_quality_option"
+        : "only_one_high_quality_option",
+  };
 }
 
 function slugify(value) {
@@ -690,6 +797,7 @@ function detectProgrammeGroundCollapse({
 
 function normalizeBrief(input = {}) {
   const sourceBrief = input.brief || input.projectBrief || input;
+  const generationSeed = resolveGenerationSeed(input, sourceBrief);
   const projectDetails = input.projectDetails || {};
   const locationData = input.locationData || {};
   const referenceMatch = isReferenceMatchRequested(input, sourceBrief);
@@ -892,6 +1000,7 @@ function normalizeBrief(input = {}) {
     required_spaces_text: requiredSpacesText,
     constraints_text: constraintsText,
     reference_match: referenceMatch,
+    generation_seed: generationSeed,
   });
 
   return {
@@ -922,6 +1031,9 @@ function normalizeBrief(input = {}) {
     },
     target_gia_m2: round(targetGiaM2, 2),
     target_storeys: targetStoreys,
+    generation_seed: generationSeed,
+    design_variant_seed: generationSeed,
+    generation_variation_enabled: generationSeed !== null,
     referenceMatch,
     reference_match: referenceMatch,
     brief_input_hash: briefInputHash,
@@ -3631,6 +3743,18 @@ function buildSiteContext({
     heritage_flags: [],
     planning_policy_refs: [],
     data_quality: dataQuality,
+    // Paper §4.3 transfer-by-curation: resolve a UK regional vernacular pack
+    // (London stucco, Edinburgh tenement, etc.) so localStylePack does not
+    // collapse every UK location to one nationwide dwelling palette. Gated
+    // behind `ukVernacularStylePacks` so it can be turned off cleanly.
+    uk_vernacular_pack: isFeatureEnabled("ukVernacularStylePacks")
+      ? resolveUKVernacular({
+          lat: origin.lat,
+          lng: origin.lng ?? origin.lon,
+          postcode: brief.site_input?.postcode,
+          regionName: brief.site_input?.region || brief.site_input?.country,
+        })
+      : null,
   };
 }
 
@@ -4264,6 +4388,7 @@ function addRoomWallsAndOpenings({
   doors,
   windows,
   mainEntryOrientation = null,
+  layoutSeed = null,
 }) {
   const polygon = room.polygon;
   const edges = [
@@ -4341,9 +4466,38 @@ function addRoomWallsAndOpenings({
   exteriorWalls
     .sort((a, b) => wallLength(b) - wallLength(a))
     .slice(0, room.requires_daylight === false ? 1 : 2)
-    .forEach((exteriorWall) => {
+    .forEach((exteriorWall, exteriorIndex) => {
       const length = wallLength(exteriorWall);
       if (length < 1.2) return;
+      // Seeded along-wall placement: with no seed → 0.5 (midpoint, original
+      // behaviour). With a seed, pick from {0.35, 0.5, 0.65} so different
+      // generations of the same brief produce visibly different elevations.
+      // The fraction is keyed off (seed, room id, wall id, index) so the same
+      // seed always produces the same placement.
+      const fraction =
+        layoutSeed === null
+          ? 0.5
+          : (() => {
+              const raw = seededFraction(
+                layoutSeed,
+                `window:${room.id}:${exteriorWall.id}:${exteriorIndex}`,
+              );
+              if (raw < 0.34) return 0.35;
+              if (raw < 0.67) return 0.5;
+              return 0.65;
+            })();
+      const start = exteriorWall.start || { x: 0, y: 0 };
+      const end = exteriorWall.end || { x: 0, y: 0 };
+      const position = {
+        x: round(
+          Number(start.x || 0) +
+            (Number(end.x || 0) - Number(start.x || 0)) * fraction,
+        ),
+        y: round(
+          Number(start.y || 0) +
+            (Number(end.y || 0) - Number(start.y || 0)) * fraction,
+        ),
+      };
       windows.push({
         id: createStableId("window", room.id, exteriorWall.id),
         level_id: levelId,
@@ -4352,8 +4506,9 @@ function addRoomWallsAndOpenings({
         width_m: Math.max(0.9, Math.min(2.6, length * 0.36)),
         sill_height_m: 0.85,
         head_height_m: 2.2,
-        position: midpoint(exteriorWall),
+        position,
         kind: "window",
+        position_fraction: fraction,
       });
     });
 
@@ -4369,10 +4524,21 @@ function layoutRoomsForLevel({
   doors,
   windows,
   mainEntryOrientation = null,
+  layoutSeed = null,
 }) {
   const levelId = `level-${levelIndex}`;
   const rooms = [];
-  const bands = balanceBands(spaces);
+  const balancedBands = balanceBands(spaces);
+  // Seeded band rotation: with a seed, swap which band sits at the south edge
+  // (y_min) so different generations produce visibly different floor plans.
+  // Wet rooms / habitable rooms stay grouped within their band, so adjacency
+  // rules from programmeAdjacencyValidator.js are not broken — only the band
+  // positions on the level change. With seed null → original order preserved.
+  const bands = seededRotation(
+    balancedBands,
+    layoutSeed,
+    `bands:level-${levelIndex}`,
+  );
   const targetArea = bands.reduce((sum, band) => sum + band.area, 0);
   const totalDepth = Math.max(1, Number(footprintBbox.height || 0));
   let cursorY = Number(footprintBbox.min_y || 0);
@@ -4419,6 +4585,7 @@ function layoutRoomsForLevel({
         doors,
         windows,
         mainEntryOrientation,
+        layoutSeed,
       });
       rooms.push(room);
       cursorX += roomWidth;
@@ -4469,7 +4636,12 @@ function buildProjectGeometryFromProgramme({
   const scoredOptions = candidateOptions.map((option) =>
     scoreOption({ option, brief, site, climate, programme }),
   );
-  const selected = selectBestOption(scoredOptions) || scoredOptions[0];
+  const designOptionSelection =
+    selectDesignOptionForRun(scoredOptions, brief) || {};
+  const selected =
+    designOptionSelection.selected ||
+    selectBestOption(scoredOptions) ||
+    scoredOptions[0];
   const baseFootprint = selected.footprint_polygon;
   const levels = [];
   const rooms = [];
@@ -4499,6 +4671,7 @@ function buildProjectGeometryFromProgramme({
       doors,
       windows,
       mainEntryOrientation: site?.main_entry?.orientation || null,
+      layoutSeed: normalizeGenerationSeed(brief.generation_seed),
     });
     rooms.push(...layout.rooms);
     if (layout.stair && levelIndex + 1 < levelCount) {
@@ -4619,6 +4792,22 @@ function buildProjectGeometryFromProgramme({
         selected: opt.option_id === selected.option_id,
       })),
       selected_option_id: selected.option_id,
+      design_variant: {
+        enabled: designOptionSelection.variantEnabled === true,
+        seed: brief.generation_seed ?? null,
+        reason: designOptionSelection.variantReason || null,
+        score_tolerance: DESIGN_VARIANT_SCORE_TOLERANCE,
+        pool_option_ids: (
+          designOptionSelection.variantPool || [selected].filter(Boolean)
+        ).map((option) => option.option_id),
+        // Layout-level seed propagation (band rotation + window position
+        // fraction): applies whenever a generation seed is provided, so two
+        // generations with different seeds for the same brief produce
+        // visibly different floor plans and elevations even when the same
+        // footprint option is selected.
+        layout_variation_applied:
+          normalizeGenerationSeed(brief.generation_seed) !== null,
+      },
     },
     provenance: {
       source: "project_graph_vertical_slice",
@@ -10066,6 +10255,73 @@ export function validateProjectGraphVerticalSlice({
     0, // architecture category already has 10 pts allocated; this is informational
   );
 
+  // Programme adjacency validator (paper §4.2 grey-box: domain-rule layer over
+  // ML output). Pure addition, gated; issues stay warning-only unless the
+  // blocking flag is also enabled. Failures of the optional flag → never fail.
+  let adjacencyResult = null;
+  if (isFeatureEnabled("programmeAdjacencyValidator")) {
+    try {
+      adjacencyResult = validateProgrammeAdjacency({
+        compiledProject: artifacts?.compiledProject || null,
+        canonicalProjectType:
+          projectGraph?.brief?.canonical_building_type ||
+          projectGraph?.brief?.canonicalBuildingType ||
+          projectGraph?.brief?.project_type_support?.canonicalBuildingType ||
+          "",
+      });
+      for (const adjCheck of adjacencyResult.checks) {
+        checks.push({
+          code: adjCheck.code,
+          status: adjCheck.status,
+          details: adjCheck.details,
+          category: "programme_adjacency",
+          weight: 0,
+        });
+      }
+      const blocking = isFeatureEnabled("programmeAdjacencyValidatorBlocking");
+      for (const adjIssue of adjacencyResult.issues) {
+        issues.push(
+          buildIssue(
+            adjIssue.code,
+            blocking ? "error" : "warning",
+            adjIssue.message,
+            adjIssue.details || {},
+          ),
+        );
+      }
+    } catch (error) {
+      // Validator must never break the pipeline. Record the failure as a
+      // diagnostic check and move on.
+      checks.push({
+        code: "PROGRAMME_ADJACENCY_VALIDATOR_ERROR",
+        status: "fail",
+        details: { error: String(error?.message || error) },
+        category: "programme_adjacency",
+        weight: 0,
+      });
+    }
+  }
+
+  // Dual-QA quantitative metrics (paper §4.6). Additive: never affects
+  // pass/fail status, just attaches a measurable-side block to the report.
+  // Reuses the adjacency score computed above so the two scorers stay aligned.
+  let quantitative = null;
+  if (isFeatureEnabled("dualQaQuantitativeScoring")) {
+    try {
+      quantitative = computeQuantitativeMetrics({
+        projectGraph,
+        artifacts,
+        adjacencyResult,
+      });
+    } catch (error) {
+      quantitative = {
+        score: null,
+        breakdown: [],
+        error: String(error?.message || error),
+      };
+    }
+  }
+
   const errorCount = issues.filter(
     (issue) => issue.severity === "error",
   ).length;
@@ -10089,6 +10345,16 @@ export function validateProjectGraphVerticalSlice({
     checks,
     issues,
     constraint_conflicts: constraintConflicts,
+    programmeAdjacency: adjacencyResult
+      ? {
+          score: adjacencyResult.score,
+          status: adjacencyResult.status,
+          packId: adjacencyResult.packId,
+          ruleCount: adjacencyResult.ruleCount,
+        }
+      : null,
+    quantitative,
+    qualitative: null, // populated by the async qualitative scorer wired separately
     disclaimer: PROFESSIONAL_REVIEW_DISCLAIMER,
   };
 }
@@ -11184,6 +11450,11 @@ export async function buildArchitectureProjectVerticalSliceWithRepair(
 
 export const __projectGraphVerticalSliceInternals = Object.freeze({
   normalizeBrief,
+  normalizeGenerationSeed,
+  selectDesignOptionForRun,
+  seededFraction,
+  seededRotation,
+  seededIndex,
   buildProgramme,
   buildSiteContext,
   buildClimatePack,

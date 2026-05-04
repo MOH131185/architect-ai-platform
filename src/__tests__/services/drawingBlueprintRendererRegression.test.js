@@ -406,6 +406,26 @@ describe("Blueprint renderer regressions", () => {
     expect(
       section.technical_quality_metadata.slot_occupancy_ratio,
     ).toBeGreaterThan(0.35);
+    expect(section.technical_quality_metadata.a1_quality_polish).toBe(
+      "section_datums_dimensions_v2",
+    );
+    expect(section.svg).toContain(
+      'data-a1-quality-polish="section_datums_dimensions_v2"',
+    );
+    expect(
+      section.technical_quality_metadata.section_body_occupancy_ratio,
+    ).toBeGreaterThan(0.35);
+    expect(
+      section.technical_quality_metadata.section_visual_occupancy_ratio,
+    ).toBeGreaterThan(
+      section.technical_quality_metadata.section_body_occupancy_ratio,
+    );
+    expect(
+      section.technical_quality_metadata.section_edge_clearance_status,
+    ).toBe("clear");
+    expect(
+      section.technical_quality_metadata.section_min_edge_clearance_px,
+    ).toBeGreaterThanOrEqual(10);
   });
 
   test("renderers emit richer visible technical content across plan elevation and section", () => {
@@ -458,6 +478,19 @@ describe("Blueprint renderer regressions", () => {
     expect(section.svg).toContain("DIRECT CUT");
     expect(section.svg).toContain('id="phase14-section-slabs"');
     expect(section.svg).toContain('class="phase8-section-level-label"');
+    expect(section.svg).toContain('id="phase3-section-ground-hatch"');
+    expect(section.svg).toContain('id="blueprint-scale-bar"');
+    expect(
+      section.technical_quality_metadata.level_label_count,
+    ).toBeGreaterThan(0);
+    expect(section.technical_quality_metadata.roof_profile_visible).toBe(true);
+    expect(section.technical_quality_metadata.foundation_marker_count).toBe(1);
+    expect(
+      section.technical_quality_metadata.section_wall_cut_count,
+    ).toBeGreaterThanOrEqual(0);
+    expect(
+      section.technical_quality_metadata.section_opening_cut_count,
+    ).toBeGreaterThanOrEqual(0);
   });
 
   test("renderers remain deterministic for repeated compiled-project renders", () => {

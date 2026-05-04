@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "packId": "default-empty",
+  "appliesTo": ["*"],
+  "rules": []
+}

@@ -22,8 +22,18 @@ import { buildCanonicalRoofPitchInfo } from "./roofPitchResolver.js";
 
 const SECTION_THEME = getBlueprintTheme();
 const SHEET_SECTION_POLISH = Object.freeze({
-  fontScale: 1.12,
-  strokeScale: 1.12,
+  fontScale: 1.18,
+  strokeScale: 1.08,
+  lineweightScale: 1.1,
+  padding: 24,
+  minEdgeClearancePx: 10,
+});
+const DEFAULT_SECTION_POLISH = Object.freeze({
+  fontScale: 1,
+  strokeScale: 1,
+  lineweightScale: 1,
+  padding: 86,
+  minEdgeClearancePx: 8,
 });
 
 function escapeXml(value) {
@@ -80,11 +90,145 @@ function chooseScaleBarMeters(scalePxPerMeter = 1) {
 }
 
 function resolveSectionPolish(sheetMode = false) {
-  return sheetMode ? SHEET_SECTION_POLISH : { fontScale: 1, strokeScale: 1 };
+  return sheetMode ? SHEET_SECTION_POLISH : DEFAULT_SECTION_POLISH;
 }
 
 function polishSize(value, scale = 1) {
   return formatNumber(Number(value || 0) * Number(scale || 1), 1);
+}
+
+function estimateTextWidthPx(text = "", fontSize = 10) {
+  return String(text || "").length * Number(fontSize || 10) * 0.58;
+}
+
+function fitTextFontSize(
+  text = "",
+  maxWidth = 80,
+  desired = 10,
+  minimum = 7.8,
+) {
+  const desiredSize = Number(desired || 10);
+  const textLength = Math.max(String(text || "").length, 1);
+  const fitted = Math.min(
+    desiredSize,
+    Number(maxWidth || 80) / (textLength * 0.58),
+  );
+  return roundMetric(Math.max(minimum, fitted), 1);
+}
+
+function splitRoomLabel(rawName = "", desiredFont = 12, maxWidth = 80) {
+  const name = String(rawName || "").trim();
+  if (!name || estimateTextWidthPx(name, desiredFont) <= maxWidth) {
+    return name ? [name] : [];
+  }
+  const words = name.split(/\s+/).filter(Boolean);
+  if (words.length < 2) return [name];
+
+  const targetLength = name.length / 2;
+  let bestIndex = 1;
+  let bestDelta = Number.POSITIVE_INFINITY;
+  for (let index = 1; index < words.length; index += 1) {
+    const leftLength = words.slice(0, index).join(" ").length;
+    const delta = Math.abs(leftLength - targetLength);
+    if (delta < bestDelta) {
+      bestDelta = delta;
+      bestIndex = index;
+    }
+  }
+  return [
+    words.slice(0, bestIndex).join(" "),
+    words.slice(bestIndex).join(" "),
+  ].filter(Boolean);
+}
+
+function scaleLineweights(lineweights = {}, scale = 1) {
+  const factor = Number(scale || 1);
+  if (!Number.isFinite(factor) || factor === 1) return lineweights;
+  return Object.fromEntries(
+    Object.entries(lineweights).map(([key, value]) => [
+      key,
+      Number.isFinite(Number(value))
+        ? roundMetric(Number(value) * factor, 3)
+        : value,
+    ]),
+  );
+}
+
+function buildSectionVisualMetrics({
+  baseX = 0,
+  baseY = 0,
+  contentWidthPx = 0,
+  contentHeightPx = 0,
+  roofRisePx = 0,
+  groundBounds = null,
+  width = 1,
+  height = 1,
+  padding = 0,
+  minEdgeClearancePx = 8,
+} = {}) {
+  const bodyBounds = {
+    left: roundMetric(baseX, 2),
+    top: roundMetric(baseY - contentHeightPx, 2),
+    right: roundMetric(baseX + contentWidthPx, 2),
+    bottom: roundMetric(baseY, 2),
+    width: roundMetric(contentWidthPx, 2),
+    height: roundMetric(contentHeightPx, 2),
+  };
+  const roofRise = Math.max(0, Number(roofRisePx || 0));
+  const visualTop = Math.min(bodyBounds.top - roofRise, bodyBounds.top);
+  const visualBottom = Math.max(
+    bodyBounds.bottom,
+    Number(groundBounds?.bottom || bodyBounds.bottom),
+  );
+  const visualLeft = Math.min(
+    bodyBounds.left,
+    Number(groundBounds?.left || bodyBounds.left),
+  );
+  const visualRight = Math.max(
+    bodyBounds.right,
+    Number(groundBounds?.right || bodyBounds.right),
+  );
+  const visualBounds = {
+    left: roundMetric(visualLeft, 2),
+    top: roundMetric(visualTop, 2),
+    right: roundMetric(visualRight, 2),
+    bottom: roundMetric(visualBottom, 2),
+    width: roundMetric(visualRight - visualLeft, 2),
+    height: roundMetric(visualBottom - visualTop, 2),
+  };
+  const drawableArea = Math.max(
+    (width - padding * 2) * (height - padding * 2),
+    1,
+  );
+  const bodyArea = Math.max(bodyBounds.width * bodyBounds.height, 0);
+  const visualArea = Math.max(visualBounds.width * visualBounds.height, 0);
+  const edgeClearancesPx = {
+    left: roundMetric(visualBounds.left, 2),
+    right: roundMetric(width - visualBounds.right, 2),
+    top: roundMetric(visualBounds.top, 2),
+    bottom: roundMetric(height - visualBounds.bottom, 2),
+  };
+  const clipped =
+    Object.values(edgeClearancesPx).some(
+      (value) => value < minEdgeClearancePx,
+    ) ||
+    visualBounds.left < 0 ||
+    visualBounds.right > width ||
+    visualBounds.top < 0 ||
+    visualBounds.bottom > height;
+
+  return {
+    bodyBounds,
+    visualBounds,
+    bodyOccupancyRatio: roundMetric(clamp(bodyArea / drawableArea, 0, 1), 3),
+    visualOccupancyRatio: roundMetric(
+      clamp(visualArea / drawableArea, 0, 1),
+      3,
+    ),
+    edgeClearanceStatus: clipped ? "at_risk" : "clear",
+    edgeClearancesPx,
+    minEdgeClearancePx,
+  };
 }
 
 function getLevelProfiles(geometry = {}) {
@@ -252,7 +396,7 @@ function renderGroundHatch(
   const maxEndY = Math.max(startY, height - 18);
   const bandHeight = Math.max(0, Math.min(140, maxEndY - startY));
   if (bandHeight < 12) {
-    return { markup: "", count: 0 };
+    return { markup: "", count: 0, bounds: null };
   }
   const startX = baseX - margin;
   const bandWidth = widthPx + margin * 2;
@@ -301,6 +445,14 @@ function renderGroundHatch(
       <line id="ground-line" x1="${formatNumber(startX)}" y1="${formatNumber(startY)}" x2="${formatNumber(startX + bandWidth)}" y2="${formatNumber(startY)}" stroke="${SECTION_THEME.line}" stroke-width="1.1"/>
     </g>`,
     count: lines.length,
+    bounds: {
+      left: roundMetric(startX, 2),
+      top: roundMetric(startY, 2),
+      right: roundMetric(startX + bandWidth, 2),
+      bottom: roundMetric(startY + bandHeight, 2),
+      width: roundMetric(bandWidth, 2),
+      height: roundMetric(bandHeight, 2),
+    },
   };
 }
 
@@ -780,7 +932,14 @@ function renderCutRooms(
   baseY = 0,
   scale = 1,
   originM = 0,
+  polish = {},
 ) {
+  const fontScale = polish.fontScale || 1;
+  const strokeScale = polish.strokeScale || 1;
+  const roomStroke = polishSize(1.6, strokeScale);
+  const roomCutStroke = polishSize(2.1, strokeScale);
+  const roomNameFont = Number(polishSize(12, fontScale));
+  const roomAreaFont = Number(polishSize(10, fontScale));
   const markup = cutRooms
     .map((room) => {
       const level =
@@ -798,19 +957,39 @@ function renderCutRooms(
       const y = room.y ?? baseY - level.top_m * scale;
       const heightPx =
         room.height ?? Math.max(24, Number(level.height_m || 3.2) * scale);
-      const name = escapeXml(
-        String(room.name || room.id || "ROOM").toUpperCase(),
+      const rawName = String(room.name || room.id || "ROOM").toUpperCase();
+      const areaText = `${Number(room.actual_area || room.target_area_m2 || 0).toFixed(1)} M2`;
+      const labelWidth = Math.max(28, widthPx - 12);
+      const nameLines = splitRoomLabel(rawName, roomNameFont, labelWidth);
+      const nameFont = fitTextFontSize(
+        nameLines.reduce(
+          (longest, entry) => (entry.length > longest.length ? entry : longest),
+          "",
+        ),
+        labelWidth,
+        roomNameFont,
+        8.2,
       );
+      const areaFont = fitTextFontSize(areaText, labelWidth, roomAreaFont, 7.8);
+      const nameY = y + heightPx / 2 + (nameLines.length > 1 ? -9 : -4);
+      const nameMarkup =
+        nameLines.length > 1
+          ? `<text x="${x + widthPx / 2}" y="${nameY}" font-size="${formatNumber(nameFont, 1)}" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">${nameLines
+              .map(
+                (line, index) =>
+                  `<tspan x="${x + widthPx / 2}" dy="${index === 0 ? 0 : nameFont + 2}">${escapeXml(line)}</tspan>`,
+              )
+              .join("")}</text>`
+          : `<text x="${x + widthPx / 2}" y="${nameY}" font-size="${formatNumber(nameFont, 1)}" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">${escapeXml(rawName)}</text>`;
+      const areaY = y + heightPx / 2 + (nameLines.length > 1 ? 18 : 11);
 
       return `
         <g class="phase8-cut-room">
-          <rect x="${x}" y="${y}" width="${widthPx}" height="${heightPx}" fill="${SECTION_THEME.paper}" stroke="${SECTION_THEME.line}" stroke-width="1.6" />
-          <line x1="${x}" y1="${y + heightPx}" x2="${x + widthPx}" y2="${y + heightPx}" stroke="${SECTION_THEME.line}" stroke-width="2.1" />
-          <line x1="${x}" y1="${y}" x2="${x}" y2="${y + heightPx}" stroke="${SECTION_THEME.line}" stroke-width="2.1" />
-          <text x="${x + widthPx / 2}" y="${y + heightPx / 2 - 4}" font-size="12" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">${name}</text>
-          <text x="${x + widthPx / 2}" y="${y + heightPx / 2 + 11}" font-size="10" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">${escapeXml(
-            `${Number(room.actual_area || room.target_area_m2 || 0).toFixed(1)} M2`,
-          )}</text>
+          <rect x="${x}" y="${y}" width="${widthPx}" height="${heightPx}" fill="${SECTION_THEME.paper}" stroke="${SECTION_THEME.line}" stroke-width="${roomStroke}" />
+          <line x1="${x}" y1="${y + heightPx}" x2="${x + widthPx}" y2="${y + heightPx}" stroke="${SECTION_THEME.line}" stroke-width="${roomCutStroke}" />
+          <line x1="${x}" y1="${y}" x2="${x}" y2="${y + heightPx}" stroke="${SECTION_THEME.line}" stroke-width="${roomCutStroke}" />
+          ${nameMarkup}
+          <text x="${x + widthPx / 2}" y="${areaY}" font-size="${formatNumber(areaFont, 1)}" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">${escapeXml(areaText)}</text>
         </g>
       `;
     })
@@ -1104,7 +1283,11 @@ export function renderSectionSvg(
   const sheetPolish = resolveSectionPolish(sheetMode);
   const showInternalTitleBlock =
     !sheetMode || options.showInternalTitleBlock === true;
-  const padding = sheetMode ? 34 : 86;
+  const requestedPadding = Number(options.padding);
+  const padding =
+    Number.isFinite(requestedPadding) && requestedPadding >= 0
+      ? requestedPadding
+      : sheetPolish.padding;
   const bounds = envelopeBounds.bounds || getEnvelopeDrawingBounds(geometry);
   const horizontalOrigin = getHorizontalOrigin(bounds, sectionType);
   const horizontalExtent =
@@ -1126,9 +1309,11 @@ export function renderSectionSvg(
     sheetMode ? 0.82 : 1.4,
     Number(roofPitchInfoBase.riseM || 0),
   );
+  const groundAllowanceM = sheetMode ? 0.42 : 0;
   const scale = Math.min(
     (width - padding * 2) / Math.max(horizontalExtent, 1),
-    (height - padding * 2) / Math.max(totalHeight + roofAllowanceM, 1),
+    (height - padding * 2) /
+      Math.max(totalHeight + roofAllowanceM + groundAllowanceM, 1),
   );
   const roofPitchInfo = {
     ...roofPitchInfoBase,
@@ -1140,43 +1325,58 @@ export function renderSectionSvg(
   };
   const baseX = (width - horizontalExtent * scale) / 2;
   const sectionHeightPx = totalHeight * scale;
+  const roofAllowancePx = roofAllowanceM * scale;
+  const groundAllowancePx = groundAllowanceM * scale;
+  const roofFitSafetyPx = sheetMode ? 8 : 0;
   const availableHeightPx = Math.max(1, height - padding * 2);
   const centeredBaseY = padding + (availableHeightPx + sectionHeightPx) / 2;
-  const baseY = sheetMode
-    ? Math.min(height - padding, centeredBaseY)
-    : height - padding;
+  const sheetBaseY = clamp(
+    Math.max(
+      centeredBaseY,
+      sheetPolish.minEdgeClearancePx +
+        roofAllowancePx +
+        roofFitSafetyPx +
+        sectionHeightPx,
+    ),
+    padding,
+    height - sheetPolish.minEdgeClearancePx - groundAllowancePx,
+  );
+  const baseY = sheetMode ? sheetBaseY : height - padding;
   const sectionEvidence =
     options.sectionEvidence || buildSectionEvidence(geometry, sectionProfile);
   const sectionTruthModel = sectionEvidence.sectionTruthModel || null;
   const sectionFaceBundle = sectionEvidence.sectionFaceBundle || null;
   const sectionFaceSummary = sectionEvidence.sectionFaceSummary || null;
-  const lineweights = getSectionLineweights({
-    constructionTruthQuality:
-      sectionTruthModel?.overall?.quality ||
-      sectionEvidence.summary?.sectionConstructionTruthQuality ||
-      sectionEvidence.summary?.directEvidenceQuality ||
-      "weak",
-    draftingEvidenceScore:
-      sectionEvidence.summary?.sectionDraftingEvidenceScore || 0,
-    profileComplexityScore:
-      sectionEvidence.summary?.sectionProfileComplexityScore || 0,
-    faceCredibilityScore:
-      sectionFaceBundle?.credibility?.score ||
-      sectionFaceSummary?.credibilityScore ||
-      0,
-    faceCredibilityQuality:
-      sectionFaceBundle?.credibility?.quality ||
-      sectionFaceSummary?.credibilityQuality ||
-      "blocked",
-    cutFaceCount:
-      sectionFaceBundle?.summary?.cutFaceCount ||
-      sectionFaceSummary?.cutFaceCount ||
-      0,
-    cutProfileCount:
-      sectionFaceBundle?.summary?.cutProfileCount ||
-      sectionFaceSummary?.cutProfileCount ||
-      0,
-  });
+  const lineweights = scaleLineweights(
+    getSectionLineweights({
+      constructionTruthQuality:
+        sectionTruthModel?.overall?.quality ||
+        sectionEvidence.summary?.sectionConstructionTruthQuality ||
+        sectionEvidence.summary?.directEvidenceQuality ||
+        "weak",
+      draftingEvidenceScore:
+        sectionEvidence.summary?.sectionDraftingEvidenceScore || 0,
+      profileComplexityScore:
+        sectionEvidence.summary?.sectionProfileComplexityScore || 0,
+      faceCredibilityScore:
+        sectionFaceBundle?.credibility?.score ||
+        sectionFaceSummary?.credibilityScore ||
+        0,
+      faceCredibilityQuality:
+        sectionFaceBundle?.credibility?.quality ||
+        sectionFaceSummary?.credibilityQuality ||
+        "blocked",
+      cutFaceCount:
+        sectionFaceBundle?.summary?.cutFaceCount ||
+        sectionFaceSummary?.cutFaceCount ||
+        0,
+      cutProfileCount:
+        sectionFaceBundle?.summary?.cutProfileCount ||
+        sectionFaceSummary?.cutProfileCount ||
+        0,
+    }),
+    sheetPolish.lineweightScale,
+  );
   const roofTruthQuality = sectionEvidence.summary?.roofTruthQuality || "weak";
   const roofTruthMode = sectionEvidence.summary?.roofTruthMode || "missing";
   const roofTruthState =
@@ -1299,6 +1499,7 @@ export function renderSectionSvg(
     baseY,
     scale,
     horizontalOrigin,
+    sheetPolish,
   );
   const stairMarkup = useDraftingGradeGraphics
     ? buildSectionStairDetailMarkup({
@@ -1391,6 +1592,27 @@ export function renderSectionSvg(
     roofGeometryWithHeightsRisePx,
     roofPitchInfo,
   );
+  const visibleRoofRisePx = Math.max(
+    Number(roofPitchInfo.risePx || 0),
+    Number(roofGeometryWithHeightsRisePx?.heightsRisePx || 0),
+    String(roofLanguage || "")
+      .toLowerCase()
+      .includes("flat")
+      ? 16
+      : 52,
+  );
+  const sectionVisualMetrics = buildSectionVisualMetrics({
+    baseX,
+    baseY,
+    contentWidthPx: horizontalExtent * scale,
+    contentHeightPx: totalHeight * scale,
+    roofRisePx: visibleRoofRisePx,
+    groundBounds: groundHatch.bounds,
+    width,
+    height,
+    padding,
+    minEdgeClearancePx: sheetPolish.minEdgeClearancePx,
+  });
   const evidenceUsefulnessScore = Math.max(
     Number(sectionSemantics?.scores?.usefulness || 0),
     Number(sectionEvidence.summary?.usefulnessScore || 0),
@@ -1452,7 +1674,7 @@ export function renderSectionSvg(
     : "";
 
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-theme="${SECTION_THEME.name}" data-bounds-source="${envelopeBounds.source}">
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-theme="${SECTION_THEME.name}" data-bounds-source="${envelopeBounds.source}" data-a1-quality-polish="${sheetMode ? "section_datums_dimensions_v2" : "section_standard"}" data-section-edge-clearance-status="${sectionVisualMetrics.edgeClearanceStatus}" data-section-body-occupancy="${sectionVisualMetrics.bodyOccupancyRatio}">
   <rect width="${width}" height="${height}" fill="${SECTION_THEME.paper}" />
   ${stairMarkup.defs || ""}
   ${
@@ -1509,10 +1731,12 @@ export function renderSectionSvg(
       stair_count: renderedStairCount,
       room_label_count: options.hideRoomLabels ? 0 : renderedCutRoomCount,
       wall_cut_count: cutWalls.length,
+      section_wall_cut_count: wallMarkup.count,
       slab_line_count: levelProfiles.length,
       level_label_count: levelProfiles.length,
       cut_room_count: renderedCutRoomCount,
       cut_opening_count: cutOpenings.length,
+      section_opening_cut_count: openingMarkup.count,
       foundation_marker_count: 1,
       ground_hatch_band_lines: groundHatch.count,
       ground_hatch_visible: groundHatch.count > 0,
@@ -1542,7 +1766,14 @@ export function renderSectionSvg(
       cut_coordinate_m: cutCoordinate,
       bounds_source: envelopeBounds.source,
       blueprint_theme: SECTION_THEME.name,
-      a1_quality_polish: sheetMode ? "section_datums_dimensions_v1" : null,
+      a1_quality_polish: sheetMode ? "section_datums_dimensions_v2" : null,
+      section_body_occupancy_ratio: sectionVisualMetrics.bodyOccupancyRatio,
+      section_visual_occupancy_ratio: sectionVisualMetrics.visualOccupancyRatio,
+      section_body_bounds: sectionVisualMetrics.bodyBounds,
+      section_visual_bounds: sectionVisualMetrics.visualBounds,
+      section_edge_clearance_status: sectionVisualMetrics.edgeClearanceStatus,
+      section_edge_clearances_px: sectionVisualMetrics.edgeClearancesPx,
+      section_min_edge_clearance_px: sectionVisualMetrics.minEdgeClearancePx,
       slot_occupancy_ratio: slotOccupancyRatio,
       scale_bar_meters: scaleBar.barMeters,
       section_evidence_quality:

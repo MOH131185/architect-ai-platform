@@ -1397,6 +1397,66 @@ export const FEATURE_FLAGS = {
    * @default false
    */
   opusPanelValidator: false,
+
+  /**
+   * Programme adjacency validator (grey-box, paper §4.2).
+   *
+   * When enabled, runs the rule-based programme adjacency validator over the
+   * compiled ProjectGraph and folds its checks into the QA report. Issues stay
+   * warning-only unless `programmeAdjacencyValidatorBlocking` is also true.
+   *
+   * @type {boolean}
+   * @default true
+   */
+  programmeAdjacencyValidator: true,
+
+  /**
+   * Promote programme-adjacency violations from warning to error severity so
+   * they contribute to QA fail status. Off until we trust the rule pack on
+   * production traffic.
+   *
+   * @type {boolean}
+   * @default false
+   */
+  programmeAdjacencyValidatorBlocking: false,
+
+  /**
+   * UK regional vernacular style packs (paper §4.3 transfer-by-curation).
+   *
+   * When enabled, the brief-assembly path resolves the site's lat/lng +
+   * postcode to a regional UK vernacular pack (e.g. London stucco terrace,
+   * Edinburgh tenement) and stamps it onto the local style palette and the
+   * style provenance reasoning text.
+   *
+   * @type {boolean}
+   * @default true
+   */
+  ukVernacularStylePacks: true,
+
+  /**
+   * Dual-scored QA report — quantitative metrics block (paper §4.6).
+   *
+   * When enabled, the QA report carries a `quantitative` block with up to six
+   * computable metrics (programme-area satisfaction, geometry-hash consistency,
+   * adjacency score, south-facing aperture, window-wall ratio, plan compactness).
+   * Additive — does not change pass/fail status.
+   *
+   * @type {boolean}
+   * @default true
+   */
+  dualQaQuantitativeScoring: true,
+
+  /**
+   * Dual-scored QA report — qualitative LLM-rubric block (paper §4.6).
+   *
+   * When enabled, runs a fixed RIBA-rubric LLM evaluator and attaches a
+   * `qualitative` block (5 axes × 0-5 score with rationale). Costs an LLM
+   * call per generation; off by default until validated on production traffic.
+   *
+   * @type {boolean}
+   * @default false
+   */
+  dualQaQualitativeScoring: false,
 };
 
 /**

@@ -439,6 +439,52 @@ describe("projectGraphVerticalSliceService", () => {
     global.fetch = originalFetch;
   });
 
+  test("explicit generation seeds select repeatable high-quality design variants", () => {
+    const scoredOptions = [
+      {
+        option_id: "best",
+        fits_buildable: true,
+        aggregate_score: 0.84,
+      },
+      {
+        option_id: "near-a",
+        fits_buildable: true,
+        aggregate_score: 0.78,
+      },
+      {
+        option_id: "near-b",
+        fits_buildable: true,
+        aggregate_score: 0.74,
+      },
+      {
+        option_id: "weak",
+        fits_buildable: true,
+        aggregate_score: 0.55,
+      },
+    ];
+    const select = (seed) =>
+      __projectGraphVerticalSliceInternals.selectDesignOptionForRun(
+        scoredOptions,
+        {
+          generation_seed: seed,
+          brief_input_hash: "seeded-variant-test",
+        },
+      ).selected.option_id;
+
+    expect(
+      __projectGraphVerticalSliceInternals.selectDesignOptionForRun(
+        scoredOptions,
+        {},
+      ).selected.option_id,
+    ).toBe("best");
+    expect(select(101)).toBe(select(101));
+    const seedSelections = Array.from({ length: 20 }, (_, index) =>
+      select(index + 1),
+    );
+    expect(new Set(seedSelections).size).toBeGreaterThan(1);
+    expect(seedSelections).not.toContain("weak");
+  });
+
   test("builds the brief to QA vertical slice from one ProjectGraph authority", async () => {
     const result = await buildArchitectureProjectVerticalSlice(
       createReadingRoomBrief(),
