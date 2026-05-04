@@ -59,6 +59,7 @@ import {
   summarizeRuleResults,
 } from "../regulation/runRules.js";
 import { buildLocalStylePackV2 } from "../style/localStylePack.js";
+import { resolveUKVernacular } from "../style/ukVernacularPacks.js";
 import { generateRectangularOptions } from "../design/optionGenerator.js";
 import { scoreOption, selectBestOption } from "../design/optionScorer.js";
 import { runWithRepair } from "../design/repairLoop.js";
@@ -3632,6 +3633,18 @@ function buildSiteContext({
     heritage_flags: [],
     planning_policy_refs: [],
     data_quality: dataQuality,
+    // Paper §4.3 transfer-by-curation: resolve a UK regional vernacular pack
+    // (London stucco, Edinburgh tenement, etc.) so localStylePack does not
+    // collapse every UK location to one nationwide dwelling palette. Gated
+    // behind `ukVernacularStylePacks` so it can be turned off cleanly.
+    uk_vernacular_pack: isFeatureEnabled("ukVernacularStylePacks")
+      ? resolveUKVernacular({
+          lat: origin.lat,
+          lng: origin.lng ?? origin.lon,
+          postcode: brief.site_input?.postcode,
+          regionName: brief.site_input?.region || brief.site_input?.country,
+        })
+      : null,
   };
 }
 
