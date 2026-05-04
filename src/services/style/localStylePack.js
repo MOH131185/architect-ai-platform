@@ -354,24 +354,63 @@ export function buildLocalStylePackV2({
     ? brief.user_intent.avoid_keywords
     : [];
   const vernacularPack = site?.uk_vernacular_pack || null;
+  // Phase A (post-PR-92 fix): propagate the full pack payload through
+  // style_provenance — not just the descriptive metadata. The PR #92
+  // elevation renderer, Material Palette pack-prepend, and photoreal
+  // prompt builders all read fields like `parapet_default`, `materials`,
+  // `facade_language`, etc. The earlier shape dropped those, so the W2
+  // elevation kept rendering a generic gable in production even though
+  // the pack resolved correctly. Every consumer must still gate on
+  // `source === "ukVernacularPacks"` (or non-empty packId) to stay safe
+  // against the buildingTypeDefault fallback (Codex P1 review on PR #92).
   const styleProvenance = vernacularPack
     ? {
         ukVernacularPackId: vernacularPack.packId || null,
+        packId: vernacularPack.packId || null,
         packLabel: vernacularPack.label || null,
+        label: vernacularPack.label || null,
         region: vernacularPack.region || null,
         descriptive_narrative: vernacularPack.descriptive_narrative || null,
         historical_period: vernacularPack.historical_period || null,
         resolution_source: vernacularPack.resolution_source || null,
         source: "ukVernacularPacks",
+        materials: Array.isArray(vernacularPack.materials)
+          ? [...vernacularPack.materials]
+          : [],
+        facade_language: vernacularPack.facade_language || null,
+        roof_language: vernacularPack.roof_language || null,
+        window_language: vernacularPack.window_language || null,
+        fenestration_rhythm: vernacularPack.fenestration_rhythm || null,
+        modernity_default: Number.isFinite(
+          Number(vernacularPack.modernity_default),
+        )
+          ? Number(vernacularPack.modernity_default)
+          : null,
+        parapet_default: vernacularPack.parapet_default === true,
+        semi_basement_default: vernacularPack.semi_basement_default === true,
+        layout_archetype: vernacularPack.layout_archetype || null,
+        conservation_typical: vernacularPack.conservation_typical === true,
       }
     : {
         ukVernacularPackId: null,
+        packId: null,
         packLabel: null,
+        label: null,
         region: null,
         descriptive_narrative: null,
         historical_period: null,
         resolution_source: null,
         source: "buildingTypeDefault",
+        materials: [],
+        facade_language: null,
+        roof_language: null,
+        window_language: null,
+        fenestration_rhythm: null,
+        modernity_default: null,
+        parapet_default: false,
+        semi_basement_default: false,
+        layout_archetype: null,
+        conservation_typical: false,
       };
   return {
     style_pack_id: createStableId

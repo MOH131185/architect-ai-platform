@@ -6555,10 +6555,28 @@ export function buildProjectGraphRenderPrompt({
         vernacularLines.push(`- Materials: ${packMaterials.join(", ")}`);
       if (parapet)
         vernacularLines.push("- Roofline: parapet concealing the roof.");
-      if (semiBasement)
-        vernacularLines.push(
-          "- Semi-basement with cast-iron front-area railings and York stone front steps where appropriate.",
-        );
+      if (semiBasement) {
+        // Phase B floor-count clamp — when the brief asks for ≤2 above-grade
+        // storeys but the pack implies a semi-basement, the LLM was rendering
+        // 3 visible storeys (basement + ground + first) and breaking parity
+        // with the deterministic 2D drawings (which only have target_storeys
+        // levels). Lock the storey count explicitly when the brief is in
+        // that band.
+        const targetStoreys = Number(brief?.target_storeys || 0);
+        if (
+          Number.isFinite(targetStoreys) &&
+          targetStoreys > 0 &&
+          targetStoreys <= 2
+        ) {
+          vernacularLines.push(
+            `- Semi-basement: render as a STYLISTIC PLINTH at street level only — cast-iron front-area railings and York stone front steps are visible at the pavement, but the building has EXACTLY ${targetStoreys} above-grade storeys total. Do NOT add a third habitable floor or a basement window band that reads as a separate storey.`,
+          );
+        } else {
+          vernacularLines.push(
+            "- Semi-basement with cast-iron front-area railings and York stone front steps where appropriate.",
+          );
+        }
+      }
     }
   }
   const vernacularBlock = vernacularLines.length

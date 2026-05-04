@@ -51,6 +51,7 @@ const PACKS = Object.freeze({
     modernity_default: 0.3,
     parapet_default: true,
     semi_basement_default: true,
+    layout_archetype: "linear_side_hall",
     descriptive_narrative:
       "Early-19th-century Regency / Italianate stucco terrace typical of Notting Hill, Belgravia, and Bayswater — white painted stucco upper floors over a rusticated yellow-brick or stucco base, a parapet concealing a slate roof, tall sash windows reducing in height with each storey, cast-iron front-area railings, and York stone front steps over a semi-basement.",
     historical_period: "Regency and early Victorian (c. 1820–1860)",
@@ -82,6 +83,7 @@ const PACKS = Object.freeze({
     modernity_default: 0.32,
     parapet_default: false,
     semi_basement_default: false,
+    layout_archetype: "linear_side_hall",
     descriptive_narrative:
       "Mid-to-late Victorian terraced house typical of inner and outer London — yellow London stock brick walls with red-brick dressings around openings, slate roofs visible from the street, painted-timber double-hung sash windows, a ground-floor canted or square bay window, and a tessellated tile entrance path. Privately speculative housing built en masse 1860–1900.",
     historical_period: "Victorian (1837–1901)",
@@ -112,6 +114,7 @@ const PACKS = Object.freeze({
     modernity_default: 0.3,
     parapet_default: false,
     semi_basement_default: false,
+    layout_archetype: "narrow_two_up_two_down",
     descriptive_narrative:
       "Worker housing of the 19th-century industrial north — narrow-frontage two-storey terraces in red engineering brick with blue Welsh slate roofs, plain stone sills and lintels, no front garden (door opens directly onto the pavement), and shared rear yards or alleys (ginnels). Many surviving examples are listed conservation-area stock; modern interventions favour respectful infill.",
     historical_period: "Mid-late Victorian to Edwardian (1840–1910)",
@@ -142,6 +145,7 @@ const PACKS = Object.freeze({
     modernity_default: 0.28,
     parapet_default: false,
     semi_basement_default: true,
+    layout_archetype: "tenement_common_stair",
     descriptive_narrative:
       "Four-to-five-storey-plus-attic Edinburgh tenement — Craigleith or Hailes sandstone ashlar elevation, natural Scotch slate roof, tall painted-timber sash-and-case windows with twelve or six panes diminishing in height per floor, a common (shared) stair entered from the street, and basement flats below pavement level reached via a sunken area. The dominant Georgian-to-Edwardian housing form of the New Town and the late-Victorian colonies.",
     historical_period: "Georgian to Edwardian (1770–1910)",
@@ -173,6 +177,7 @@ const PACKS = Object.freeze({
     modernity_default: 0.22,
     parapet_default: false,
     semi_basement_default: false,
+    layout_archetype: "central_stair_square",
     descriptive_narrative:
       "Vernacular Cotswolds cottage — coursed-rubble or rough-ashlar oolitic limestone walls in a honey-yellow tone, very steep-pitched roofs of locally quarried Cotswold stone slates that diminish in size up the slope, oak-framed leaded-light casement windows under stone mullions, gables with kneelers, and stone copings. Generally listed or in conservation areas; new build in this region must justify deviation from the local character.",
     historical_period: "17th–19th century vernacular (continuous tradition)",
@@ -194,6 +199,7 @@ const PACKS = Object.freeze({
     modernity_default: 0.5,
     parapet_default: false,
     semi_basement_default: false,
+    layout_archetype: null,
     descriptive_narrative:
       "Default UK contextual masonry pack used when no regional vernacular has been resolved. Favours weather-resistant masonry envelopes, moderate roof pitches, and contextual street rhythm without committing to a specific regional language.",
     historical_period: null,

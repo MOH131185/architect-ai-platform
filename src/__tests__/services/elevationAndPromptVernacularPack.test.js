@@ -164,6 +164,68 @@ describe("renderElevationSvg — pack-driven hints", () => {
     );
   });
 
+  // Phase A regression: when buildLocalStylePackV2 propagates the FULL
+  // provenance shape (post-Phase-A), the elevation renderer reading
+  // localStyle.style_provenance must see parapet_default + semi_basement_default
+  // + materials and emit the corresponding pack hints. PR #92 unit tests passed
+  // with a full-pack fixture but production stripped these fields between
+  // localStylePack and renderElevationSvg, leaving W2 elevations with the
+  // generic gable. This test feeds the renderer the ACTUAL propagated shape
+  // (mirrors what buildLocalStylePackV2 emits) and asserts the parapet override
+  // fires end-to-end.
+  test("propagated style_provenance shape (post-Phase-A) drives parapet override on elevation SVG", () => {
+    const propagatedProvenance = {
+      ukVernacularPackId: "london-stucco-terrace",
+      packId: "london-stucco-terrace",
+      packLabel: "London stucco terrace",
+      label: "London stucco terrace",
+      region: "London — Westminster / Kensington / Chelsea / Notting Hill",
+      descriptive_narrative:
+        "Early-19th-century Regency / Italianate stucco terrace …",
+      historical_period: "Regency and early Victorian (c. 1820–1860)",
+      resolution_source: "postcode",
+      source: "ukVernacularPacks",
+      materials: [
+        "white stucco render",
+        "yellow London stock brick base",
+        "natural slate roof",
+      ],
+      facade_language:
+        "stucco-fronted with rusticated ground floor and parapet",
+      roof_language: "concealed-behind-parapet pitched slate",
+      window_language:
+        "tall sash windows, vertically proportioned, diminishing per floor",
+      fenestration_rhythm: "regular bay rhythm",
+      modernity_default: 0.3,
+      parapet_default: true,
+      semi_basement_default: true,
+      layout_archetype: "linear_side_hall",
+      conservation_typical: true,
+    };
+    const result = renderElevationSvg(
+      makeFixtureGeometry(),
+      {},
+      {
+        orientation: "south",
+        vernacularPack: propagatedProvenance,
+        allowWeakFacadeFallback: true,
+      },
+    );
+    expect(result.svg).toBeTruthy();
+    expect(result.svg).toContain(
+      'data-vernacular-pack="london-stucco-terrace"',
+    );
+    expect(result.svg).toContain('data-pack-parapet="true"');
+    expect(result.svg).toContain('data-pack-semi-basement="true"');
+    expect(result.svg).toContain('data-pack-facade-stucco="true"');
+    expect(result.technical_quality_metadata.vernacular_pack_parapet).toBe(
+      true,
+    );
+    expect(
+      result.technical_quality_metadata.vernacular_pack_semi_basement,
+    ).toBe(true);
+  });
+
   // Codex P1 regression: localStylePack.buildLocalStylePackV2 always emits a
   // style_provenance object — when no UK pack resolves the source field is
   // "buildingTypeDefault" with every other field null. A naive truthiness
@@ -284,6 +346,66 @@ describe("buildHero3DPrompt + buildExteriorRenderPrompt — pack injection", () 
     // The existing baseline prompt structure is preserved.
     expect(prompt).toContain("Front-elevation hero render");
     expect(prompt).toContain("Photoreal architectural front-elevation render");
+  });
+
+  // Phase B floor-count clamp — when a pack implies a semi-basement and
+  // the brief asks for ≤2 above-grade storeys, the LLM must be told the
+  // basement is a stylistic plinth only, not a third habitable storey.
+  // This was the root cause of the 3D-vs-2D floor-count mismatch the user
+  // observed on the post-PR-92 W2 generation (axonometric / exterior
+  // perspective showed 3 floors, plans/sections showed 2).
+  test("buildHero3DPrompt clamps floor count to brief when pack.semi_basement_default && floors=2", () => {
+    const pack = resolveUKVernacular({ postcode: "W2 5SH" });
+    const dnaTwoFloors = {
+      ...masterDNA,
+      dimensions: { length_m: 8, width_m: 6, height_m: 6, floor_count: 2 },
+    };
+    const { prompt } = buildHero3DPrompt({
+      masterDNA: dnaTwoFloors,
+      locationData,
+      projectContext,
+      vernacularPack: pack,
+    });
+    expect(prompt).toMatch(/STYLISTIC PLINTH at street level only/);
+    expect(prompt).toMatch(/EXACTLY 2 above-grade storeys/);
+    expect(prompt).toMatch(/Do NOT add a third habitable floor/);
+  });
+
+  test("buildExteriorRenderPrompt does NOT emit the clamp when target storeys >= 3 (clamp scope)", () => {
+    const pack = resolveUKVernacular({ postcode: "EH8 9YL" });
+    const dnaFourFloors = {
+      ...masterDNA,
+      dimensions: { length_m: 8, width_m: 6, height_m: 12, floor_count: 4 },
+    };
+    const { prompt } = buildExteriorRenderPrompt({
+      masterDNA: dnaFourFloors,
+      locationData,
+      projectContext,
+      vernacularPack: pack,
+    });
+    // Edinburgh tenement is multi-storey; keep the original semi-basement
+    // language without the EXACTLY-N clamp.
+    expect(prompt).not.toMatch(/STYLISTIC PLINTH/);
+    expect(prompt).not.toMatch(/Do NOT add a third habitable floor/);
+    expect(prompt).toMatch(/Semi-basement.*cast-iron/);
+  });
+
+  test("buildExteriorRenderPrompt skips the clamp when the pack has no semi-basement", () => {
+    const pack = resolveUKVernacular({ postcode: "M14 5SH" });
+    const dnaTwoFloors = {
+      ...masterDNA,
+      dimensions: { length_m: 8, width_m: 6, height_m: 6, floor_count: 2 },
+    };
+    const { prompt } = buildExteriorRenderPrompt({
+      masterDNA: dnaTwoFloors,
+      locationData,
+      projectContext,
+      vernacularPack: pack,
+    });
+    // Manchester back-to-back has semi_basement_default = false → no
+    // semi-basement line should appear at all.
+    expect(prompt).not.toMatch(/STYLISTIC PLINTH/);
+    expect(prompt).not.toMatch(/Semi-basement/);
   });
 
   // Codex P1 regression: the buildingTypeDefault fallback object from
