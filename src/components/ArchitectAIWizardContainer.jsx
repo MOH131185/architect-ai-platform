@@ -28,6 +28,7 @@ import {
   buildEntranceDetectionUnavailableResult,
   buildMainEntryForWizard,
   normalizeMainEntryDirectionCode,
+  resolveEntranceSitePolygonForWizard,
 } from "../utils/mainEntryWizard.js";
 import { locationIntelligence } from "../services/locationIntelligence.js";
 import siteAnalysisService from "../services/siteAnalysisService.js";
@@ -1824,13 +1825,22 @@ const ArchitectAIWizardContainer = () => {
       const ignoreManualOverride =
         autoDetectOptions.ignoreManualOverride !== false;
 
-      if (!sitePolygon || sitePolygon.length < 3) {
+      const entranceSitePolygonResolution = resolveEntranceSitePolygonForWizard(
+        {
+          sitePolygon,
+          locationData,
+        },
+      );
+      const entranceSitePolygon = entranceSitePolygonResolution.sitePolygon;
+
+      if (!entranceSitePolygon || entranceSitePolygon.length < 3) {
         const unavailableResult = buildEntranceDetectionUnavailableResult({
           polygonLength: sitePolygon?.length || 0,
         });
         setAutoDetectResult(unavailableResult);
         logger.info("[Entrance] auto-detect skipped — site polygon not ready", {
           polygonLength: sitePolygon?.length || 0,
+          entrancePolygonSource: entranceSitePolygonResolution.source,
           resultCode: unavailableResult.code,
         });
         return;
@@ -1838,7 +1848,10 @@ const ArchitectAIWizardContainer = () => {
 
       setIsDetectingEntrance(true);
       logger.info("[Entrance] auto-detect starting", {
-        polygonLength: sitePolygon.length,
+        polygonLength: entranceSitePolygon.length,
+        polygonSource: entranceSitePolygonResolution.source,
+        boundaryAuthoritative:
+          entranceSitePolygonResolution.boundaryAuthoritative === true,
         hasSunPath: Boolean(locationData?.sunPath),
         centroid: siteMetrics?.centroid || locationData?.coordinates || null,
         ignoreManualOverride,
@@ -1882,16 +1895,28 @@ const ArchitectAIWizardContainer = () => {
 
         const result = buildMainEntryForWizard({
           projectDetails,
-          sitePolygon,
+          sitePolygon: entranceSitePolygon,
           roadSegments,
           sunPath: locationData?.sunPath,
           ignoreManualOverride,
         });
+        if (entranceSitePolygonResolution.warning) {
+          result.warnings = Array.from(
+            new Set([
+              ...(Array.isArray(result.warnings) ? result.warnings : []),
+              entranceSitePolygonResolution.warning,
+            ]),
+          );
+          result.boundaryAuthoritative =
+            entranceSitePolygonResolution.boundaryAuthoritative === true;
+          result.entrancePolygonSource = entranceSitePolygonResolution.source;
+        }
 
         logger.info("[Entrance] resolveMainEntryDirection returned", {
           orientation: result?.orientation,
           bearingDeg: result?.bearingDeg,
           source: result?.source,
+          polygonSource: entranceSitePolygonResolution.source,
           confidence: result?.confidence,
           rationale: result?.rationale?.[0]?.message || null,
           roadSegmentsUsed: roadLookupOk

@@ -1,4 +1,5 @@
 import { resolveMainEntryDirection } from "../services/site/mainEntryDirectionService.js";
+import { selectContextualBoundaryPolygon } from "../services/siteBoundaryAutoDetectPolicy.js";
 
 const FULL_DIRECTION_TO_SHORT = Object.freeze({
   north: "N",
@@ -37,6 +38,84 @@ const hasManualEntranceDirection = (projectDetails = {}) =>
   (projectDetails.entranceAutoDetected === false &&
     Boolean(projectDetails.entranceDirection) &&
     !["", "N"].includes(String(projectDetails.entranceDirection)));
+
+const toFiniteCoordinate = (value) => {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+};
+
+const normalizeLatLngPoint = (point) => {
+  if (!point || typeof point !== "object") return null;
+  const lat = toFiniteCoordinate(point.lat);
+  const lng = toFiniteCoordinate(point.lng ?? point.lon);
+  if (lat === null || lng === null) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  return { lat, lng };
+};
+
+const normalizeLatLngPolygon = (polygon = []) => {
+  if (!Array.isArray(polygon)) return [];
+  const normalized = polygon.map(normalizeLatLngPoint).filter(Boolean);
+  return normalized.length >= 3 ? normalized : [];
+};
+
+export const resolveEntranceSitePolygonForWizard = ({
+  sitePolygon = [],
+  locationData = null,
+} = {}) => {
+  const authoritativeSitePolygon = normalizeLatLngPolygon(sitePolygon);
+  if (authoritativeSitePolygon.length >= 3) {
+    return {
+      sitePolygon: authoritativeSitePolygon,
+      source: "site_polygon",
+      boundaryAuthoritative: true,
+      warning: null,
+    };
+  }
+
+  const authoritativeCandidates = [
+    locationData?.siteBoundary,
+    locationData?.polygon,
+    locationData?.siteAnalysis?.authoritativeSiteBoundary,
+    locationData?.siteAnalysis?.siteBoundary,
+    locationData?.metadata?.siteBoundary,
+  ];
+  const authoritativeFallback = authoritativeCandidates
+    .map(normalizeLatLngPolygon)
+    .find((candidate) => candidate.length >= 3);
+  const boundaryAuthoritative =
+    locationData?.boundaryAuthoritative === true ||
+    locationData?.siteAnalysis?.boundaryAuthoritative === true ||
+    locationData?.metadata?.boundaryAuthoritative === true;
+  if (authoritativeFallback?.length >= 3 && boundaryAuthoritative) {
+    return {
+      sitePolygon: authoritativeFallback,
+      source: "location_authoritative_boundary",
+      boundaryAuthoritative: true,
+      warning: null,
+    };
+  }
+
+  const contextualBoundary = normalizeLatLngPolygon(
+    selectContextualBoundaryPolygon(locationData),
+  );
+  if (contextualBoundary.length >= 3) {
+    return {
+      sitePolygon: contextualBoundary,
+      source: "contextual_estimated_boundary",
+      boundaryAuthoritative: false,
+      warning:
+        "Entrance auto-detect used an estimated site boundary; verify the parcel boundary before treating frontage as final.",
+    };
+  }
+
+  return {
+    sitePolygon: [],
+    source: "unavailable",
+    boundaryAuthoritative: false,
+    warning: null,
+  };
+};
 
 export const buildEntranceDetectionUnavailableResult = ({
   polygonLength = 0,

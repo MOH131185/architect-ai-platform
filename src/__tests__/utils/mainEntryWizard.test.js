@@ -1,6 +1,7 @@
 import {
   buildEntranceDetectionUnavailableResult,
   buildMainEntryForWizard,
+  resolveEntranceSitePolygonForWizard,
 } from "../../utils/mainEntryWizard.js";
 
 const SQUARE_SITE = [
@@ -70,5 +71,42 @@ describe("mainEntryWizard.buildEntranceDetectionUnavailableResult", () => {
     expect(result.detectionUnavailable).toBe(true);
     expect(result.rationale[0].strategy).toBe("site_polygon_required");
     expect(result.polygonLength).toBe(2);
+  });
+});
+
+describe("mainEntryWizard.resolveEntranceSitePolygonForWizard", () => {
+  test("uses contextual estimated boundary when authoritative sitePolygon is empty", () => {
+    const result = resolveEntranceSitePolygonForWizard({
+      sitePolygon: [],
+      locationData: {
+        boundaryAuthoritative: false,
+        boundaryEstimated: true,
+        boundaryConfidence: 0.4,
+        contextualSiteBoundary: SQUARE_SITE,
+      },
+    });
+
+    expect(result.sitePolygon).toEqual(SQUARE_SITE);
+    expect(result.source).toBe("contextual_estimated_boundary");
+    expect(result.boundaryAuthoritative).toBe(false);
+    expect(result.warning).toMatch(/estimated site boundary/i);
+  });
+
+  test("prefers the authoritative wizard sitePolygon when it exists", () => {
+    const result = resolveEntranceSitePolygonForWizard({
+      sitePolygon: SQUARE_SITE,
+      locationData: {
+        boundaryAuthoritative: false,
+        contextualSiteBoundary: [
+          { lat: 1, lng: 1 },
+          { lat: 1, lng: 2 },
+          { lat: 2, lng: 2 },
+        ],
+      },
+    });
+
+    expect(result.sitePolygon).toEqual(SQUARE_SITE);
+    expect(result.source).toBe("site_polygon");
+    expect(result.boundaryAuthoritative).toBe(true);
   });
 });
