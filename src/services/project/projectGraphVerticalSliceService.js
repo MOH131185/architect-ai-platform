@@ -6550,38 +6550,75 @@ export function buildProjectGraphRenderPrompt({
       : [];
     const parapet = provenance.parapet_default === true;
     const semiBasement = provenance.semi_basement_default === true;
+    // Phase D1 — when the brief asks for ≤2 above-grade storeys, scrub
+    // semi-basement language out of the descriptive narrative + facade
+    // language and replace the dedicated semi-basement bullet with a
+    // pavement-grade plinth statement. Negative clamps ("DO NOT add a third
+    // floor") didn't work in production — the LLM still rendered the
+    // basement because the narrative talked about it. Positive language
+    // ("EXACTLY 2 storeys, plinth at pavement only") works.
+    const targetStoreys = Number(brief?.target_storeys || 0);
+    const stripBasement =
+      semiBasement &&
+      Number.isFinite(targetStoreys) &&
+      targetStoreys > 0 &&
+      targetStoreys <= 2;
+    const sanitizeBasementText = (text) => {
+      if (!text || !stripBasement) return text;
+      return String(text)
+        .replace(
+          /\s*(?:and|with)?\s*(?:cast[-\s]?iron[^.,;]+|york\s*stone[^.,;]+|semi[-\s]?basement[^.,;]+)\s*[,.;]/gi,
+          ".",
+        )
+        .replace(/\s+over\s+a\s+semi[-\s]?basement[^.,;]*/gi, "")
+        .replace(/,\s*\./g, ".")
+        .replace(/\.\s*\./g, ".")
+        .replace(/\s+/g, " ")
+        .trim();
+    };
     if (packLabel || narrative || facadeLanguage || packMaterials.length) {
+      // Hard storey-count line up front. Positive constraint wins over
+      // negative clamps for LLM compliance.
+      if (Number.isFinite(targetStoreys) && targetStoreys > 0) {
+        vernacularLines.push(
+          `BUILDING STOREYS: EXACTLY ${targetStoreys} above-grade storey${targetStoreys === 1 ? "" : "s"}.${
+            stripBasement
+              ? " No semi-basement, no basement window band, no additional habitable floor below ground level."
+              : ""
+          }`,
+        );
+      }
       vernacularLines.push("REGIONAL VERNACULAR (UK pack):");
       if (packLabel)
         vernacularLines.push(
           `- Pack: ${packLabel}${period ? ` (${period})` : ""}`,
         );
-      if (narrative) vernacularLines.push(`- Narrative: ${narrative}`);
-      if (facadeLanguage)
-        vernacularLines.push(`- Facade language: ${facadeLanguage}`);
+      if (narrative) {
+        const cleaned = sanitizeBasementText(narrative);
+        if (cleaned) vernacularLines.push(`- Narrative: ${cleaned}`);
+      }
+      if (facadeLanguage) {
+        const cleaned = sanitizeBasementText(facadeLanguage);
+        if (cleaned) vernacularLines.push(`- Facade language: ${cleaned}`);
+      }
       if (roofLanguage)
         vernacularLines.push(`- Roof language: ${roofLanguage}`);
       if (windowLanguage)
         vernacularLines.push(`- Window language: ${windowLanguage}`);
-      if (packMaterials.length)
-        vernacularLines.push(`- Materials: ${packMaterials.join(", ")}`);
+      if (packMaterials.length) {
+        const filtered = stripBasement
+          ? packMaterials.filter((m) => !/railing/i.test(String(m)))
+          : packMaterials;
+        if (filtered.length) {
+          vernacularLines.push(`- Materials: ${filtered.join(", ")}`);
+        }
+      }
       if (parapet)
         vernacularLines.push("- Roofline: parapet concealing the roof.");
       if (semiBasement) {
-        // Phase B floor-count clamp — when the brief asks for ≤2 above-grade
-        // storeys but the pack implies a semi-basement, the LLM was rendering
-        // 3 visible storeys (basement + ground + first) and breaking parity
-        // with the deterministic 2D drawings (which only have target_storeys
-        // levels). Lock the storey count explicitly when the brief is in
-        // that band.
-        const targetStoreys = Number(brief?.target_storeys || 0);
-        if (
-          Number.isFinite(targetStoreys) &&
-          targetStoreys > 0 &&
-          targetStoreys <= 2
-        ) {
+        if (stripBasement) {
           vernacularLines.push(
-            `- Semi-basement: render as a STYLISTIC PLINTH at street level only — cast-iron front-area railings and York stone front steps are visible at the pavement, but the building has EXACTLY ${targetStoreys} above-grade storeys total. Do NOT add a third habitable floor or a basement window band that reads as a separate storey.`,
+            "- Plinth at pavement level only (stucco / render to ground), NO semi-basement, NO front-area railings, NO basement window band. Entrance is at pavement grade.",
           );
         } else {
           vernacularLines.push(
