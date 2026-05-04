@@ -29,7 +29,7 @@ function buildableSite(width, height) {
 }
 
 describe("optionGenerator", () => {
-  test("produces 4 candidate options with required keys", () => {
+  test("produces 4 candidate options with required keys when no archetype is supplied", () => {
     const options = generateRectangularOptions({
       brief: {
         building_type: "community",
@@ -78,6 +78,126 @@ describe("optionGenerator", () => {
     const longAxes = options.map((o) => o.long_axis);
     expect(longAxes).toContain("ew");
     expect(longAxes).toContain("ns");
+  });
+
+  // Phase C — UK regional vernacular layout archetypes. The slice passes
+  // localStyle.style_provenance.layout_archetype through to the option
+  // generator so a London terrace pack produces narrow-deep candidates,
+  // a Cotswolds cottage pack produces near-square candidates, etc. Pack-off
+  // / non-UK runs see the original 4-option set unchanged.
+  test("linear_side_hall archetype prepends narrow-deep terrace candidates", () => {
+    const options = generateRectangularOptions({
+      brief: {
+        building_type: "dwelling",
+        target_storeys: 2,
+        target_gia_m2: 150,
+      },
+      site: buildableSite(40, 40),
+      levelAreas: [75, 75],
+      archetype: "linear_side_hall",
+    });
+    expect(options.length).toBe(6); // 2 archetype + 4 default
+    const archetypeIds = options.slice(0, 2).map((o) => o.option_id);
+    expect(archetypeIds).toContain("option-archetype-terrace-narrow-deep");
+    expect(archetypeIds).toContain("option-archetype-terrace-medium");
+    // Aspect < 1 means deeper than wide, the canonical terrace shape.
+    expect(options[0].aspect).toBeLessThan(1);
+    expect(options[0].aspect).toBeLessThanOrEqual(0.5);
+    // Long axis runs front-to-back (north-south = perpendicular to the
+    // street).
+    expect(options[0].long_axis).toBe("ns");
+    expect(options[0].typology).toMatch(/linear_side_hall/);
+  });
+
+  test("central_stair_square archetype prepends near-square cottage candidate", () => {
+    const options = generateRectangularOptions({
+      brief: {
+        building_type: "dwelling",
+        target_storeys: 2,
+        target_gia_m2: 120,
+      },
+      site: buildableSite(40, 40),
+      levelAreas: [60, 60],
+      archetype: "central_stair_square",
+    });
+    expect(options.length).toBe(5);
+    expect(options[0].option_id).toBe("option-archetype-cottage-square");
+    expect(options[0].aspect).toBeGreaterThanOrEqual(0.95);
+    expect(options[0].aspect).toBeLessThan(1.2);
+    expect(options[0].typology).toBe("central_stair_square");
+  });
+
+  test("tenement_common_stair archetype prepends one Edinburgh tenement candidate", () => {
+    const options = generateRectangularOptions({
+      brief: {
+        building_type: "dwelling",
+        target_storeys: 2,
+        target_gia_m2: 150,
+      },
+      site: buildableSite(40, 40),
+      levelAreas: [75, 75],
+      archetype: "tenement_common_stair",
+    });
+    expect(options.length).toBe(5);
+    expect(options[0].option_id).toBe("option-archetype-tenement");
+    expect(options[0].typology).toBe("tenement_common_stair");
+  });
+
+  test("narrow_two_up_two_down archetype prepends Manchester back-to-back candidate", () => {
+    const options = generateRectangularOptions({
+      brief: {
+        building_type: "dwelling",
+        target_storeys: 2,
+        target_gia_m2: 110,
+      },
+      site: buildableSite(40, 40),
+      levelAreas: [55, 55],
+      archetype: "narrow_two_up_two_down",
+    });
+    expect(options.length).toBe(5);
+    expect(options[0].option_id).toBe("option-archetype-back-to-back");
+    expect(options[0].aspect).toBeLessThan(1);
+  });
+
+  test("unknown / null archetype produces the original 4-option set unchanged", () => {
+    const baseline = generateRectangularOptions({
+      brief: {
+        building_type: "dwelling",
+        target_storeys: 2,
+        target_gia_m2: 150,
+      },
+      site: buildableSite(40, 40),
+      levelAreas: [75, 75],
+    });
+    const withNull = generateRectangularOptions({
+      brief: {
+        building_type: "dwelling",
+        target_storeys: 2,
+        target_gia_m2: 150,
+      },
+      site: buildableSite(40, 40),
+      levelAreas: [75, 75],
+      archetype: null,
+    });
+    const withUnknown = generateRectangularOptions({
+      brief: {
+        building_type: "dwelling",
+        target_storeys: 2,
+        target_gia_m2: 150,
+      },
+      site: buildableSite(40, 40),
+      levelAreas: [75, 75],
+      archetype: "no-such-archetype",
+    });
+    expect(baseline.length).toBe(4);
+    expect(withNull.length).toBe(4);
+    expect(withUnknown.length).toBe(4);
+    expect(withNull.map((o) => o.option_id)).toEqual(
+      baseline.map((o) => o.option_id),
+    );
+    expect(withUnknown.map((o) => o.option_id)).toEqual(
+      baseline.map((o) => o.option_id),
+    );
   });
 });
 

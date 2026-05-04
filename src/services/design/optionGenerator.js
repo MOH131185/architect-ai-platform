@@ -79,8 +79,84 @@ function makeOption({
 }
 
 /**
+ * Phase C — UK regional vernacular layout archetypes (paper §4.3).
+ *
+ * Each archetype declares an aspect preference + long-axis orientation that
+ * the option generator can emit alongside the default candidates. The
+ * archetype is read from `localStyle.style_provenance.layout_archetype`
+ * (propagated from `vernacularPack.layout_archetype` by Phase A). When the
+ * archetype is null / unknown, behaviour falls back to the existing 4-option
+ * set so non-UK and flag-off runs are unchanged.
+ *
+ * `aspect` is `width / depth`, so values < 1 mean the plot is deeper than
+ * wide (the long axis is street-to-back) — the canonical London terrace
+ * shape. Values > 1 mean wide-and-shallow.
+ *
+ * @private
+ */
+const ARCHETYPE_OPTION_SPECS = Object.freeze({
+  // London stucco terrace + Victorian terrace — narrow front, deep plot,
+  // long axis runs front-to-back (perpendicular to the street).
+  linear_side_hall: [
+    {
+      optionId: "option-archetype-terrace-narrow-deep",
+      label: "Terrace — narrow front, deep plot (side hall)",
+      typology: "linear_side_hall_narrow",
+      aspect: 0.42,
+      longAxis: "ns",
+    },
+    {
+      optionId: "option-archetype-terrace-medium",
+      label: "Terrace — medium front-to-back (side hall)",
+      typology: "linear_side_hall_medium",
+      aspect: 0.55,
+      longAxis: "ns",
+    },
+  ],
+  // Manchester back-to-back — narrow frontage, two-up two-down, slightly
+  // less deep than London terrace because the back is shared with the next
+  // dwelling.
+  narrow_two_up_two_down: [
+    {
+      optionId: "option-archetype-back-to-back",
+      label: "Back-to-back — narrow frontage two-up two-down",
+      typology: "narrow_two_up_two_down",
+      aspect: 0.55,
+      longAxis: "ns",
+    },
+  ],
+  // Edinburgh tenement — square or slightly deep plan with a common stair
+  // off a single shared entrance.
+  tenement_common_stair: [
+    {
+      optionId: "option-archetype-tenement",
+      label: "Tenement — common-stair plan",
+      typology: "tenement_common_stair",
+      aspect: 0.85,
+      longAxis: "ns",
+    },
+  ],
+  // Cotswolds cottage — near-square plan, central stair, rooms around the
+  // stair core.
+  central_stair_square: [
+    {
+      optionId: "option-archetype-cottage-square",
+      label: "Cottage — near-square central-stair plan",
+      typology: "central_stair_square",
+      aspect: 1.05,
+      longAxis: "ew",
+    },
+  ],
+});
+
+/**
  * Generate ≥3 rectangular design options with different aspect/orientation.
  * Returns an array of OptionSpec; pass to optionScorer.scoreOption.
+ *
+ * When `localStyle.style_provenance.layout_archetype` resolves a UK regional
+ * archetype, the generator prepends archetype-specific candidates ahead of
+ * the default 4 so the scorer / selector picks one of them when it fits the
+ * site. Pack-off runs are unchanged.
  *
  * @returns {Array<object>}
  */
@@ -88,6 +164,7 @@ export function generateRectangularOptions({
   brief,
   site,
   levelAreas = [],
+  archetype = null,
 } = {}) {
   if (!brief || !site) {
     throw new Error("generateRectangularOptions requires {brief, site}");
@@ -105,7 +182,31 @@ export function generateRectangularOptions({
   // Default aspect from brief building type, used as the reference option.
   const defaultAspect = brief.building_type === "community" ? 1.45 : 1.25;
 
+  const archetypeKey =
+    typeof archetype === "string" && archetype.trim().length > 0
+      ? archetype.trim()
+      : null;
+  const archetypeSpecs = archetypeKey
+    ? ARCHETYPE_OPTION_SPECS[archetypeKey] || []
+    : [];
+  const archetypeOptions = archetypeSpecs.map((spec) =>
+    makeOption({
+      optionId: spec.optionId,
+      label: spec.label,
+      typology: spec.typology,
+      aspect: spec.aspect,
+      longAxis: spec.longAxis,
+      footprintArea,
+      buildableBbox,
+    }),
+  );
+
   return [
+    // Archetype-specific candidates lead so the scorer can promote them
+    // when they fit the buildable polygon. Falls through to the default
+    // four if no archetype is supplied or the buildable polygon rejects
+    // them.
+    ...archetypeOptions,
     makeOption({
       optionId: "option-bar-ew",
       label: "Bar — long axis east-west",
@@ -144,5 +245,9 @@ export function generateRectangularOptions({
     }),
   ];
 }
+
+export const __optionGeneratorTesting = Object.freeze({
+  ARCHETYPE_OPTION_SPECS,
+});
 
 export default { generateRectangularOptions };

@@ -4628,10 +4628,22 @@ function buildProjectGeometryFromProgramme({
   );
   // Plan §6.7: generate ≥3 typological options, score each, and use the
   // highest-scoring footprint that fits the buildable polygon.
+  // Phase C — when the resolved UK vernacular pack declares a
+  // `layout_archetype` (linear_side_hall for London terraces,
+  // tenement_common_stair for Edinburgh, central_stair_square for
+  // Cotswolds, narrow_two_up_two_down for Manchester), prepend
+  // archetype-specific candidates so the scorer can promote a
+  // narrow-deep terrace plan over the default wide-and-shallow bar.
+  // Pack-off / non-UK runs see the original 4-option set unchanged.
+  const archetypeKey =
+    localStyle?.style_provenance?.source === "ukVernacularPacks"
+      ? localStyle?.style_provenance?.layout_archetype || null
+      : null;
   const candidateOptions = generateRectangularOptions({
     brief,
     site,
     levelAreas,
+    archetype: archetypeKey,
   });
   const scoredOptions = candidateOptions.map((option) =>
     scoreOption({ option, brief, site, climate, programme }),
