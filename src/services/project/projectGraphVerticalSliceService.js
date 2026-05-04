@@ -6507,11 +6507,22 @@ export function buildProjectGraphRenderPrompt({
   // exterior + axonometric + interior panels reflect the regional grammar
   // instead of the generic ML default. Pack-off path: empty string,
   // unchanged behaviour.
-  const provenance =
+  //
+  // localStylePack always emits style_provenance — when no UK pack
+  // resolved, source is "buildingTypeDefault" with every field null.
+  // Gate strictly on a real resolved pack so flag-off / non-UK sites
+  // produce no REGIONAL VERNACULAR block in the prompt.
+  const rawProvenance =
     localStyle?.style_provenance &&
     typeof localStyle.style_provenance === "object"
       ? localStyle.style_provenance
       : null;
+  const hasResolvedProvenance =
+    !!rawProvenance &&
+    (rawProvenance.source === "ukVernacularPacks" ||
+      (typeof rawProvenance.ukVernacularPackId === "string" &&
+        rawProvenance.ukVernacularPackId.trim().length > 0));
+  const provenance = hasResolvedProvenance ? rawProvenance : null;
   const vernacularLines = [];
   if (provenance) {
     const packLabel = provenance.packLabel || provenance.label || null;

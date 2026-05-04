@@ -1346,10 +1346,26 @@ export function renderElevationSvg(
   // stucco/render facade language) so the elevation reflects the resolved
   // regional grammar rather than the generic gable+brick fallback. Pack-off
   // path is unchanged.
-  const vernacularPack =
+  //
+  // localStylePack always returns a style_provenance object even when no UK
+  // pack was resolved (source: "buildingTypeDefault" with all fields null),
+  // so a truthiness check on options.vernacularPack would leak empty
+  // data-vernacular-pack/data-pack-* attributes into legacy elevations.
+  // Gate strictly on a real resolved pack: source === "ukVernacularPacks"
+  // OR a non-empty packId/ukVernacularPackId. Otherwise null out so the
+  // SVG matches the pre-PR-91 baseline exactly.
+  const rawVernacularPack =
     options.vernacularPack && typeof options.vernacularPack === "object"
       ? options.vernacularPack
       : null;
+  const hasResolvedVernacularPack =
+    !!rawVernacularPack &&
+    (rawVernacularPack.source === "ukVernacularPacks" ||
+      (typeof rawVernacularPack.ukVernacularPackId === "string" &&
+        rawVernacularPack.ukVernacularPackId.trim().length > 0) ||
+      (typeof rawVernacularPack.packId === "string" &&
+        rawVernacularPack.packId.trim().length > 0));
+  const vernacularPack = hasResolvedVernacularPack ? rawVernacularPack : null;
   const packParapet = !!vernacularPack?.parapet_default;
   const packSemiBasement = !!vernacularPack?.semi_basement_default;
   const packWindowLanguageRaw = String(

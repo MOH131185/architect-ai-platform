@@ -164,6 +164,50 @@ describe("renderElevationSvg — pack-driven hints", () => {
     );
   });
 
+  // Codex P1 regression: localStylePack.buildLocalStylePackV2 always emits a
+  // style_provenance object — when no UK pack resolves the source field is
+  // "buildingTypeDefault" with every other field null. A naive truthiness
+  // gate would still treat that as a real pack and leak empty
+  // data-vernacular-pack="" + data-pack-* attrs into legacy elevations. The
+  // renderer must require source === "ukVernacularPacks" (or a non-empty
+  // packId) before emitting any vernacular markup.
+  test("buildingTypeDefault fallback style_provenance is treated as no-pack (no leaked attrs)", () => {
+    const fallbackProvenance = {
+      ukVernacularPackId: null,
+      packLabel: null,
+      region: null,
+      descriptive_narrative: null,
+      historical_period: null,
+      resolution_source: null,
+      source: "buildingTypeDefault",
+    };
+    const result = renderElevationSvg(
+      makeFixtureGeometry(),
+      {},
+      {
+        orientation: "south",
+        vernacularPack: fallbackProvenance,
+        allowWeakFacadeFallback: true,
+      },
+    );
+    expect(result.svg).toBeTruthy();
+    expect(result.svg).not.toContain("data-vernacular-pack=");
+    expect(result.svg).not.toContain("data-pack-parapet=");
+    expect(result.svg).not.toContain("data-pack-semi-basement=");
+    expect(result.svg).not.toContain("data-pack-window-language=");
+    expect(result.svg).not.toContain("data-pack-facade-stucco=");
+    expect(result.svg).not.toContain("data-vernacular-feature=");
+    expect(result.svg).not.toContain("Vernacular:");
+    expect(result.technical_quality_metadata.vernacular_pack_id).toBeNull();
+    expect(result.technical_quality_metadata.vernacular_pack_label).toBeNull();
+    expect(result.technical_quality_metadata.vernacular_pack_parapet).toBe(
+      false,
+    );
+    expect(
+      result.technical_quality_metadata.vernacular_pack_semi_basement,
+    ).toBe(false);
+  });
+
   test("edinburgh-tenement pack produces sandstone + parapet hints, distinct from london", () => {
     const pack = resolveUKVernacular({ postcode: "EH8 9YL" });
     expect(pack.packId).toBe("edinburgh-tenement");
@@ -240,6 +284,30 @@ describe("buildHero3DPrompt + buildExteriorRenderPrompt — pack injection", () 
     // The existing baseline prompt structure is preserved.
     expect(prompt).toContain("Front-elevation hero render");
     expect(prompt).toContain("Photoreal architectural front-elevation render");
+  });
+
+  // Codex P1 regression: the buildingTypeDefault fallback object from
+  // localStylePack should NOT trigger the REGIONAL VERNACULAR block — the
+  // prompt must remain identical to the no-pack path.
+  test("buildExteriorRenderPrompt with buildingTypeDefault fallback emits no REGIONAL VERNACULAR block", () => {
+    const fallbackProvenance = {
+      ukVernacularPackId: null,
+      packLabel: null,
+      region: null,
+      descriptive_narrative: null,
+      historical_period: null,
+      resolution_source: null,
+      source: "buildingTypeDefault",
+    };
+    const { prompt } = buildExteriorRenderPrompt({
+      masterDNA,
+      locationData,
+      projectContext,
+      vernacularPack: fallbackProvenance,
+    });
+    expect(prompt).not.toContain("REGIONAL VERNACULAR");
+    expect(prompt).not.toContain("london-stucco-terrace");
+    expect(prompt).not.toContain("edinburgh-tenement");
   });
 
   test("buildExteriorRenderPrompt preserves geometry constraint when pack is added", () => {

@@ -160,6 +160,17 @@ function normalizeMaterials(masterDNA = {}) {
  */
 function buildVernacularPackBlock(vernacularPack) {
   if (!vernacularPack || typeof vernacularPack !== "object") return "";
+  // localStylePack always emits a style_provenance object — when no UK pack
+  // resolved, source is "buildingTypeDefault" with all fields null. Guard
+  // against that so flag-off / non-UK runs produce no REGIONAL VERNACULAR
+  // block (and the prompt remains identical to the pre-PR-91 baseline).
+  const hasResolvedPack =
+    vernacularPack.source === "ukVernacularPacks" ||
+    (typeof vernacularPack.ukVernacularPackId === "string" &&
+      vernacularPack.ukVernacularPackId.trim().length > 0) ||
+    (typeof vernacularPack.packId === "string" &&
+      vernacularPack.packId.trim().length > 0);
+  if (!hasResolvedPack) return "";
   const label = vernacularPack.packLabel || vernacularPack.label || null;
   const period = vernacularPack.historical_period || null;
   const narrative = vernacularPack.descriptive_narrative || null;
