@@ -4,7 +4,15 @@ import {
   selectBestOption,
   CATEGORY_WEIGHTS,
 } from "../../../services/design/optionScorer.js";
-import { buildArchitectureProjectVerticalSlice } from "../../../services/project/projectGraphVerticalSliceService.js";
+import {
+  __projectGraphVerticalSliceInternals,
+  buildArchitectureProjectVerticalSlice,
+} from "../../../services/project/projectGraphVerticalSliceService.js";
+import { buildLocalStylePackV2 } from "../../../services/style/localStylePack.js";
+import { resolveUKVernacular } from "../../../services/style/ukVernacularPacks.js";
+
+const { buildProjectGeometryFromProgramme } =
+  __projectGraphVerticalSliceInternals;
 
 const READING_ROOM_BRIEF = {
   brief: {
@@ -25,6 +33,28 @@ function buildableSite(width, height) {
       { x: 0, y: height },
       { x: 0, y: 0 },
     ],
+  };
+}
+
+function footprintSignature(options) {
+  return options.map(
+    (option) =>
+      `${option.option_id}:${option.footprint_width_m.toFixed(3)}:${option.footprint_depth_m.toFixed(3)}`,
+  );
+}
+
+function expectNarrowDeep(option) {
+  expect(option.footprint_width_m).toBeGreaterThan(0);
+  expect(option.footprint_depth_m).toBeGreaterThan(0);
+  expect(option.footprint_width_m).toBeLessThan(option.footprint_depth_m);
+}
+
+function bboxFromPolygon(polygon = []) {
+  const xs = polygon.map((point) => Number(point.x)).filter(Number.isFinite);
+  const ys = polygon.map((point) => Number(point.y)).filter(Number.isFinite);
+  return {
+    width: Math.max(...xs) - Math.min(...xs),
+    depth: Math.max(...ys) - Math.min(...ys),
   };
 }
 
@@ -103,6 +133,8 @@ describe("optionGenerator", () => {
     // Aspect < 1 means deeper than wide, the canonical terrace shape.
     expect(options[0].aspect).toBeLessThan(1);
     expect(options[0].aspect).toBeLessThanOrEqual(0.5);
+    expectNarrowDeep(options[0]);
+    expectNarrowDeep(options[1]);
     // Long axis runs front-to-back (north-south = perpendicular to the
     // street).
     expect(options[0].long_axis).toBe("ns");
@@ -124,6 +156,10 @@ describe("optionGenerator", () => {
     expect(options[0].option_id).toBe("option-archetype-cottage-square");
     expect(options[0].aspect).toBeGreaterThanOrEqual(0.95);
     expect(options[0].aspect).toBeLessThan(1.2);
+    const actualRatio =
+      options[0].footprint_width_m / options[0].footprint_depth_m;
+    expect(actualRatio).toBeGreaterThanOrEqual(0.95);
+    expect(actualRatio).toBeLessThan(1.2);
     expect(options[0].typology).toBe("central_stair_square");
   });
 
@@ -141,6 +177,12 @@ describe("optionGenerator", () => {
     expect(options.length).toBe(5);
     expect(options[0].option_id).toBe("option-archetype-tenement");
     expect(options[0].typology).toBe("tenement_common_stair");
+    expect(options[0].footprint_width_m).toBeLessThan(
+      options[0].footprint_depth_m,
+    );
+    expect(
+      options[0].footprint_width_m / options[0].footprint_depth_m,
+    ).toBeGreaterThan(0.8);
   });
 
   test("narrow_two_up_two_down archetype prepends Manchester back-to-back candidate", () => {
@@ -157,6 +199,7 @@ describe("optionGenerator", () => {
     expect(options.length).toBe(5);
     expect(options[0].option_id).toBe("option-archetype-back-to-back");
     expect(options[0].aspect).toBeLessThan(1);
+    expectNarrowDeep(options[0]);
   });
 
   test("unknown / null archetype produces the original 4-option set unchanged", () => {
@@ -198,6 +241,93 @@ describe("optionGenerator", () => {
     expect(withUnknown.map((o) => o.option_id)).toEqual(
       baseline.map((o) => o.option_id),
     );
+    expect(footprintSignature(withNull)).toEqual(footprintSignature(baseline));
+    expect(footprintSignature(withUnknown)).toEqual(
+      footprintSignature(baseline),
+    );
+  });
+
+  test("real W2 styleProvenance drives selected ProjectGraph geometry to narrow/deep", () => {
+    const brief = {
+      project_name: "W2 Terrace Geometry",
+      building_type: "dwelling",
+      canonical_building_type: "dwelling",
+      target_storeys: 2,
+      target_gia_m2: 150,
+      site_input: { postcode: "W2 5SH" },
+    };
+    const pack = resolveUKVernacular({ postcode: "W2 5SH" });
+    const localStyle = buildLocalStylePackV2({
+      brief,
+      site: { uk_vernacular_pack: pack },
+      climate: { overheating: { risk_level: "low" } },
+    });
+    expect(localStyle.style_provenance.layout_archetype).toBe(
+      "linear_side_hall",
+    );
+
+    const projectGeometry = buildProjectGeometryFromProgramme({
+      brief,
+      site: {
+        ...buildableSite(40, 40),
+        main_entry: { orientation: "south" },
+      },
+      programme: {
+        area_summary: { gross_internal_area_m2: 150 },
+        spaces: [
+          {
+            space_id: "living",
+            name: "Living",
+            target_area_m2: 35,
+            target_level_index: 0,
+          },
+          {
+            space_id: "kitchen",
+            name: "Kitchen",
+            target_area_m2: 25,
+            target_level_index: 0,
+          },
+          {
+            space_id: "wc",
+            name: "WC",
+            target_area_m2: 15,
+            target_level_index: 0,
+          },
+          {
+            space_id: "primary",
+            name: "Primary Bedroom",
+            target_area_m2: 35,
+            target_level_index: 1,
+          },
+          {
+            space_id: "bedroom-2",
+            name: "Bedroom 2",
+            target_area_m2: 25,
+            target_level_index: 1,
+          },
+          {
+            space_id: "bathroom",
+            name: "Bathroom",
+            target_area_m2: 15,
+            target_level_index: 1,
+          },
+        ],
+      },
+      localStyle,
+      climate: { overheating: { risk_level: "low" } },
+    });
+
+    const selected = projectGeometry.metadata.design_options.find(
+      (option) => option.selected === true,
+    );
+    expect(selected.option_id).toMatch(/^option-archetype-terrace-/);
+    const groundFootprint = projectGeometry.footprints.find(
+      (footprint) => footprint.level_id === "level-0",
+    );
+    const bbox = bboxFromPolygon(groundFootprint?.polygon || []);
+    expect(bbox.width).toBeGreaterThan(0);
+    expect(bbox.depth).toBeGreaterThan(0);
+    expect(bbox.width).toBeLessThan(bbox.depth);
   });
 });
 

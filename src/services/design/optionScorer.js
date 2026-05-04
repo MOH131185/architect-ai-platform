@@ -115,17 +115,21 @@ export function scoreOption({
   for (const [cat, weight] of Object.entries(CATEGORY_WEIGHTS)) {
     aggregate += (subscores[cat] || 0) * weight;
   }
+  if (option.archetype_preferred === true) {
+    aggregate += 0.04;
+  }
   return {
     option_id: option.option_id,
     label: option.label,
     typology: option.typology,
     aspect: option.aspect,
     long_axis: option.long_axis,
+    archetype_preferred: option.archetype_preferred === true,
     fits_buildable: option.fits_buildable,
     footprint_polygon: option.footprint_polygon,
     footprint_bbox: option.footprint_bbox,
     subscores,
-    aggregate_score: round(aggregate, 3),
+    aggregate_score: round(clamp01(aggregate), 3),
     weights: CATEGORY_WEIGHTS,
   };
 }

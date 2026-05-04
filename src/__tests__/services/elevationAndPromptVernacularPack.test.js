@@ -22,6 +22,8 @@ import {
   buildHero3DPrompt,
   buildExteriorRenderPrompt,
 } from "../../services/a1/panelPromptBuilders.js";
+import { buildProjectGraphRenderPrompt } from "../../services/project/projectGraphVerticalSliceService.js";
+import { buildLocalStylePackV2 } from "../../services/style/localStylePack.js";
 import { resolveUKVernacular } from "../../services/style/ukVernacularPacks.js";
 
 // A minimal-but-valid compiled-project geometry: one level, one rectangular
@@ -471,6 +473,52 @@ describe("buildHero3DPrompt + buildExteriorRenderPrompt — pack injection", () 
     expect(prompt).toContain("(tenement_block_4_storey)");
     // Floor count + roof requirements still anchored.
     expect(prompt).toContain("FLOOR COUNT: EXACTLY");
+  });
+
+  test("buildProjectGraphRenderPrompt receives full propagated W2 styleProvenance", () => {
+    const brief = {
+      project_name: "W2 ProjectGraph Prompt",
+      building_type: "dwelling",
+      target_storeys: 2,
+      site_input: { postcode: "W2 5SH" },
+    };
+    const pack = resolveUKVernacular({ postcode: "W2 5SH" });
+    const localStyle = buildLocalStylePackV2({
+      brief,
+      site: { uk_vernacular_pack: pack },
+      climate: { overheating: { risk_level: "low" } },
+    });
+    expect(localStyle.style_provenance).toMatchObject({
+      ukVernacularPackId: "london-stucco-terrace",
+      materials: expect.arrayContaining(["white stucco render"]),
+      parapet_default: true,
+      semi_basement_default: true,
+      facade_language: expect.stringMatching(/stucco/i),
+      roof_language: expect.stringMatching(/parapet/i),
+      window_language: expect.stringMatching(/sash/i),
+    });
+
+    const prompt = buildProjectGraphRenderPrompt({
+      panelType: "hero_3d",
+      brief,
+      compiledProject: makeFixtureGeometry(),
+      climate: { weather_source: "test" },
+      localStyle,
+      styleDNA: {},
+      programmeSummary: null,
+      region: "London",
+    });
+
+    expect(prompt).toContain("REGIONAL VERNACULAR (UK pack):");
+    expect(prompt).toContain("london-stucco-terrace");
+    expect(prompt).toContain("white stucco render");
+    expect(prompt).toMatch(/Facade language: .*stucco/i);
+    expect(prompt).toMatch(/Roof language: .*parapet/i);
+    expect(prompt).toMatch(/Window language: .*sash/i);
+    expect(prompt).toMatch(/Roofline: parapet/i);
+    expect(prompt).toMatch(/BUILDING STOREYS:\s*EXACTLY\s+2/);
+    expect(prompt).toMatch(/No semi-basement, no basement window band/i);
+    expect(prompt).toMatch(/Plinth at pavement level only/i);
   });
 });
 

@@ -6589,10 +6589,13 @@ export function buildProjectGraphRenderPrompt({
         );
       }
       vernacularLines.push("REGIONAL VERNACULAR (UK pack):");
-      if (packLabel)
+      if (packLabel) {
+        const packId =
+          provenance.ukVernacularPackId || provenance.packId || null;
         vernacularLines.push(
-          `- Pack: ${packLabel}${period ? ` (${period})` : ""}`,
+          `- Pack: ${packLabel}${packId ? ` [${packId}]` : ""}${period ? ` (${period})` : ""}`,
         );
+      }
       if (narrative) {
         const cleaned = sanitizeBasementText(narrative);
         if (cleaned) vernacularLines.push(`- Narrative: ${cleaned}`);

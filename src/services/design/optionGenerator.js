@@ -45,11 +45,12 @@ function makeOption({
   longAxis,
   footprintArea,
   buildableBbox,
+  preserveAspect = false,
 }) {
   // aspect = width / depth (so width = sqrt(area * aspect), depth = area / width)
   let width = Math.sqrt(Math.max(1, footprintArea) * Math.max(0.5, aspect));
   let depth = footprintArea / Math.max(1, width);
-  if (longAxis === "ns") {
+  if (longAxis === "ns" && preserveAspect !== true) {
     [width, depth] = [depth, width];
   }
   const sized = clampToBuildable(width, depth, buildableBbox, footprintArea);
@@ -66,6 +67,7 @@ function makeOption({
     typology,
     aspect: Number(aspect.toFixed(3)),
     long_axis: longAxis,
+    archetype_preferred: preserveAspect === true,
     footprint_polygon: polygon,
     footprint_bbox: buildBoundingBoxFromPolygon(polygon),
     footprint_width_m: sized.width,
@@ -198,6 +200,7 @@ export function generateRectangularOptions({
       longAxis: spec.longAxis,
       footprintArea,
       buildableBbox,
+      preserveAspect: true,
     }),
   );
 
