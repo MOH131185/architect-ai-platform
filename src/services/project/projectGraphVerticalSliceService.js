@@ -22,6 +22,7 @@ import {
 } from "../openaiReasoningExecutor.js";
 import { computeCDSHashSync } from "../validation/cdsHash.js";
 import { validateProgrammeAdjacency } from "../validation/programmeAdjacencyValidator.js";
+import { computeQuantitativeMetrics } from "../validation/qaScorers/quantitativeScorer.js";
 import {
   rasteriseSheetArtifact,
   isRasterStubModeAllowed,
@@ -10127,6 +10128,26 @@ export function validateProjectGraphVerticalSlice({
     }
   }
 
+  // Dual-QA quantitative metrics (paper §4.6). Additive: never affects
+  // pass/fail status, just attaches a measurable-side block to the report.
+  // Reuses the adjacency score computed above so the two scorers stay aligned.
+  let quantitative = null;
+  if (isFeatureEnabled("dualQaQuantitativeScoring")) {
+    try {
+      quantitative = computeQuantitativeMetrics({
+        projectGraph,
+        artifacts,
+        adjacencyResult,
+      });
+    } catch (error) {
+      quantitative = {
+        score: null,
+        breakdown: [],
+        error: String(error?.message || error),
+      };
+    }
+  }
+
   const errorCount = issues.filter(
     (issue) => issue.severity === "error",
   ).length;
@@ -10158,6 +10179,8 @@ export function validateProjectGraphVerticalSlice({
           ruleCount: adjacencyResult.ruleCount,
         }
       : null,
+    quantitative,
+    qualitative: null, // populated by the async qualitative scorer wired separately
     disclaimer: PROFESSIONAL_REVIEW_DISCLAIMER,
   };
 }
