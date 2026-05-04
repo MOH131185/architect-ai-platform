@@ -475,6 +475,7 @@ function renderRoof(
   lineweights = {},
   roofTruthQuality = "weak",
   roofGeometry = null,
+  scale = 1,
 ) {
   const quality = String(roofTruthQuality || "weak").toLowerCase();
   const truthMode = String(roofGeometry?.supportMode || "missing");
@@ -547,8 +548,23 @@ function renderRoof(
     `;
   }
 
-  const ridgeY = topY - 52;
-  const undersideY = ridgeY + 12;
+  // Scale-aware ridge apex. When roof_plane primitives carry ridge / eave
+  // heights (set in sectionConstructionGeometryService.js), draw the gable
+  // proportionally to the section scale so the triangle reads correctly at
+  // 1:50, 1:100, and 1:200. Fall back to the historical 52px placeholder when
+  // heights are not supplied (degraded / contextual roof evidence).
+  const ridgeHeightMRaw = Number(roofGeometry?.ridgeHeightM);
+  const eaveHeightMRaw = Number(roofGeometry?.eaveHeightM);
+  const ridgeRiseM =
+    Number.isFinite(ridgeHeightMRaw) && Number.isFinite(eaveHeightMRaw)
+      ? ridgeHeightMRaw - eaveHeightMRaw
+      : NaN;
+  const ridgeRisePx =
+    Number.isFinite(ridgeRiseM) && ridgeRiseM > 0 && Number.isFinite(scale)
+      ? Math.max(24, Math.min(160, ridgeRiseM * scale))
+      : 52;
+  const ridgeY = topY - ridgeRisePx;
+  const undersideY = ridgeY + Math.max(8, ridgeRisePx * 0.22);
   return `
     <g id="phase14-section-roof" data-truth="${quality}" data-truth-mode="${truthMode}" data-truth-state="${truthState}">
     <path d="M ${roofX - 4} ${topY} L ${roofX + roofWidth / 2} ${ridgeY} L ${roofX + roofWidth + 4} ${topY} L ${roofX + roofWidth - 12} ${topY} L ${roofX + roofWidth / 2} ${undersideY} L ${roofX + 12} ${topY} Z" fill="${SECTION_THEME.fillSoft}" fill-opacity="${quality === "blocked" ? 0.42 : quality === "weak" ? 0.66 : 0.92}" stroke="${SECTION_THEME.lineMuted}" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.primary || 1.4}"${dasharray} />
@@ -1119,6 +1135,7 @@ export function renderSectionSvg(
     lineweights,
     roofTruthQuality,
     constructionGeometry.roof,
+    scale,
   );
   const usefulnessScore = roundMetric(
     clamp(
