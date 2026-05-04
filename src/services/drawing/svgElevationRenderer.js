@@ -1340,6 +1340,49 @@ export function renderElevationSvg(
       : resolveCompiledProjectStyleDNA(geometryInput, styleDNA);
   const theme = getBlueprintTheme();
   const orientation = orientationToSide(options.orientation || "south");
+  // UK regional vernacular pack (paper §4.3 transfer-by-curation): when a
+  // pack is supplied via options.vernacularPack, derive a small set of
+  // pack-driven hints (parapet roofline, sash diminishing, semi-basement,
+  // stucco/render facade language) so the elevation reflects the resolved
+  // regional grammar rather than the generic gable+brick fallback. Pack-off
+  // path is unchanged.
+  //
+  // localStylePack always returns a style_provenance object even when no UK
+  // pack was resolved (source: "buildingTypeDefault" with all fields null),
+  // so a truthiness check on options.vernacularPack would leak empty
+  // data-vernacular-pack/data-pack-* attributes into legacy elevations.
+  // Gate strictly on a real resolved pack: source === "ukVernacularPacks"
+  // OR a non-empty packId/ukVernacularPackId. Otherwise null out so the
+  // SVG matches the pre-PR-91 baseline exactly.
+  const rawVernacularPack =
+    options.vernacularPack && typeof options.vernacularPack === "object"
+      ? options.vernacularPack
+      : null;
+  const hasResolvedVernacularPack =
+    !!rawVernacularPack &&
+    (rawVernacularPack.source === "ukVernacularPacks" ||
+      (typeof rawVernacularPack.ukVernacularPackId === "string" &&
+        rawVernacularPack.ukVernacularPackId.trim().length > 0) ||
+      (typeof rawVernacularPack.packId === "string" &&
+        rawVernacularPack.packId.trim().length > 0));
+  const vernacularPack = hasResolvedVernacularPack ? rawVernacularPack : null;
+  const packParapet = !!vernacularPack?.parapet_default;
+  const packSemiBasement = !!vernacularPack?.semi_basement_default;
+  const packWindowLanguageRaw = String(
+    vernacularPack?.window_language || "",
+  ).toLowerCase();
+  const packDiminishingSashes =
+    /sash/i.test(packWindowLanguageRaw) &&
+    /diminish|reduc/i.test(packWindowLanguageRaw);
+  const packMaterialNames = Array.isArray(vernacularPack?.materials)
+    ? vernacularPack.materials.filter(
+        (m) => typeof m === "string" && m.trim().length > 0,
+      )
+    : [];
+  const packHasStucco = packMaterialNames.some((m) => /stucco|render/i.test(m));
+  const packLabel = vernacularPack?.packLabel || vernacularPack?.label || null;
+  const packId =
+    vernacularPack?.ukVernacularPackId || vernacularPack?.packId || null;
   const sideFacade = extractSideFacade(geometry, resolvedStyleDNA, {
     ...options,
     orientation,
@@ -1364,11 +1407,19 @@ export function renderElevationSvg(
     : { left: 80, top: 62, right: 94, bottom: 118 };
   const availableWidth = Math.max(1, width - layout.left - layout.right);
   const availableHeight = Math.max(1, height - layout.top - layout.bottom);
-  const roofLanguage = normalizeRoofLanguage(
+  const baseRoofLanguage = normalizeRoofLanguage(
     resolvedStyleDNA,
     facadeOrientation,
     geometry,
   );
+  // Pack override: when the vernacular pack declares a parapet typology
+  // (London stucco terrace, Edinburgh tenement, etc.), force a parapet
+  // roofLanguage so the gable triangle is suppressed in renderRoof and
+  // ridgeYpx falls back to the parapet upstand path. Otherwise keep the
+  // canonical roofLanguage derivation untouched.
+  const roofLanguage = packParapet
+    ? `${baseRoofLanguage || "flat"} parapet`.trim()
+    : baseRoofLanguage;
   const roofPitchInfoBase = buildCanonicalRoofPitchInfo(geometry, {
     roofLanguage,
     spanM: metrics.width_m,
@@ -1634,8 +1685,35 @@ export function renderElevationSvg(
           ...sheetPolish,
         },
   );
+  // Pack-driven semi-basement strip: a thin band beneath the ground line
+  // with a railings-tick top edge — visual cue for London stucco /
+  // Edinburgh tenement areas where a semi-basement is part of the typology.
+  const semiBasementHeightPx = packSemiBasement
+    ? Math.max(8, Math.min(18, scale * 1.0))
+    : 0;
+  const semiBasementMarkup =
+    packSemiBasement && semiBasementHeightPx > 0
+      ? `
+  <g data-vernacular-feature="semi_basement">
+    <rect x="${formatNumber(baseX)}" y="${formatNumber(baseY)}" width="${formatNumber(
+      widthPx,
+    )}" height="${formatNumber(semiBasementHeightPx)}" fill="${theme.paperMuted || theme.paper}" stroke="${theme.line}" stroke-width="0.7" stroke-dasharray="4 2" />
+    <line x1="${formatNumber(baseX)}" y1="${formatNumber(baseY - 3)}" x2="${formatNumber(baseX + widthPx)}" y2="${formatNumber(baseY - 3)}" stroke="${theme.line}" stroke-width="0.5" stroke-dasharray="2 3" />
+  </g>`
+      : "";
+  // Pack label: small caption near the elevation title so the resolved
+  // pack is legible even on the technical sheet (mirrors the Key Notes
+  // entry from Commit 2).
+  const packLabelMarkup =
+    !sheetMode && packLabel
+      ? `<text x="${formatNumber(layout.left)}" y="${formatNumber(50)}" font-size="11" font-family="Arial, sans-serif" font-style="italic" fill="${theme.lineMuted || "#475569"}">${escapeXml(`Vernacular: ${packLabel}${packParapet ? " (parapet)" : ""}${packDiminishingSashes ? ", diminishing sashes" : ""}${packHasStucco ? ", stucco/render" : ""}`)}</text>`
+      : "";
+  const packDataAttrs = vernacularPack
+    ? ` data-vernacular-pack="${escapeXml(packId || "")}" data-pack-parapet="${packParapet}" data-pack-semi-basement="${packSemiBasement}" data-pack-window-language="${escapeXml(packWindowLanguageRaw)}" data-pack-facade-stucco="${packHasStucco}"`
+    : "";
+
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-theme="${theme.name}" data-bounds-source="${envelope.source}">
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-theme="${theme.name}" data-bounds-source="${envelope.source}"${packDataAttrs}>
   ${buildMaterialPatternDefs(theme)}
   <rect width="${width}" height="${height}" fill="${theme.paper}" />
   ${
@@ -1645,7 +1723,9 @@ export function renderElevationSvg(
           `Elevation - ${orientation.toUpperCase()}`,
         )}</text>`
   }
+  ${packLabelMarkup}
   ${renderGroundLine(baseX, baseY, widthPx, theme)}
+  ${semiBasementMarkup}
   ${materialZones.markup}
   ${articulation.markup}
   ${roof}
@@ -1735,6 +1815,12 @@ export function renderElevationSvg(
       a1_quality_polish: sheetMode ? "elevation_datums_dimensions_v1" : null,
       slot_occupancy_ratio: slotOccupancyRatio,
       scale_bar_meters: scaleBar.barMeters,
+      vernacular_pack_id: packId,
+      vernacular_pack_label: packLabel,
+      vernacular_pack_parapet: packParapet,
+      vernacular_pack_semi_basement: packSemiBasement,
+      vernacular_pack_window_language: packWindowLanguageRaw || null,
+      vernacular_pack_has_stucco: packHasStucco,
     },
   };
 }

@@ -904,6 +904,7 @@ export function buildCompiledProjectTechnicalPanels(source = {}, options = {}) {
         orientation,
         sheetMode: true,
         allowWeakFacadeFallback: true,
+        vernacularPack: options.vernacularPack || null,
       });
       const normalized = buildPanelRecord(
         panelType,

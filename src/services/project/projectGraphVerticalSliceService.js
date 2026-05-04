@@ -4964,6 +4964,7 @@ function buildDrawingSet(compiledProject, options = {}) {
       : "board-v2";
   const technicalBuild = buildCompiledProjectTechnicalPanels(compiledProject, {
     layoutTemplate,
+    vernacularPack: options.vernacularPack || null,
   });
   const technicalPanels = technicalBuild.technicalPanels || {};
   const drawingViews = Object.entries(technicalPanels).map(
@@ -5639,9 +5640,44 @@ export function buildMaterialPalettePanelArtifact({
           styleDNA,
           brief,
         });
+  // UK regional vernacular pack (paper §4.3): when the slice resolved a
+  // London-stucco / Edinburgh-tenement / Cotswolds-cottage / etc. pack on
+  // localStyle.style_provenance, prepend the pack's named materials so they
+  // lead the 2×4 grid instead of being drowned by the canonical 8-material
+  // top-up. The shared normaliser only consults localStyle.material_palette
+  // (which is overridden by sheetDesignContext.materials, see ctxMaterials
+  // above), so this prepend is the surgical fix without touching the
+  // SheetDesignContext canonical-materials path.
+  const packMaterialNames = Array.isArray(
+    localStyle?.style_provenance?.materials,
+  )
+    ? localStyle.style_provenance.materials
+        .map((m) => (typeof m === "string" ? m.trim() : ""))
+        .filter(Boolean)
+    : [];
+  const knownNames = new Set(
+    (Array.isArray(baseMaterials) ? baseMaterials : []).map((entry) =>
+      String(entry?.name || "")
+        .trim()
+        .toLowerCase(),
+    ),
+  );
+  const packEntries = [];
+  packMaterialNames.forEach((name) => {
+    const key = name.toLowerCase();
+    if (knownNames.has(key)) return;
+    knownNames.add(key);
+    packEntries.push({
+      name,
+      source: "uk_vernacular_pack",
+    });
+  });
+  const mergedBaseMaterials = packEntries.length
+    ? [...packEntries, ...(Array.isArray(baseMaterials) ? baseMaterials : [])]
+    : baseMaterials;
   // Always render up to 8 cards; if the collection is short, top up from the
   // canonical 8-material fallback so the 2×4 grid stays visually balanced.
-  const materials = topUpMaterialPaletteWithCanonical(baseMaterials, 8);
+  const materials = topUpMaterialPaletteWithCanonical(mergedBaseMaterials, 8);
   const { defs, cards, cardMetadata } = buildMaterialPaletteCards({
     materials,
     layout: {
@@ -5742,6 +5778,7 @@ function splitNoteLines(note = "", maxChars = 36, maxLines = 3) {
 // Phase 2 — canonical Key Notes group order. The structure stays stable
 // across runs so the panel order is deterministic regardless of input.
 const KEY_NOTE_GROUP_ORDER = Object.freeze([
+  "style_provenance",
   "external_walls",
   "roof",
   "windows_doors",
@@ -5750,6 +5787,7 @@ const KEY_NOTE_GROUP_ORDER = Object.freeze([
   "sustainability",
   "climate_strategy",
   "dimensions_tolerances",
+  "qa_summary",
   "copyright",
 ]);
 
@@ -5777,6 +5815,7 @@ export function buildKeyNoteItems({
   regulations,
   localStyle,
   sheetDesignContext = null,
+  qaSummary = null,
 }) {
   const ctxMaterials =
     Array.isArray(sheetDesignContext?.materials) &&
@@ -5868,7 +5907,74 @@ export function buildKeyNoteItems({
     "UK";
   const dateLabel = brief?.brief_date || brief?.date || null;
 
+  // Style provenance — surfaces the resolved UK regional vernacular pack
+  // (paper §4.3 transfer-by-curation). Empty group when no pack resolved
+  // (flag off, non-UK site, etc.) → filtered out by the lines.filter(Boolean)
+  // step at the bottom of this function.
+  const styleProvenance =
+    localStyle?.style_provenance &&
+    typeof localStyle.style_provenance === "object"
+      ? localStyle.style_provenance
+      : null;
+  const styleProvenanceLines = [];
+  if (styleProvenance && styleProvenance.packLabel) {
+    const period = styleProvenance.historical_period
+      ? ` (${String(styleProvenance.historical_period).slice(0, 80)})`
+      : "";
+    styleProvenanceLines.push(
+      `Regional vernacular pack: ${styleProvenance.packLabel}${period}.`,
+    );
+    if (styleProvenance.descriptive_narrative) {
+      styleProvenanceLines.push(
+        String(styleProvenance.descriptive_narrative).slice(0, 320),
+      );
+    }
+  }
+
+  // QA summary — paper §4.6 dual-track assessment. Optional; when the caller
+  // hasn't supplied a qaSummary (panel built before QA computed), the group
+  // emits no lines and is filtered out. When supplied, surfaces the
+  // adjacency + quantitative scores so the user can see the grey-box
+  // numbers on the sheet.
+  const qaSummaryLines = [];
+  if (qaSummary && typeof qaSummary === "object") {
+    const adj =
+      qaSummary.programmeAdjacency &&
+      typeof qaSummary.programmeAdjacency === "object"
+        ? qaSummary.programmeAdjacency
+        : null;
+    const quant =
+      qaSummary.quantitative && typeof qaSummary.quantitative === "object"
+        ? qaSummary.quantitative
+        : null;
+    if (typeof quant?.score === "number") {
+      qaSummaryLines.push(`Quantitative QA: ${Math.round(quant.score)}/100.`);
+    }
+    if (adj && typeof adj.score === "number") {
+      const adjStatus = adj.status ? ` (${adj.status})` : "";
+      const adjPack = adj.packId ? `, pack ${adj.packId}` : "";
+      const adjRules =
+        typeof adj.ruleCount === "number" ? `, ${adj.ruleCount} rules` : "";
+      qaSummaryLines.push(
+        `Programme adjacency: ${Math.round(adj.score)}/100${adjStatus}${adjPack}${adjRules}.`,
+      );
+    }
+    if (qaSummary.status && typeof qaSummary.score === "number") {
+      qaSummaryLines.push(
+        `Overall QA status: ${qaSummary.status} (${Math.round(qaSummary.score)}/100).`,
+      );
+    }
+  }
+
   const groups = {
+    style_provenance: {
+      heading: "Style provenance",
+      lines: styleProvenanceLines,
+    },
+    qa_summary: {
+      heading: "QA summary",
+      lines: qaSummaryLines,
+    },
     external_walls: {
       heading: "External walls",
       lines: [
@@ -5962,7 +6068,7 @@ export function buildKeyNoteItems({
       heading: group.heading,
       lines: (group.lines || []).filter(Boolean),
     };
-  });
+  }).filter((group) => group.lines.length > 0);
 }
 
 export function buildKeyNotesPanelArtifact({
@@ -5974,6 +6080,7 @@ export function buildKeyNotesPanelArtifact({
   localStyle,
   geometryHash,
   sheetDesignContext = null,
+  qaSummary = null,
 }) {
   const width = 560;
   const height = 900;
@@ -5984,6 +6091,7 @@ export function buildKeyNotesPanelArtifact({
     regulations,
     localStyle,
     sheetDesignContext,
+    qaSummary,
   });
   let cursorY = 102;
   const groupSvg = groups
@@ -6393,11 +6501,75 @@ export function buildProjectGraphRenderPrompt({
   const identityLock = buildVisualIdentityLockBlock(visualManifest);
   const visualContinuity =
     buildProjectGraphVisualContinuityBlock(visualManifest);
+  // Regional vernacular block — when the slice resolved a UK pack
+  // (london-stucco-terrace, edinburgh-tenement, etc.), inject the pack's
+  // narrative + facade/roof/window/material language so the photoreal
+  // exterior + axonometric + interior panels reflect the regional grammar
+  // instead of the generic ML default. Pack-off path: empty string,
+  // unchanged behaviour.
+  //
+  // localStylePack always emits style_provenance — when no UK pack
+  // resolved, source is "buildingTypeDefault" with every field null.
+  // Gate strictly on a real resolved pack so flag-off / non-UK sites
+  // produce no REGIONAL VERNACULAR block in the prompt.
+  const rawProvenance =
+    localStyle?.style_provenance &&
+    typeof localStyle.style_provenance === "object"
+      ? localStyle.style_provenance
+      : null;
+  const hasResolvedProvenance =
+    !!rawProvenance &&
+    (rawProvenance.source === "ukVernacularPacks" ||
+      (typeof rawProvenance.ukVernacularPackId === "string" &&
+        rawProvenance.ukVernacularPackId.trim().length > 0));
+  const provenance = hasResolvedProvenance ? rawProvenance : null;
+  const vernacularLines = [];
+  if (provenance) {
+    const packLabel = provenance.packLabel || provenance.label || null;
+    const period = provenance.historical_period || null;
+    const narrative = provenance.descriptive_narrative || null;
+    const facadeLanguage = provenance.facade_language || null;
+    const roofLanguage = provenance.roof_language || null;
+    const windowLanguage = provenance.window_language || null;
+    const packMaterials = Array.isArray(provenance.materials)
+      ? provenance.materials.filter(
+          (m) => typeof m === "string" && m.trim().length,
+        )
+      : [];
+    const parapet = provenance.parapet_default === true;
+    const semiBasement = provenance.semi_basement_default === true;
+    if (packLabel || narrative || facadeLanguage || packMaterials.length) {
+      vernacularLines.push("REGIONAL VERNACULAR (UK pack):");
+      if (packLabel)
+        vernacularLines.push(
+          `- Pack: ${packLabel}${period ? ` (${period})` : ""}`,
+        );
+      if (narrative) vernacularLines.push(`- Narrative: ${narrative}`);
+      if (facadeLanguage)
+        vernacularLines.push(`- Facade language: ${facadeLanguage}`);
+      if (roofLanguage)
+        vernacularLines.push(`- Roof language: ${roofLanguage}`);
+      if (windowLanguage)
+        vernacularLines.push(`- Window language: ${windowLanguage}`);
+      if (packMaterials.length)
+        vernacularLines.push(`- Materials: ${packMaterials.join(", ")}`);
+      if (parapet)
+        vernacularLines.push("- Roofline: parapet concealing the roof.");
+      if (semiBasement)
+        vernacularLines.push(
+          "- Semi-basement with cast-iron front-area railings and York stone front steps where appropriate.",
+        );
+    }
+  }
+  const vernacularBlock = vernacularLines.length
+    ? vernacularLines.join("\n")
+    : null;
   return [
     identityLock,
     visualContinuity,
     `Project: ${projectName} — ${buildingType}.`,
     intent,
+    vernacularBlock,
     reasoning,
     "STYLE: V-Ray + 3ds Max quality, octane-grade physically-based rendering, photoreal PBR materials, HDRI sky lighting, shallow depth of field, Dezeen / ArchDaily magazine cover quality, 8K, no watermark, no text, no diagrams. Single freestanding building, no neighbours.",
   ]
@@ -6633,6 +6805,11 @@ async function buildSheetPanelArtifacts({
   // consumers; not consumed by the existing data-panel builders yet.
   // eslint-disable-next-line no-unused-vars
   sheetDesignContext = null,
+  // Optional partial QA summary precomputed before panels (programme
+  // adjacency + quantitative metrics — both pure functions of compiledProject
+  // and projectGraph and therefore safe to compute pre-panel). Surfaces on
+  // the Key Notes panel; null leaves the QA summary group empty.
+  qaSummary = null,
 }) {
   const siteContext = buildSiteContextPanelArtifact({
     projectGraphId,
@@ -6661,6 +6838,7 @@ async function buildSheetPanelArtifacts({
     localStyle,
     geometryHash,
     sheetDesignContext,
+    qaSummary,
   });
   const titleBlock = buildTitleBlockPanelArtifact({
     projectGraphId,
@@ -7830,6 +8008,68 @@ async function buildA1Sheet({
   let __a1mark = __a1sheetStart;
   const drawingNumber = sheetPlan?.sheet_number || "A1-00";
   const sheetLabel = sheetPlan?.label || "RIBA Stage 2 Master";
+  // Pre-panel partial QA summary: the programme adjacency + quantitative
+  // scorers are pure functions of compiledProject + projectGraph (no panel
+  // dependency), so we run them once early to feed the Key Notes panel a real
+  // QA summary. The full validateProjectGraphVerticalSlice call later still
+  // re-runs both validators to produce the authoritative qa object — the cost
+  // is two cheap validator calls in exchange for visible scores on the sheet.
+  let panelQaSummary = null;
+  if (
+    isFeatureEnabled("programmeAdjacencyValidator") ||
+    isFeatureEnabled("dualQaQuantitativeScoring")
+  ) {
+    let earlyAdjacencyResult = null;
+    if (isFeatureEnabled("programmeAdjacencyValidator")) {
+      try {
+        earlyAdjacencyResult = validateProgrammeAdjacency({
+          compiledProject: compiledProject || null,
+          canonicalProjectType:
+            brief?.canonical_building_type ||
+            brief?.canonicalBuildingType ||
+            brief?.project_type_support?.canonicalBuildingType ||
+            "",
+        });
+      } catch (_) {
+        earlyAdjacencyResult = null;
+      }
+    }
+    let earlyQuantitative = null;
+    if (isFeatureEnabled("dualQaQuantitativeScoring")) {
+      try {
+        // Pre-panel — programme.spaces is not in scope here, so the
+        // programme_area_satisfied metric will be null. Other metrics (geometry
+        // hash consistency, adjacency score, window/wall ratio) still compute
+        // and produce a representative quantitative score for the Key Notes
+        // panel. The full QA pass at validateProjectGraphVerticalSlice later
+        // re-runs with the complete projectGraph and is authoritative.
+        earlyQuantitative = computeQuantitativeMetrics({
+          projectGraph: { brief, local_style: localStyle },
+          artifacts: { compiledProject },
+          adjacencyResult: earlyAdjacencyResult,
+        });
+      } catch (_) {
+        earlyQuantitative = null;
+      }
+    }
+    panelQaSummary = {
+      programmeAdjacency: earlyAdjacencyResult
+        ? {
+            score: earlyAdjacencyResult.score,
+            status: earlyAdjacencyResult.status,
+            packId: earlyAdjacencyResult.packId,
+            ruleCount: earlyAdjacencyResult.ruleCount,
+          }
+        : null,
+      quantitative: earlyQuantitative
+        ? { score: earlyQuantitative.score }
+        : null,
+      qualitative: null,
+      status: null,
+      score: null,
+    };
+  }
+
   const supplementalPanelArtifacts = await buildSheetPanelArtifacts({
     projectGraphId,
     site,
@@ -7850,6 +8090,7 @@ async function buildA1Sheet({
     },
     visualManifest,
     sheetDesignContext,
+    qaSummary: panelQaSummary,
   });
   __a1mark = __a1sheetLog("build_panel_artifacts", __a1mark);
   const panelArtifacts = {
@@ -10351,6 +10592,8 @@ export function validateProjectGraphVerticalSlice({
           status: adjacencyResult.status,
           packId: adjacencyResult.packId,
           ruleCount: adjacencyResult.ruleCount,
+          checks: adjacencyResult.checks || [],
+          issues: adjacencyResult.issues || [],
         }
       : null,
     quantitative,
@@ -10651,7 +10894,10 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
   const drawingSetLayoutTemplate = resolvePresentationLayoutTemplate(brief);
   const { drawingSet, drawingArtifacts, technicalBuild } = buildDrawingSet(
     compiledProject,
-    { layoutTemplate: drawingSetLayoutTemplate },
+    {
+      layoutTemplate: drawingSetLayoutTemplate,
+      vernacularPack: localStyle?.style_provenance || null,
+    },
   );
   __vsMark = __vsLog(
     "build_drawing_set",
