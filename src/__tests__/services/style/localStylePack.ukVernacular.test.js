@@ -88,6 +88,39 @@ describe("localStylePack — UK vernacular pack integration", () => {
     ).toBeGreaterThan(50);
   });
 
+  // Phase A regression — the propagated provenance must carry every field
+  // downstream consumers read (elevation parapet override, Material Palette
+  // pack-prepend, photoreal prompt builder vernacular block, archetype
+  // dispatcher). Earlier shape stripped these and silently broke PR #92's
+  // elevation hints + Material Palette pack-driven swatches at production
+  // runtime even though the tests passed with synthetic full-pack fixtures.
+  test("style_provenance carries every field consumed downstream (parapet, materials, archetype, etc.)", () => {
+    const pack = resolveUKVernacular({ postcode: "W2 5SH" });
+    const site = { uk_vernacular_pack: pack };
+    const stylePack = buildLocalStylePackV2({
+      brief: baseBrief,
+      site,
+      climate: baseClimate,
+    });
+    const prov = stylePack.style_provenance;
+    expect(prov.parapet_default).toBe(true);
+    expect(prov.semi_basement_default).toBe(true);
+    expect(prov.layout_archetype).toBe("linear_side_hall");
+    expect(prov.facade_language).toEqual(expect.any(String));
+    expect(prov.facade_language).toMatch(/parapet|stucco/i);
+    expect(prov.roof_language).toEqual(expect.any(String));
+    expect(prov.window_language).toEqual(expect.any(String));
+    expect(prov.window_language).toMatch(/sash/i);
+    expect(prov.fenestration_rhythm).toEqual(expect.any(String));
+    expect(typeof prov.modernity_default).toBe("number");
+    expect(Array.isArray(prov.materials)).toBe(true);
+    expect(prov.materials.length).toBeGreaterThan(2);
+    expect(prov.materials.join(", ")).toMatch(/stucco|sash|slate/i);
+    // Mirror packId / label too so consumers that gate on either still work.
+    expect(prov.packId).toBe("london-stucco-terrace");
+    expect(prov.label).toBe("London stucco terrace");
+  });
+
   test("buildLocalStylePackV2 stamps buildingTypeDefault when no vernacular pack", () => {
     const stylePack = buildLocalStylePackV2({
       brief: baseBrief,
@@ -96,12 +129,24 @@ describe("localStylePack — UK vernacular pack integration", () => {
     });
     expect(stylePack.style_provenance).toEqual({
       ukVernacularPackId: null,
+      packId: null,
       packLabel: null,
+      label: null,
       region: null,
       descriptive_narrative: null,
       historical_period: null,
       resolution_source: null,
       source: "buildingTypeDefault",
+      materials: [],
+      facade_language: null,
+      roof_language: null,
+      window_language: null,
+      fenestration_rhythm: null,
+      modernity_default: null,
+      parapet_default: false,
+      semi_basement_default: false,
+      layout_archetype: null,
+      conservation_typical: false,
     });
   });
 

@@ -4628,10 +4628,22 @@ function buildProjectGeometryFromProgramme({
   );
   // Plan §6.7: generate ≥3 typological options, score each, and use the
   // highest-scoring footprint that fits the buildable polygon.
+  // Phase C — when the resolved UK vernacular pack declares a
+  // `layout_archetype` (linear_side_hall for London terraces,
+  // tenement_common_stair for Edinburgh, central_stair_square for
+  // Cotswolds, narrow_two_up_two_down for Manchester), prepend
+  // archetype-specific candidates so the scorer can promote a
+  // narrow-deep terrace plan over the default wide-and-shallow bar.
+  // Pack-off / non-UK runs see the original 4-option set unchanged.
+  const archetypeKey =
+    localStyle?.style_provenance?.source === "ukVernacularPacks"
+      ? localStyle?.style_provenance?.layout_archetype || null
+      : null;
   const candidateOptions = generateRectangularOptions({
     brief,
     site,
     levelAreas,
+    archetype: archetypeKey,
   });
   const scoredOptions = candidateOptions.map((option) =>
     scoreOption({ option, brief, site, climate, programme }),
@@ -6555,10 +6567,28 @@ export function buildProjectGraphRenderPrompt({
         vernacularLines.push(`- Materials: ${packMaterials.join(", ")}`);
       if (parapet)
         vernacularLines.push("- Roofline: parapet concealing the roof.");
-      if (semiBasement)
-        vernacularLines.push(
-          "- Semi-basement with cast-iron front-area railings and York stone front steps where appropriate.",
-        );
+      if (semiBasement) {
+        // Phase B floor-count clamp — when the brief asks for ≤2 above-grade
+        // storeys but the pack implies a semi-basement, the LLM was rendering
+        // 3 visible storeys (basement + ground + first) and breaking parity
+        // with the deterministic 2D drawings (which only have target_storeys
+        // levels). Lock the storey count explicitly when the brief is in
+        // that band.
+        const targetStoreys = Number(brief?.target_storeys || 0);
+        if (
+          Number.isFinite(targetStoreys) &&
+          targetStoreys > 0 &&
+          targetStoreys <= 2
+        ) {
+          vernacularLines.push(
+            `- Semi-basement: render as a STYLISTIC PLINTH at street level only — cast-iron front-area railings and York stone front steps are visible at the pavement, but the building has EXACTLY ${targetStoreys} above-grade storeys total. Do NOT add a third habitable floor or a basement window band that reads as a separate storey.`,
+          );
+        } else {
+          vernacularLines.push(
+            "- Semi-basement with cast-iron front-area railings and York stone front steps where appropriate.",
+          );
+        }
+      }
     }
   }
   const vernacularBlock = vernacularLines.length

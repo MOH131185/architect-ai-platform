@@ -158,7 +158,7 @@ function normalizeMaterials(masterDNA = {}) {
  * when no pack is supplied so existing flag-off behaviour is unchanged.
  * @private
  */
-function buildVernacularPackBlock(vernacularPack) {
+function buildVernacularPackBlock(vernacularPack, dimsFloors = null) {
   if (!vernacularPack || typeof vernacularPack !== "object") return "";
   // localStylePack always emits a style_provenance object — when no UK pack
   // resolved, source is "buildingTypeDefault" with all fields null. Guard
@@ -196,9 +196,24 @@ function buildVernacularPackBlock(vernacularPack) {
   if (materials.length) lines.push(`- Materials: ${materials.join(", ")}`);
   if (parapet) lines.push(`- Roofline: parapet concealing the roof.`);
   if (semiBasement) {
-    lines.push(
-      `- Semi-basement: render with cast-iron front-area railings and York stone front steps where appropriate.`,
-    );
+    // Phase B floor-count clamp — when the pack implies a semi-basement and
+    // the brief asks for ≤2 above-grade storeys, the LLM was rendering 3
+    // visible storeys (basement + ground + first) and breaking parity with
+    // the deterministic 2D plans/elevations/sections (which only have N
+    // levels). Lock the storey count explicitly when the brief is in that
+    // band so the photoreal panels match the technical drawings.
+    const floorsHint = Number.isFinite(Number(dimsFloors))
+      ? Number(dimsFloors)
+      : null;
+    if (floorsHint !== null && floorsHint <= 2) {
+      lines.push(
+        `- Semi-basement: render as a STYLISTIC PLINTH at street level only — cast-iron front-area railings and York stone front steps are visible at the pavement, but the building has EXACTLY ${floorsHint} above-grade storeys total. Do NOT add a third habitable floor or a basement window band that reads as a separate storey.`,
+      );
+    } else {
+      lines.push(
+        `- Semi-basement: render with cast-iron front-area railings and York stone front steps where appropriate.`,
+      );
+    }
   }
   return lines.join("\n");
 }
@@ -738,8 +753,11 @@ export function buildHero3DPrompt({
       ? masterDNA.localStyle.style_provenance
       : null) ||
     null;
-  const vernacularBlock = buildVernacularPackBlock(resolvedVernacularPack);
   const dims = normalizeDimensions(masterDNA);
+  const vernacularBlock = buildVernacularPackBlock(
+    resolvedVernacularPack,
+    dims?.floors ?? null,
+  );
   const materials = normalizeMaterials(masterDNA);
   const style = masterDNA?.architecturalStyle || "Contemporary";
   const projectType = projectContext?.buildingProgram || "residential";
@@ -889,8 +907,11 @@ export function buildExteriorRenderPrompt({
       ? masterDNA.localStyle.style_provenance
       : null) ||
     null;
-  const vernacularBlock = buildVernacularPackBlock(resolvedVernacularPack);
   const dims = normalizeDimensions(masterDNA);
+  const vernacularBlock = buildVernacularPackBlock(
+    resolvedVernacularPack,
+    dims?.floors ?? null,
+  );
   const materials = normalizeMaterials(masterDNA);
   const style = masterDNA?.architecturalStyle || "Contemporary";
   const projectType = projectContext?.buildingProgram || "residential";
