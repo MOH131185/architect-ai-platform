@@ -813,9 +813,12 @@ function renderRoof(
     quality === "blocked" ? 0.52 : quality === "weak" ? 0.74 : 1;
   const roofX = roofGeometry?.band?.x ?? baseX;
   const roofWidth = roofGeometry?.band?.width ?? widthPx;
-  const flat = String(roofLanguage || "")
-    .toLowerCase()
-    .includes("flat");
+  // Phase D2 — accept "parapet" as a flat-roof signal so a UK vernacular
+  // pack with parapet_default (London stucco terrace, Edinburgh tenement,
+  // etc.) renders a horizontal coping band in section instead of cutting
+  // through a gable triangle. Mirrors PR #92's elevation behaviour.
+  const lowerLang = String(roofLanguage || "").toLowerCase();
+  const flat = lowerLang.includes("flat") || lowerLang.includes("parapet");
   const parapetMarkup = (roofGeometry?.parapets || [])
     .map(
       (entry) =>
@@ -1299,8 +1302,33 @@ export function renderSectionSvg(
       (sum, level) => sum + Number(level.height_m || 3.2),
       0,
     ) || 3.2;
-  const roofLanguage =
+  // Phase D2 — UK regional vernacular pack parapet override.
+  // Mirror PR #92's elevation behaviour: when the resolved pack declares
+  // parapet_default, force the section roofLanguage to include "parapet" so
+  // renderRoof's `flat`-path emits a horizontal coping band instead of a
+  // gable triangle. Without this the elevations show parapet but the
+  // sections still cut through a pitched gable, breaking parity. Pack-off /
+  // non-UK paths are unchanged. Gates on source === "ukVernacularPacks" or a
+  // non-empty packId so the buildingTypeDefault fallback never trips it
+  // (Codex P1 review pattern).
+  const rawVernacularPack =
+    options.vernacularPack && typeof options.vernacularPack === "object"
+      ? options.vernacularPack
+      : null;
+  const hasResolvedVernacularPack =
+    !!rawVernacularPack &&
+    (rawVernacularPack.source === "ukVernacularPacks" ||
+      (typeof rawVernacularPack.ukVernacularPackId === "string" &&
+        rawVernacularPack.ukVernacularPackId.trim().length > 0) ||
+      (typeof rawVernacularPack.packId === "string" &&
+        rawVernacularPack.packId.trim().length > 0));
+  const vernacularPack = hasResolvedVernacularPack ? rawVernacularPack : null;
+  const packParapet = vernacularPack?.parapet_default === true;
+  const baseRoofLanguage =
     resolvedStyleDNA.roof_language || geometry.roof?.type || "pitched gable";
+  const roofLanguage = packParapet
+    ? `${baseRoofLanguage || "flat"} parapet`.trim()
+    : baseRoofLanguage;
   const roofPitchInfoBase = buildCanonicalRoofPitchInfo(geometry, {
     roofLanguage,
     spanM: horizontalExtent,
@@ -1673,8 +1701,14 @@ export function renderSectionSvg(
   `
     : "";
 
+  // Phase D2 — root data attrs for vernacular pack parity with elevation.
+  const packDataAttrs = vernacularPack
+    ? ` data-vernacular-pack="${escapeXml(
+        vernacularPack.ukVernacularPackId || vernacularPack.packId || "",
+      )}" data-pack-parapet="${packParapet}"`
+    : "";
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-theme="${SECTION_THEME.name}" data-bounds-source="${envelopeBounds.source}" data-a1-quality-polish="${sheetMode ? "section_datums_dimensions_v2" : "section_standard"}" data-section-edge-clearance-status="${sectionVisualMetrics.edgeClearanceStatus}" data-section-body-occupancy="${sectionVisualMetrics.bodyOccupancyRatio}">
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-theme="${SECTION_THEME.name}" data-bounds-source="${envelopeBounds.source}" data-a1-quality-polish="${sheetMode ? "section_datums_dimensions_v2" : "section_standard"}" data-section-edge-clearance-status="${sectionVisualMetrics.edgeClearanceStatus}" data-section-body-occupancy="${sectionVisualMetrics.bodyOccupancyRatio}"${packDataAttrs}>
   <rect width="${width}" height="${height}" fill="${SECTION_THEME.paper}" />
   ${stairMarkup.defs || ""}
   ${
@@ -1747,6 +1781,11 @@ export function renderSectionSvg(
       roof_pitch_status: roofPitchInfo.status,
       roof_pitch_span_m: roofPitchInfo.spanM,
       roof_pitch_rise_m: roofPitchInfo.riseM,
+      vernacular_pack_id:
+        vernacularPack?.ukVernacularPackId || vernacularPack?.packId || null,
+      vernacular_pack_label:
+        vernacularPack?.packLabel || vernacularPack?.label || null,
+      vernacular_pack_parapet: packParapet,
       section_usefulness_score: usefulnessScore,
       section_candidate_quality:
         sectionProfile?.sectionCandidateQuality || null,

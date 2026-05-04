@@ -17,6 +17,7 @@
  */
 
 import { renderElevationSvg } from "../../services/drawing/svgElevationRenderer.js";
+import { renderSectionSvg } from "../../services/drawing/svgSectionRenderer.js";
 import {
   buildHero3DPrompt,
   buildExteriorRenderPrompt,
@@ -354,7 +355,11 @@ describe("buildHero3DPrompt + buildExteriorRenderPrompt — pack injection", () 
   // This was the root cause of the 3D-vs-2D floor-count mismatch the user
   // observed on the post-PR-92 W2 generation (axonometric / exterior
   // perspective showed 3 floors, plans/sections showed 2).
-  test("buildHero3DPrompt clamps floor count to brief when pack.semi_basement_default && floors=2", () => {
+  // Phase D1 supersedes Phase B's clamp text. Positive constraints
+  // ("BUILDING STOREYS: EXACTLY N", "Plinth at pavement level only") work on
+  // LLMs where negative clamps ("Do NOT add a third floor") failed in the
+  // post-PR-93 production W2 test (still rendered 3 storeys with basement).
+  test("buildHero3DPrompt: Phase D1 storey-count + basement-scrub for pack.semi_basement_default && floors=2", () => {
     const pack = resolveUKVernacular({ postcode: "W2 5SH" });
     const dnaTwoFloors = {
       ...masterDNA,
@@ -366,9 +371,26 @@ describe("buildHero3DPrompt + buildExteriorRenderPrompt — pack injection", () 
       projectContext,
       vernacularPack: pack,
     });
-    expect(prompt).toMatch(/STYLISTIC PLINTH at street level only/);
-    expect(prompt).toMatch(/EXACTLY 2 above-grade storeys/);
-    expect(prompt).toMatch(/Do NOT add a third habitable floor/);
+    // Hard storey-count line up front (positive constraint).
+    expect(prompt).toMatch(
+      /BUILDING STOREYS:\s*EXACTLY\s+2\s+above-grade\s+stor[ei]ys?/,
+    );
+    // The "no basement" disclaimer is part of the storey statement.
+    expect(prompt).toMatch(
+      /No semi-basement, no basement window band, no additional habitable floor below ground level/,
+    );
+    // Replacement bullet — pavement-level plinth only.
+    expect(prompt).toMatch(
+      /Plinth at pavement level only.*NO semi-basement.*NO front-area railings/,
+    );
+    // The descriptive narrative must NOT mention a semi-basement when the
+    // clamp is active (LLMs read "semi-basement" as a third visible storey
+    // regardless of any later negation).
+    const narrativeMatch = prompt.match(/-\s*Narrative:[^\n]+/);
+    expect(narrativeMatch).not.toBeNull();
+    expect(narrativeMatch[0].toLowerCase()).not.toMatch(/semi[-\s]?basement/);
+    expect(narrativeMatch[0].toLowerCase()).not.toMatch(/cast[-\s]?iron/);
+    expect(narrativeMatch[0].toLowerCase()).not.toMatch(/york stone/);
   });
 
   test("buildExteriorRenderPrompt does NOT emit the clamp when target storeys >= 3 (clamp scope)", () => {
@@ -449,5 +471,104 @@ describe("buildHero3DPrompt + buildExteriorRenderPrompt — pack injection", () 
     expect(prompt).toContain("(tenement_block_4_storey)");
     // Floor count + roof requirements still anchored.
     expect(prompt).toContain("FLOOR COUNT: EXACTLY");
+  });
+});
+
+// Phase D2 — section renderer parapet awareness. The post-PR-93 W2 production
+// test showed elevations rendered a flat parapet (PR #92 worked there) but
+// sections still cut through a triangular gable, breaking section/elevation
+// parity. The section renderer must mirror the elevation override: when
+// pack.parapet_default is true, draw a horizontal coping band instead of a
+// gable triangle.
+describe("renderSectionSvg — Phase D2 parapet awareness", () => {
+  test("london-stucco-terrace section forces flat parapet (no gable triangle), tags root attrs", () => {
+    const pack = resolveUKVernacular({ postcode: "W2 5SH" });
+    const result = renderSectionSvg(
+      makeFixtureGeometry(),
+      { roof_language: "pitched gable" },
+      {
+        sectionType: "longitudinal",
+        vernacularPack: pack,
+      },
+    );
+    expect(result.svg).toBeTruthy();
+    expect(result.svg).toContain(
+      'data-vernacular-pack="london-stucco-terrace"',
+    );
+    expect(result.svg).toContain('data-pack-parapet="true"');
+    // Flat-roof path emits a roof-pitch-status="flat" attribute via
+    // renderRoofPitchDataAttributes; gable path does not.
+    expect(result.svg).toMatch(/data-roof-pitch-status="flat"/);
+    // The flat path's renderRoof draws a horizontal coping rect at topY-12.
+    // The gable path draws a triangle with M..L..L..Z. Confirm we got the
+    // horizontal coping pattern, not the triangle.
+    expect(result.svg).not.toMatch(/<path[^>]*data-roof-truth/);
+    expect(result.technical_quality_metadata.vernacular_pack_parapet).toBe(
+      true,
+    );
+    expect(result.technical_quality_metadata.vernacular_pack_id).toBe(
+      "london-stucco-terrace",
+    );
+  });
+
+  test("section without a pack keeps the gable / pitched roof unchanged (flag-off fallback)", () => {
+    const result = renderSectionSvg(
+      makeFixtureGeometry(),
+      { roof_language: "pitched gable" },
+      { sectionType: "longitudinal" },
+    );
+    expect(result.svg).toBeTruthy();
+    expect(result.svg).not.toContain("data-vernacular-pack=");
+    expect(result.svg).not.toContain("data-pack-parapet=");
+    // Pitched roof should NOT show the flat-status data attr.
+    expect(result.svg).not.toMatch(/data-roof-pitch-status="flat"/);
+    expect(result.technical_quality_metadata.vernacular_pack_id).toBeNull();
+    expect(result.technical_quality_metadata.vernacular_pack_parapet).toBe(
+      false,
+    );
+  });
+
+  test("buildingTypeDefault fallback provenance does NOT trigger parapet override on section", () => {
+    const fallbackProvenance = {
+      ukVernacularPackId: null,
+      packId: null,
+      packLabel: null,
+      label: null,
+      source: "buildingTypeDefault",
+      parapet_default: false,
+      semi_basement_default: false,
+      materials: [],
+    };
+    const result = renderSectionSvg(
+      makeFixtureGeometry(),
+      { roof_language: "pitched gable" },
+      {
+        sectionType: "longitudinal",
+        vernacularPack: fallbackProvenance,
+      },
+    );
+    expect(result.svg).toBeTruthy();
+    expect(result.svg).not.toContain("data-vernacular-pack=");
+    expect(result.svg).not.toContain("data-pack-parapet=");
+    expect(result.technical_quality_metadata.vernacular_pack_id).toBeNull();
+  });
+
+  test("edinburgh-tenement (parapet false) does NOT force flat coping", () => {
+    const pack = resolveUKVernacular({ postcode: "EH8 9YL" });
+    expect(pack.parapet_default).toBe(false);
+    const result = renderSectionSvg(
+      makeFixtureGeometry(),
+      { roof_language: "pitched gable" },
+      {
+        sectionType: "longitudinal",
+        vernacularPack: pack,
+      },
+    );
+    expect(result.svg).toContain('data-vernacular-pack="edinburgh-tenement"');
+    expect(result.svg).toContain('data-pack-parapet="false"');
+    expect(result.svg).not.toMatch(/data-roof-pitch-status="flat"/);
+    expect(result.technical_quality_metadata.vernacular_pack_parapet).toBe(
+      false,
+    );
   });
 });

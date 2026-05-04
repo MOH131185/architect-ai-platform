@@ -948,6 +948,7 @@ export function buildCompiledProjectTechnicalPanels(source = {}, options = {}) {
         sectionType,
         sectionProfile,
         sheetMode: true,
+        vernacularPack: options.vernacularPack || null,
       });
       const normalized = buildPanelRecord(
         panelType,
