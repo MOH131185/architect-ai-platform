@@ -4964,6 +4964,7 @@ function buildDrawingSet(compiledProject, options = {}) {
       : "board-v2";
   const technicalBuild = buildCompiledProjectTechnicalPanels(compiledProject, {
     layoutTemplate,
+    vernacularPack: options.vernacularPack || null,
   });
   const technicalPanels = technicalBuild.technicalPanels || {};
   const drawingViews = Object.entries(technicalPanels).map(
@@ -6500,11 +6501,64 @@ export function buildProjectGraphRenderPrompt({
   const identityLock = buildVisualIdentityLockBlock(visualManifest);
   const visualContinuity =
     buildProjectGraphVisualContinuityBlock(visualManifest);
+  // Regional vernacular block — when the slice resolved a UK pack
+  // (london-stucco-terrace, edinburgh-tenement, etc.), inject the pack's
+  // narrative + facade/roof/window/material language so the photoreal
+  // exterior + axonometric + interior panels reflect the regional grammar
+  // instead of the generic ML default. Pack-off path: empty string,
+  // unchanged behaviour.
+  const provenance =
+    localStyle?.style_provenance &&
+    typeof localStyle.style_provenance === "object"
+      ? localStyle.style_provenance
+      : null;
+  const vernacularLines = [];
+  if (provenance) {
+    const packLabel = provenance.packLabel || provenance.label || null;
+    const period = provenance.historical_period || null;
+    const narrative = provenance.descriptive_narrative || null;
+    const facadeLanguage = provenance.facade_language || null;
+    const roofLanguage = provenance.roof_language || null;
+    const windowLanguage = provenance.window_language || null;
+    const packMaterials = Array.isArray(provenance.materials)
+      ? provenance.materials.filter(
+          (m) => typeof m === "string" && m.trim().length,
+        )
+      : [];
+    const parapet = provenance.parapet_default === true;
+    const semiBasement = provenance.semi_basement_default === true;
+    if (packLabel || narrative || facadeLanguage || packMaterials.length) {
+      vernacularLines.push("REGIONAL VERNACULAR (UK pack):");
+      if (packLabel)
+        vernacularLines.push(
+          `- Pack: ${packLabel}${period ? ` (${period})` : ""}`,
+        );
+      if (narrative) vernacularLines.push(`- Narrative: ${narrative}`);
+      if (facadeLanguage)
+        vernacularLines.push(`- Facade language: ${facadeLanguage}`);
+      if (roofLanguage)
+        vernacularLines.push(`- Roof language: ${roofLanguage}`);
+      if (windowLanguage)
+        vernacularLines.push(`- Window language: ${windowLanguage}`);
+      if (packMaterials.length)
+        vernacularLines.push(`- Materials: ${packMaterials.join(", ")}`);
+      if (parapet)
+        vernacularLines.push("- Roofline: parapet concealing the roof.");
+      if (semiBasement)
+        vernacularLines.push(
+          "- Semi-basement with cast-iron front-area railings and York stone front steps where appropriate.",
+        );
+    }
+  }
+  const vernacularBlock = vernacularLines.length
+    ? vernacularLines.join("\n")
+    : null;
   return [
     identityLock,
     visualContinuity,
     `Project: ${projectName} — ${buildingType}.`,
     intent,
+    vernacularBlock,
     reasoning,
     "STYLE: V-Ray + 3ds Max quality, octane-grade physically-based rendering, photoreal PBR materials, HDRI sky lighting, shallow depth of field, Dezeen / ArchDaily magazine cover quality, 8K, no watermark, no text, no diagrams. Single freestanding building, no neighbours.",
   ]
@@ -10829,7 +10883,10 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
   const drawingSetLayoutTemplate = resolvePresentationLayoutTemplate(brief);
   const { drawingSet, drawingArtifacts, technicalBuild } = buildDrawingSet(
     compiledProject,
-    { layoutTemplate: drawingSetLayoutTemplate },
+    {
+      layoutTemplate: drawingSetLayoutTemplate,
+      vernacularPack: localStyle?.style_provenance || null,
+    },
   );
   __vsMark = __vsLog(
     "build_drawing_set",

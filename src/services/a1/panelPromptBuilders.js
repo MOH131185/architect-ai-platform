@@ -147,6 +147,52 @@ function normalizeMaterials(masterDNA = {}) {
 }
 
 /**
+/**
+ * Build a REGIONAL VERNACULAR block (paper §4.3 transfer-by-curation).
+ * When the slice resolved a UK regional pack (london-stucco-terrace,
+ * edinburgh-tenement, cotswolds-cottage, etc.) the pack carries a
+ * descriptive narrative + facade/roof/window/material language. We inject
+ * those verbatim so the photoreal model produces stucco terraces in
+ * Notting Hill instead of generic gable cottages, Sandstone tenements in
+ * Edinburgh instead of yellow stock brick, etc. Returns an empty string
+ * when no pack is supplied so existing flag-off behaviour is unchanged.
+ * @private
+ */
+function buildVernacularPackBlock(vernacularPack) {
+  if (!vernacularPack || typeof vernacularPack !== "object") return "";
+  const label = vernacularPack.packLabel || vernacularPack.label || null;
+  const period = vernacularPack.historical_period || null;
+  const narrative = vernacularPack.descriptive_narrative || null;
+  const facadeLanguage = vernacularPack.facade_language || null;
+  const roofLanguage = vernacularPack.roof_language || null;
+  const windowLanguage = vernacularPack.window_language || null;
+  const materials = Array.isArray(vernacularPack.materials)
+    ? vernacularPack.materials.filter(
+        (m) => typeof m === "string" && m.trim().length,
+      )
+    : [];
+  const parapet = vernacularPack.parapet_default === true;
+  const semiBasement = vernacularPack.semi_basement_default === true;
+  if (!label && !narrative && !facadeLanguage && materials.length === 0) {
+    return "";
+  }
+  const lines = ["REGIONAL VERNACULAR (UK pack):"];
+  if (label) lines.push(`- Pack: ${label}${period ? ` (${period})` : ""}`);
+  if (narrative) lines.push(`- Narrative: ${narrative}`);
+  if (facadeLanguage) lines.push(`- Facade language: ${facadeLanguage}`);
+  if (roofLanguage) lines.push(`- Roof language: ${roofLanguage}`);
+  if (windowLanguage) lines.push(`- Window language: ${windowLanguage}`);
+  if (materials.length) lines.push(`- Materials: ${materials.join(", ")}`);
+  if (parapet) lines.push(`- Roofline: parapet concealing the roof.`);
+  if (semiBasement) {
+    lines.push(
+      `- Semi-basement: render with cast-iron front-area railings and York stone front steps where appropriate.`,
+    );
+  }
+  return lines.join("\n");
+}
+
+/**
  * Build a concise BUILDING IDENTITY block for prompt injection.
  * Placed at the TOP of every panel prompt so FLUX sees it first.
  * @private
@@ -670,7 +716,18 @@ export function buildHero3DPrompt({
   projectContext,
   consistencyLock,
   geometryHint,
+  vernacularPack = null,
 }) {
+  const resolvedVernacularPack =
+    (vernacularPack && typeof vernacularPack === "object"
+      ? vernacularPack
+      : null) ||
+    (masterDNA?.localStyle?.style_provenance &&
+    typeof masterDNA.localStyle.style_provenance === "object"
+      ? masterDNA.localStyle.style_provenance
+      : null) ||
+    null;
+  const vernacularBlock = buildVernacularPackBlock(resolvedVernacularPack);
   const dims = normalizeDimensions(masterDNA);
   const materials = normalizeMaterials(masterDNA);
   const style = masterDNA?.architecturalStyle || "Contemporary";
@@ -757,6 +814,7 @@ Dimensions: ${dims.length}m × ${dims.width}m × ${dims.height}m, ${dims.floors}
 Materials: ${materialDesc}
 Roof: ${roofType} roof
 ${canonicalIdentityBlock}
+${vernacularBlock ? `\n${vernacularBlock}\n` : ""}
 
 DESIGN SPECIFICATION (All subsequent panels MUST match this):
 - Building massing: ${storeyDesc}
@@ -809,7 +867,18 @@ export function buildExteriorRenderPrompt({
   projectContext,
   consistencyLock,
   geometryHint,
+  vernacularPack = null,
 }) {
+  const resolvedVernacularPack =
+    (vernacularPack && typeof vernacularPack === "object"
+      ? vernacularPack
+      : null) ||
+    (masterDNA?.localStyle?.style_provenance &&
+    typeof masterDNA.localStyle.style_provenance === "object"
+      ? masterDNA.localStyle.style_provenance
+      : null) ||
+    null;
+  const vernacularBlock = buildVernacularPackBlock(resolvedVernacularPack);
   const dims = normalizeDimensions(masterDNA);
   const materials = normalizeMaterials(masterDNA);
   const style = masterDNA?.architecturalStyle || "Contemporary";
@@ -856,7 +925,7 @@ Building: ${style} ${projectType}
 Dimensions: ${dims.length}m × ${dims.width}m × ${dims.height}m, ${dims.floors} floor(s)
 Materials: ${matDesc}
 Roof type: ${roofType}
-
+${vernacularBlock ? `\n${vernacularBlock}\n` : ""}
 ${fingerprintConstraint ? `DESIGN FINGERPRINT (match hero exactly):\n${fingerprintConstraint}\n` : ""}
 
 REQUIREMENTS:
