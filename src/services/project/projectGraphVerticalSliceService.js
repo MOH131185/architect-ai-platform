@@ -294,6 +294,34 @@ function seededIndex(seed, length, salt = "design-option") {
   return (Number.isFinite(numeric) ? numeric : Number(seed || 0)) % length;
 }
 
+/**
+ * Seeded fraction in [0, 1) — used to pick a window position along a wall, a
+ * band-order rotation, etc. Returns a deterministic value for the same
+ * (seed, salt) pair. When seed is null, returns 0.5 so behaviour matches the
+ * pre-seeded default (midpoint placement).
+ */
+function seededFraction(seed, salt = "fraction") {
+  if (seed === null || seed === undefined) return 0.5;
+  const hash = computeCDSHashSync({ seed, salt });
+  const numeric = Number.parseInt(String(hash).slice(0, 8), 16);
+  if (!Number.isFinite(numeric)) return 0.5;
+  return (numeric % 1000000) / 1000000;
+}
+
+/**
+ * Seeded array rotation. Same input + same seed → same output. With seed
+ * null the array is returned unchanged. Used to vary band order and within-
+ * band placement so two generations with different seeds produce visibly
+ * different floor plans without breaking determinism.
+ */
+function seededRotation(items, seed, salt = "rotation") {
+  if (!Array.isArray(items) || items.length <= 1) return items;
+  if (seed === null || seed === undefined) return items;
+  const offset = seededIndex(seed, items.length, salt);
+  if (!offset) return items;
+  return [...items.slice(offset), ...items.slice(0, offset)];
+}
+
 function selectDesignOptionForRun(scoredOptions = [], brief = {}) {
   const best = selectBestOption(scoredOptions) || scoredOptions[0] || null;
   if (!best) return null;
@@ -4360,6 +4388,7 @@ function addRoomWallsAndOpenings({
   doors,
   windows,
   mainEntryOrientation = null,
+  layoutSeed = null,
 }) {
   const polygon = room.polygon;
   const edges = [
@@ -4437,9 +4466,38 @@ function addRoomWallsAndOpenings({
   exteriorWalls
     .sort((a, b) => wallLength(b) - wallLength(a))
     .slice(0, room.requires_daylight === false ? 1 : 2)
-    .forEach((exteriorWall) => {
+    .forEach((exteriorWall, exteriorIndex) => {
       const length = wallLength(exteriorWall);
       if (length < 1.2) return;
+      // Seeded along-wall placement: with no seed → 0.5 (midpoint, original
+      // behaviour). With a seed, pick from {0.35, 0.5, 0.65} so different
+      // generations of the same brief produce visibly different elevations.
+      // The fraction is keyed off (seed, room id, wall id, index) so the same
+      // seed always produces the same placement.
+      const fraction =
+        layoutSeed === null
+          ? 0.5
+          : (() => {
+              const raw = seededFraction(
+                layoutSeed,
+                `window:${room.id}:${exteriorWall.id}:${exteriorIndex}`,
+              );
+              if (raw < 0.34) return 0.35;
+              if (raw < 0.67) return 0.5;
+              return 0.65;
+            })();
+      const start = exteriorWall.start || { x: 0, y: 0 };
+      const end = exteriorWall.end || { x: 0, y: 0 };
+      const position = {
+        x: round(
+          Number(start.x || 0) +
+            (Number(end.x || 0) - Number(start.x || 0)) * fraction,
+        ),
+        y: round(
+          Number(start.y || 0) +
+            (Number(end.y || 0) - Number(start.y || 0)) * fraction,
+        ),
+      };
       windows.push({
         id: createStableId("window", room.id, exteriorWall.id),
         level_id: levelId,
@@ -4448,8 +4506,9 @@ function addRoomWallsAndOpenings({
         width_m: Math.max(0.9, Math.min(2.6, length * 0.36)),
         sill_height_m: 0.85,
         head_height_m: 2.2,
-        position: midpoint(exteriorWall),
+        position,
         kind: "window",
+        position_fraction: fraction,
       });
     });
 
@@ -4465,10 +4524,21 @@ function layoutRoomsForLevel({
   doors,
   windows,
   mainEntryOrientation = null,
+  layoutSeed = null,
 }) {
   const levelId = `level-${levelIndex}`;
   const rooms = [];
-  const bands = balanceBands(spaces);
+  const balancedBands = balanceBands(spaces);
+  // Seeded band rotation: with a seed, swap which band sits at the south edge
+  // (y_min) so different generations produce visibly different floor plans.
+  // Wet rooms / habitable rooms stay grouped within their band, so adjacency
+  // rules from programmeAdjacencyValidator.js are not broken — only the band
+  // positions on the level change. With seed null → original order preserved.
+  const bands = seededRotation(
+    balancedBands,
+    layoutSeed,
+    `bands:level-${levelIndex}`,
+  );
   const targetArea = bands.reduce((sum, band) => sum + band.area, 0);
   const totalDepth = Math.max(1, Number(footprintBbox.height || 0));
   let cursorY = Number(footprintBbox.min_y || 0);
@@ -4515,6 +4585,7 @@ function layoutRoomsForLevel({
         doors,
         windows,
         mainEntryOrientation,
+        layoutSeed,
       });
       rooms.push(room);
       cursorX += roomWidth;
@@ -4600,6 +4671,7 @@ function buildProjectGeometryFromProgramme({
       doors,
       windows,
       mainEntryOrientation: site?.main_entry?.orientation || null,
+      layoutSeed: normalizeGenerationSeed(brief.generation_seed),
     });
     rooms.push(...layout.rooms);
     if (layout.stair && levelIndex + 1 < levelCount) {
@@ -4728,6 +4800,13 @@ function buildProjectGeometryFromProgramme({
         pool_option_ids: (
           designOptionSelection.variantPool || [selected].filter(Boolean)
         ).map((option) => option.option_id),
+        // Layout-level seed propagation (band rotation + window position
+        // fraction): applies whenever a generation seed is provided, so two
+        // generations with different seeds for the same brief produce
+        // visibly different floor plans and elevations even when the same
+        // footprint option is selected.
+        layout_variation_applied:
+          normalizeGenerationSeed(brief.generation_seed) !== null,
       },
     },
     provenance: {
@@ -11373,6 +11452,9 @@ export const __projectGraphVerticalSliceInternals = Object.freeze({
   normalizeBrief,
   normalizeGenerationSeed,
   selectDesignOptionForRun,
+  seededFraction,
+  seededRotation,
+  seededIndex,
   buildProgramme,
   buildSiteContext,
   buildClimatePack,
