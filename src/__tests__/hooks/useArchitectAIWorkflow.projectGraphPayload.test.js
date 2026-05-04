@@ -584,6 +584,30 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
     expect(request.projectDetails.floorCountLocked).toBe(true);
   });
 
+  test("metadata block surfaces styleProvenance + qaSummary from the vertical-slice result", () => {
+    const hookSource = fs.readFileSync(
+      path.join(process.cwd(), "src/hooks/useArchitectAIWorkflow.js"),
+      "utf8",
+    );
+    expect(hookSource).toContain(
+      "verticalSlice.projectGraph?.local_style?.style_provenance",
+    );
+    expect(hookSource).toContain("qaSummary: verticalSlice.qa");
+    expect(hookSource).toContain("verticalSlice.qa.programmeAdjacency.packId");
+  });
+
+  test("validateProjectGraphVerticalSlice preserves programmeAdjacency checks + issues", () => {
+    const sliceSource = fs.readFileSync(
+      path.join(
+        process.cwd(),
+        "src/services/project/projectGraphVerticalSliceService.js",
+      ),
+      "utf8",
+    );
+    expect(sliceSource).toContain("checks: adjacencyResult.checks || []");
+    expect(sliceSource).toContain("issues: adjacencyResult.issues || []");
+  });
+
   test("level authority: stale brief target_storeys cannot override current projectDetails", () => {
     const request = buildProjectGraphVerticalSliceRequest({
       designSpec: {

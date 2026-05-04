@@ -10351,6 +10351,8 @@ export function validateProjectGraphVerticalSlice({
           status: adjacencyResult.status,
           packId: adjacencyResult.packId,
           ruleCount: adjacencyResult.ruleCount,
+          checks: adjacencyResult.checks || [],
+          issues: adjacencyResult.issues || [],
         }
       : null,
     quantitative,

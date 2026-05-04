@@ -1001,6 +1001,28 @@ async function runProjectGraphVerticalSliceWorkflow({
       sheetSeries: verticalSlice.artifacts?.sheetSeries || [],
       sheetSplitDecision: verticalSlice.artifacts?.sheetSplitDecision || null,
       qaStatus: verticalSlice.qa?.status || null,
+      styleProvenance:
+        verticalSlice.projectGraph?.local_style?.style_provenance || null,
+      qaSummary: verticalSlice.qa
+        ? {
+            status: verticalSlice.qa.status,
+            score: verticalSlice.qa.score,
+            programmeAdjacency: verticalSlice.qa.programmeAdjacency
+              ? {
+                  score: verticalSlice.qa.programmeAdjacency.score,
+                  status: verticalSlice.qa.programmeAdjacency.status,
+                  packId: verticalSlice.qa.programmeAdjacency.packId,
+                  ruleCount: verticalSlice.qa.programmeAdjacency.ruleCount,
+                }
+              : null,
+            quantitative: verticalSlice.qa.quantitative
+              ? { score: verticalSlice.qa.quantitative.score }
+              : null,
+            qualitative: verticalSlice.qa.qualitative
+              ? { score: verticalSlice.qa.qualitative.score }
+              : null,
+          }
+        : null,
     },
   };
 }
