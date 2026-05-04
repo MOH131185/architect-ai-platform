@@ -67,21 +67,42 @@ export function selectSectionCandidates(projectGeometry = {}, options = {}) {
   const stair = stairs[0] || null;
   const keyRoom = rooms[0] || null;
   const secondaryRoom = rooms[1] || keyRoom || null;
+  const entrance = (projectGeometry.entrances || [])[0] || null;
+  const entranceFocus = entrance
+    ? [`entity:entrance:${entrance.id || "main"}`]
+    : [];
   const stairFocus = stair ? [`entity:stair:${stair.id}`] : [];
   const primaryRoomFocus = keyRoom ? [`entity:room:${keyRoom.id}`] : [];
   const secondaryRoomFocus = secondaryRoom
     ? [`entity:room:${secondaryRoom.id}`]
     : [];
-  const centerX = stair?.bbox
-    ? (Number(stair.bbox.min_x || 0) + Number(stair.bbox.max_x || 0)) / 2
-    : keyRoom
-      ? roomCenter(keyRoom).x
-      : Number(bounds.min_x || 0) + Number(bounds.width || 12) / 2;
-  const centerY = stair?.bbox
-    ? (Number(stair.bbox.min_y || 0) + Number(stair.bbox.max_y || 0)) / 2
-    : keyRoom
-      ? roomCenter(keyRoom).y
-      : Number(bounds.min_y || 0) + Number(bounds.height || 10) / 2;
+  const keyRoomCenter = keyRoom ? roomCenter(keyRoom) : null;
+  const secondaryRoomCenter = secondaryRoom ? roomCenter(secondaryRoom) : null;
+  const stairCenter = stair?.bbox
+    ? {
+        x: (Number(stair.bbox.min_x || 0) + Number(stair.bbox.max_x || 0)) / 2,
+        y: (Number(stair.bbox.min_y || 0) + Number(stair.bbox.max_y || 0)) / 2,
+      }
+    : null;
+  const boundsCenterX =
+    Number(bounds.min_x || 0) + Number(bounds.width || 12) / 2;
+  const boundsCenterY =
+    Number(bounds.min_y || 0) + Number(bounds.height || 10) / 2;
+  const entranceX = Number(entrance?.position_m?.x ?? entrance?.position?.x);
+  const centerX = Number.isFinite(entranceX)
+    ? entranceX
+    : keyRoomCenter
+      ? keyRoomCenter.x
+      : stairCenter
+        ? stairCenter.x
+        : boundsCenterX;
+  const centerY = stairCenter
+    ? stairCenter.y
+    : secondaryRoomCenter
+      ? secondaryRoomCenter.y
+      : keyRoomCenter
+        ? keyRoomCenter.y
+        : boundsCenterY;
 
   const longitudinal = buildCandidate(
     `section:${longestAxis}:primary`,
@@ -91,12 +112,13 @@ export function selectSectionCandidates(projectGeometry = {}, options = {}) {
       to: { x: centerX, y: bounds.max_y },
     },
     0.62 +
-      (stairs.length ? 0.16 : 0) +
+      (entrance ? 0.08 : 0) +
       (levels.length > 1 ? 0.08 : 0) +
-      (rooms.length > 1 ? 0.06 : 0),
+      (rooms.length > 1 ? 0.08 : 0) +
+      (keyRoom ? 0.04 : 0),
     [
-      stairs.length
-        ? "Primary longitudinal section is aligned to the stair/core for vertical communication."
+      entrance
+        ? "Primary longitudinal section is aligned to the arrival axis for SECTION A-A readability."
         : keyRoom
           ? `Primary longitudinal section is aligned through ${keyRoom.name || keyRoom.id}.`
           : "Primary longitudinal section uses the buildable-envelope centerline.",
@@ -107,9 +129,13 @@ export function selectSectionCandidates(projectGeometry = {}, options = {}) {
         ? `Largest room contribution: ${keyRoom.name || keyRoom.id}.`
         : "No dominant room could be identified for section targeting.",
     ],
-    stairFocus.length ? [...stairFocus, ...primaryRoomFocus] : primaryRoomFocus,
+    [
+      ...entranceFocus,
+      ...primaryRoomFocus,
+      ...(!entranceFocus.length && !primaryRoomFocus.length ? stairFocus : []),
+    ],
   );
-  longitudinal.semanticGoal = stair ? "vertical_circulation" : "primary_volume";
+  longitudinal.semanticGoal = entrance ? "entrance_axis" : "primary_volume";
 
   const transverse = buildCandidate(
     "section:transverse:secondary",
@@ -152,7 +178,6 @@ export function selectSectionCandidates(projectGeometry = {}, options = {}) {
   );
   transverse.semanticGoal = stair ? "stair_depth" : "secondary_space";
 
-  const entrance = (projectGeometry.entrances || [])[0] || null;
   const entranceLongitudinal = entrance
     ? buildCandidate(
         "section:longitudinal:entrance",

@@ -383,6 +383,40 @@ describe("Phase 10 final sheet credibility", () => {
     ).toBe(true);
   });
 
+  test("section planner keeps A-A on arrival or primary volume and B-B on stair/core", () => {
+    const candidates = selectSectionCandidates(createGeometry()).candidates;
+    const bestLongitudinal = candidates.find(
+      (entry) => entry.sectionType === "longitudinal",
+    );
+    const bestTransverse = candidates.find(
+      (entry) => entry.sectionType === "transverse",
+    );
+    const stairCandidate = candidates.find(
+      (entry) => entry.strategyId === "stair-communication",
+    );
+    const roofFallback = candidates.find(
+      (entry) => entry.strategyId === "roof-profile",
+    );
+
+    expect(["primary_volume", "entrance_axis"]).toContain(
+      bestLongitudinal.semanticGoal,
+    );
+    expect(bestLongitudinal.semanticGoal).not.toBe("vertical_circulation");
+    expect(
+      bestLongitudinal.focusEntityIds.some(
+        (entry) =>
+          entry.includes("entity:entrance:") || entry.includes("entity:room:"),
+      ),
+    ).toBe(true);
+    expect(stairCandidate.sectionType).toBe("transverse");
+    expect(bestTransverse.strategyId).toBe("stair-communication");
+    expect(bestTransverse.semanticGoal).toBe("stair_depth");
+    expect(bestTransverse.focusEntityIds).toContain("entity:stair:main-stair");
+    expect(candidates.indexOf(stairCandidate)).toBeLessThan(
+      candidates.indexOf(roofFallback),
+    );
+  });
+
   test("section evidence is cut-specific and captures direct room stair and opening hits", () => {
     const candidates = selectSectionCandidates(createGeometry()).candidates;
     const stairCandidate =

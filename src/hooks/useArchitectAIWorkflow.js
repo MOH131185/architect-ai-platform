@@ -565,6 +565,18 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
     String(params.qualityTarget || designSpec.qualityTarget || "")
       .trim()
       .toLowerCase() === "reference_match";
+  const rawGenerationSeed =
+    params.seed ??
+    params.baseSeed ??
+    designSpec.seed ??
+    designSpec.baseSeed ??
+    projectDetails.seed ??
+    projectDetails.baseSeed ??
+    null;
+  const numericGenerationSeed = Number(rawGenerationSeed);
+  const generationSeed = Number.isFinite(numericGenerationSeed)
+    ? Math.abs(Math.trunc(numericGenerationSeed))
+    : null;
   const resolvedBrief = sourceProjectBrief
     ? {
         ...sourceProjectBrief,
@@ -599,6 +611,8 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
           null,
         target_storeys: resolvedFloorCount,
         targetStoreys: resolvedFloorCount,
+        generation_seed: generationSeed,
+        baseSeed: generationSeed,
         referenceMatch,
         reference_match: referenceMatch,
         renderIntent: referenceMatch
@@ -619,6 +633,8 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
           180,
         target_storeys: resolvedFloorCount,
         targetStoreys: resolvedFloorCount,
+        generation_seed: generationSeed,
+        baseSeed: generationSeed,
         building_type: canonicalBuildingType || "dwelling",
         canonical_building_type: canonicalBuildingType || "dwelling",
         original_category: originalCategory,
@@ -669,6 +685,8 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
   );
 
   return {
+    baseSeed: generationSeed,
+    seed: generationSeed,
     referenceMatch,
     reference_match: referenceMatch,
     renderIntent: referenceMatch
@@ -700,6 +718,8 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
       floorCountLocked: Boolean(
         projectDetails.floorCountLocked ?? designSpec.floorCountLocked,
       ),
+      generationSeed,
+      baseSeed: generationSeed,
       customNotes: projectDetails.customNotes || designSpec.buildingNotes || "",
       entranceDirection:
         projectDetails.entranceDirection ||

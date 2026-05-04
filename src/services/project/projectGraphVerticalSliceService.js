@@ -211,6 +211,7 @@ const REFERENCE_MATCH_SECTION_MIN_SLOT_OCCUPANCY = 0.12;
 const REFERENCE_MATCH_ELEVATION_MIN_SLOT_OCCUPANCY = 0.08;
 const REFERENCE_MATCH_MIN_SECTION_USEFULNESS = 0.45;
 const REFERENCE_MATCH_MIN_ELEVATION_RICHNESS = 0.18;
+const DESIGN_VARIANT_SCORE_TOLERANCE = 0.12;
 
 function isTruthyFlag(value) {
   if (value === true) return true;
@@ -264,6 +265,81 @@ function round(value, precision = 3) {
   }
   const factor = 10 ** precision;
   return Math.round(numeric * factor) / factor;
+}
+
+function normalizeGenerationSeed(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return Math.abs(Math.trunc(numeric)) % 2147483647;
+}
+
+function resolveGenerationSeed(input = {}, sourceBrief = {}) {
+  return normalizeGenerationSeed(
+    input.baseSeed ??
+      input.seed ??
+      input.generationSeed ??
+      input.projectDetails?.baseSeed ??
+      input.projectDetails?.generationSeed ??
+      sourceBrief.baseSeed ??
+      sourceBrief.generation_seed ??
+      sourceBrief.generationSeed ??
+      sourceBrief.seed,
+  );
+}
+
+function seededIndex(seed, length, salt = "design-option") {
+  if (!(length > 0)) return 0;
+  const hash = computeCDSHashSync({ seed, salt });
+  const numeric = Number.parseInt(String(hash).slice(0, 8), 16);
+  return (Number.isFinite(numeric) ? numeric : Number(seed || 0)) % length;
+}
+
+function selectDesignOptionForRun(scoredOptions = [], brief = {}) {
+  const best = selectBestOption(scoredOptions) || scoredOptions[0] || null;
+  if (!best) return null;
+  const generationSeed = normalizeGenerationSeed(brief.generation_seed);
+  if (generationSeed === null) {
+    return {
+      selected: best,
+      variantPool: [best],
+      variantEnabled: false,
+      variantReason: "no_explicit_generation_seed",
+    };
+  }
+
+  const eligible = scoredOptions.filter((option) => option.fits_buildable);
+  const pool = (eligible.length ? eligible : scoredOptions)
+    .filter(
+      (option) =>
+        Number(best.aggregate_score || 0) -
+          Number(option.aggregate_score || 0) <=
+        DESIGN_VARIANT_SCORE_TOLERANCE,
+    )
+    .sort((left, right) => {
+      if (right.aggregate_score !== left.aggregate_score) {
+        return right.aggregate_score - left.aggregate_score;
+      }
+      return String(left.option_id).localeCompare(String(right.option_id));
+    });
+  const variantPool = pool.length ? pool : [best];
+  const selected =
+    variantPool[
+      seededIndex(
+        generationSeed,
+        variantPool.length,
+        `${brief.brief_input_hash || brief.project_name || ""}:design-option`,
+      )
+    ] || best;
+
+  return {
+    selected,
+    variantPool,
+    variantEnabled: variantPool.length > 1,
+    variantReason:
+      variantPool.length > 1
+        ? "seeded_high_quality_option"
+        : "only_one_high_quality_option",
+  };
 }
 
 function slugify(value) {
@@ -693,6 +769,7 @@ function detectProgrammeGroundCollapse({
 
 function normalizeBrief(input = {}) {
   const sourceBrief = input.brief || input.projectBrief || input;
+  const generationSeed = resolveGenerationSeed(input, sourceBrief);
   const projectDetails = input.projectDetails || {};
   const locationData = input.locationData || {};
   const referenceMatch = isReferenceMatchRequested(input, sourceBrief);
@@ -895,6 +972,7 @@ function normalizeBrief(input = {}) {
     required_spaces_text: requiredSpacesText,
     constraints_text: constraintsText,
     reference_match: referenceMatch,
+    generation_seed: generationSeed,
   });
 
   return {
@@ -925,6 +1003,9 @@ function normalizeBrief(input = {}) {
     },
     target_gia_m2: round(targetGiaM2, 2),
     target_storeys: targetStoreys,
+    generation_seed: generationSeed,
+    design_variant_seed: generationSeed,
+    generation_variation_enabled: generationSeed !== null,
     referenceMatch,
     reference_match: referenceMatch,
     brief_input_hash: briefInputHash,
@@ -4484,7 +4565,12 @@ function buildProjectGeometryFromProgramme({
   const scoredOptions = candidateOptions.map((option) =>
     scoreOption({ option, brief, site, climate, programme }),
   );
-  const selected = selectBestOption(scoredOptions) || scoredOptions[0];
+  const designOptionSelection =
+    selectDesignOptionForRun(scoredOptions, brief) || {};
+  const selected =
+    designOptionSelection.selected ||
+    selectBestOption(scoredOptions) ||
+    scoredOptions[0];
   const baseFootprint = selected.footprint_polygon;
   const levels = [];
   const rooms = [];
@@ -4634,6 +4720,15 @@ function buildProjectGeometryFromProgramme({
         selected: opt.option_id === selected.option_id,
       })),
       selected_option_id: selected.option_id,
+      design_variant: {
+        enabled: designOptionSelection.variantEnabled === true,
+        seed: brief.generation_seed ?? null,
+        reason: designOptionSelection.variantReason || null,
+        score_tolerance: DESIGN_VARIANT_SCORE_TOLERANCE,
+        pool_option_ids: (
+          designOptionSelection.variantPool || [selected].filter(Boolean)
+        ).map((option) => option.option_id),
+      },
     },
     provenance: {
       source: "project_graph_vertical_slice",
@@ -11276,6 +11371,8 @@ export async function buildArchitectureProjectVerticalSliceWithRepair(
 
 export const __projectGraphVerticalSliceInternals = Object.freeze({
   normalizeBrief,
+  normalizeGenerationSeed,
+  selectDesignOptionForRun,
   buildProgramme,
   buildSiteContext,
   buildClimatePack,

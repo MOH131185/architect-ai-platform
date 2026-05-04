@@ -24,6 +24,45 @@ function roomCenter(room = {}) {
   };
 }
 
+function bboxCenter(bbox = {}) {
+  return {
+    x: (Number(bbox.min_x || 0) + Number(bbox.max_x || 0)) / 2,
+    y: (Number(bbox.min_y || 0) + Number(bbox.max_y || 0)) / 2,
+  };
+}
+
+function overlapCenter(aMin, aMax, bMin, bMax) {
+  const min = Math.max(Number(aMin || 0), Number(bMin || 0));
+  const max = Math.min(Number(aMax || 0), Number(bMax || 0));
+  return max > min ? (min + max) / 2 : null;
+}
+
+function chooseRoomCoreCutCoordinate(room = {}, stair = null, axis = "x") {
+  const center = roomCenter(room);
+  if (!stair?.bbox || !room?.bbox) {
+    return axis === "x" ? center.x : center.y;
+  }
+  const overlap =
+    axis === "x"
+      ? overlapCenter(
+          room.bbox.min_x,
+          room.bbox.max_x,
+          stair.bbox.min_x,
+          stair.bbox.max_x,
+        )
+      : overlapCenter(
+          room.bbox.min_y,
+          room.bbox.max_y,
+          stair.bbox.min_y,
+          stair.bbox.max_y,
+        );
+  return Number.isFinite(overlap)
+    ? overlap
+    : axis === "x"
+      ? center.x
+      : center.y;
+}
+
 function buildLongitudinalCut(x, bounds) {
   return {
     from: { x, y: Number(bounds.min_y || 0) },
@@ -93,30 +132,63 @@ export function buildSectionStrategyCandidates(
   const candidates = [];
 
   if (stair) {
-    const stairX =
-      (Number(stair.bbox?.min_x || 0) + Number(stair.bbox?.max_x || 0)) / 2;
+    const stairCenter = bboxCenter(stair.bbox || {});
+    const roomForStairCut = primaryRoom || secondaryRoom || {};
+    const roomStairOverlapMin = Math.max(
+      Number(roomForStairCut.bbox?.min_y || 0),
+      Number(stair.bbox?.min_y || 0),
+    );
+    const roomStairOverlapMax = Math.min(
+      Number(roomForStairCut.bbox?.max_y || 0),
+      Number(stair.bbox?.max_y || 0),
+    );
+    const overlapOpeningY = openings
+      .map((entry) => Number(entry.position_m?.y || entry.position?.y))
+      .filter(
+        (value) =>
+          Number.isFinite(value) &&
+          value >= roomStairOverlapMin &&
+          value <= roomStairOverlapMax,
+      )
+      .sort(
+        (left, right) =>
+          Math.abs(left - stairCenter.y) - Math.abs(right - stairCenter.y),
+      )[0];
+    const stairY =
+      overlapOpeningY ??
+      chooseRoomCoreCutCoordinate(roomForStairCut, stair, "y");
     candidates.push(
       createCandidate({
         id: "section:strategy:stair-communication",
         title: "Section - Stair Communication",
         strategyId: "stair-communication",
         strategyName: "Stair Communication",
-        sectionType: "longitudinal",
-        cutLine: buildLongitudinalCut(stairX || centerX, bounds),
+        sectionType: "transverse",
+        cutLine: buildTransverseCut(stairY || stairCenter.y || centerY, bounds),
         focusEntityIds: [`entity:stair:${stair.id || "main-stair"}`],
         rationale: [
-          "Strategy targets the main stair/core so the section communicates vertical circulation first.",
-          "Cut is aligned to the stair centerline rather than a generic building midpoint.",
+          "Strategy targets the main stair/core so SECTION B-B communicates vertical circulation and core depth.",
+          "Cut tracks the stair depth across the building rather than consuming the longitudinal primary-volume section.",
         ],
         expectedCommunicationValue:
           0.78 + (levels.length > 1 ? 0.08 : 0) + (rooms.length > 2 ? 0.04 : 0),
-        semanticGoal: "vertical_circulation",
+        semanticGoal: "stair_depth",
       }),
     );
   }
 
   if (primaryRoom) {
     const center = roomCenter(primaryRoom);
+    const primaryVolumeCutX = chooseRoomCoreCutCoordinate(
+      primaryRoom,
+      stair,
+      "x",
+    );
+    const primaryVolumeCutY = chooseRoomCoreCutCoordinate(
+      primaryRoom,
+      stair,
+      "y",
+    );
     candidates.push(
       createCandidate({
         id: "section:strategy:volume-reveal",
@@ -129,11 +201,20 @@ export function buildSectionStrategyCandidates(
             : "transverse",
         cutLine:
           Number(bounds.width || 0) >= Number(bounds.height || 0)
-            ? buildLongitudinalCut(center.x || centerX, bounds)
-            : buildTransverseCut(center.y || centerY, bounds),
+            ? buildLongitudinalCut(
+                primaryVolumeCutX || center.x || centerX,
+                bounds,
+              )
+            : buildTransverseCut(
+                primaryVolumeCutY || center.y || centerY,
+                bounds,
+              ),
         focusEntityIds: [`entity:room:${primaryRoom.id}`],
         rationale: [
           `Strategy targets ${primaryRoom.name || primaryRoom.id} because it is the largest resolved room volume.`,
+          stair?.bbox
+            ? "Cut is biased to the room-to-core overlap so the primary-volume section stays useful without becoming the dedicated stair section."
+            : "No stair/core overlap was available, so the cut stays on the room centerline.",
           levels.length > 1
             ? "Multiple levels increase the value of a volume-reveal section."
             : "Single-level geometry still benefits from a spatial reveal section.",

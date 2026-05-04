@@ -109,6 +109,25 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
     });
   });
 
+  test("propagates the per-run generation seed into the ProjectGraph payload", () => {
+    const request = buildProjectGraphVerticalSliceRequest({
+      seed: 1777895862,
+      designSpec: {
+        buildingCategory: "residential",
+        buildingSubType: "detached-house",
+        area: 180,
+        floorCount: 2,
+      },
+    });
+
+    expect(request.seed).toBe(1777895862);
+    expect(request.baseSeed).toBe(1777895862);
+    expect(request.projectDetails.generationSeed).toBe(1777895862);
+    expect(request.projectDetails.baseSeed).toBe(1777895862);
+    expect(request.brief.generation_seed).toBe(1777895862);
+    expect(request.brief.baseSeed).toBe(1777895862);
+  });
+
   test("raises unlocked 250 sqm detached-house payloads to two storeys", () => {
     const request = buildProjectGraphVerticalSliceRequest({
       designSpec: {
