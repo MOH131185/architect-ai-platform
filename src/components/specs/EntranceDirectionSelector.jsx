@@ -10,6 +10,31 @@ import { Navigation, Loader2 } from "lucide-react";
 import { getAllDirections } from "../../utils/entranceOrientation.js";
 import Button from "../ui/Button.jsx";
 
+const AUTO_DETECT_SOURCE_LABELS = {
+  inferred: "Site geometry",
+  manual: "Manual override",
+  fallback: "Fallback",
+  unavailable: "Not available",
+};
+
+const formatAutoDetectSource = (source) => {
+  const normalized = String(source || "").trim();
+  if (!normalized) return "Unknown";
+  return (
+    AUTO_DETECT_SOURCE_LABELS[normalized] ||
+    normalized
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (letter) => letter.toUpperCase())
+  );
+};
+
+const getAutoDetectMessage = (result) =>
+  result?.rationale?.find((item) => item?.message)?.message ||
+  result?.warnings?.find(Boolean) ||
+  (result?.detectionUnavailable
+    ? "Site polygon required before entrance auto-detection can run."
+    : "Based on site analysis");
+
 const EntranceDirectionSelector = ({
   selectedDirection,
   onDirectionChange,
@@ -20,6 +45,13 @@ const EntranceDirectionSelector = ({
   needsReview = false,
 }) => {
   const directions = getAllDirections();
+  const autoDetectConfidence = Number(autoDetectResult?.confidence);
+  const confidencePercent = Number.isFinite(autoDetectConfidence)
+    ? Math.round(autoDetectConfidence * 100)
+    : 0;
+  const autoDetectUnavailable =
+    Boolean(autoDetectResult?.detectionUnavailable) ||
+    autoDetectResult?.source === "unavailable";
 
   const handleDirectionClick = (code) => {
     onDirectionChange(code);
@@ -155,19 +187,38 @@ const EntranceDirectionSelector = ({
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="p-3 rounded-lg bg-navy-800/60 border border-navy-700"
+          className={`p-3 rounded-lg border ${
+            autoDetectUnavailable
+              ? "bg-amber-500/10 border-amber-400/30"
+              : "bg-navy-800/60 border-navy-700"
+          }`}
         >
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-semibold text-white">
-              Auto-Detected:
+              {autoDetectUnavailable
+                ? "Auto-detect needs site data:"
+                : "Auto-detected entrance:"}
             </span>
-            <span className="text-xs uppercase tracking-wide px-2 py-1 rounded bg-royal-500/20 text-royal-300">
-              {Math.round(autoDetectResult.confidence * 100)}% confidence
+            <span
+              className={`text-xs uppercase tracking-wide px-2 py-1 rounded ${
+                autoDetectUnavailable
+                  ? "bg-amber-500/20 text-amber-200"
+                  : "bg-royal-500/20 text-royal-300"
+              }`}
+            >
+              {autoDetectUnavailable
+                ? "Site polygon required"
+                : `${confidencePercent}% confidence`}
             </span>
           </div>
+          <div className="mb-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-400">
+            <span>
+              Source: {formatAutoDetectSource(autoDetectResult.source)}
+            </span>
+            <span>Confidence: {confidencePercent}%</span>
+          </div>
           <p className="text-sm text-gray-300">
-            {autoDetectResult.rationale?.[0]?.message ||
-              "Based on site analysis"}
+            {getAutoDetectMessage(autoDetectResult)}
           </p>
         </motion.div>
       )}

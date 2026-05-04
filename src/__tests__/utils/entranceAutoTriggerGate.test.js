@@ -88,6 +88,23 @@ describe("shouldAutoTriggerEntranceDetection", () => {
     });
   });
 
+  test("holds when manual compass selection set the manual override flag", () => {
+    expect(
+      shouldAutoTriggerEntranceDetection({
+        sitePolygon: validPolygon,
+        projectDetails: {
+          entranceDirection: "SE",
+          entranceManualOverride: true,
+          entranceAutoDetected: false,
+        },
+      }),
+    ).toEqual({
+      shouldFire: false,
+      reason: "manual_direction_set",
+      direction: "SE",
+    });
+  });
+
   test("guards against missing arguments without throwing", () => {
     expect(shouldAutoTriggerEntranceDetection()).toEqual({
       shouldFire: false,

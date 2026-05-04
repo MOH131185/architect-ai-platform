@@ -24,6 +24,11 @@ import {
   buildEntranceAutoTriggerHeldLogKey,
   shouldAutoTriggerEntranceDetection,
 } from "../utils/entranceAutoTriggerGate.js";
+import {
+  buildEntranceDetectionUnavailableResult,
+  buildMainEntryForWizard,
+  normalizeMainEntryDirectionCode,
+} from "../utils/mainEntryWizard.js";
 import { locationIntelligence } from "../services/locationIntelligence.js";
 import siteAnalysisService from "../services/siteAnalysisService.js";
 import autoLevelAssignmentService from "../services/autoLevelAssignmentService.js";
@@ -41,7 +46,6 @@ import {
 import buildingFootprintService from "../services/buildingFootprintService.js";
 import { resolveUiSiteBoundaryAuthority } from "../services/siteBoundaryUiAuthority.js";
 import { selectContextualBoundaryPolygon } from "../services/siteBoundaryAutoDetectPolicy.js";
-import { resolveMainEntryDirection } from "../services/site/mainEntryDirectionService.js";
 import {
   BOUNDARY_POLICY_VERSION,
   normalizeBoundaryAreaFields,
@@ -221,63 +225,6 @@ const normalizeSitePolygonForUi = (polygon = []) => {
   if (!Array.isArray(polygon)) return [];
   const normalized = polygon.map(normalizeLatLngPoint).filter(Boolean);
   return normalized.length >= 3 ? normalized : [];
-};
-
-const FULL_DIRECTION_TO_SHORT = Object.freeze({
-  north: "N",
-  northeast: "NE",
-  east: "E",
-  southeast: "SE",
-  south: "S",
-  southwest: "SW",
-  west: "W",
-  northwest: "NW",
-});
-
-const normalizeMainEntryDirectionCode = (orientation) => {
-  const raw = String(orientation || "").trim();
-  if (!raw) return "";
-  const upper = raw.toUpperCase();
-  if (FULL_DIRECTION_TO_SHORT[raw.toLowerCase()]) {
-    return FULL_DIRECTION_TO_SHORT[raw.toLowerCase()];
-  }
-  return upper;
-};
-
-const getManualMainEntryEdgeIndex = (projectDetails = {}) => {
-  const candidates = [
-    projectDetails.manualMainEntryEdgeIndex,
-    projectDetails.manualFrontageEdgeIndex,
-    projectDetails.mainEntryEdgeIndex,
-    projectDetails.frontageEdgeIndex,
-  ];
-  const match = candidates.find((value) => Number.isFinite(Number(value)));
-  return match === undefined ? null : Number(match);
-};
-
-const hasManualEntranceDirection = (projectDetails = {}) =>
-  Boolean(projectDetails.entranceManualOverride) ||
-  (projectDetails.entranceAutoDetected === false &&
-    Boolean(projectDetails.entranceDirection) &&
-    !["", "N"].includes(String(projectDetails.entranceDirection)));
-
-const buildMainEntryForWizard = ({
-  projectDetails = {},
-  sitePolygon = [],
-  roadSegments = null,
-  sunPath = null,
-} = {}) => {
-  const manualEdgeIndex = getManualMainEntryEdgeIndex(projectDetails);
-  const manualDirection = hasManualEntranceDirection(projectDetails)
-    ? projectDetails.entranceDirection
-    : null;
-  return resolveMainEntryDirection({
-    sitePolygon,
-    roadSegments,
-    sunPath,
-    manualEdgeIndex,
-    manualDirection,
-  });
 };
 
 export function resolveWizardProjectTypeSupport(projectDetails = {}) {
@@ -1866,148 +1813,167 @@ const ArchitectAIWizardContainer = () => {
     }
   }, [programSpaces, projectDetails]);
 
-  const handleAutoDetectEntrance = useCallback(async () => {
-    if (!sitePolygon || sitePolygon.length < 3) {
-      logger.info("[Entrance] auto-detect skipped — site polygon not ready", {
-        polygonLength: sitePolygon?.length || 0,
-      });
-      return;
-    }
+  const handleAutoDetectEntrance = useCallback(
+    async (options = {}) => {
+      const autoDetectOptions =
+        options &&
+        typeof options === "object" &&
+        Object.prototype.hasOwnProperty.call(options, "ignoreManualOverride")
+          ? options
+          : {};
+      const ignoreManualOverride =
+        autoDetectOptions.ignoreManualOverride !== false;
 
-    setIsDetectingEntrance(true);
-    logger.info("[Entrance] auto-detect starting", {
-      polygonLength: sitePolygon.length,
-      hasSunPath: Boolean(locationData?.sunPath),
-      centroid: siteMetrics?.centroid || locationData?.coordinates || null,
-    });
-
-    try {
-      let roadSegments = null;
-      let roadLookupOk = false;
-      try {
-        const queryPoint = siteMetrics?.centroid || locationData?.coordinates;
-        if (queryPoint?.lat && queryPoint?.lng) {
-          const url = `/api/google/places/nearby?location=${queryPoint.lat},${queryPoint.lng}&radius=80&type=route`;
-          const resp = await fetch(url);
-          const data = await resp.json();
-
-          if (data?.status === "OK" && Array.isArray(data?.results)) {
-            roadSegments = data.results
-              .map((road) => ({
-                name: road.name,
-                midpoint: road.geometry?.location || null,
-              }))
-              .filter(
-                (road) =>
-                  road.midpoint &&
-                  typeof road.midpoint.lat === "number" &&
-                  typeof road.midpoint.lng === "number",
-              );
-            roadLookupOk = true;
-          } else {
-            logger.info("[Entrance] road lookup returned non-OK status", {
-              status: data?.status || "unknown",
-            });
-          }
-        }
-      } catch (roadErr) {
-        logger.debug(
-          "[Entrance] road lookup unavailable, falling back to geometry-only detection",
-          roadErr?.message || roadErr,
-        );
+      if (!sitePolygon || sitePolygon.length < 3) {
+        const unavailableResult = buildEntranceDetectionUnavailableResult({
+          polygonLength: sitePolygon?.length || 0,
+        });
+        setAutoDetectResult(unavailableResult);
+        logger.info("[Entrance] auto-detect skipped — site polygon not ready", {
+          polygonLength: sitePolygon?.length || 0,
+          resultCode: unavailableResult.code,
+        });
+        return;
       }
 
-      const result = buildMainEntryForWizard({
-        projectDetails,
-        sitePolygon,
-        roadSegments,
-        sunPath: locationData?.sunPath,
+      setIsDetectingEntrance(true);
+      logger.info("[Entrance] auto-detect starting", {
+        polygonLength: sitePolygon.length,
+        hasSunPath: Boolean(locationData?.sunPath),
+        centroid: siteMetrics?.centroid || locationData?.coordinates || null,
+        ignoreManualOverride,
       });
 
-      logger.info("[Entrance] resolveMainEntryDirection returned", {
-        orientation: result?.orientation,
-        bearingDeg: result?.bearingDeg,
-        source: result?.source,
-        confidence: result?.confidence,
-        rationale: result?.rationale?.[0]?.message || null,
-        roadSegmentsUsed: roadLookupOk
-          ? roadSegments?.length || 0
-          : "lookup-failed",
-      });
+      try {
+        let roadSegments = null;
+        let roadLookupOk = false;
+        try {
+          const queryPoint = siteMetrics?.centroid || locationData?.coordinates;
+          if (queryPoint?.lat && queryPoint?.lng) {
+            const url = `/api/google/places/nearby?location=${queryPoint.lat},${queryPoint.lng}&radius=80&type=route`;
+            const resp = await fetch(url);
+            const data = await resp.json();
 
-      setAutoDetectResult(result);
+            if (data?.status === "OK" && Array.isArray(data?.results)) {
+              roadSegments = data.results
+                .map((road) => ({
+                  name: road.name,
+                  midpoint: road.geometry?.location || null,
+                }))
+                .filter(
+                  (road) =>
+                    road.midpoint &&
+                    typeof road.midpoint.lat === "number" &&
+                    typeof road.midpoint.lng === "number",
+                );
+              roadLookupOk = true;
+            } else {
+              logger.info("[Entrance] road lookup returned non-OK status", {
+                status: data?.status || "unknown",
+              });
+            }
+          }
+        } catch (roadErr) {
+          logger.debug(
+            "[Entrance] road lookup unavailable, falling back to geometry-only detection",
+            roadErr?.message || roadErr,
+          );
+        }
 
-      // Apply the auto-detected direction at confidence ≥ 0.5. Below 0.7
-      // we still apply but mark `entranceNeedsReview = true` so the
-      // EntranceDirectionSelector shows a "Please confirm" badge — the
-      // user can override on the compass without having to discover the
-      // auto-detect button. Manual selection always wins (the
-      // SpecsStep.handleEntranceChange path clears `entranceAutoDetected`
-      // implicitly because the user typed a direction).
-      if (result.confidence >= 0.5) {
-        logger.info("[Entrance] applying auto-detected direction", {
+        const result = buildMainEntryForWizard({
+          projectDetails,
+          sitePolygon,
+          roadSegments,
+          sunPath: locationData?.sunPath,
+          ignoreManualOverride,
+        });
+
+        logger.info("[Entrance] resolveMainEntryDirection returned", {
+          orientation: result?.orientation,
+          bearingDeg: result?.bearingDeg,
+          source: result?.source,
+          confidence: result?.confidence,
+          rationale: result?.rationale?.[0]?.message || null,
+          roadSegmentsUsed: roadLookupOk
+            ? roadSegments?.length || 0
+            : "lookup-failed",
+        });
+
+        setAutoDetectResult(result);
+
+        // Apply the auto-detected direction at confidence ≥ 0.5. Below 0.7
+        // we still apply but mark `entranceNeedsReview = true` so the
+        // EntranceDirectionSelector shows a "Please confirm" badge — the
+        // user can override on the compass without having to discover the
+        // auto-detect button. Manual selection always wins (the
+        // SpecsStep.handleEntranceChange path clears `entranceAutoDetected`
+        // implicitly because the user typed a direction).
+        if (result.confidence >= 0.5) {
+          logger.info("[Entrance] applying auto-detected direction", {
+            orientation: result.orientation,
+            bearingDeg: result.bearingDeg,
+            source: result.source,
+            confidence: result.confidence,
+            needsReview: result.confidence < 0.7,
+          });
+          setProjectDetails((prev) => ({
+            ...prev,
+            entranceDirection: normalizeMainEntryDirectionCode(
+              result.orientation,
+            ),
+            entranceAutoDetected: result.source !== "manual",
+            entranceConfidence: result.confidence,
+            entranceNeedsReview: result.confidence < 0.7,
+            mainEntry: result,
+            mainEntryDirection: result,
+            mainEntryBearingDeg: result.bearingDeg,
+            frontageEdgeId: result.frontageEdgeId,
+            mainEntryEdgeId: result.mainEntryEdgeId,
+          }));
+          setLocationData((prev) => ({
+            ...(prev || {}),
+            mainEntry: result,
+            mainEntryDirection: result,
+            siteAnalysis: {
+              ...(prev?.siteAnalysis || {}),
+              mainEntry: result,
+              mainEntryDirection: result,
+            },
+          }));
+        } else {
+          logger.warn(
+            "[Entrance] auto-detected confidence below 0.5 threshold — direction NOT applied; user must pick manually",
+            {
+              orientation: result.orientation,
+              bearingDeg: result.bearingDeg,
+              confidence: result.confidence,
+            },
+          );
+        }
+
+        logger.success("Entrance orientation detected", {
           orientation: result.orientation,
           bearingDeg: result.bearingDeg,
           source: result.source,
           confidence: result.confidence,
-          needsReview: result.confidence < 0.7,
         });
-        setProjectDetails((prev) => ({
-          ...prev,
-          entranceDirection: normalizeMainEntryDirectionCode(
-            result.orientation,
-          ),
-          entranceAutoDetected: result.source !== "manual",
-          entranceConfidence: result.confidence,
-          entranceNeedsReview: result.confidence < 0.7,
-          mainEntry: result,
-          mainEntryDirection: result,
-          mainEntryBearingDeg: result.bearingDeg,
-          frontageEdgeId: result.frontageEdgeId,
-          mainEntryEdgeId: result.mainEntryEdgeId,
-        }));
-        setLocationData((prev) => ({
-          ...(prev || {}),
-          mainEntry: result,
-          mainEntryDirection: result,
-          siteAnalysis: {
-            ...(prev?.siteAnalysis || {}),
-            mainEntry: result,
-            mainEntryDirection: result,
-          },
-        }));
-      } else {
-        logger.warn(
-          "[Entrance] auto-detected confidence below 0.5 threshold — direction NOT applied; user must pick manually",
-          {
-            orientation: result.orientation,
-            bearingDeg: result.bearingDeg,
-            confidence: result.confidence,
-          },
-        );
+      } catch (err) {
+        logger.error("[Entrance] detection failed", err);
+      } finally {
+        setIsDetectingEntrance(false);
       }
-
-      logger.success("Entrance orientation detected", {
-        orientation: result.orientation,
-        bearingDeg: result.bearingDeg,
-        source: result.source,
-        confidence: result.confidence,
-      });
-    } catch (err) {
-      logger.error("[Entrance] detection failed", err);
-    } finally {
-      setIsDetectingEntrance(false);
-    }
-  }, [
-    locationData,
-    projectDetails,
-    setAutoDetectResult,
-    setIsDetectingEntrance,
-    setLocationData,
-    setProjectDetails,
-    siteMetrics,
-    sitePolygon,
-  ]);
+    },
+    [
+      locationData,
+      projectDetails,
+      setAutoDetectResult,
+      setIsDetectingEntrance,
+      setLocationData,
+      setProjectDetails,
+      siteMetrics,
+      sitePolygon,
+    ],
+  );
 
   // Auto-trigger entrance orientation detection once a site polygon is
   // available. The gating logic is extracted into
@@ -2041,7 +2007,7 @@ const ArchitectAIWizardContainer = () => {
     logger.info("[Entrance] auto-trigger gate firing — polygon ready", {
       polygonLength: sitePolygon.length,
     });
-    handleAutoDetectEntrance();
+    handleAutoDetectEntrance({ ignoreManualOverride: false });
   }, [
     sitePolygon,
     handleAutoDetectEntrance,

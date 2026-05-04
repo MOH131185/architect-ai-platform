@@ -79,6 +79,9 @@ describe("mainEntryDirectionService.resolveMainEntryDirection", () => {
       expect(typeof result.direction).toBe("string");
       expect(result.direction.length).toBeGreaterThan(0);
       expect(result.rationale.length).toBeGreaterThan(0);
+      expect(
+        result.rationale.some((item) => item.strategy === "longest_edge"),
+      ).toBe(true);
     });
 
     test("road proximity strategy is dominant when roads are provided", () => {
@@ -93,6 +96,8 @@ describe("mainEntryDirectionService.resolveMainEntryDirection", () => {
         ],
       });
       expect(result.source).toBe("inferred");
+      expect(result.direction).toBe("south");
+      expect(result.orientation).toBe("south");
       // Confidence from road_proximity strategy is at least 0.85.
       expect(result.confidence).toBeGreaterThanOrEqual(0.85);
       expect(
