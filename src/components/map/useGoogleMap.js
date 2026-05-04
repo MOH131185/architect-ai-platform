@@ -1,14 +1,14 @@
 /**
  * useGoogleMap.js
- * 
+ *
  * React hook for Google Maps initialization and management
  * Uses @googlemaps/js-api-loader for modern API loading
- * 
+ *
  * @module useGoogleMap
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { Loader } from '@googlemaps/js-api-loader';
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Loader } from "@googlemaps/js-api-loader";
 
 /**
  * Custom hook for Google Maps management
@@ -25,16 +25,17 @@ export function useGoogleMap({
   mapContainer,
   center = { lat: 37.7749, lng: -122.4194 },
   zoom = 18,
-  mapOptions = {}
+  mapOptions = {},
 }) {
   const [map, setMap] = useState(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [google, setGoogle] = useState(null);
-  
+
   const loaderRef = useRef(null);
   const mapInstanceRef = useRef(null);
+  const initTargetRef = useRef({ apiKey: null, mapContainer: null });
 
   /**
    * Track if we've attempted initialization
@@ -46,26 +47,50 @@ export function useGoogleMap({
    */
   useEffect(() => {
     if (!apiKey) {
-      console.error('Google Maps API key is missing');
-      setError(new Error('Google Maps API key is required'));
+      console.error("Google Maps API key is missing");
+      setError(new Error("Google Maps API key is required"));
+      setIsLoading(false);
+      setIsLoaded(false);
+      setMap(null);
+      setGoogle(null);
+      initAttempted.current = false;
+      loaderRef.current = null;
+      mapInstanceRef.current = null;
       return;
     }
 
     if (!mapContainer) {
       // Reset init flag when container is removed
       if (initAttempted.current) {
-        console.log('Map container removed, will reinitialize when available');
+        console.log("Map container removed, will reinitialize when available");
         initAttempted.current = false;
       }
+      setIsLoading(false);
       return;
+    }
+
+    const targetChanged =
+      initTargetRef.current.apiKey !== apiKey ||
+      initTargetRef.current.mapContainer !== mapContainer;
+
+    if (targetChanged) {
+      initTargetRef.current = { apiKey, mapContainer };
+      initAttempted.current = false;
+      loaderRef.current = null;
+      mapInstanceRef.current = null;
+      setMap(null);
+      setGoogle(null);
+      setIsLoaded(false);
     }
 
     // Skip if already initialized
-    if (initAttempted.current || isLoaded || isLoading) {
+    if (initAttempted.current || (isLoaded && !targetChanged) || isLoading) {
       return;
     }
 
-    console.log('Initializing Google Maps...', { apiKey: apiKey.substring(0, 10) + '...' });
+    console.log("Initializing Google Maps...", {
+      apiKey: apiKey.substring(0, 10) + "...",
+    });
     initAttempted.current = true;
 
     const initializeMap = async () => {
@@ -77,8 +102,8 @@ export function useGoogleMap({
         if (!loaderRef.current) {
           loaderRef.current = new Loader({
             apiKey,
-            version: 'weekly',
-            libraries: ['places', 'drawing', 'geometry']
+            version: "weekly",
+            libraries: ["places", "drawing", "geometry"],
           });
         }
 
@@ -100,8 +125,8 @@ export function useGoogleMap({
           streetViewControl: false,
           rotateControl: false,
           fullscreenControl: true,
-          gestureHandling: 'greedy',
-          ...mapOptions
+          gestureHandling: "greedy",
+          ...mapOptions,
         });
 
         mapInstanceRef.current = mapInstance;
@@ -109,16 +134,17 @@ export function useGoogleMap({
         setIsLoaded(true);
         setIsLoading(false);
 
-        console.log('Google Maps loaded successfully!', {
+        console.log("Google Maps loaded successfully!", {
           center,
           zoom,
-          mapType: 'HYBRID'
+          mapType: "HYBRID",
         });
-
       } catch (err) {
-        console.error('Error loading Google Maps:', err);
+        console.error("Error loading Google Maps:", err);
         setError(err);
+        setIsLoaded(false);
         setIsLoading(false);
+        initAttempted.current = false;
       }
     };
 
@@ -128,34 +154,43 @@ export function useGoogleMap({
   /**
    * Pan to location
    */
-  const panTo = useCallback((location) => {
-    if (map && location) {
-      map.panTo(location);
-    }
-  }, [map]);
+  const panTo = useCallback(
+    (location) => {
+      if (map && location) {
+        map.panTo(location);
+      }
+    },
+    [map],
+  );
 
   /**
    * Set zoom level
    */
-  const setZoom = useCallback((zoomLevel) => {
-    if (map) {
-      map.setZoom(zoomLevel);
-    }
-  }, [map]);
+  const setZoom = useCallback(
+    (zoomLevel) => {
+      if (map) {
+        map.setZoom(zoomLevel);
+      }
+    },
+    [map],
+  );
 
   /**
    * Fit bounds to include all points
    */
-  const fitBounds = useCallback((points) => {
-    if (!map || !google || !points || points.length === 0) return;
+  const fitBounds = useCallback(
+    (points) => {
+      if (!map || !google || !points || points.length === 0) return;
 
-    const bounds = new google.maps.LatLngBounds();
-    points.forEach(point => {
-      bounds.extend(point);
-    });
+      const bounds = new google.maps.LatLngBounds();
+      points.forEach((point) => {
+        bounds.extend(point);
+      });
 
-    map.fitBounds(bounds);
-  }, [map, google]);
+      map.fitBounds(bounds);
+    },
+    [map, google],
+  );
 
   /**
    * Get current map bounds
@@ -173,7 +208,7 @@ export function useGoogleMap({
     const center = map.getCenter();
     return {
       lat: center.lat(),
-      lng: center.lng()
+      lng: center.lng(),
     };
   }, [map]);
 
@@ -188,123 +223,150 @@ export function useGoogleMap({
   /**
    * Add event listener to map
    */
-  const addListener = useCallback((event, handler) => {
-    if (!map || !google) return null;
-    return google.maps.event.addListener(map, event, handler);
-  }, [map, google]);
+  const addListener = useCallback(
+    (event, handler) => {
+      if (!map || !google) return null;
+      return google.maps.event.addListener(map, event, handler);
+    },
+    [map, google],
+  );
 
   /**
    * Remove event listener
    */
-  const removeListener = useCallback((listener) => {
-    if (!google || !listener) return;
-    google.maps.event.removeListener(listener);
-  }, [google]);
+  const removeListener = useCallback(
+    (listener) => {
+      if (!google || !listener) return;
+      google.maps.event.removeListener(listener);
+    },
+    [google],
+  );
 
   /**
    * Clear all listeners
    */
-  const clearListeners = useCallback((event) => {
-    if (!map || !google) return;
-    google.maps.event.clearListeners(map, event);
-  }, [map, google]);
+  const clearListeners = useCallback(
+    (event) => {
+      if (!map || !google) return;
+      google.maps.event.clearListeners(map, event);
+    },
+    [map, google],
+  );
 
   /**
    * Geocode address to coordinates
    */
-  const geocodeAddress = useCallback(async (address) => {
-    if (!google) {
-      throw new Error('Google Maps not loaded');
-    }
+  const geocodeAddress = useCallback(
+    async (address) => {
+      if (!google) {
+        throw new Error("Google Maps not loaded");
+      }
 
-    const geocoder = new google.maps.Geocoder();
-    
-    return new Promise((resolve, reject) => {
-      geocoder.geocode({ address }, (results, status) => {
-        if (status === 'OK' && results[0]) {
-          const location = results[0].geometry.location;
-          resolve({
-            lat: location.lat(),
-            lng: location.lng(),
-            formattedAddress: results[0].formatted_address,
-            placeId: results[0].place_id
-          });
-        } else {
-          reject(new Error(`Geocoding failed: ${status}`));
-        }
+      const geocoder = new google.maps.Geocoder();
+
+      return new Promise((resolve, reject) => {
+        geocoder.geocode({ address }, (results, status) => {
+          if (status === "OK" && results[0]) {
+            const location = results[0].geometry.location;
+            resolve({
+              lat: location.lat(),
+              lng: location.lng(),
+              formattedAddress: results[0].formatted_address,
+              placeId: results[0].place_id,
+            });
+          } else {
+            reject(new Error(`Geocoding failed: ${status}`));
+          }
+        });
       });
-    });
-  }, [google]);
+    },
+    [google],
+  );
 
   /**
    * Reverse geocode coordinates to address
    */
-  const reverseGeocode = useCallback(async (location) => {
-    if (!google) {
-      throw new Error('Google Maps not loaded');
-    }
+  const reverseGeocode = useCallback(
+    async (location) => {
+      if (!google) {
+        throw new Error("Google Maps not loaded");
+      }
 
-    const geocoder = new google.maps.Geocoder();
-    
-    return new Promise((resolve, reject) => {
-      geocoder.geocode({ location }, (results, status) => {
-        if (status === 'OK' && results[0]) {
-          resolve({
-            formattedAddress: results[0].formatted_address,
-            placeId: results[0].place_id,
-            addressComponents: results[0].address_components
-          });
-        } else {
-          reject(new Error(`Reverse geocoding failed: ${status}`));
-        }
+      const geocoder = new google.maps.Geocoder();
+
+      return new Promise((resolve, reject) => {
+        geocoder.geocode({ location }, (results, status) => {
+          if (status === "OK" && results[0]) {
+            resolve({
+              formattedAddress: results[0].formatted_address,
+              placeId: results[0].place_id,
+              addressComponents: results[0].address_components,
+            });
+          } else {
+            reject(new Error(`Reverse geocoding failed: ${status}`));
+          }
+        });
       });
-    });
-  }, [google]);
+    },
+    [google],
+  );
 
   /**
    * Create marker
    */
-  const createMarker = useCallback((options) => {
-    if (!google || !map) return null;
+  const createMarker = useCallback(
+    (options) => {
+      if (!google || !map) return null;
 
-    return new google.maps.Marker({
-      map,
-      ...options
-    });
-  }, [google, map]);
+      return new google.maps.Marker({
+        map,
+        ...options,
+      });
+    },
+    [google, map],
+  );
 
   /**
    * Create polygon
    */
-  const createPolygon = useCallback((options) => {
-    if (!google || !map) return null;
+  const createPolygon = useCallback(
+    (options) => {
+      if (!google || !map) return null;
 
-    return new google.maps.Polygon({
-      map,
-      ...options
-    });
-  }, [google, map]);
+      return new google.maps.Polygon({
+        map,
+        ...options,
+      });
+    },
+    [google, map],
+  );
 
   /**
    * Create polyline
    */
-  const createPolyline = useCallback((options) => {
-    if (!google || !map) return null;
+  const createPolyline = useCallback(
+    (options) => {
+      if (!google || !map) return null;
 
-    return new google.maps.Polyline({
-      map,
-      ...options
-    });
-  }, [google, map]);
+      return new google.maps.Polyline({
+        map,
+        ...options,
+      });
+    },
+    [google, map],
+  );
 
   /**
    * Create info window
    */
-  const createInfoWindow = useCallback((options) => {
-    if (!google) return null;
+  const createInfoWindow = useCallback(
+    (options) => {
+      if (!google) return null;
 
-    return new google.maps.InfoWindow(options);
-  }, [google]);
+      return new google.maps.InfoWindow(options);
+    },
+    [google],
+  );
 
   /**
    * Cleanup map instance
@@ -349,9 +411,8 @@ export function useGoogleMap({
     createMarker,
     createPolygon,
     createPolyline,
-    createInfoWindow
+    createInfoWindow,
   };
 }
 
 export default useGoogleMap;
-

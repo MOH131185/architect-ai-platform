@@ -342,9 +342,24 @@ describe("buildProjectGraphRenderPrompt — Phase D injection", () => {
     expect(new Set(lockBlocks).size).toBe(1);
   });
 
+  test("prompt adds conservative visual continuity constraints from the manifest", () => {
+    const prompt = promptFor("exterior_render");
+    expect(prompt).toContain("VISUAL CONTINUITY CONSTRAINTS:");
+    expect(prompt).toContain(
+      "Preserve the exact 3 storey count, footprint proportions, silhouette, and roofline",
+    );
+    expect(prompt).toContain('Preserve roof form "gable"');
+    expect(prompt).toContain("primary Multi-stock red brick");
+    expect(prompt).toContain("secondary Vertical timber cladding");
+    expect(prompt).toContain("Preserve the regular bay window rhythm");
+    expect(prompt).toContain("Preserve the entrance at front facade centred");
+    expect(prompt).toContain("Do not invent extra bays, extra storeys");
+  });
+
   test("when no manifest is supplied, no lock block is emitted", () => {
     const prompt = promptFor("hero_3d", { manifest: null });
     expect(prompt).not.toMatch(/VISUAL IDENTITY LOCK/);
+    expect(prompt).not.toMatch(/VISUAL CONTINUITY CONSTRAINTS/);
     // But the rest of the prompt (intent + reasoning + style) must still be
     // present.
     expect(prompt).toContain("Photoreal hero exterior 3D perspective");

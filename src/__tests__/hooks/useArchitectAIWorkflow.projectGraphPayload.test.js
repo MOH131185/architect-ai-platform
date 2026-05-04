@@ -1,6 +1,7 @@
 import {
   buildProjectGraphVerticalSliceRequest,
   normalizeProjectGraphDrawingArtifacts,
+  sanitizeProjectGraphPanelMap,
   sanitizeProjectGraphSvg,
 } from "../../hooks/useArchitectAIWorkflow.js";
 import {
@@ -108,6 +109,111 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
     });
   });
 
+  test("raises unlocked 250 sqm detached-house payloads to two storeys", () => {
+    const request = buildProjectGraphVerticalSliceRequest({
+      designSpec: {
+        buildingCategory: "residential",
+        buildingSubType: "detached-house",
+        buildingType: "detached-house",
+        area: 250,
+        targetAreaM2: 250,
+        floorCount: 1,
+        autoDetectedFloorCount: 1,
+        floorCountLocked: false,
+      },
+    });
+
+    expect(request.projectDetails.floorCount).toBe(2);
+    expect(request.brief.target_storeys).toBe(2);
+    expect(request.brief.targetStoreys).toBe(2);
+  });
+
+  test.each([
+    ["office", "commercial", "office", "office_studio", "production"],
+    ["school", "education", "school", "education_studio", "beta"],
+    ["clinic", "healthcare", "clinic", "clinic", "production"],
+    ["hospital", "healthcare", "hospital", "hospital", "beta"],
+    ["hotel", "hospitality", "hotel", "hospitality_hotel", "beta"],
+    ["resort", "hospitality", "resort", "hospitality_resort", "beta"],
+    [
+      "guest house",
+      "hospitality",
+      "guest-house",
+      "hospitality_guest_house",
+      "beta",
+    ],
+    ["warehouse", "industrial", "warehouse", "industrial_warehouse", "beta"],
+    [
+      "manufacturing",
+      "industrial",
+      "manufacturing",
+      "industrial_manufacturing",
+      "beta",
+    ],
+    ["workshop", "industrial", "workshop", "industrial_workshop", "beta"],
+    ["museum", "cultural", "museum", "cultural_museum", "beta"],
+    ["library", "cultural", "library", "cultural_library", "beta"],
+    ["theatre", "cultural", "theatre", "cultural_theatre", "beta"],
+    ["town hall", "government", "town-hall", "government_town_hall", "beta"],
+    [
+      "police station",
+      "government",
+      "police",
+      "government_police_station",
+      "beta",
+    ],
+    [
+      "fire station",
+      "government",
+      "fire-station",
+      "government_fire_station",
+      "beta",
+    ],
+    ["mosque", "religious", "mosque", "religious_mosque", "beta"],
+    ["church", "religious", "church", "religious_church", "beta"],
+    ["temple", "religious", "temple", "religious_temple", "beta"],
+    [
+      "sports center",
+      "recreation",
+      "sports-center",
+      "recreation_sports_center",
+      "beta",
+    ],
+    ["gym", "recreation", "gym", "recreation_gym", "beta"],
+    ["pool", "recreation", "pool", "recreation_pool", "beta"],
+  ])(
+    "preserves %s selection and posts canonical ProjectGraph building_type",
+    (_label, category, subType, canonicalBuildingType, supportStatus) => {
+      const request = buildProjectGraphVerticalSliceRequest({
+        designSpec: {
+          buildingCategory: category,
+          buildingSubType: subType,
+          area: 480,
+          floorCount: 2,
+          floorCountLocked: true,
+        },
+      });
+
+      expect(request.projectDetails.category).toBe(category);
+      expect(request.projectDetails.subType).toBe(subType);
+      expect(request.projectDetails.canonicalBuildingType).toBe(
+        canonicalBuildingType,
+      );
+      expect(request.projectDetails.buildingType).toBe(canonicalBuildingType);
+      expect(request.projectDetails.projectTypeRoute).toBe("project_graph");
+      expect(request.projectDetails.supportStatus).toBe(supportStatus);
+      expect(request.projectDetails.programmeTemplateKey).toBe(
+        canonicalBuildingType,
+      );
+      expect(request.brief.building_type).toBe(canonicalBuildingType);
+      expect(request.brief.canonical_building_type).toBe(canonicalBuildingType);
+      expect(request.brief.original_category).toBe(category);
+      expect(request.brief.original_subtype).toBe(subType);
+      expect(request.brief.project_type_route).toBe("project_graph");
+      expect(request.brief.support_status).toBe(supportStatus);
+    },
+  );
+
   test("preserves a compact provided site map data URL for ProjectGraph site context", () => {
     const mapDataUrl =
       "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR42mNk+M9Qz0AEYBxVSFIAAAeSAi8BTyQ1AAAAAElFTkSuQmCC";
@@ -130,6 +236,27 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
     expect(request.siteSnapshot.dataUrl).toBe(mapDataUrl);
     expect(request.siteSnapshot.sourceUrl).toBe("provided-site-snapshot");
     expect(JSON.stringify(request).length).toBeLessThan(20_000);
+  });
+
+  test("propagates reference-match A1 intent through the ProjectGraph POST payload", () => {
+    const request = buildProjectGraphVerticalSliceRequest({
+      referenceMatch: true,
+      designSpec: {
+        buildingCategory: "residential",
+        buildingSubType: "detached-house",
+        projectName: "17 Kensington Road House",
+        area: 75,
+        autoDetectedFloorCount: 1,
+        floorCountLocked: false,
+      },
+    });
+
+    expect(request.referenceMatch).toBe(true);
+    expect(request.reference_match).toBe(true);
+    expect(request.renderIntent).toBe("reference_match_a1");
+    expect(request.qualityTarget).toBe("reference_match");
+    expect(request.brief.reference_match).toBe(true);
+    expect(request.projectDetails.autoDetectedFloorCount).toBe(1);
   });
 
   test("drops malformed site polygon coordinates before ProjectGraph POST", () => {
@@ -159,6 +286,88 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
       { lat: 52.483, lng: -1.892 },
       { lat: 52.482, lng: -1.892 },
     ]);
+  });
+
+  test("keeps building footprint contextual when site boundary is estimated", () => {
+    const estimatedBoundary = [
+      { lat: 53.591, lng: -0.689 },
+      { lat: 53.591, lng: -0.687 },
+      { lat: 53.59, lng: -0.687 },
+    ];
+    const buildingFootprint = [
+      { lat: 53.5908, lng: -0.6886 },
+      { lat: 53.5908, lng: -0.6882 },
+      { lat: 53.5905, lng: -0.6882 },
+    ];
+
+    const request = buildProjectGraphVerticalSliceRequest({
+      designSpec: {
+        buildingCategory: "residential",
+        buildingSubType: "detached-house",
+        area: 250,
+        floorCount: 2,
+        location: {
+          address: "17 Kensington Road",
+          coordinates: { lat: 53.591237, lng: -0.688325 },
+          boundaryAuthoritative: false,
+          boundaryEstimated: true,
+          estimatedSiteBoundary: estimatedBoundary,
+          buildingFootprint,
+          siteAnalysis: {
+            boundarySource: "Intelligent Fallback",
+            boundaryConfidence: 0.4,
+            boundaryAuthoritative: false,
+            boundaryEstimated: true,
+            estimatedOnly: true,
+            estimatedSiteBoundary: estimatedBoundary,
+          },
+        },
+        sitePolygon: buildingFootprint,
+        siteMetrics: {
+          areaM2: 65,
+          source: "google_building_outline",
+        },
+      },
+      siteSnapshot: {
+        sitePolygon: estimatedBoundary,
+        mapType: "roadmap",
+        drawPolygonOverlay: false,
+        metadata: {
+          sitePlanMode: "contextual_estimated_boundary",
+          boundaryAuthoritative: false,
+          boundaryEstimated: true,
+          contextualBoundaryOverlayUsed: true,
+          contextualBoundaryPolygon: estimatedBoundary,
+        },
+      },
+    });
+
+    expect(request.sitePolygon).toEqual([]);
+    expect(request.siteSnapshot.sitePolygon).toEqual(estimatedBoundary);
+    expect(request.siteSnapshot.mapType).toBe("roadmap");
+    expect(request.siteSnapshot.drawPolygonOverlay).toBe(false);
+    expect(request.siteSnapshot.metadata.sitePlanMode).toBe(
+      "contextual_estimated_boundary",
+    );
+    expect(request.siteSnapshot.metadata.boundaryAuthoritative).toBe(false);
+    expect(request.siteSnapshot.metadata.boundaryEstimated).toBe(true);
+    expect(request.siteSnapshot.metadata.contextualBoundaryOverlayUsed).toBe(
+      true,
+    );
+    expect(request.siteSnapshot.metadata.contextualBoundaryPolygon).toEqual(
+      estimatedBoundary,
+    );
+    expect(request.siteMetrics.areaM2).toBeUndefined();
+    expect(request.siteMetrics.boundaryAuthoritative).toBe(false);
+    expect(request.locationData.boundaryAuthoritative).toBe(false);
+    expect(request.locationData.boundaryEstimated).toBe(true);
+    expect(request.locationData.estimatedSiteBoundary).toEqual(
+      estimatedBoundary,
+    );
+    expect(request.locationData.buildingFootprint).toEqual(buildingFootprint);
+    expect(request.locationData.siteAnalysis.boundarySource).toBe(
+      "Intelligent Fallback",
+    );
   });
 
   test("normalizes ProjectGraph drawing artifact maps before panel mapping", () => {
@@ -191,7 +400,11 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
     const svg = `
       <svg>
         <path d="undefined" stroke="red" />
+        <path d=undefined stroke="orange" />
+        <path d='null' stroke="purple"></path>
+        <path d="L 0 0 L 10 10" stroke="pink" />
         <path d="M 0 0 L 10 10" stroke="black" />
+        <path d="m 1 1 l 2 2" stroke="green" />
         <path d="M 0 NaN L 5 5" stroke="blue"></path>
       </svg>
     `;
@@ -199,8 +412,38 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
     const sanitized = sanitizeProjectGraphSvg(svg);
 
     expect(sanitized).not.toContain('d="undefined"');
+    expect(sanitized).not.toContain("d=undefined");
+    expect(sanitized).not.toContain("d='null'");
+    expect(sanitized).not.toContain('d="L 0 0 L 10 10"');
     expect(sanitized).not.toContain("NaN");
     expect(sanitized).toContain('d="M 0 0 L 10 10"');
+    expect(sanitized).toContain('d="m 1 1 l 2 2"');
+  });
+
+  test("sanitizes ProjectGraph server panelMap SVG URLs before gallery rendering", () => {
+    const badSvg =
+      '<svg><path d="undefined" stroke="red" /><path d="M 0 0 L 10 10" /></svg>';
+    const encodedBadSvg = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
+      badSvg,
+    )}`;
+
+    const sanitized = sanitizeProjectGraphPanelMap({
+      floor_plan_ground: {
+        url: encodedBadSvg,
+        dataUrl: encodedBadSvg,
+        svgString: badSvg,
+      },
+    });
+
+    const panel = sanitized.floor_plan_ground;
+    expect(panel.svgString).not.toContain('d="undefined"');
+    expect(decodeURIComponent(panel.url.split(",")[1])).not.toContain(
+      'd="undefined"',
+    );
+    expect(decodeURIComponent(panel.dataUrl.split(",")[1])).not.toContain(
+      'd="undefined"',
+    );
+    expect(panel.svgString).toContain('d="M 0 0 L 10 10"');
   });
 
   test("level authority: 'Second' string with no levelIndex maps to levelIndex 2 in a 3-floor brief", () => {

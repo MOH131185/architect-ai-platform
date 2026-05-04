@@ -31,6 +31,7 @@ import {
   boundsToGoogleBounds,
 } from "./mapUtils.js";
 import { closeRing, latLngPolygonsEqual } from "./boundaryGeometry.js";
+import { buildManualVerifiedBoundary } from "../../services/site/boundaryPolicy.js";
 import logger from "../../utils/logger.js";
 
 // Editor modes
@@ -50,12 +51,27 @@ export function SiteBoundaryEditorV2({
   onBoundaryChange,
   apiKey,
   center = { lat: 37.7749, lng: -122.4194 },
+  autoDetectEnabled = true,
+  autoDetectOnLoad = true,
+  autoDetectDisabledMessage = "Automatic boundary detection is unavailable for this address. Draw or enter a verified boundary manually.",
+  contextualBoundaryPolygon = [],
+  boundarySource = null,
 }) {
+  // OGL v3.0 attribution: when the boundary comes from HM Land Registry
+  // (via either the bundled INSPIRE fixture or Digital Land's
+  // `title-boundary` real-time API) we must surface the attribution
+  // wherever the polygon is visible. Both source values map to the same
+  // chip — they originate from the same HMLR dataset.
+  const isInspireBoundary =
+    typeof boundarySource === "string" &&
+    (boundarySource.startsWith("hm-land-registry-inspire") ||
+      boundarySource.startsWith("digital-land-title-boundary"));
   // Refs
   const mapContainerRef = useRef(null);
   const polygonEditorRef = useRef(null);
   const drawingManagerRef = useRef(null);
   const polygonOverlayRef = useRef(null);
+  const contextualBoundaryOverlayRef = useRef(null);
 
   // State
   const [mode, setMode] = useState(MODES.SELECT);
@@ -64,6 +80,21 @@ export function SiteBoundaryEditorV2({
   const [showDiagnostics, setShowDiagnostics] = useState(true);
   const [showTableEditor, setShowTableEditor] = useState(false);
   const [validationWarning, setValidationWarning] = useState(null);
+  const [mapContainerElement, setMapContainerElement] = useState(null);
+  // Brownfield overlay (opt-in). When the user toggles it on the wizard
+  // fetches `/api/site/brownfield-nearby` and renders one map marker per
+  // returned site. Useful for site-selection workflows where the user is
+  // looking at where adjacent development opportunities are.
+  const [showBrownfieldNearby, setShowBrownfieldNearby] = useState(false);
+  const [brownfieldSites, setBrownfieldSites] = useState([]);
+  const [brownfieldLoading, setBrownfieldLoading] = useState(false);
+  const brownfieldMarkersRef = useRef([]);
+  const brownfieldInfoWindowRef = useRef(null);
+
+  const handleMapContainerRef = useCallback((element) => {
+    mapContainerRef.current = element;
+    setMapContainerElement(element);
+  }, []);
 
   // Google Maps hook
   const {
@@ -75,7 +106,7 @@ export function SiteBoundaryEditorV2({
     geocodeAddress,
   } = useGoogleMap({
     apiKey,
-    mapContainer: mapContainerRef.current,
+    mapContainer: mapContainerElement,
     center,
     zoom: 18,
   });
@@ -85,6 +116,7 @@ export function SiteBoundaryEditorV2({
     vertices,
     polygon,
     metrics,
+    validation,
     canUndo,
     canRedo,
     setPolygon,
@@ -99,8 +131,22 @@ export function SiteBoundaryEditorV2({
   } = useBoundaryState(initialBoundaryPolygon);
 
   const polygonLength = polygon.length;
+  const contextualBoundaryLength = Array.isArray(contextualBoundaryPolygon)
+    ? contextualBoundaryPolygon.length
+    : 0;
+  const fitBoundaryPolygon =
+    polygonLength >= 3 ? polygon : contextualBoundaryPolygon;
+  const fitBoundaryLength = Array.isArray(fitBoundaryPolygon)
+    ? fitBoundaryPolygon.length
+    : 0;
 
   const handleAutoDetect = useCallback(async () => {
+    if (!autoDetectEnabled) {
+      setValidationWarning(autoDetectDisabledMessage);
+      setTimeout(() => setValidationWarning(null), 5000);
+      return;
+    }
+
     setIsLoadingBoundary(true);
 
     try {
@@ -136,7 +182,16 @@ export function SiteBoundaryEditorV2({
     } finally {
       setIsLoadingBoundary(false);
     }
-  }, [center, geocodeAddress, google, map, setPolygon, siteAddress]);
+  }, [
+    autoDetectDisabledMessage,
+    autoDetectEnabled,
+    center,
+    geocodeAddress,
+    google,
+    map,
+    setPolygon,
+    siteAddress,
+  ]);
 
   // ============================================================
   // INITIALIZATION
@@ -159,12 +214,16 @@ export function SiteBoundaryEditorV2({
       isLoaded &&
       map &&
       google &&
+      autoDetectOnLoad &&
+      autoDetectEnabled &&
       polygonLength === 0 &&
       !isLoadingBoundary
     ) {
       handleAutoDetect();
     }
   }, [
+    autoDetectEnabled,
+    autoDetectOnLoad,
     google,
     handleAutoDetect,
     isLoaded,
@@ -178,33 +237,77 @@ export function SiteBoundaryEditorV2({
   // ============================================================
 
   useEffect(() => {
-    if (onBoundaryChange && polygonLength >= 3) {
-      const formattedMetrics = getFormattedMetrics();
-      const dna = convertToDNA();
+    if (!onBoundaryChange) return;
 
-      // Find dominant edge (longest, likely street-facing)
-      const segments = metrics.segments || [];
-      let dominantEdge = null;
-      if (segments.length > 0) {
-        dominantEdge = segments.reduce((longest, seg) =>
-          seg.length > longest.length ? seg : longest,
-        );
-      }
-
-      onBoundaryChange({
-        polygon,
-        metrics: formattedMetrics,
-        dna,
-        geoJSON: exportGeoJSON(),
-        primaryFrontEdge: dominantEdge
-          ? {
-              index: dominantEdge.index,
-              length: dominantEdge.length,
-              bearing: dominantEdge.bearing,
-            }
-          : null,
+    // PR-C re-review blocker 1: emit on EVERY change, not just polygon >= 3.
+    // When the polygon is cleared or drops below 3 vertices, emit a
+    // manual_invalid payload (clearManualVerified: true) so the parent
+    // drops any previously stored manual_verified boundary instead of
+    // keeping it indefinitely.
+    if (polygonLength < 3) {
+      const clearPayload = buildManualVerifiedBoundary({
+        polygon: [],
+        metrics: null,
+        validation: null,
+        geoJSON: null,
+        primaryFrontEdge: null,
       });
+      if (validationWarning) {
+        setValidationWarning(null);
+      }
+      onBoundaryChange({
+        ...clearPayload,
+        metrics: null,
+        dna: null,
+        geoJSON: null,
+        primaryFrontEdge: null,
+      });
+      return;
     }
+
+    const formattedMetrics = getFormattedMetrics();
+    const dna = convertToDNA();
+
+    // Find dominant edge (longest, likely street-facing)
+    const segments = metrics.segments || [];
+    let dominantEdge = null;
+    if (segments.length > 0) {
+      dominantEdge = segments.reduce((longest, seg) =>
+        seg.length > longest.length ? seg : longest,
+      );
+    }
+
+    const primaryFrontEdge = dominantEdge
+      ? {
+          index: dominantEdge.index,
+          length: dominantEdge.length,
+          bearing: dominantEdge.bearing,
+        }
+      : null;
+    const verifiedBoundary = buildManualVerifiedBoundary({
+      polygon,
+      metrics: formattedMetrics,
+      validation,
+      geoJSON: exportGeoJSON(),
+      primaryFrontEdge,
+    });
+
+    if (verifiedBoundary.invalid) {
+      setValidationWarning(
+        verifiedBoundary.warnings?.[0] ||
+          "Manual boundary is invalid and has not been verified.",
+      );
+    } else if (validationWarning) {
+      setValidationWarning(null);
+    }
+
+    onBoundaryChange({
+      ...verifiedBoundary,
+      metrics: formattedMetrics,
+      dna,
+      geoJSON: verifiedBoundary.geoJSON || exportGeoJSON(),
+      primaryFrontEdge,
+    });
   }, [
     convertToDNA,
     exportGeoJSON,
@@ -213,11 +316,166 @@ export function SiteBoundaryEditorV2({
     onBoundaryChange,
     polygon,
     polygonLength,
+    validation,
+    validationWarning,
   ]);
+
+  // ============================================================
+  // BROWNFIELD OVERLAY (opt-in)
+  // ============================================================
+
+  // Fetch nearby brownfield sites whenever the toggle is on, the map
+  // center is known, and the center has changed by more than ~10 m.
+  useEffect(() => {
+    if (!showBrownfieldNearby) {
+      setBrownfieldSites([]);
+      return undefined;
+    }
+    const lat = Number(center?.lat);
+    const lng = Number(center?.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return undefined;
+    }
+    let cancelled = false;
+    setBrownfieldLoading(true);
+    const url = `/api/site/brownfield-nearby?lat=${lat}&lng=${lng}&radiusM=2000`;
+    fetch(url)
+      .then((r) =>
+        r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)),
+      )
+      .then((json) => {
+        if (cancelled) return;
+        setBrownfieldSites(Array.isArray(json?.sites) ? json.sites : []);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        logger.warn("[Brownfield] nearby fetch failed", err?.message || err);
+        setBrownfieldSites([]);
+      })
+      .finally(() => {
+        if (!cancelled) setBrownfieldLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showBrownfieldNearby, center?.lat, center?.lng]);
+
+  // Render Google Maps markers for the brownfield sites. Cleans up on
+  // toggle-off and on unmount.
+  useEffect(() => {
+    if (!map || !google || !isLoaded) return undefined;
+
+    // Always tear down previous markers before deciding whether to draw.
+    for (const marker of brownfieldMarkersRef.current) {
+      marker.setMap(null);
+    }
+    brownfieldMarkersRef.current = [];
+
+    if (!showBrownfieldNearby || brownfieldSites.length === 0) {
+      return undefined;
+    }
+
+    if (!brownfieldInfoWindowRef.current) {
+      brownfieldInfoWindowRef.current = new google.maps.InfoWindow();
+    }
+
+    for (const site of brownfieldSites) {
+      const marker = new google.maps.Marker({
+        position: { lat: Number(site.lat), lng: Number(site.lng) },
+        map,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 6,
+          fillColor: "#F59E0B",
+          fillOpacity: 0.9,
+          strokeColor: "#FFFFFF",
+          strokeWeight: 2,
+        },
+        title: site.name || site.ref || "Brownfield site",
+        zIndex: 50,
+      });
+      marker.addListener("click", () => {
+        if (!brownfieldInfoWindowRef.current) return;
+        const planningLink = site.planningUrl
+          ? `<a href="${String(site.planningUrl).split(/\s+and\s+/i)[0]}" target="_blank" rel="noopener noreferrer" style="color:#1976d2;">Planning history</a>`
+          : "";
+        const html = `
+          <div style="max-width:240px;font-family:system-ui,sans-serif;color:#0f172a;">
+            <div style="font-weight:600;margin-bottom:4px;">${site.name || site.ref || "Brownfield site"}</div>
+            <div style="font-size:12px;color:#475569;">
+              ${site.planningStatus || "Planning status unknown"} · ${(Number(site.hectares) || 0).toFixed(2)} ha · ${site.distanceM} m away
+            </div>
+            ${site.ownership ? `<div style="font-size:11px;color:#64748b;margin-top:2px;">${site.ownership}</div>` : ""}
+            ${planningLink ? `<div style="font-size:12px;margin-top:6px;">${planningLink}</div>` : ""}
+          </div>
+        `;
+        brownfieldInfoWindowRef.current.setContent(html);
+        brownfieldInfoWindowRef.current.open({ map, anchor: marker });
+      });
+      brownfieldMarkersRef.current.push(marker);
+    }
+
+    return () => {
+      for (const marker of brownfieldMarkersRef.current) {
+        marker.setMap(null);
+      }
+      brownfieldMarkersRef.current = [];
+      if (brownfieldInfoWindowRef.current) {
+        brownfieldInfoWindowRef.current.close();
+      }
+    };
+  }, [map, google, isLoaded, showBrownfieldNearby, brownfieldSites]);
 
   // ============================================================
   // POLYGON OVERLAY (non-editable display)
   // ============================================================
+
+  useEffect(() => {
+    if (!map || !google || !isLoaded) return undefined;
+
+    if (contextualBoundaryOverlayRef.current) {
+      contextualBoundaryOverlayRef.current.setMap(null);
+      contextualBoundaryOverlayRef.current = null;
+    }
+
+    const shouldShowContextualBoundary =
+      contextualBoundaryLength >= 3 &&
+      (polygonLength < 3 ||
+        !latLngPolygonsEqual(contextualBoundaryPolygon, polygon));
+
+    if (shouldShowContextualBoundary) {
+      // Estimated/contextual boundary uses Material Blue 700 with a thinner
+      // stroke + lower fill opacity than the authoritative blue overlay so
+      // the user can tell at a glance it is non-authoritative — colour
+      // matches the A1 site-plan boundary for end-to-end consistency.
+      contextualBoundaryOverlayRef.current = new google.maps.Polygon({
+        paths: contextualBoundaryPolygon,
+        strokeColor: "#1976D2",
+        strokeOpacity: 0.85,
+        strokeWeight: 2,
+        fillColor: "#1976D2",
+        fillOpacity: 0.08,
+        clickable: false,
+        zIndex: 1,
+        map,
+      });
+    }
+
+    return () => {
+      if (contextualBoundaryOverlayRef.current) {
+        contextualBoundaryOverlayRef.current.setMap(null);
+        contextualBoundaryOverlayRef.current = null;
+      }
+    };
+  }, [
+    contextualBoundaryLength,
+    contextualBoundaryPolygon,
+    google,
+    isLoaded,
+    map,
+    polygon,
+    polygonLength,
+  ]);
 
   useEffect(() => {
     if (!map || !google || !isLoaded) return;
@@ -238,7 +496,8 @@ export function SiteBoundaryEditorV2({
         fillColor: "#3B82F6",
         fillOpacity: 0.2,
         clickable: false,
-        map: map,
+        zIndex: 2,
+        map,
       });
     }
 
@@ -252,14 +511,14 @@ export function SiteBoundaryEditorV2({
 
   // Fit bounds when polygon changes significantly
   useEffect(() => {
-    if (map && google && polygonLength >= 3 && mode === MODES.SELECT) {
-      const bounds = calculateBounds(polygon);
+    if (map && google && fitBoundaryLength >= 3 && mode === MODES.SELECT) {
+      const bounds = calculateBounds(fitBoundaryPolygon);
       if (bounds) {
         const googleBounds = boundsToGoogleBounds(bounds, google);
         map.fitBounds(googleBounds);
       }
     }
-  }, [google, map, mode, polygon, polygonLength]);
+  }, [fitBoundaryLength, fitBoundaryPolygon, google, map, mode]);
 
   // ============================================================
   // PRECISION POLYGON EDITOR (Edit Mode)
@@ -355,8 +614,12 @@ export function SiteBoundaryEditorV2({
           }
         },
         onValidationError: (errors) => {
+          // 15-second window (was 5 s) — long enough for the user to read
+          // and act, short enough to clear if they ignore. The warning
+          // also has a manual dismiss button so the user can clear it
+          // immediately without waiting.
           setValidationWarning(errors.join("; "));
-          setTimeout(() => setValidationWarning(null), 5000);
+          setTimeout(() => setValidationWarning(null), 15000);
         },
         minVertices: 3,
       });
@@ -390,14 +653,14 @@ export function SiteBoundaryEditorV2({
   );
 
   const handleFitBounds = useCallback(() => {
-    if (polygon.length >= 3 && map && google) {
-      const bounds = calculateBounds(polygon);
+    if (fitBoundaryLength >= 3 && map && google) {
+      const bounds = calculateBounds(fitBoundaryPolygon);
       if (bounds) {
         const googleBounds = boundsToGoogleBounds(bounds, google);
         map.fitBounds(googleBounds);
       }
     }
-  }, [polygon, map, google]);
+  }, [fitBoundaryLength, fitBoundaryPolygon, map, google]);
 
   const handleTableVerticesChange = useCallback(
     (newVertices) => {
@@ -485,8 +748,13 @@ export function SiteBoundaryEditorV2({
           {/* Auto-detect */}
           <button
             onClick={handleAutoDetect}
-            disabled={isLoadingBoundary}
+            disabled={isLoadingBoundary || !autoDetectEnabled}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-300 transition-colors font-medium text-sm"
+            title={
+              autoDetectEnabled
+                ? "Auto-detect boundary"
+                : autoDetectDisabledMessage
+            }
           >
             {isLoadingBoundary ? "Detecting..." : "🔍 Auto-Detect"}
           </button>
@@ -549,7 +817,7 @@ export function SiteBoundaryEditorV2({
           {/* Utility buttons */}
           <button
             onClick={handleFitBounds}
-            disabled={polygon.length < 3}
+            disabled={fitBoundaryLength < 3}
             className="px-3 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 disabled:bg-slate-100 disabled:text-slate-400 transition-colors text-sm"
           >
             📍 Fit
@@ -575,6 +843,25 @@ export function SiteBoundaryEditorV2({
             }`}
           >
             📊 Diagnostics
+          </button>
+
+          <button
+            onClick={() => setShowBrownfieldNearby((prev) => !prev)}
+            disabled={brownfieldLoading}
+            data-testid="brownfield-toggle"
+            className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              showBrownfieldNearby
+                ? "bg-amber-600 text-white"
+                : "bg-slate-200 text-slate-700 hover:bg-slate-300"
+            } disabled:opacity-60`}
+            title="Show nearby brownfield development sites from the council Brownfield Land Register"
+          >
+            🏗️ Brownfield {brownfieldLoading ? "…" : ""}
+            {showBrownfieldNearby && brownfieldSites.length > 0 && (
+              <span className="ml-1 text-[10px] opacity-90">
+                ({brownfieldSites.length})
+              </span>
+            )}
           </button>
 
           <button
@@ -617,25 +904,48 @@ export function SiteBoundaryEditorV2({
           )}
         </AnimatePresence>
 
-        {/* Validation warning */}
+        {/* Validation warning — dismissible. Auto-clears after 15 s; the
+            user can also click × to dismiss immediately. */}
         <AnimatePresence>
           {validationWarning && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800"
+              className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 flex items-start gap-2"
+              data-testid="boundary-validation-warning"
             >
-              ⚠️ {validationWarning}
+              <span className="flex-1">⚠️ {validationWarning}</span>
+              <button
+                type="button"
+                onClick={() => setValidationWarning(null)}
+                className="text-amber-700 hover:text-amber-900 px-1 leading-none"
+                aria-label="Dismiss warning"
+              >
+                ×
+              </button>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
 
+      {/* Always-visible summary bar — surfaces area / perimeter / vertex
+          count + reference + length-of-each-side data the moment a polygon
+          is loaded, so the user never has to discover the Diagnostics
+          toggle to see it. */}
+      {polygon.length >= 3 && (
+        <div
+          className="bg-white rounded-lg shadow p-3 mb-3"
+          data-testid="boundary-summary-bar"
+        >
+          <BoundaryDiagnostics vertices={vertices} compact={true} />
+        </div>
+      )}
+
       {/* Main Content Grid */}
       <div className={`grid gap-4 ${showTableEditor ? "lg:grid-cols-2" : ""}`}>
         {/* Map Container */}
-        <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+        <div className="relative bg-white rounded-lg shadow-lg overflow-hidden">
           {/* Loading Overlay */}
           {(isLoading || !isLoaded) && (
             <div className="absolute inset-0 z-10 flex items-center justify-center bg-white bg-opacity-90">
@@ -669,11 +979,35 @@ export function SiteBoundaryEditorV2({
 
           {/* Map Container */}
           <div
-            ref={mapContainerRef}
+            ref={handleMapContainerRef}
             className="w-full h-[450px] bg-slate-100"
             style={{ minHeight: "450px" }}
           />
         </div>
+
+        {/* HM Land Registry attribution. OGL v3.0 requires the
+            attribution to be visible wherever INSPIRE polygons are
+            rendered. Renders only when the boundary's source is the
+            INSPIRE proxy response. */}
+        {isInspireBoundary && (
+          <p
+            className="mt-2 text-[10px] uppercase tracking-wide text-white/55"
+            data-testid="hmlr-attribution"
+          >
+            Contains HM Land Registry data © Crown copyright and database right
+            (Open Government Licence v3.0)
+          </p>
+        )}
+
+        {showBrownfieldNearby && brownfieldSites.length > 0 && (
+          <p
+            className="mt-1 text-[10px] uppercase tracking-wide text-white/55"
+            data-testid="brownfield-attribution"
+          >
+            Brownfield sites: contains public sector information licensed under
+            the Open Government Licence v3.0 (council Brownfield Land Register).
+          </p>
+        )}
 
         {/* Table Editor */}
         <AnimatePresence>
@@ -711,7 +1045,7 @@ export function SiteBoundaryEditorV2({
             <BoundaryDiagnostics
               vertices={vertices}
               showSegments={true}
-              showAngles={false}
+              showAngles={true}
             />
           </motion.div>
         )}

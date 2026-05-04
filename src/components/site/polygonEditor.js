@@ -20,14 +20,42 @@
 
 /**
  * Default polygon styling
+ *
+ * Authoritative site boundary uses Material Blue 700 (#1976D2) at full
+ * stroke opacity. Estimated/non-authoritative boundaries use the same
+ * hue at reduced stroke opacity and lighter fill so the user can tell
+ * at a glance that the polygon is non-authoritative — the colour stays
+ * blue in both cases for consistency with the A1 site plan.
  */
 const DEFAULT_POLYGON_STYLES = {
-  fillColor: '#2962FF',
-  fillOpacity: 0.25,
-  strokeColor: '#2962FF',
+  fillColor: "#1976D2",
+  fillOpacity: 0.18,
+  strokeColor: "#1976D2",
   strokeWeight: 3,
-  strokeOpacity: 0.9,
+  strokeOpacity: 1,
 };
+
+const ESTIMATED_POLYGON_STYLES = {
+  fillColor: "#1976D2",
+  fillOpacity: 0.1,
+  strokeColor: "#1976D2",
+  strokeWeight: 2,
+  strokeOpacity: 0.85,
+};
+
+/**
+ * Resolve the polygon style for the editor. When `estimated` is true,
+ * the lighter style is returned so that auto-detected non-authoritative
+ * boundaries are visually distinguishable from confirmed ones.
+ *
+ * @param {{ estimated?: boolean }} [options]
+ * @returns {object} polygon style options
+ */
+export function getPolygonEditorStyles({ estimated = false } = {}) {
+  return estimated
+    ? { ...ESTIMATED_POLYGON_STYLES }
+    : { ...DEFAULT_POLYGON_STYLES };
+}
 
 /**
  * Default vertex marker styling
@@ -35,23 +63,23 @@ const DEFAULT_POLYGON_STYLES = {
 const DEFAULT_MARKER_STYLES = {
   default: {
     path: window.google?.maps?.SymbolPath?.CIRCLE || 0,
-    fillColor: '#FFFFFF',
+    fillColor: "#FFFFFF",
     fillOpacity: 1,
-    strokeColor: '#2962FF',
+    strokeColor: "#1976D2",
     strokeWeight: 3,
     scale: 8,
   },
   hover: {
-    fillColor: '#2962FF',
+    fillColor: "#1976D2",
     fillOpacity: 1,
-    strokeColor: '#FFFFFF',
+    strokeColor: "#FFFFFF",
     strokeWeight: 3,
     scale: 10,
   },
   dragging: {
-    fillColor: '#FF5722',
+    fillColor: "#FF5722",
     fillOpacity: 1,
-    strokeColor: '#FFFFFF',
+    strokeColor: "#FFFFFF",
     strokeWeight: 3,
     scale: 12,
   },
@@ -89,7 +117,7 @@ export class PolygonEditor {
    */
   init() {
     if (!this.map || !window.google) {
-      console.warn('PolygonEditor: Map or Google Maps API not available');
+      console.warn("PolygonEditor: Map or Google Maps API not available");
       return;
     }
 
@@ -136,7 +164,7 @@ export class PolygonEditor {
         position: vertex,
         map: this.map,
         draggable: true,
-        icon: this.getMarkerIcon('default'),
+        icon: this.getMarkerIcon("default"),
         zIndex: 10 + index,
         title: `Vertex ${index + 1}`,
       });
@@ -157,7 +185,8 @@ export class PolygonEditor {
    * @returns {Object} Icon configuration
    */
   getMarkerIcon(state) {
-    const styles = DEFAULT_MARKER_STYLES[state] || DEFAULT_MARKER_STYLES.default;
+    const styles =
+      DEFAULT_MARKER_STYLES[state] || DEFAULT_MARKER_STYLES.default;
     return {
       path: window.google.maps.SymbolPath.CIRCLE,
       ...styles,
@@ -171,12 +200,12 @@ export class PolygonEditor {
    */
   attachMarkerListeners(marker, index) {
     // Drag start
-    marker.addListener('dragstart', () => {
-      marker.setIcon(this.getMarkerIcon('dragging'));
+    marker.addListener("dragstart", () => {
+      marker.setIcon(this.getMarkerIcon("dragging"));
     });
 
     // Dragging
-    marker.addListener('drag', () => {
+    marker.addListener("drag", () => {
       const position = marker.getPosition();
       this.vertices[index] = {
         lat: position.lat(),
@@ -186,31 +215,31 @@ export class PolygonEditor {
     });
 
     // Drag end
-    marker.addListener('dragend', () => {
-      marker.setIcon(this.getMarkerIcon('default'));
+    marker.addListener("dragend", () => {
+      marker.setIcon(this.getMarkerIcon("default"));
       this.notifyUpdate();
     });
 
     // Hover effects
-    marker.addListener('mouseover', () => {
-      if (!marker.getIcon().fillColor?.includes('FF5722')) {
-        marker.setIcon(this.getMarkerIcon('hover'));
+    marker.addListener("mouseover", () => {
+      if (!marker.getIcon().fillColor?.includes("FF5722")) {
+        marker.setIcon(this.getMarkerIcon("hover"));
       }
     });
 
-    marker.addListener('mouseout', () => {
-      if (!marker.getIcon().fillColor?.includes('FF5722')) {
-        marker.setIcon(this.getMarkerIcon('default'));
+    marker.addListener("mouseout", () => {
+      if (!marker.getIcon().fillColor?.includes("FF5722")) {
+        marker.setIcon(this.getMarkerIcon("default"));
       }
     });
 
     // Right-click to delete
-    marker.addListener('rightclick', () => {
+    marker.addListener("rightclick", () => {
       this.deleteVertex(index);
     });
 
     // Double-click to delete (alternative)
-    marker.addListener('dblclick', () => {
+    marker.addListener("dblclick", () => {
       this.deleteVertex(index);
     });
   }
@@ -220,7 +249,7 @@ export class PolygonEditor {
    */
   attachMapListeners() {
     // Shift+Click to add vertex
-    const clickListener = this.map.addListener('click', (event) => {
+    const clickListener = this.map.addListener("click", (event) => {
       if (event.domEvent && event.domEvent.shiftKey) {
         this.addVertexAtLocation(event.latLng);
       }
@@ -319,7 +348,7 @@ export class PolygonEditor {
   deleteVertex(index) {
     // Ensure minimum 3 vertices
     if (this.vertices.length <= 3) {
-      console.warn('Cannot delete vertex: minimum 3 vertices required');
+      console.warn("Cannot delete vertex: minimum 3 vertices required");
       return;
     }
 

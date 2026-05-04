@@ -2,7 +2,14 @@ import {
   buildArchitectureProjectVerticalSlice,
   validateProjectGraphVerticalSlice,
   KNOWN_BUILDING_TYPES,
+  buildKeyNotesPanelArtifact,
+  buildTitleBlockPanelArtifact,
+  __projectGraphVerticalSliceInternals,
 } from "../../services/project/projectGraphVerticalSliceService.js";
+import {
+  A1_TEST_RASTER_MODE_ENV,
+  A1_TEST_RASTER_STUB_VALUE,
+} from "../../services/render/svgRasteriser.js";
 
 jest.setTimeout(420000);
 
@@ -56,6 +63,170 @@ function createReadingRoomBrief() {
       ],
     },
   };
+}
+
+function createKensingtonReferenceMatchBrief() {
+  const siteMapDataUrl =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR42mNk+M9Qz0AEYBxVSFIAAAeSAi8BTyQ1AAAAAElFTkSuQmCC";
+  return {
+    referenceMatch: true,
+    projectDetails: {
+      projectName: "Stale Cherry House",
+      address: "97 Bradford Street, Birmingham",
+      area: 250,
+      floorCount: 1,
+      autoDetectedFloorCount: 1,
+      floorCountLocked: false,
+      subType: "detached-house",
+    },
+    brief: {
+      project_name: "17 Kensington Road House",
+      building_type: "dwelling",
+      site_input: {
+        address: "17 Kensington Rd, DN15 8BQ, UK",
+        postcode: "DN15 8BQ",
+        lat: 53.5912182,
+        lon: -0.6883197,
+      },
+      target_gia_m2: 75,
+      client_goals: [
+        "compact two-storey family house",
+        "reference-match RIBA A1 board",
+        "local UK brick and timber material palette",
+      ],
+      style_keywords: ["red brick", "timber accent", "contemporary UK house"],
+      sustainability_ambition: "low_energy",
+    },
+    sitePolygon: [
+      { lat: 53.59131, lng: -0.68847 },
+      { lat: 53.59131, lng: -0.68817 },
+      { lat: 53.59112, lng: -0.68817 },
+      { lat: 53.59112, lng: -0.68847 },
+    ],
+    siteMetrics: {
+      areaM2: 2380,
+      orientationDeg: 12,
+    },
+    siteSnapshot: {
+      dataUrl: siteMapDataUrl,
+      sourceUrl: "provided-site-snapshot",
+      attribution: "Provided site map",
+      polygon: [
+        { lat: 53.59131, lng: -0.68847 },
+        { lat: 53.59131, lng: -0.68817 },
+        { lat: 53.59112, lng: -0.68817 },
+        { lat: 53.59112, lng: -0.68847 },
+      ],
+    },
+  };
+}
+
+function createLowConfidenceBradfordBoundaryBrief() {
+  const estimatedBoundary = [
+    { lat: 53.79224, lng: -1.75556 },
+    { lat: 53.79224, lng: -1.75474 },
+    { lat: 53.79162, lng: -1.75474 },
+    { lat: 53.79162, lng: -1.75556 },
+  ];
+  const fallbackArea = 119408;
+
+  return {
+    projectDetails: {
+      projectName: "Cherish Bradford Street",
+      address: "97 Bradford Street, Bradford",
+      area: 250,
+      floorCount: 2,
+      subType: "detached-house",
+    },
+    brief: {
+      project_name: "Cherish Bradford Street",
+      building_type: "dwelling",
+      site_input: {
+        address: "97 Bradford Street, Bradford",
+        postcode: "BD1",
+        lat: 53.79203,
+        lon: -1.75524,
+      },
+      target_gia_m2: 250,
+      target_storeys: 2,
+      client_goals: ["family dwelling", "RIBA A1 site plan"],
+      style_keywords: ["contextual brick", "residential"],
+      sustainability_ambition: "low_energy",
+    },
+    sitePolygon: estimatedBoundary,
+    siteMetrics: {
+      areaM2: fallbackArea,
+      orientationDeg: 10,
+      boundaryAuthoritative: false,
+      boundarySource: "Intelligent Fallback",
+      boundaryConfidence: 0.4,
+    },
+    locationData: {
+      coordinates: { lat: 53.79203, lng: -1.75524 },
+      siteAnalysis: {
+        siteBoundary: null,
+        estimatedSiteBoundary: estimatedBoundary,
+        surfaceArea: fallbackArea,
+        estimatedSurfaceArea: fallbackArea,
+        boundaryAuthoritative: false,
+        boundaryEstimated: true,
+        estimatedOnly: true,
+        boundarySource: "Intelligent Fallback",
+        boundaryConfidence: 0.4,
+        fallbackReason: "No real boundary data available",
+      },
+    },
+  };
+}
+
+function cloneForTest(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+let kensingtonReferenceMatchBuildPromise = null;
+
+async function getKensingtonReferenceMatchResult() {
+  if (!kensingtonReferenceMatchBuildPromise) {
+    kensingtonReferenceMatchBuildPromise =
+      buildArchitectureProjectVerticalSlice(
+        createKensingtonReferenceMatchBrief(),
+      );
+  }
+  return cloneForTest(await kensingtonReferenceMatchBuildPromise);
+}
+
+function wrapVisualsAsGeometryLockedImages(result) {
+  const pngPayload =
+    "AAA1x1BBBplaceholder_3dCCCgeometryRenderService" + "a".repeat(1600);
+  return Object.fromEntries(
+    Object.entries(result.artifacts.visuals3d).map(([panelType, artifact]) => [
+      panelType,
+      {
+        ...artifact,
+        asset_type: "geometry_locked_presentation_svg",
+        svgString: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${artifact.width} ${artifact.height}" width="${artifact.width}" height="${artifact.height}"><image href="data:image/png;base64,${pngPayload}" x="0" y="0" width="${artifact.width}" height="${artifact.height}" preserveAspectRatio="xMidYMid slice"/></svg>`,
+        metadata: {
+          ...artifact.metadata,
+          source: "project_graph_image_renderer",
+          imageRenderFallback: false,
+          imageRenderFallbackReason: null,
+          imageRenderByteLength: 1200,
+          imageProviderUsed: "openai",
+          openaiImageUsed: true,
+          hasPngImagePayload: true,
+          openaiRequestId: `req_${panelType}`,
+          presentationMode: "geometry_locked_image_render",
+          visualFidelityStatus: "photoreal_geometry_locked",
+          visualRenderMode: "photoreal_image_gen",
+          renderProvenance: {
+            sourceGeometryHash: result.geometryHash,
+            referenceSource: "compiled_3d_control_svg",
+            requestId: `req_${panelType}`,
+          },
+        },
+      },
+    ]),
+  );
 }
 
 function expectPanelPlacementsDoNotOverlap(placements) {
@@ -112,6 +283,65 @@ function createOpenAIReasoningFetchMock() {
   });
 }
 
+const expandedProjectGraphSubtypeCases = [
+  ["hotel", "hospitality", "hotel", "hospitality_hotel", "beta"],
+  ["resort", "hospitality", "resort", "hospitality_resort", "beta"],
+  [
+    "guest house",
+    "hospitality",
+    "guest-house",
+    "hospitality_guest_house",
+    "beta",
+  ],
+  ["warehouse", "industrial", "warehouse", "industrial_warehouse", "beta"],
+  [
+    "manufacturing",
+    "industrial",
+    "manufacturing",
+    "industrial_manufacturing",
+    "beta",
+  ],
+  ["workshop", "industrial", "workshop", "industrial_workshop", "beta"],
+  ["museum", "cultural", "museum", "cultural_museum", "beta"],
+  ["library", "cultural", "library", "cultural_library", "beta"],
+  ["theatre", "cultural", "theatre", "cultural_theatre", "beta"],
+  ["town hall", "government", "town-hall", "government_town_hall", "beta"],
+  [
+    "police station",
+    "government",
+    "police",
+    "government_police_station",
+    "beta",
+  ],
+  [
+    "fire station",
+    "government",
+    "fire-station",
+    "government_fire_station",
+    "beta",
+  ],
+  ["mosque", "religious", "mosque", "religious_mosque", "beta"],
+  ["church", "religious", "church", "religious_church", "beta"],
+  ["temple", "religious", "temple", "religious_temple", "beta"],
+  [
+    "sports center",
+    "recreation",
+    "sports-center",
+    "recreation_sports_center",
+    "beta",
+  ],
+  ["gym", "recreation", "gym", "recreation_gym", "beta"],
+  ["pool", "recreation", "pool", "recreation_pool", "beta"],
+];
+
+const projectGraphSubtypeSupportCases = [
+  ["office", "commercial", "office", "office_studio", "production"],
+  ["school", "education", "school", "education_studio", "beta"],
+  ["clinic", "healthcare", "clinic", "clinic", "production"],
+  ["hospital", "healthcare", "hospital", "hospital", "beta"],
+  ...expandedProjectGraphSubtypeCases,
+];
+
 describe("projectGraphVerticalSliceService", () => {
   const originalModelSource = process.env.MODEL_SOURCE;
   const originalReasoningModel = process.env.OPENAI_REASONING_MODEL;
@@ -125,6 +355,7 @@ describe("projectGraphVerticalSliceService", () => {
   const originalProjectGraphImageGenEnabled =
     process.env.PROJECT_GRAPH_IMAGE_GEN_ENABLED;
   const originalOpenAIStrictImageGen = process.env.OPENAI_STRICT_IMAGE_GEN;
+  const originalA1TestRasterMode = process.env[A1_TEST_RASTER_MODE_ENV];
   const originalFetch = global.fetch;
 
   beforeEach(() => {
@@ -138,6 +369,12 @@ describe("projectGraphVerticalSliceService", () => {
     process.env.OPENAI_STRICT_IMAGE_GEN = "false";
     delete process.env.GOOGLE_MAPS_API_KEY;
     delete process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
+    // PR-D follow-up: opt the whole suite into the lightweight raster /
+    // ink-metric stubs in svgRasteriser + analyseRenderedSheetPng so each
+    // test validates metadata / layout / geometry without spending minutes
+    // on the 300-DPI A1 PNG (~70 megapixels) and its 280M-iteration ink
+    // walk. Tests that need the real raster path must override this.
+    process.env[A1_TEST_RASTER_MODE_ENV] = A1_TEST_RASTER_STUB_VALUE;
     global.fetch = originalFetch;
   });
 
@@ -192,6 +429,11 @@ describe("projectGraphVerticalSliceService", () => {
       delete process.env.OPENAI_STRICT_IMAGE_GEN;
     } else {
       process.env.OPENAI_STRICT_IMAGE_GEN = originalOpenAIStrictImageGen;
+    }
+    if (originalA1TestRasterMode === undefined) {
+      delete process.env[A1_TEST_RASTER_MODE_ENV];
+    } else {
+      process.env[A1_TEST_RASTER_MODE_ENV] = originalA1TestRasterMode;
     }
     global.fetch = originalFetch;
   });
@@ -270,6 +512,61 @@ describe("projectGraphVerticalSliceService", () => {
         imageProviderUsed: "deterministic",
       }),
     );
+    // Phase 1 amendment #9: provenance manifest is always present on the
+    // result. siteDataProviders is empty in this offline run; the assertion
+    // proves OpenAI is not a factual provider (amendment #1).
+    expect(result.provenanceManifest).toEqual(
+      expect.objectContaining({
+        schema_version: "provenance-manifest-v1",
+        siteDataProviders: expect.any(Array),
+        climateDataProviders: expect.any(Array),
+        dataQuality: expect.any(Array),
+        factualProviderAssertion: expect.objectContaining({
+          openaiAsFactualProvider: false,
+          factualFieldsList: expect.arrayContaining([
+            "site.heritage_flags",
+            "site.flood_risk",
+            "climate.weather_source",
+          ]),
+        }),
+      }),
+    );
+    // Offline run never invoked any factual provider, so siteDataProviders +
+    // climateDataProviders are empty and the OFFLINE flag is in dataQuality.
+    expect(result.provenanceManifest.siteDataProviders).toEqual([]);
+    expect(result.provenanceManifest.climateDataProviders).toEqual([]);
+    expect(
+      result.provenanceManifest.dataQuality.some(
+        (q) => q.code === "CONTEXT_PROVIDERS_OFFLINE",
+      ),
+    ).toBe(true);
+    // Phase 5B — visual identity validation report attached to artifacts
+    // and to sheet metadata. Deterministic-fallback path must not fail.
+    // The validator is report-only; it never modifies the export gate
+    // (the gate's decision is driven by its own evidence chain at
+    // src/services/project/projectGraphVerticalSliceService.js Phase F
+    // and is unchanged by this PR).
+    expect(result.artifacts.visualIdentityValidation).toEqual(
+      expect.objectContaining({
+        version: "visual-manifest-validator-v1",
+        strictMode: false,
+      }),
+    );
+    expect(result.artifacts.visualIdentityValidation.status).not.toBe("fail");
+    expect(result.artifacts.visualIdentityValidation.summary).toEqual(
+      expect.objectContaining({ totalPanels: 4 }),
+    );
+    expect(
+      Object.keys(result.artifacts.visualIdentityValidation.panels).sort(),
+    ).toEqual(
+      ["axonometric", "exterior_render", "hero_3d", "interior_3d"].sort(),
+    );
+    expect(
+      result.artifacts.a1Sheet.metadata.visualIdentityValidation,
+    ).toBeTruthy();
+    expect(
+      result.artifacts.a1Sheet.metadata.visualIdentityValidation.version,
+    ).toBe("visual-manifest-validator-v1");
     expect(result.artifacts.a1Pdf.asset_type).toBe("a1_sheet_pdf");
     expect(result.artifacts.a1Pdf.sheet_size_mm).toEqual({
       width: 841,
@@ -582,6 +879,269 @@ describe("projectGraphVerticalSliceService", () => {
     expect(result.qa.categoryScores.graphic.max).toBe(10);
   });
 
+  // Phase 3 / Codex review: prove that climate.providers[] propagates through
+  // buildClimatePack and feeds the slice's provenanceManifest.climateDataProviders.
+  // This is a focused unit test against the internals to avoid a second ~80s
+  // full slice run while still asserting every required field per record.
+  test("buildClimatePack propagates weather.providers[] into climate.providers[] for the manifest", () => {
+    const { buildClimatePack, normalizeBrief, buildSiteContext } =
+      __projectGraphVerticalSliceInternals;
+    const brief = normalizeBrief({
+      project_name: "Climate Provenance Probe",
+      building_type: "dwelling",
+      site_input: {
+        address: "1 Test Street",
+        postcode: "N1 1AA",
+        lat: 51.5,
+        lon: -0.1,
+      },
+      target_gia_m2: 120,
+      target_storeys: 2,
+      client_goals: ["compact dwelling"],
+      style_keywords: ["red brick"],
+      sustainability_ambition: "low_energy",
+    });
+    const site = buildSiteContext({
+      brief,
+      sitePolygon: [
+        { lat: 51.5005, lng: -0.1005 },
+        { lat: 51.5005, lng: -0.0995 },
+        { lat: 51.4995, lng: -0.0995 },
+        { lat: 51.4995, lng: -0.1005 },
+      ],
+      siteMetrics: { areaM2: 1000, orientationDeg: 0 },
+      siteBoundarySanity: {
+        boundaryAuthoritative: true,
+        siteMetrics: { areaM2: 1000, orientationDeg: 0 },
+      },
+      mainEntry: null,
+    });
+
+    // Synthesised weather chain result mirroring what weatherService produces
+    // on a Met Office success: the chain stamps a single provider record and
+    // forwards WEATHER_AUTHORITY_HIGH onto data_quality.
+    const synthWeather = {
+      temperature: { current: 12, min: 10, max: 14, unit: "°C" },
+      wind: {
+        speed: 5,
+        direction: 200,
+        cardinal: "S",
+        prevailing: "S",
+        unit: "m/s",
+      },
+      precipitation: { daily: 0.5, daily_sum: 0.5, unit: "mm" },
+      climateZone: "Temperate",
+      summary: "synth",
+      provider: "met-office-datahub",
+      authority: "high",
+      providers: [
+        {
+          name: "met-office-datahub",
+          authority: "high",
+          fetched_at: "2026-05-03T12:00:00.000Z",
+          status: "ok",
+          fields_supplied: [
+            "temperature",
+            "wind",
+            "precipitation",
+            "climateZone",
+          ],
+        },
+      ],
+      data_quality: [
+        {
+          code: "WEATHER_AUTHORITY_HIGH",
+          severity: "info",
+          message: "synth Met Office record",
+          source: "met-office-datahub",
+        },
+      ],
+    };
+
+    const climate = buildClimatePack(brief, site, { weather: synthWeather });
+
+    // climate.providers === weather.providers — this is the array the slice
+    // service reads as `Array.isArray(climate?.providers) ? climate.providers : []`
+    // and assigns to provenanceManifest.climateDataProviders.
+    expect(climate.providers).toEqual(synthWeather.providers);
+    expect(climate.providers).toHaveLength(1);
+    const record = climate.providers[0];
+    // Per Codex request: every record must carry these five fields.
+    expect(record).toEqual(
+      expect.objectContaining({
+        name: expect.any(String),
+        authority: expect.stringMatching(/^(high|medium|low)$/),
+        fetched_at: expect.any(String),
+        status: expect.stringMatching(/^(ok|error|timeout|not_used)$/),
+        fields_supplied: expect.any(Array),
+      }),
+    );
+    expect(record.name).toBe("met-office-datahub");
+    expect(record.authority).toBe("high");
+    expect(record.fields_supplied).toEqual(
+      expect.arrayContaining([
+        "temperature",
+        "wind",
+        "precipitation",
+        "climateZone",
+      ]),
+    );
+    // Climate keeps its own data_quality array; it should carry both the
+    // pack-level CLIMATE_PACK_WEATHER_LIVE marker and forward the chain's
+    // WEATHER_AUTHORITY_HIGH entry.
+    const codes = climate.data_quality.map((q) => q.code);
+    expect(codes).toContain("CLIMATE_PACK_WEATHER_LIVE");
+    expect(codes).toContain("WEATHER_AUTHORITY_HIGH");
+    // Live weather populates wind/rainfall sources — these flow into the slice
+    // result and ultimately into the A1 sheet's climate panel.
+    expect(climate.weather_source).toBe("met-office-datahub");
+    expect(climate.weather_authority).toBe("high");
+    expect(climate.wind.source).toBe("met-office-datahub");
+    expect(climate.rainfall.source).toBe("met-office-datahub");
+    // OpenAI guardrail: no provider in the manifest may be branded as OpenAI.
+    for (const p of climate.providers) {
+      expect(p.name).not.toMatch(/openai|gpt|chatgpt/i);
+    }
+  });
+
+  test("buildClimatePack with deterministic-fallback weather forwards the fallback record into climate.providers[]", () => {
+    const { buildClimatePack, normalizeBrief, buildSiteContext } =
+      __projectGraphVerticalSliceInternals;
+    const brief = normalizeBrief({
+      project_name: "Fallback Provenance Probe",
+      building_type: "dwelling",
+      site_input: {
+        address: "2 Test Street",
+        postcode: "N1 1AA",
+        lat: 51.5,
+        lon: -0.1,
+      },
+      target_gia_m2: 120,
+      target_storeys: 2,
+      client_goals: ["compact dwelling"],
+      style_keywords: ["red brick"],
+      sustainability_ambition: "low_energy",
+    });
+    const site = buildSiteContext({
+      brief,
+      sitePolygon: [
+        { lat: 51.5005, lng: -0.1005 },
+        { lat: 51.5005, lng: -0.0995 },
+        { lat: 51.4995, lng: -0.0995 },
+        { lat: 51.4995, lng: -0.1005 },
+      ],
+      siteMetrics: { areaM2: 1000, orientationDeg: 0 },
+      siteBoundarySanity: {
+        boundaryAuthoritative: true,
+        siteMetrics: { areaM2: 1000, orientationDeg: 0 },
+      },
+      mainEntry: null,
+    });
+
+    // Synthesised "all upstream providers failed" chain result.
+    const synthFallback = {
+      temperature: { current: 15, min: 10, max: 20, unit: "°C" },
+      wind: {
+        speed: 10,
+        direction: 225,
+        cardinal: "SW",
+        prevailing: "SW",
+        unit: "km/h",
+      },
+      precipitation: { daily: 0, daily_sum: 0, unit: "mm" },
+      climateZone: "Temperate",
+      summary: "fallback",
+      provider: "deterministic-fallback",
+      authority: "low",
+      providers: [
+        {
+          name: "met-office-datahub",
+          authority: "high",
+          fetched_at: null,
+          status: "error",
+          fields_supplied: [],
+        },
+        {
+          name: "open-meteo",
+          authority: "medium",
+          fetched_at: null,
+          status: "error",
+          fields_supplied: [],
+        },
+        {
+          name: "openweather",
+          authority: "low",
+          fetched_at: null,
+          status: "timeout",
+          fields_supplied: [],
+        },
+        {
+          name: "deterministic-fallback",
+          authority: "low",
+          fetched_at: null,
+          status: "ok",
+          fields_supplied: [
+            "temperature",
+            "wind",
+            "precipitation",
+            "climateZone",
+          ],
+        },
+      ],
+      data_quality: [
+        {
+          code: "WEATHER_PROVIDER_ERROR",
+          severity: "warning",
+          message: "synth",
+          source: "met-office-datahub",
+        },
+        {
+          code: "WEATHER_PROVIDER_FALLBACK",
+          severity: "warning",
+          message: "synth",
+          source: "deterministic-fallback",
+        },
+        {
+          code: "WEATHER_AUTHORITY_LOW",
+          severity: "warning",
+          message: "synth",
+          source: "deterministic-fallback",
+        },
+      ],
+    };
+
+    const climate = buildClimatePack(brief, site, { weather: synthFallback });
+
+    // climate.providers reflects all four chain records, including the
+    // deterministic-fallback marker. The slice service maps these directly
+    // onto provenanceManifest.climateDataProviders.
+    expect(climate.providers).toEqual(synthFallback.providers);
+    const names = climate.providers.map((p) => p.name);
+    expect(names).toEqual([
+      "met-office-datahub",
+      "open-meteo",
+      "openweather",
+      "deterministic-fallback",
+    ]);
+    // weather_source flips to fallback and the pack emits the fallback marker.
+    expect(climate.weather_source).toBe("fallback");
+    const codes = climate.data_quality.map((q) => q.code);
+    expect(codes).toContain("CLIMATE_PACK_WEATHER_FALLBACK");
+    expect(codes).toContain("WEATHER_AUTHORITY_LOW");
+    // Each forwarded record still satisfies the required-fields contract.
+    for (const p of climate.providers) {
+      expect(p).toEqual(
+        expect.objectContaining({
+          name: expect.any(String),
+          authority: expect.stringMatching(/^(high|medium|low)$/),
+          status: expect.stringMatching(/^(ok|error|timeout|not_used)$/),
+          fields_supplied: expect.any(Array),
+        }),
+      );
+      expect(p).toHaveProperty("fetched_at");
+    }
+  });
+
   test("executes OpenAI reasoning checkpoints when a provider mock is supplied", async () => {
     const fetchImpl = createOpenAIReasoningFetchMock();
 
@@ -761,6 +1321,186 @@ describe("projectGraphVerticalSliceService", () => {
     );
   });
 
+  test("does not propagate low-confidence fallback boundary area into ProjectGraph site authority", async () => {
+    process.env.GOOGLE_MAPS_API_KEY = "test-google-key";
+    const pngBlob = new Blob(
+      [
+        Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR42mNk+M9Qz0AEYBxVSFIAAAeSAi8BTyQ1AAAAAElFTkSuQmCC",
+          "base64",
+        ),
+      ],
+      {
+        type: "image/png",
+      },
+    );
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      blob: async () => pngBlob,
+    });
+
+    const input = createLowConfidenceBradfordBoundaryBrief();
+    input.siteSnapshot = {
+      mapType: "hybrid",
+      sitePolygon: input.locationData.siteAnalysis.estimatedSiteBoundary,
+      metadata: {
+        sitePlanMode: "contextual_estimated_boundary",
+        boundaryAuthoritative: false,
+        boundaryEstimated: true,
+        contextualBoundaryOverlayUsed: true,
+        contextualBoundaryPolygon:
+          input.locationData.siteAnalysis.estimatedSiteBoundary,
+      },
+    };
+
+    const result = await buildArchitectureProjectVerticalSlice(input);
+    const issueCodes = result.qa.issues.map((issue) => issue.code);
+    const staticMapUrl = global.fetch.mock.calls[0][0];
+
+    expect(global.fetch).toHaveBeenCalled();
+    expect(staticMapUrl).toContain("visible=");
+    expect(staticMapUrl).toContain("maptype=roadmap");
+    expect(staticMapUrl).not.toContain("maptype=hybrid");
+    expect(staticMapUrl).not.toContain("maptype=satellite");
+    expect(staticMapUrl).not.toContain("path=");
+    expect(staticMapUrl).toContain("53.79224,-1.75556");
+    expect(result.success).toBe(true);
+    expect(result.projectGraph.site.boundary_authoritative).toBe(false);
+    expect(result.projectGraph.site.boundary_source).toBe(
+      "Intelligent Fallback",
+    );
+    expect(result.projectGraph.site.boundary_confidence).toBe(0.4);
+    expect(result.projectGraph.site.estimated_area_m2).toBe(119408);
+    expect(result.projectGraph.site.area_m2).toBeLessThan(1000);
+    expect(result.projectGraph.site.area_m2).not.toBe(119408);
+    expect(result.artifacts.projectGeometry.site.area_m2).toBe(
+      result.projectGraph.site.area_m2,
+    );
+    expect(
+      result.projectGraph.site.data_quality.map((issue) => issue.code),
+    ).toContain("SITE_BOUNDARY_ESTIMATED_NOT_AUTHORITATIVE");
+    expect(issueCodes).toContain("SITE_BOUNDARY_ESTIMATED_NOT_AUTHORITATIVE");
+    expect(result.artifacts.siteMap.metadata.hasMapImage).toBe(true);
+    expect(result.artifacts.siteMap.metadata.siteMapSource).toBe(
+      "google-static-maps",
+    );
+    expect(result.artifacts.siteMap.metadata.mapType).toBe("roadmap");
+    expect(result.artifacts.siteMap.metadata.boundaryAuthoritative).toBe(false);
+    expect(result.artifacts.siteMap.metadata.sitePlanMode).toBe(
+      "contextual_estimated_boundary",
+    );
+    expect(result.artifacts.siteMap.svgString).toContain(
+      "ESTIMATED / CONTEXTUAL - VERIFY",
+    );
+    expect(result.artifacts.siteMap.svgString).toContain("Google Static Maps");
+    expect(result.artifacts.siteMap.svgString).not.toContain('opacity="0.38"');
+    expect(result.artifacts.siteMap.svgString).toContain('fill="#b7d7a833"');
+    expect(result.artifacts.siteMap.svgString).toContain('stroke="#e87524"');
+    expect(result.artifacts.siteMap.svgString).toContain("Boundary estimated");
+    expect(result.artifacts.siteMap.svgString).toContain(
+      "Boundary source: Intelligent Fallback",
+    );
+    expect(result.artifacts.siteMap.svgString).toContain("MAIN ENTRY");
+    expect(result.artifacts.siteMap.svgString).toContain('stroke="#1976D2"');
+  });
+
+  test("preserves high-confidence boundary behavior", async () => {
+    const briefInput = createReadingRoomBrief();
+    briefInput.locationData = {
+      siteAnalysis: {
+        siteBoundary: briefInput.sitePolygon,
+        surfaceArea: 1040,
+        boundaryAuthoritative: true,
+        boundarySource: "OpenStreetMap",
+        boundaryConfidence: 0.92,
+      },
+    };
+
+    const result = await buildArchitectureProjectVerticalSlice(briefInput);
+
+    expect(result.success).toBe(true);
+    expect(result.projectGraph.site.boundary_authoritative).toBe(true);
+    expect(result.projectGraph.site.area_m2).toBe(1040);
+    expect(result.artifacts.siteMap.metadata.sitePlanMode).toBe(
+      "authoritative_boundary",
+    );
+    expect(result.artifacts.siteMap.metadata.boundarySource).toBe(
+      "OpenStreetMap",
+    );
+    expect(result.artifacts.siteMap.svgString).toContain("AUTHORITATIVE");
+    expect(result.artifacts.siteMap.svgString).toContain('stroke="#1976D2"');
+    expect(result.artifacts.siteMap.svgString).toContain("MAIN ENTRY");
+    expect(result.artifacts.siteMap.svgString).toContain(
+      "Boundary source: OpenStreetMap",
+    );
+    expect(result.qa.issues.map((issue) => issue.code)).not.toContain(
+      "SITE_BOUNDARY_ESTIMATED_NOT_AUTHORITATIVE",
+    );
+  });
+
+  test("manual_verified boundary overrides estimated metadata and threads main entry into A1 site plan", async () => {
+    const briefInput = createReadingRoomBrief();
+    const manualMainEntry = {
+      orientation: "south",
+      bearingDeg: 180,
+      frontageEdgeId: "edge-0",
+      mainEntryEdgeId: "edge-0",
+      source: "manual",
+      confidence: 1,
+      warnings: [],
+    };
+    briefInput.mainEntry = manualMainEntry;
+    briefInput.mainEntryDirection = manualMainEntry;
+    briefInput.siteMetrics = {
+      areaM2: 1040,
+      area: 1040,
+      surfaceAreaM2: 1040,
+      boundaryAuthoritative: true,
+      boundarySource: "manual_verified",
+      boundaryConfidence: 1,
+      hash: "manual-hash",
+    };
+    briefInput.locationData = {
+      boundaryAuthoritative: true,
+      boundarySource: "manual_verified",
+      boundaryConfidence: 1,
+      siteAnalysis: {
+        siteBoundary: briefInput.sitePolygon,
+        areaM2: 1040,
+        surfaceAreaM2: 1040,
+        boundaryAuthoritative: true,
+        boundarySource: "manual_verified",
+        boundaryConfidence: 1,
+        estimatedOnly: false,
+        mainEntry: manualMainEntry,
+        mainEntryDirection: manualMainEntry,
+      },
+      mainEntry: manualMainEntry,
+      mainEntryDirection: manualMainEntry,
+    };
+
+    const result = await buildArchitectureProjectVerticalSlice(briefInput);
+
+    expect(result.success).toBe(true);
+    expect(result.projectGraph.site.boundary_authoritative).toBe(true);
+    expect(result.projectGraph.site.boundary_source).toBe("manual_verified");
+    expect(result.projectGraph.site.boundary_confidence).toBe(1);
+    expect(result.projectGraph.site.area_m2).toBe(1040);
+    expect(result.projectGraph.site.main_entry).toEqual(manualMainEntry);
+    expect(result.artifacts.siteMap.metadata.boundaryLabel).toBe(
+      "MANUAL VERIFIED",
+    );
+    expect(result.artifacts.siteMap.metadata.mainEntry).toEqual(
+      manualMainEntry,
+    );
+    expect(result.artifacts.siteMap.svgString).toContain("MANUAL VERIFIED");
+    expect(result.artifacts.siteMap.svgString).toContain("MAIN ENTRY");
+    expect(result.artifacts.siteMap.svgString).toContain('stroke="#1976D2"');
+    expect(result.visualManifest.mainEntry).toEqual(manualMainEntry);
+  });
+
   test.each([
     "dwelling",
     "multi_residential",
@@ -786,6 +1526,10 @@ describe("projectGraphVerticalSliceService", () => {
       expect(
         result.projectGraph.programme.template_provenance.resolved_template,
       ).toBe(buildingType);
+      expect(
+        result.projectGraph.programme.template_provenance
+          .programme_template_key,
+      ).toBe(buildingType);
       const totalArea = result.projectGraph.programme.spaces.reduce(
         (sum, space) => sum + Number(space.target_area_m2 || 0),
         0,
@@ -793,6 +1537,150 @@ describe("projectGraphVerticalSliceService", () => {
       const targetGia = briefInput.brief.target_gia_m2;
       expect(totalArea).toBeGreaterThan(targetGia * 0.9);
       expect(totalArea).toBeLessThan(targetGia * 1.1);
+    },
+  );
+
+  test.each(projectGraphSubtypeSupportCases)(
+    "maps %s category/subtype to ProjectGraph programme metadata and A1 wording",
+    async (_label, category, subType, canonicalBuildingType, supportStatus) => {
+      const briefInput = createReadingRoomBrief();
+      delete briefInput.brief.building_type;
+      briefInput.brief.project_name = `Registry Smoke ${canonicalBuildingType}`;
+      briefInput.brief.target_gia_m2 = 520;
+      briefInput.projectDetails = {
+        category,
+        subType,
+        area: 520,
+        floorCount: 2,
+        floorCountLocked: true,
+      };
+
+      const brief =
+        __projectGraphVerticalSliceInternals.normalizeBrief(briefInput);
+      const programme = __projectGraphVerticalSliceInternals.buildProgramme({
+        brief,
+      });
+      const site = __projectGraphVerticalSliceInternals.buildSiteContext({
+        brief,
+        sitePolygon: briefInput.sitePolygon,
+        siteMetrics: briefInput.siteMetrics,
+      });
+      const climate = __projectGraphVerticalSliceInternals.buildClimatePack(
+        brief,
+        site,
+      );
+      const localStyle =
+        __projectGraphVerticalSliceInternals.buildLocalStylePack(
+          brief,
+          site,
+          climate,
+        );
+      const projectGeometry =
+        __projectGraphVerticalSliceInternals.buildProjectGeometryFromProgramme({
+          brief,
+          site,
+          programme,
+          localStyle,
+          climate,
+        });
+      const placedProgramme =
+        __projectGraphVerticalSliceInternals.syncProgrammeActuals(
+          programme,
+          projectGeometry,
+        );
+      const compiledProject =
+        __projectGraphVerticalSliceInternals.compileProject({
+          projectGeometry,
+          masterDNA: {
+            projectName: brief.project_name,
+            projectID: projectGeometry.project_id,
+            styleDNA: projectGeometry.metadata.style_dna,
+            rooms: placedProgramme.spaces,
+          },
+          locationData: {
+            address: brief.site_input.address,
+            coordinates: { lat: site.lat, lng: site.lon },
+            climate: { type: climate.weather_source },
+            localMaterials: localStyle.material_palette,
+          },
+        });
+      const spaces = programme.spaces;
+      const levelIndexes = new Set(
+        spaces.map((space) => Number(space.target_level_index)),
+      );
+      const titleBlock = buildTitleBlockPanelArtifact({
+        projectGraphId: projectGeometry.project_id,
+        brief,
+        geometryHash: compiledProject.geometryHash,
+        sheetPlan: { sheet_number: "A1-TEST", label: "RIBA Stage 2 Test" },
+      });
+      const keyNotes = buildKeyNotesPanelArtifact({
+        projectGraphId: projectGeometry.project_id,
+        brief,
+        site,
+        climate,
+        regulations: {},
+        localStyle,
+        geometryHash: compiledProject.geometryHash,
+      });
+      const programmeLabel = brief.project_type_support.label;
+
+      expect(KNOWN_BUILDING_TYPES).toContain(canonicalBuildingType);
+      expect(brief).toEqual(
+        expect.objectContaining({
+          building_type: canonicalBuildingType,
+          canonical_building_type: canonicalBuildingType,
+          original_category: category,
+          original_subtype: subType,
+          support_status: supportStatus,
+          programme_template_key: canonicalBuildingType,
+          project_type_route: "project_graph",
+        }),
+      );
+      expect(brief.project_type_support).toEqual(
+        expect.objectContaining({
+          categoryId: category,
+          subtypeId: subType,
+          canonicalBuildingType,
+          route: "project_graph",
+          supportStatus,
+        }),
+      );
+      expect(spaces.length).toBeGreaterThanOrEqual(6);
+      expect(levelIndexes.has(0)).toBe(true);
+      expect(Math.max(...levelIndexes)).toBeGreaterThanOrEqual(1);
+      expect(projectGeometry.levels.length).toBeGreaterThan(0);
+      expect(projectGeometry.rooms.length).toBeGreaterThan(0);
+      expect(compiledProject.geometryHash).toEqual(expect.any(String));
+      expect(programme.template_provenance).toEqual(
+        expect.objectContaining({
+          source: "matched_template",
+          resolved_template: canonicalBuildingType,
+          programme_template_key: canonicalBuildingType,
+          support_status: supportStatus,
+        }),
+      );
+      expect(brief.building_type).not.toBe("dwelling");
+      expect(brief.building_type).not.toBe("detached-house");
+      expect(spaces.map((space) => space.name).join(" ")).not.toMatch(
+        /principal bedroom|living room|kitchen dining|kitchen\/dining/i,
+      );
+      expect(titleBlock.metadata).toEqual(
+        expect.objectContaining({
+          programmeLabel,
+          buildingType: canonicalBuildingType,
+          programmeTemplateKey: canonicalBuildingType,
+        }),
+      );
+      expect(titleBlock.svgString).toContain(programmeLabel.toUpperCase());
+      expect(keyNotes.metadata).toEqual(
+        expect.objectContaining({
+          programmeLabel,
+          buildingType: canonicalBuildingType,
+          programmeTemplateKey: canonicalBuildingType,
+        }),
+      );
+      expect(keyNotes.svgString).toContain(`Programme: ${programmeLabel}.`);
     },
   );
 
@@ -874,7 +1762,7 @@ describe("projectGraphVerticalSliceService", () => {
 
   test("unknown building_type does not silently render as a dwelling and is flagged in template_provenance", async () => {
     const briefInput = createReadingRoomBrief();
-    briefInput.brief.building_type = "warehouse";
+    briefInput.brief.building_type = "data-center";
     briefInput.brief.project_name = "Unknown Type Smoke";
     const result = await buildArchitectureProjectVerticalSlice(briefInput);
 
@@ -883,7 +1771,7 @@ describe("projectGraphVerticalSliceService", () => {
     );
     expect(
       result.projectGraph.programme.template_provenance.requested_building_type,
-    ).toBe("warehouse");
+    ).toBe("data-center");
     expect(
       result.projectGraph.programme.template_provenance.resolved_template,
     ).toBe("community");
@@ -962,6 +1850,283 @@ describe("projectGraphVerticalSliceService", () => {
       expect.arrayContaining([
         "A1_PDF_RENDER_EMPTY",
         "REQUIRED_3D_PANEL_MISSING",
+      ]),
+    );
+  });
+
+  test("QA uses the active presentation-v3 registry for required 3D panels", async () => {
+    const briefInput = createReadingRoomBrief();
+    briefInput.brief.building_type = "dwelling";
+    briefInput.brief.project_name = "Presentation V3 Dwelling";
+
+    const result = await buildArchitectureProjectVerticalSlice(briefInput);
+    expect(result.artifacts.a1Sheet.layoutTemplate).toBe("presentation-v3");
+
+    const strippedPanelArtifacts = Object.fromEntries(
+      Object.entries(result.artifacts.panelArtifacts).filter(
+        ([, artifact]) => artifact.panel_type !== "exterior_render",
+      ),
+    );
+    const visuals3d = Object.fromEntries(
+      Object.entries(result.artifacts.visuals3d).filter(
+        ([panelType]) => panelType !== "exterior_render",
+      ),
+    );
+
+    const qa = validateProjectGraphVerticalSlice({
+      projectGraph: result.projectGraph,
+      artifacts: {
+        ...result.artifacts,
+        visuals3d,
+        panelArtifacts: strippedPanelArtifacts,
+      },
+    });
+    const required3dCheck = qa.checks.find(
+      (check) => check.code === "REQUIRED_3D_PANELS_PRESENT",
+    );
+
+    expect(qa.status).toBe("pass");
+    expect(qa.issues.map((issue) => issue.code)).not.toContain(
+      "REQUIRED_3D_PANEL_MISSING",
+    );
+    expect(required3dCheck.status).toBe("pass");
+    expect(required3dCheck.details.expected.sort()).toEqual(
+      ["axonometric", "hero_3d", "interior_3d"].sort(),
+    );
+  });
+
+  test("QA accepts geometry-locked OpenAI image wrappers with compiled 3D control provenance", async () => {
+    const result = await buildArchitectureProjectVerticalSlice(
+      createReadingRoomBrief(),
+    );
+    const pngPayload =
+      "AAA1x1BBBplaceholder_3dCCCgeometryRenderService" + "a".repeat(1600);
+    const imageWrappedVisuals = Object.fromEntries(
+      Object.entries(result.artifacts.visuals3d).map(
+        ([panelType, artifact]) => [
+          panelType,
+          {
+            ...artifact,
+            asset_type: "geometry_locked_presentation_svg",
+            svgString: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${artifact.width} ${artifact.height}" width="${artifact.width}" height="${artifact.height}"><image href="data:image/png;base64,${pngPayload}" x="0" y="0" width="${artifact.width}" height="${artifact.height}" preserveAspectRatio="xMidYMid slice"/></svg>`,
+            metadata: {
+              ...artifact.metadata,
+              source: "project_graph_image_renderer",
+              imageRenderFallback: false,
+              imageRenderFallbackReason: null,
+              imageRenderByteLength: 1200,
+              imageProviderUsed: "openai",
+              openaiImageUsed: true,
+              hasPngImagePayload: true,
+              openaiRequestId: `req_${panelType}`,
+              presentationMode: "geometry_locked_image_render",
+              visualFidelityStatus: "photoreal_geometry_locked",
+              visualRenderMode: "photoreal_image_gen",
+              renderProvenance: {
+                sourceGeometryHash: result.geometryHash,
+                referenceSource: "compiled_3d_control_svg",
+                requestId: `req_${panelType}`,
+              },
+            },
+          },
+        ],
+      ),
+    );
+
+    const qa = validateProjectGraphVerticalSlice({
+      projectGraph: result.projectGraph,
+      artifacts: {
+        ...result.artifacts,
+        visuals3d: imageWrappedVisuals,
+      },
+    });
+
+    expect(qa.status).toBe("pass");
+    expect(qa.issues.map((issue) => issue.code)).not.toContain(
+      "PLACEHOLDER_3D_RENDER_USED",
+    );
+    expect(qa.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "REQUIRED_3D_PANELS_PRESENT",
+          status: "pass",
+        }),
+      ]),
+    );
+  });
+
+  test("reference-match export uses active Kensington brief data and blocks deterministic image fallback", async () => {
+    const result = await getKensingtonReferenceMatchResult();
+
+    expect(result.projectGraph.brief.reference_match).toBe(true);
+    expect(result.projectGraph.brief.project_name).toBe(
+      "17 Kensington Road House",
+    );
+    expect(result.projectGraph.brief.site_input.address).toBe(
+      "17 Kensington Rd, DN15 8BQ, UK",
+    );
+    expect(result.projectGraph.brief.target_gia_m2).toBe(75);
+    expect(result.projectGraph.brief.target_storeys).toBe(2);
+    expect(result.success).toBe(false);
+    expect(result.qa.status).toBe("fail");
+
+    const titleBlock = Object.values(result.artifacts.panelArtifacts).find(
+      (artifact) => artifact.panel_type === "title_block",
+    );
+    expect(titleBlock.metadata).toEqual(
+      expect.objectContaining({
+        briefInputHash: result.projectGraph.brief.brief_input_hash,
+        projectName: "17 Kensington Road House",
+        location: "17 Kensington Rd, DN15 8BQ, UK",
+        targetGiaM2: 75,
+        targetStoreys: 2,
+      }),
+    );
+    expect(titleBlock.svgString).toContain("17 Kensington Road House");
+    expect(titleBlock.svgString).toContain("17 Kensington Rd, DN15 8BQ, UK");
+    expect(titleBlock.svgString).not.toContain("Stale Cherry House");
+    expect(titleBlock.svgString).not.toContain("97 Bradford Street");
+
+    const issueCodes = result.qa.issues.map((issue) => issue.code);
+    expect(issueCodes).toContain("REFERENCE_MATCH_PHOTOREAL_FALLBACK_USED");
+    expect(issueCodes).not.toContain("REFERENCE_MATCH_STALE_BRIEF_DATA");
+    expect(issueCodes).not.toContain("REFERENCE_MATCH_UPPER_FLOOR_MISSING");
+    expect(result.artifacts.a1Sheet.referenceMatch).toBe(true);
+    expect(
+      result.artifacts.a1Sheet.quality.panelReferenceMetrics.floor_plan_ground,
+    ).toEqual(
+      expect.objectContaining({
+        slotOccupancy: expect.any(Number),
+        sourceGeometryHash: result.geometryHash,
+        briefInputHash: result.projectGraph.brief.brief_input_hash,
+        renderMode: "compiled_technical_svg",
+      }),
+    );
+    expect(result.artifacts.a1Sheet.quality.exportGate.allowed).toBe(false);
+  });
+
+  test("reference-match QA passes when visual panels are geometry-locked image renders", async () => {
+    const result = await getKensingtonReferenceMatchResult();
+    const qa = validateProjectGraphVerticalSlice({
+      projectGraph: result.projectGraph,
+      artifacts: {
+        ...result.artifacts,
+        visuals3d: wrapVisualsAsGeometryLockedImages(result),
+      },
+    });
+
+    expect(qa.status).toBe("pass");
+    expect(qa.referenceMatch).toBe(true);
+    expect(qa.issues.map((issue) => issue.code)).not.toContain(
+      "REFERENCE_MATCH_PHOTOREAL_FALLBACK_USED",
+    );
+    expect(qa.issues.map((issue) => issue.code)).not.toContain(
+      "REFERENCE_MATCH_LOW_PANEL_OCCUPANCY",
+    );
+    expect(qa.panelRenderabilityRecords).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          panelType: "floor_plan_ground",
+          slotOccupancy: expect.any(Number),
+          sourceGeometryHash: result.geometryHash,
+          renderMode: "compiled_technical_svg",
+        }),
+      ]),
+    );
+  });
+
+  test("reference-match QA rejects repeated elevation identity hashes", async () => {
+    const result = await getKensingtonReferenceMatchResult();
+    const drawings = cloneForTest(result.artifacts.drawings);
+    const north = Object.values(drawings).find(
+      (artifact) => artifact.panel_type === "elevation_north",
+    );
+    const southEntry = Object.entries(drawings).find(
+      ([, artifact]) => artifact.panel_type === "elevation_south",
+    );
+    drawings[southEntry[0]] = {
+      ...drawings[southEntry[0]],
+      svgString: north.svgString,
+      svgHash: north.svgHash,
+      contentBounds: north.contentBounds,
+      normalizedViewBox: north.normalizedViewBox,
+      technicalQualityMetadata: north.technicalQualityMetadata,
+      metadata: {
+        ...drawings[southEntry[0]].metadata,
+        contentBounds: north.contentBounds,
+        normalizedViewBox: north.normalizedViewBox,
+        technicalQualityMetadata: north.technicalQualityMetadata,
+      },
+    };
+
+    const qa = validateProjectGraphVerticalSlice({
+      projectGraph: result.projectGraph,
+      artifacts: {
+        ...result.artifacts,
+        drawings,
+        visuals3d: wrapVisualsAsGeometryLockedImages(result),
+      },
+    });
+
+    expect(qa.status).toBe("fail");
+    expect(qa.issues.map((issue) => issue.code)).toContain(
+      "REFERENCE_MATCH_REPEATED_ELEVATION_IDENTITY",
+    );
+  });
+
+  test("QA still catches visible 3D placeholder tokens outside embedded image data", async () => {
+    const result = await buildArchitectureProjectVerticalSlice(
+      createReadingRoomBrief(),
+    );
+    const artifact = result.artifacts.visuals3d.hero_3d;
+    const visiblePlaceholderHero = {
+      ...artifact,
+      asset_type: "geometry_locked_presentation_svg",
+      svgString: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${artifact.width} ${artifact.height}" width="${artifact.width}" height="${artifact.height}"><metadata>geometryRenderService placeholder_3d</metadata><image href="data:image/png;base64,${"a".repeat(1600)}" x="0" y="0" width="${artifact.width}" height="${artifact.height}" preserveAspectRatio="xMidYMid slice"/></svg>`,
+      metadata: {
+        ...artifact.metadata,
+        source: "project_graph_image_renderer",
+        imageRenderFallback: false,
+        imageRenderFallbackReason: null,
+        imageRenderByteLength: 1200,
+        imageProviderUsed: "openai",
+        openaiImageUsed: true,
+        hasPngImagePayload: true,
+        openaiRequestId: "req_visible_placeholder",
+        presentationMode: "geometry_locked_image_render",
+        visualFidelityStatus: "photoreal_geometry_locked",
+        visualRenderMode: "photoreal_image_gen",
+        renderProvenance: {
+          sourceGeometryHash: result.geometryHash,
+          referenceSource: "compiled_3d_control_svg",
+          requestId: "req_visible_placeholder",
+        },
+      },
+    };
+
+    const qa = validateProjectGraphVerticalSlice({
+      projectGraph: result.projectGraph,
+      artifacts: {
+        ...result.artifacts,
+        visuals3d: {
+          ...result.artifacts.visuals3d,
+          hero_3d: visiblePlaceholderHero,
+        },
+      },
+    });
+
+    const placeholderIssue = qa.issues.find(
+      (issue) => issue.code === "PLACEHOLDER_3D_RENDER_USED",
+    );
+
+    expect(qa.status).toBe("fail");
+    expect(placeholderIssue).toBeTruthy();
+    expect(placeholderIssue.details.placeholder3dPanels).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          panelType: "hero_3d",
+          reason: "regex_match_placeholder",
+        }),
       ]),
     );
   });

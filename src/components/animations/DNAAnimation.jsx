@@ -1,13 +1,14 @@
-
-import React from 'react';
-import { motion } from 'framer-motion';
+import React from "react";
+import { motion } from "framer-motion";
 
 const DNAAnimation = ({ className = "w-full h-32" }) => {
   return (
-    <div className={`relative flex items-center justify-center overflow-hidden ${className}`}>
+    <div
+      className={`relative flex items-center justify-center overflow-hidden ${className}`}
+    >
       {/* Background Glow */}
       <div className="absolute inset-0 bg-royal-500/5 blur-3xl rounded-full" />
-      
+
       <svg
         viewBox="0 0 200 60"
         className="w-full h-full max-w-[400px]"
@@ -26,26 +27,18 @@ const DNAAnimation = ({ className = "w-full h-32" }) => {
           </linearGradient>
         </defs>
 
-        {/* Strand 1 */}
+        {/* Strand 1 — opacity-pulsed; framer-motion does not reliably
+            interpolate SVG `d` keyframes without `flubber`, so the path
+            stays static and motion comes from opacity + the particles. */}
         <motion.path
           d="M0,30 Q25,5 50,30 T100,30 T150,30 T200,30"
           fill="none"
           stroke="url(#dnaGradient1)"
           strokeWidth="3"
           strokeLinecap="round"
-          initial={{ pathOffset: 0 }}
-          animate={{ 
-            d: [
-              "M0,30 Q25,5 50,30 T100,30 T150,30 T200,30",
-              "M0,30 Q25,55 50,30 T100,30 T150,30 T200,30", 
-              "M0,30 Q25,5 50,30 T100,30 T150,30 T200,30"
-            ] 
-          }}
-          transition={{ 
-            duration: 2, 
-            ease: "linear", 
-            repeat: Infinity 
-          }}
+          initial={{ opacity: 0.6 }}
+          animate={{ opacity: [0.6, 1, 0.6] }}
+          transition={{ duration: 2, ease: "linear", repeat: Infinity }}
         />
 
         {/* Strand 2 (Opposite Phase) */}
@@ -55,18 +48,9 @@ const DNAAnimation = ({ className = "w-full h-32" }) => {
           stroke="url(#dnaGradient2)"
           strokeWidth="3"
           strokeLinecap="round"
-          animate={{ 
-            d: [
-              "M0,30 Q25,55 50,30 T100,30 T150,30 T200,30", 
-              "M0,30 Q25,5 50,30 T100,30 T150,30 T200,30",
-              "M0,30 Q25,55 50,30 T100,30 T150,30 T200,30"
-            ] 
-          }}
-          transition={{ 
-            duration: 2, 
-            ease: "linear", 
-            repeat: Infinity 
-          }}
+          initial={{ opacity: 1 }}
+          animate={{ opacity: [1, 0.6, 1] }}
+          transition={{ duration: 2, ease: "linear", repeat: Infinity }}
         />
 
         {/* Connecting Base Pairs (Particles) */}
@@ -76,15 +60,15 @@ const DNAAnimation = ({ className = "w-full h-32" }) => {
             r="2"
             fill="#60a5fa"
             initial={{ cx: 25 + i * 30, cy: 30, opacity: 0 }}
-            animate={{ 
+            animate={{
               cy: [5, 55, 5],
-              opacity: [0, 1, 0]
+              opacity: [0, 1, 0],
             }}
-            transition={{ 
-              duration: 2, 
-              ease: "easeInOut", 
+            transition={{
+              duration: 2,
+              ease: "easeInOut",
               repeat: Infinity,
-              delay: i * 0.2
+              delay: i * 0.2,
             }}
           />
         ))}

@@ -23,6 +23,40 @@ import logger from "../core/logger.js";
 import { getStyleZone, MINIMUM_SIZES } from "../a1/A1GridSpec12Column.js";
 import { getVerbatimPromptLock } from "../design/designFingerprintService.js";
 
+/**
+ * Whether the diffusion-based fallback is allowed for technical panels.
+ * Final A1 mode (PIPELINE_MODE=project_graph, the default) must NEVER fall
+ * back to diffusion — technical panels must come from canonical/vector paths.
+ *
+ * Returns true only when:
+ *   - ALLOW_DEMO_TECHNICAL_FALLBACK env is "1" or "true" (explicit dev preview)
+ */
+export function isDiffusionFallbackAllowed() {
+  const envFlag = process.env.ALLOW_DEMO_TECHNICAL_FALLBACK;
+  if (envFlag === "1" || envFlag === "true") {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Error thrown when the diffusion fallback is requested but not allowed.
+ * The caller must regenerate the panel from canonical/vector authority or
+ * surface a structured error to the user.
+ */
+export class DiffusionFallbackBlockedError extends Error {
+  constructor(panelType, reason = "vector_generation_unavailable") {
+    super(
+      `DIFFUSION_FALLBACK_DISABLED_IN_FINAL_A1: panel=${panelType} reason=${reason}. ` +
+        "Set ALLOW_DEMO_TECHNICAL_FALLBACK=1 for dev preview.",
+    );
+    this.name = "DiffusionFallbackBlockedError";
+    this.code = "DIFFUSION_FALLBACK_DISABLED_IN_FINAL_A1";
+    this.panelType = panelType;
+    this.reason = reason;
+  }
+}
+
 // =============================================================================
 // CONFIGURATION
 // =============================================================================
@@ -147,7 +181,19 @@ export class TechnicalPanelGenerator {
       );
     }
 
-    // Fall back to diffusion with strict orthographic prompts
+    // Diffusion fallback is blocked in final A1 mode. Set
+    // ALLOW_DEMO_TECHNICAL_FALLBACK=1 to enable it in dev preview only.
+    if (!isDiffusionFallbackAllowed()) {
+      logger.error(
+        `[TechnicalPanelGenerator] Diffusion fallback blocked for ${panelType} (no canonical/vector path available)`,
+      );
+      throw new DiffusionFallbackBlockedError(
+        panelType,
+        "vector_generation_unavailable",
+      );
+    }
+
+    // Fall back to diffusion with strict orthographic prompts (dev/preview only)
     logger.info(
       `  Using diffusion with strict orthographic prompts for ${panelType}`,
     );
@@ -226,7 +272,21 @@ export class TechnicalPanelGenerator {
       logger.warn(
         `Vector generation failed for ${panelType}: ${error.message}`,
       );
-      logger.info(`  Falling back to diffusion generation`);
+
+      // Diffusion fallback is blocked in final A1 mode. The vector path
+      // failed; in final mode we surface that failure rather than producing
+      // a non-canonical panel that the compose gate will reject anyway.
+      if (!isDiffusionFallbackAllowed()) {
+        logger.error(
+          `[TechnicalPanelGenerator] Diffusion fallback blocked for ${panelType} after vector failure`,
+        );
+        throw new DiffusionFallbackBlockedError(
+          panelType,
+          `vector_generation_failed: ${error.message}`,
+        );
+      }
+
+      logger.info(`  Falling back to diffusion generation (dev preview only)`);
       return this.generateDiffusionPanel(
         panelType,
         masterDNA,

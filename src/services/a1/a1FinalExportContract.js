@@ -5,6 +5,7 @@ import {
   WORKING_WIDTH,
 } from "./composeCore.js";
 import { resolvePreComposeRegressionPolicy } from "./a1PreComposeRegressionPolicy.js";
+import { runDrawingConsistencyChecks } from "../validation/drawingConsistencyChecks.js";
 
 export const PREVIEW_RENDER_INTENT = "preview";
 export const FINAL_A1_RENDER_INTENT = "final_a1";
@@ -823,12 +824,59 @@ function evaluateRequiredPanelEvidence({
   };
 }
 
-function evaluateTechnicalPanelEvidence({ panels }) {
+// Phase 4: technical panel set is the deterministic-SVG drawings the A1
+// export depends on for geometry communication. Floor plans were missing
+// from the prior set — that's the gap the failing PDF exposed. axonometric
+// and site_diagram are listed here so that *once* later phases re-classify
+// them as compiled-technical-svg renderers, the content-empty gate covers
+// them automatically. Today they still route through the visual fallback,
+// so panelIsBlank only fires if the placement status is non-ready (i.e.
+// even the deterministic_fallback SVG is missing).
+const TECHNICAL_PANEL_TYPES_FOR_GATE = Object.freeze([
+  "floor_plan_ground",
+  "floor_plan_first",
+  "floor_plan_level2",
+  "floor_plan_level3",
+  "floor_plan_level4",
+  "floor_plan_level5",
+  "floor_plan_level6",
+  "floor_plan_level7",
+  "elevation_north",
+  "elevation_south",
+  "elevation_east",
+  "elevation_west",
+  "section_AA",
+  "section_BB",
+  // Effective once later phases re-classify these as technical:
+  "axonometric",
+  "site_diagram",
+]);
+
+function isTechnicalPanelType(type) {
+  if (!type) return false;
+  if (TECHNICAL_PANEL_TYPES_FOR_GATE.includes(type)) return true;
+  // Defensive: accept any floor_plan_* / elevation_* / section_* variant we
+  // may add later.
+  if (typeof type === "string") {
+    if (type.startsWith("floor_plan_")) return true;
+    if (type.startsWith("elevation_")) return true;
+    if (type.startsWith("section_")) return true;
+  }
+  return false;
+}
+
+function evaluateTechnicalPanelEvidence({ panels } = {}) {
   const blockers = [];
   const warnings = [];
   const blank = [];
+  const blockedPanels = [];
 
   if (!Array.isArray(panels) || panels.length === 0) {
+    // Stable gate contract: absent evidence degrades to warning, not block.
+    // Real content-empty enforcement fires via panelIsBlank when panels ARE
+    // provided. This keeps legacy compose flows that don't pass per-panel
+    // data passing the gate (their hard failures come from PDF/OCR/glyph
+    // evidence, not technical panel presence).
     return {
       status: "warning",
       blockers,
@@ -836,29 +884,30 @@ function evaluateTechnicalPanelEvidence({ panels }) {
         "Technical panel evidence not provided to gate; per-panel render status unknown.",
       ],
       blank: [],
+      blockedPanels: [],
+      codes: [],
     };
   }
 
-  const technicalTypes = new Set([
-    "elevation_north",
-    "elevation_south",
-    "elevation_east",
-    "elevation_west",
-    "section_AA",
-    "section_BB",
-    "schedules_notes",
-    "site_diagram",
-  ]);
-
   for (const panel of panels) {
     const type = panelTypeOf(panel);
-    if (!type || !technicalTypes.has(type)) continue;
-    if (panelIsBlank(panel)) blank.push(type);
+    if (!type || !isTechnicalPanelType(type)) continue;
+    if (panelIsBlank(panel)) {
+      blank.push(type);
+      blockedPanels.push({
+        type,
+        code: "PANEL_CONTENT_EMPTY",
+        status: panel?.status || null,
+        hasSvg: panel?.hasSvg === true,
+      });
+    }
   }
+
+  const codes = blockedPanels.length ? ["PANEL_CONTENT_EMPTY"] : [];
 
   if (blank.length) {
     blockers.push(
-      `Required technical panel(s) missing or blank: ${blank.join(", ")}.`,
+      `PANEL_CONTENT_EMPTY: Required technical panel(s) missing or blank: ${blank.join(", ")}.`,
     );
   }
 
@@ -871,6 +920,82 @@ function evaluateTechnicalPanelEvidence({ panels }) {
     blockers: unique(blockers),
     warnings: unique(warnings),
     blank,
+    blockedPanels,
+    codes,
+  };
+}
+
+// Phase 4: cross-view consistency evidence. Wraps drawingConsistencyChecks
+// (which already inspects SVG for required markers, dimension-chains, and
+// cross-view storey/window agreement). Errors are promoted to blockers
+// (technical group); warnings remain warnings. Returns silent pass when no
+// drawings are provided so callers that don't opt in (e.g. legacy compose
+// flows) keep their previous gate result.
+function evaluateCrossViewConsistencyEvidence({ drawings, projectGeometry }) {
+  const blockers = [];
+  const warnings = [];
+  const codes = [];
+
+  if (!drawings || typeof drawings !== "object") {
+    // Caller did not opt into cross-view evidence. Per Phase 4 design, this
+    // is silent (no opinion) — not a warning — so existing call sites that
+    // don't pass `drawings` keep their previous gate result. Cross-view
+    // blocking only fires when drawings are explicitly supplied.
+    return {
+      status: "pass",
+      blockers,
+      warnings,
+      errors: [],
+      codes,
+      raw: null,
+      evaluated: false,
+    };
+  }
+
+  let raw = null;
+  try {
+    raw = runDrawingConsistencyChecks({
+      projectGeometry: projectGeometry || {},
+      drawings,
+    });
+  } catch (error) {
+    return {
+      status: "warning",
+      blockers,
+      warnings: [
+        `Cross-view consistency evaluator threw: ${error?.message || error}.`,
+      ],
+      errors: [],
+      codes,
+      raw: null,
+      evaluated: false,
+    };
+  }
+
+  const errors = Array.isArray(raw?.errors) ? raw.errors : [];
+  if (errors.length) {
+    codes.push("CROSS_VIEW_INCONSISTENT");
+    for (const message of errors) {
+      blockers.push(`CROSS_VIEW_INCONSISTENT: ${message}`);
+    }
+  }
+
+  if (Array.isArray(raw?.warnings)) {
+    warnings.push(...raw.warnings);
+  }
+
+  let status = "pass";
+  if (blockers.length) status = "blocked";
+  else if (warnings.length) status = "warning";
+
+  return {
+    status,
+    blockers: unique(blockers),
+    warnings: unique(warnings),
+    errors,
+    codes,
+    raw,
+    evaluated: true,
   };
 }
 
@@ -1175,6 +1300,11 @@ export function evaluateFinalA1ExportGate({
   strictPhotoreal = false,
   imageGenEnabled = false,
   scope = PHASE_F_GATE_SCOPES.COMPOSE_FINAL,
+  // Phase 4 additions: cross-view consistency evidence inputs. Optional —
+  // absent inputs return silent pass (not a warning), so legacy callers
+  // that don't supply drawings see no behavior change.
+  drawings = null,
+  projectGeometry = null,
 } = {}) {
   if (!renderContract?.isFinalA1) {
     return {
@@ -1264,6 +1394,10 @@ export function evaluateFinalA1ExportGate({
     targetStoreys,
   });
   const technicalPanelStatus = evaluateTechnicalPanelEvidence({ panels });
+  const crossViewConsistencyStatus = evaluateCrossViewConsistencyEvidence({
+    drawings,
+    projectGeometry,
+  });
   const visualManifestStatus = evaluateVisualManifestEvidence({
     visualManifest,
     visualPanels,
@@ -1307,6 +1441,7 @@ export function evaluateFinalA1ExportGate({
     rasterEvidence,
     requiredPanelStatus,
     technicalPanelStatus,
+    crossViewConsistencyStatus,
     visualManifestStatus,
     materialPaletteStatus,
     openaiProviderStatus,
@@ -1339,6 +1474,7 @@ export function evaluateFinalA1ExportGate({
       rasterGlyphIntegrity: rasterEvidence,
       requiredPanelStatus,
       technicalPanelStatus,
+      crossViewConsistencyStatus,
       visualPanelStatus,
       visualManifestStatus,
       materialPaletteStatus,
@@ -1349,15 +1485,87 @@ export function evaluateFinalA1ExportGate({
   };
 }
 
+// Phase 4: technical-group blocker extraction. The gate aggregates evidence
+// from both technical-drawing concerns and visual/photoreal concerns. The
+// slice service must fail-closed only on the *technical* group — visual
+// failures stay warning-only per Phase 4 scope. This helper isolates that
+// subset so callers don't have to know which evidence keys are technical.
+//
+// Technical sources:
+//   - technicalPanelStatus      → PANEL_CONTENT_EMPTY
+//   - crossViewConsistencyStatus → CROSS_VIEW_INCONSISTENT
+//   - requiredPanelStatus       → A1_REQUIRED_PANEL_MISSING (panel registry)
+//   - layoutStatus              → A1_LAYOUT_BROKEN
+//   - sheetSplitStatus          → A1_SHEET_SPLIT_REQUIRED
+//
+// Visual sources (intentionally excluded):
+//   - visualPanelStatus, visualManifestStatus, materialPaletteStatus,
+//     openaiProviderStatus, pdfMetadata, rasterGlyphIntegrity
+export function extractTechnicalGroupBlockers(gateResult) {
+  const empty = {
+    blocked: false,
+    blockers: [],
+    warnings: [],
+    codes: [],
+    sources: [],
+    blockedPanels: [],
+  };
+  if (!gateResult || gateResult.status === "not_applicable") return empty;
+  const evidence = gateResult.evidence || {};
+  const technicalSources = [
+    { key: "technicalPanelStatus", ev: evidence.technicalPanelStatus },
+    {
+      key: "crossViewConsistencyStatus",
+      ev: evidence.crossViewConsistencyStatus,
+    },
+    { key: "requiredPanelStatus", ev: evidence.requiredPanelStatus },
+    { key: "layoutStatus", ev: evidence.layoutStatus },
+    { key: "sheetSplitStatus", ev: evidence.sheetSplitStatus },
+  ];
+  const blockers = [];
+  const warnings = [];
+  const codes = [];
+  const sources = [];
+  const blockedPanels = [];
+  for (const { key, ev } of technicalSources) {
+    if (!ev) continue;
+    if (Array.isArray(ev.blockers) && ev.blockers.length) {
+      blockers.push(...ev.blockers);
+      sources.push(key);
+    }
+    if (Array.isArray(ev.warnings) && ev.warnings.length) {
+      warnings.push(...ev.warnings);
+    }
+    if (Array.isArray(ev.codes) && ev.codes.length) {
+      codes.push(...ev.codes);
+    }
+    if (Array.isArray(ev.blockedPanels) && ev.blockedPanels.length) {
+      blockedPanels.push(...ev.blockedPanels);
+    }
+  }
+  return {
+    blocked: blockers.length > 0,
+    blockers: unique(blockers),
+    warnings: unique(warnings),
+    codes: unique(codes),
+    sources: unique(sources),
+    blockedPanels,
+  };
+}
+
+export { TECHNICAL_PANEL_TYPES_FOR_GATE };
+
 export default {
   A1_PHYSICAL_SHEET_SIZE_MM,
   FINAL_A1_PNG_DIMENSIONS,
   PHASE_F_EXPORT_GATE_VERSION,
   PREVIEW_PNG_DIMENSIONS,
+  TECHNICAL_PANEL_TYPES_FOR_GATE,
   buildA1SheetSetPlan,
   buildSheetTextContract,
   detectA1GlyphIntegrity,
   evaluateFinalA1ExportGate,
+  extractTechnicalGroupBlockers,
   normalizeSheetTextContract,
   resolveA1RenderContract,
 };

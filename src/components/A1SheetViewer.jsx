@@ -18,8 +18,13 @@ import {
 
 // Removed html-to-image - using direct fetch download instead
 import logger from "../services/core/logger.js";
+import {
+  isDesignHistoryArtifactUrl,
+  resolveDesignHistoryArtifactUrlToObjectUrl,
+} from "../services/designHistoryArtifactStore.js";
 import { fadeInUp } from "../styles/animations.js";
 import { normalizeSheetMetadata } from "../types/schemas.js";
+import { sanitizeSvgDataUrl } from "../utils/svgPathSanitizer.js";
 
 import Button from "./ui/Button.jsx";
 import Card from "./ui/Card.jsx";
@@ -108,6 +113,14 @@ const extensionForMime = (mime = "") => {
   }
 };
 
+const sanitizeSheetUrl = (value = "") => {
+  if (typeof value !== "string") {
+    return "";
+  }
+  const trimmed = value.trim();
+  return sanitizeSvgDataUrl(trimmed);
+};
+
 // eslint-disable-next-line no-unused-vars -- onModify, onExport reserved for future toolbar actions
 const A1SheetViewer = ({
   result,
@@ -163,6 +176,86 @@ const A1SheetViewer = ({
       }))
       .filter((entry) => entry.pdfUrl);
   }, [result]);
+  const artifactSourceUrls = React.useMemo(
+    () =>
+      [
+        rawSheetUrl,
+        pdfDownloadUrl,
+        ...sheetSeries.map((entry) => entry.pdfUrl),
+      ].filter(isDesignHistoryArtifactUrl),
+    [pdfDownloadUrl, rawSheetUrl, sheetSeries],
+  );
+  const [artifactObjectUrlMap, setArtifactObjectUrlMap] = useState({});
+
+  useEffect(() => {
+    let isCancelled = false;
+    const objectUrls = [];
+
+    async function resolveArtifacts() {
+      if (artifactSourceUrls.length === 0) {
+        setArtifactObjectUrlMap({});
+        return;
+      }
+
+      const resolvedEntries = await Promise.all(
+        artifactSourceUrls.map(async (artifactUrl) => {
+          try {
+            const objectUrl =
+              await resolveDesignHistoryArtifactUrlToObjectUrl(artifactUrl);
+            if (objectUrl) {
+              objectUrls.push(objectUrl);
+              return [artifactUrl, objectUrl];
+            }
+          } catch (error) {
+            logger.warn("Failed to resolve A1 artifact URL", {
+              artifactUrl,
+              error: error?.message || String(error),
+            });
+          }
+          return [artifactUrl, null];
+        }),
+      );
+
+      if (!isCancelled) {
+        setArtifactObjectUrlMap(
+          Object.fromEntries(
+            resolvedEntries.filter(([, objectUrl]) => Boolean(objectUrl)),
+          ),
+        );
+      }
+    }
+
+    resolveArtifacts();
+
+    return () => {
+      isCancelled = true;
+      objectUrls.forEach((objectUrl) => {
+        try {
+          URL.revokeObjectURL(objectUrl);
+        } catch {
+          // Ignore revoke failures for already-released object URLs.
+        }
+      });
+    };
+  }, [artifactSourceUrls]);
+  const effectiveRawSheetUrl =
+    artifactObjectUrlMap[rawSheetUrl] ||
+    (isDesignHistoryArtifactUrl(rawSheetUrl) ? null : rawSheetUrl);
+  const effectivePdfDownloadUrl =
+    artifactObjectUrlMap[pdfDownloadUrl] ||
+    (isDesignHistoryArtifactUrl(pdfDownloadUrl) ? null : pdfDownloadUrl);
+  const resolvedSheetSeries = React.useMemo(
+    () =>
+      sheetSeries
+        .map((entry) => ({
+          ...entry,
+          pdfUrl:
+            artifactObjectUrlMap[entry.pdfUrl] ||
+            (isDesignHistoryArtifactUrl(entry.pdfUrl) ? null : entry.pdfUrl),
+        }))
+        .filter((entry) => entry.pdfUrl),
+    [artifactObjectUrlMap, sheetSeries],
+  );
 
   // Determine proxy base (dev uses localhost:3001, prod uses same origin)
   const proxyBase = React.useMemo(() => {
@@ -187,11 +280,11 @@ const A1SheetViewer = ({
 
   // Proxy Together AI URLs through our backend to avoid CORS, but fall back to raw URL if needed
   const sheetUrlCandidates = React.useMemo(() => {
-    if (!rawSheetUrl) {
+    if (!effectiveRawSheetUrl) {
       return [];
     }
 
-    const cleanedUrl = rawSheetUrl.trim();
+    const cleanedUrl = sanitizeSheetUrl(effectiveRawSheetUrl);
     if (!cleanedUrl) {
       return [];
     }
@@ -213,7 +306,7 @@ const A1SheetViewer = ({
       try {
         const urlMatch = cleanedUrl.match(/[?&]url=([^&]+)/);
         if (urlMatch) {
-          const decoded = decodeURIComponent(urlMatch[1]);
+          const decoded = sanitizeSheetUrl(decodeURIComponent(urlMatch[1]));
           // Check if the decoded URL is a data URL
           if (
             decoded.startsWith("data:image/") ||
@@ -238,7 +331,7 @@ const A1SheetViewer = ({
       try {
         // Try decoding the entire URL to see if it's a data URL
         if (cleanedUrl.includes("%3A") || cleanedUrl.includes("%2F")) {
-          const decoded = decodeURIComponent(cleanedUrl);
+          const decoded = sanitizeSheetUrl(decodeURIComponent(cleanedUrl));
           if (
             decoded.startsWith("data:image/") ||
             decoded.startsWith("data:") ||
@@ -268,17 +361,17 @@ const A1SheetViewer = ({
 
     if (isDataUrl || extractedDataUrl) {
       // Use data URL directly (never proxy)
-      candidates.push(extractedDataUrl || cleanedUrl);
+      candidates.push(sanitizeSheetUrl(extractedDataUrl || cleanedUrl));
     } else if (isAlreadyProxied) {
-      candidates.push(cleanedUrl);
+      candidates.push(sanitizeSheetUrl(cleanedUrl));
     } else if (shouldProxy) {
-      candidates.push(proxied, cleanedUrl);
+      candidates.push(proxied, sanitizeSheetUrl(cleanedUrl));
     } else {
-      candidates.push(cleanedUrl, proxied);
+      candidates.push(sanitizeSheetUrl(cleanedUrl), proxied);
     }
 
     return Array.from(new Set(candidates));
-  }, [proxyBase, rawSheetUrl]);
+  }, [effectiveRawSheetUrl, proxyBase]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -431,7 +524,7 @@ const A1SheetViewer = ({
     // Plan §6.11 / §9: the canonical RIBA A1 deliverable is the vector PDF.
     // Try it first when present, then fall back to the SVG/PNG candidates.
     const downloadSources = [
-      pdfDownloadUrl,
+      effectivePdfDownloadUrl,
       resolvedSheetUrl,
       ...sheetUrlCandidates,
     ].filter((url, index, arr) => Boolean(url) && arr.indexOf(url) === index);
@@ -616,12 +709,12 @@ const A1SheetViewer = ({
             </Button>
           </div>
         </div>
-        {sheetSeries.length > 1 && (
+        {resolvedSheetSeries.length > 1 && (
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-white/10 pt-3">
             <span className="text-xs font-semibold uppercase text-white/45">
               PDF set
             </span>
-            {sheetSeries.map((entry) => (
+            {resolvedSheetSeries.map((entry) => (
               <a
                 key={`${entry.sheetNumber}-${entry.label}`}
                 href={entry.pdfUrl}

@@ -67,9 +67,13 @@ function clamp(value, minimum, maximum) {
   return Math.max(minimum, Math.min(maximum, value));
 }
 
-function getTechnicalPanelRenderSize(panelType, floorCount = 1) {
+export function getTechnicalPanelRenderSize(
+  panelType,
+  floorCount = 1,
+  layoutTemplate = "board-v2",
+) {
   const { layout } = resolveComposeLayout({
-    layoutTemplate: "board-v2",
+    layoutTemplate,
     floorCount,
   });
   const slot = layout?.[panelType];
@@ -84,12 +88,19 @@ function getTechnicalPanelRenderSize(panelType, floorCount = 1) {
   const minWidth = isPlan ? 760 : isSection ? 720 : 560;
   const minHeight = isPlan ? 420 : isSection ? 400 : 320;
 
+  // Render the SVG at the slot's actual aspect ratio. If either dimension
+  // would fall below its readability minimum, scale BOTH dimensions up by
+  // the same factor so the aspect ratio (and the downstream fit:"contain"
+  // placement) still fills the A1 panel slot completely.
+  const targetWidth = slotRect.width * TECHNICAL_RENDER_SCALE_FACTOR;
+  const targetHeight = slotRect.height * TECHNICAL_RENDER_SCALE_FACTOR;
+  const widthDeficit = targetWidth > 0 ? minWidth / targetWidth : 1;
+  const heightDeficit = targetHeight > 0 ? minHeight / targetHeight : 1;
+  const upscale = Math.max(1, widthDeficit, heightDeficit);
+
   return {
-    width: roundEven(slotRect.width * TECHNICAL_RENDER_SCALE_FACTOR, minWidth),
-    height: roundEven(
-      slotRect.height * TECHNICAL_RENDER_SCALE_FACTOR,
-      minHeight,
-    ),
+    width: roundEven(targetWidth * upscale, 0),
+    height: roundEven(targetHeight * upscale, 0),
   };
 }
 
@@ -818,6 +829,13 @@ export function buildCompiledProjectTechnicalPanels(source = {}, options = {}) {
     options.elevationHeight || options.height,
   );
   const customSectionHeight = Number(options.sectionHeight || options.height);
+  // Default to board-v2 so non-residential / unspecified callers retain
+  // existing behaviour. Residential/presentation-v3 callers pass it
+  // explicitly so floor plans and sections render at slot aspect.
+  const layoutTemplate =
+    typeof options.layoutTemplate === "string" && options.layoutTemplate
+      ? options.layoutTemplate
+      : "board-v2";
 
   const levels = Array.isArray(compiledProject.levels)
     ? compiledProject.levels
@@ -826,7 +844,11 @@ export function buildCompiledProjectTechnicalPanels(source = {}, options = {}) {
 
   levels.forEach((level, index) => {
     const panelType = technicalFloorPanelType(index);
-    const slotRenderSize = getTechnicalPanelRenderSize(panelType, floorCount);
+    const slotRenderSize = getTechnicalPanelRenderSize(
+      panelType,
+      floorCount,
+      layoutTemplate,
+    );
     const renderSize = {
       width:
         Number.isFinite(customRenderWidth) && customRenderWidth > 0
@@ -861,7 +883,11 @@ export function buildCompiledProjectTechnicalPanels(source = {}, options = {}) {
 
   Object.entries(TECHNICAL_ELEVATION_PANELS).forEach(
     ([orientation, panelType]) => {
-      const slotRenderSize = getTechnicalPanelRenderSize(panelType, floorCount);
+      const slotRenderSize = getTechnicalPanelRenderSize(
+        panelType,
+        floorCount,
+        layoutTemplate,
+      );
       const renderSize = {
         width:
           Number.isFinite(customRenderWidth) && customRenderWidth > 0
@@ -896,7 +922,11 @@ export function buildCompiledProjectTechnicalPanels(source = {}, options = {}) {
 
   Object.entries(TECHNICAL_SECTION_PANELS).forEach(
     ([sectionType, panelType]) => {
-      const slotRenderSize = getTechnicalPanelRenderSize(panelType, floorCount);
+      const slotRenderSize = getTechnicalPanelRenderSize(
+        panelType,
+        floorCount,
+        layoutTemplate,
+      );
       const renderSize = {
         width:
           Number.isFinite(customRenderWidth) && customRenderWidth > 0

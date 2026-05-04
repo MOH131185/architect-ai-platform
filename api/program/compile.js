@@ -1,5 +1,6 @@
 import { setCorsHeaders, handlePreflight } from "../_shared/cors.js";
 import { generateResidentialProgramBrief } from "../../src/services/project/residentialProgramEngine.js";
+import { resolveAuthoritativeFloorCount } from "../../src/services/project/floorCountAuthority.js";
 import { UK_RESIDENTIAL_V2_PIPELINE_VERSION } from "../../src/services/project/v2ProjectContracts.js";
 
 export default async function handler(req, res) {
@@ -22,10 +23,22 @@ export default async function handler(req, res) {
       qualityTier = "mid",
       customNotes = "",
     } = req.body || {};
-    const requestedLevelCount =
-      floorCountLocked || levelCount || floorCount
-        ? Number(levelCount || floorCount)
-        : null;
+    const hasFloorAuthority = Boolean(
+      floorCountLocked || levelCount || floorCount,
+    );
+    const requestedLevelCount = hasFloorAuthority
+      ? resolveAuthoritativeFloorCount(
+          {
+            floorCount: Number(levelCount || floorCount),
+            floorCountLocked,
+            subType,
+            buildingType: subType,
+            area: Number(totalAreaM2 || 0),
+            totalAreaM2: Number(totalAreaM2 || 0),
+          },
+          { fallback: 2 },
+        ).floorCount
+      : null;
 
     const programBrief = generateResidentialProgramBrief({
       subType,

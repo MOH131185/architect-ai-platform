@@ -1,6 +1,7 @@
 import {
   buildPresentationV3SheetPanelSpecs,
   computePanelCaptionLayout,
+  computePanelSlotFitMetrics,
   isResidentialBuildingType,
   resolvePresentationLayoutTemplate,
   selectPanelContentViewBox,
@@ -349,27 +350,32 @@ describe("Phase B closeout v3 — presentation-v3 slot proportions", () => {
     }
   });
 
-  test("1-storey layout keeps its 188mm row 1 (plans already fill well)", () => {
+  test("1-storey layout keeps a tighter standard row stack", () => {
     const specs = buildPresentationV3SheetPanelSpecs(1);
     const site = specs.find((s) => s.panelType === "site_context");
     const ground = specs.find((s) => s.panelType === "floor_plan_ground");
     const sectionAA = specs.find((s) => s.panelType === "section_AA");
-    expect(site.height).toBe(188);
-    expect(ground.height).toBe(188);
-    expect(sectionAA.height).toBe(188);
+    const hero = specs.find((s) => s.panelType === "hero_3d");
+    expect(site.height).toBe(180);
+    expect(ground.height).toBe(180);
+    expect(sectionAA.height).toBe(178);
+    expect(hero.height).toBe(200);
     expect(findOverlap(specs)).toBeNull();
   });
 
-  test("2-storey layout keeps its 188mm row 1 (each plan slot stays square-ish)", () => {
+  test("2-storey layout places ground and first-floor plans side by side", () => {
     const specs = buildPresentationV3SheetPanelSpecs(2);
     const ground = specs.find((s) => s.panelType === "floor_plan_ground");
     const first = specs.find((s) => s.panelType === "floor_plan_first");
-    expect(ground.height).toBe(188);
-    expect(first.height).toBe(188);
+    expect(ground.height).toBe(180);
+    expect(first.height).toBe(180);
+    expect(first.x).toBeGreaterThan(ground.x);
+    expect(ground.width).toBeGreaterThanOrEqual(175);
+    expect(first.width).toBe(ground.width);
     expect(findOverlap(specs)).toBeNull();
   });
 
-  test("row 3 (perspectives/data/title) is unchanged across storey counts", () => {
+  test("row 3 keeps the same horizontal hierarchy across storey counts", () => {
     const oneStorey = buildPresentationV3SheetPanelSpecs(1);
     const threeStorey = buildPresentationV3SheetPanelSpecs(3);
     const row3PanelTypes = [
@@ -384,7 +390,6 @@ describe("Phase B closeout v3 — presentation-v3 slot proportions", () => {
       const b = threeStorey.find((s) => s.panelType === panelType);
       expect(b.x).toBe(a.x);
       expect(b.width).toBe(a.width);
-      expect(b.height).toBe(a.height);
     }
   });
 
@@ -399,5 +404,31 @@ describe("Phase B closeout v3 — presentation-v3 slot proportions", () => {
       layoutTemplate: "presentation-v3",
     });
     expect(layout.layout).toBe("stacked");
+  });
+
+  test("slot-fit metrics reflect final nested SVG aspect-fit on the board", () => {
+    const specs = buildPresentationV3SheetPanelSpecs(2);
+    const ground = specs.find((s) => s.panelType === "floor_plan_ground");
+    const metrics = computePanelSlotFitMetrics({
+      panelType: ground.panelType,
+      artifact: {
+        svgString:
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900"></svg>',
+        width: 1200,
+        height: 900,
+        contentBounds: { x: 100, y: 80, width: 1000, height: 720 },
+        normalizedViewBox: "20 10 1160 880",
+      },
+      placement: {
+        ...ground,
+        title: "Ground Floor Plan",
+        scale: "1:100",
+        layoutTemplate: "presentation-v3",
+      },
+      layoutTemplate: "presentation-v3",
+    });
+    expect(metrics.occupancyRatio).toBeGreaterThan(0.7);
+    expect(metrics.slotContentHeight).toBeLessThan(ground.height);
+    expect(metrics.captionLayout).toBe("stacked");
   });
 });

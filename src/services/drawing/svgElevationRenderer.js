@@ -9,6 +9,12 @@ import {
   resolveCompiledProjectGeometryInput,
   resolveCompiledProjectStyleDNA,
 } from "./drawingBounds.js";
+import { buildCanonicalRoofPitchInfo } from "./roofPitchResolver.js";
+
+const SHEET_ELEVATION_POLISH = Object.freeze({
+  fontScale: 1.1,
+  strokeScale: 1.12,
+});
 
 function escapeXml(value) {
   return String(value)
@@ -42,6 +48,14 @@ function formatMeters(value) {
     return "0.0 m";
   }
   return `${numeric.toFixed(1)} m`;
+}
+
+function resolveElevationPolish(sheetMode = false) {
+  return sheetMode ? SHEET_ELEVATION_POLISH : { fontScale: 1, strokeScale: 1 };
+}
+
+function polishSize(value, scale = 1) {
+  return formatNumber(Number(value || 0) * Number(scale || 1), 1);
 }
 
 function orientationToSide(orientation = "south") {
@@ -243,12 +257,72 @@ function resolveFacadeZoneLabel(zone = {}, palette = {}, index = 0) {
   return String(zone.material || zone.name || zone.type || fallback);
 }
 
-function renderRoof(baseX, topY, widthPx, roofLanguage, theme) {
+function renderRoofPitchLabel(
+  baseX,
+  ridgeY,
+  widthPx,
+  roofPitchInfo,
+  theme,
+  polish = {},
+) {
+  const numericPitch = Number(roofPitchInfo?.pitchDeg);
+  if (!Number.isFinite(numericPitch) || numericPitch <= 0) {
+    return "";
+  }
+  const labelFont = polishSize(8, polish.fontScale || 1);
+  const cx = baseX + widthPx / 2 + 28;
+  const cy = ridgeY + 16;
+  return `
+    <g id="phase14-elevation-roof-pitch" data-roof-pitch-deg="${numericPitch.toFixed(1)}" data-roof-pitch-source="${escapeXml(roofPitchInfo.source || "unknown")}" data-roof-span-m="${formatNumber(roofPitchInfo.spanM, 2)}" data-roof-rise-m="${formatNumber(roofPitchInfo.riseM, 2)}">
+      <text x="${formatNumber(cx)}" y="${formatNumber(cy)}" font-size="${labelFont}" font-family="Arial, sans-serif" font-weight="700" fill="${theme.line}" data-text-role="roof-pitch">PITCH ${numericPitch.toFixed(0)}°</text>
+    </g>
+  `;
+}
+
+function renderRoofPitchDataAttributes(roofPitchInfo = {}) {
+  const attrs = [
+    `data-roof-pitch-status="${escapeXml(roofPitchInfo.status || "missing")}"`,
+  ];
+  if (roofPitchInfo.source) {
+    attrs.push(`data-roof-pitch-source="${escapeXml(roofPitchInfo.source)}"`);
+  }
+  if (
+    roofPitchInfo.pitchDeg != null &&
+    Number.isFinite(Number(roofPitchInfo.pitchDeg)) &&
+    Number(roofPitchInfo.pitchDeg) > 0
+  ) {
+    attrs.push(
+      `data-roof-pitch-deg="${Number(roofPitchInfo.pitchDeg).toFixed(1)}"`,
+    );
+  }
+  if (Number.isFinite(Number(roofPitchInfo.spanM))) {
+    attrs.push(`data-roof-span-m="${formatNumber(roofPitchInfo.spanM, 2)}"`);
+  }
+  if (Number.isFinite(Number(roofPitchInfo.riseM))) {
+    attrs.push(`data-roof-rise-m="${formatNumber(roofPitchInfo.riseM, 2)}"`);
+  }
+  return attrs.join(" ");
+}
+
+function renderRoof(
+  baseX,
+  topY,
+  widthPx,
+  roofLanguage,
+  theme,
+  roofPitchInfo = {},
+  polish = {},
+) {
   const flatRoof =
     roofLanguage.includes("flat") || roofLanguage.includes("parapet");
   if (flatRoof) {
     return `
-      <g id="phase14-section-roof">
+      <g id="phase14-section-roof" ${renderRoofPitchDataAttributes({
+        ...roofPitchInfo,
+        status: "flat",
+        pitchDeg: null,
+        riseM: null,
+      })}>
         <rect x="${formatNumber(baseX)}" y="${formatNumber(
           topY - 18,
         )}" width="${formatNumber(widthPx)}" height="4" fill="${theme.paper}" stroke="${theme.line}" stroke-width="1.2" />
@@ -269,10 +343,23 @@ function renderRoof(baseX, topY, widthPx, roofLanguage, theme) {
     `;
   }
 
-  const ridgeY = topY - Math.max(46, Math.min(58, widthPx * 0.14));
+  const resolvedRisePx =
+    Number.isFinite(Number(roofPitchInfo?.risePx)) &&
+    Number(roofPitchInfo.risePx) > 0
+      ? Number(roofPitchInfo.risePx)
+      : Math.max(46, Math.min(58, widthPx * 0.14));
+  const ridgeY = topY - resolvedRisePx;
   const undersideY = ridgeY + 12;
+  const pitchLabel = renderRoofPitchLabel(
+    baseX,
+    ridgeY,
+    widthPx,
+    roofPitchInfo,
+    theme,
+    polish,
+  );
   return `
-    <g id="phase14-section-roof">
+    <g id="phase14-section-roof" ${renderRoofPitchDataAttributes(roofPitchInfo)}>
       <path d="M ${formatNumber(baseX - 6)} ${formatNumber(
         topY,
       )} L ${formatNumber(baseX + widthPx / 2)} ${formatNumber(
@@ -309,56 +396,140 @@ function renderRoof(baseX, topY, widthPx, roofLanguage, theme) {
         topY - 6,
       )}" stroke="${theme.lineLight}" stroke-width="1" stroke-dasharray="5 3" />
     </g>
+    ${pitchLabel}
   `;
 }
 
-function renderLevelDatums(baseX, baseY, widthPx, levelProfiles, scale, theme) {
+// Phase 3 — friendly RIBA-style stage names for elevation level datums.
+// Maps level_number / level.name to a short uppercase suffix used in the
+// "FFL <STAGE> +X.XXm" datum labels along the elevation's left edge.
+const FLOOR_STAGE_NAMES = Object.freeze([
+  "GROUND",
+  "FIRST",
+  "SECOND",
+  "THIRD",
+  "FOURTH",
+  "FIFTH",
+  "SIXTH",
+  "SEVENTH",
+  "EIGHTH",
+]);
+
+function resolveFloorStageLabel(level) {
+  if (level && typeof level.name === "string" && level.name.trim()) {
+    const cleaned = level.name.replace(/\b(floor|level|storey|story)\b/gi, "");
+    const trimmed = cleaned.replace(/\s+/g, " ").trim();
+    if (trimmed) return trimmed.toUpperCase();
+  }
+  const n = Number(level?.level_number);
+  if (Number.isFinite(n) && n >= 0 && n < FLOOR_STAGE_NAMES.length) {
+    return FLOOR_STAGE_NAMES[n];
+  }
+  return Number.isFinite(n) ? `L${n}` : "FFL";
+}
+
+function renderLevelDatums(
+  baseX,
+  baseY,
+  widthPx,
+  levelProfiles,
+  scale,
+  theme,
+  polish = {},
+  ridgeInfo = null,
+) {
   const lines = [];
   const labels = [];
-  levelProfiles.forEach((level) => {
+  const fontScale = polish.fontScale || 1;
+  const strokeScale = polish.strokeScale || 1;
+  const datumStroke = polishSize(1.1, strokeScale);
+  const guideStroke = polishSize(1, strokeScale);
+  const primaryLabelFont = polishSize(9, fontScale);
+  const secondaryLabelFont = polishSize(8, fontScale);
+  // Phase 3 — render datums starting from the ground (FFL GROUND +0.00m) and
+  // labelled with a friendly RIBA-style stage name ("FFL FIRST +3.20m" etc.)
+  // instead of the bare level identifier. The ground datum is emitted last so
+  // it sits on top of the level lines visually.
+  levelProfiles.forEach((level, index) => {
     const topY = baseY - level.top_m * scale;
     const midY =
       baseY - (level.bottom_m + Number(level.height_m || 3.2) / 2) * scale;
+    const stage = resolveFloorStageLabel(level);
     lines.push(
       `<line x1="${formatNumber(baseX)}" y1="${formatNumber(
         topY,
       )}" x2="${formatNumber(baseX + widthPx)}" y2="${formatNumber(
         topY,
-      )}" stroke="${theme.lineMuted}" stroke-width="1.1" />`,
+      )}" stroke="${theme.lineMuted}" stroke-width="${datumStroke}" />`,
     );
+    // The "top of level N" line marks the FFL of level N+1. Use the next
+    // level's stage label so the datum reads naturally (e.g. the top of the
+    // ground floor is the FFL of the first floor).
+    const datumStage =
+      index + 1 < levelProfiles.length
+        ? resolveFloorStageLabel(levelProfiles[index + 1])
+        : "ROOF";
     labels.push(`
       <line x1="${formatNumber(baseX - 46)}" y1="${formatNumber(
         topY,
       )}" x2="${formatNumber(baseX - 6)}" y2="${formatNumber(
         topY,
-      )}" stroke="${theme.lineMuted}" stroke-width="1" />
+      )}" stroke="${theme.lineMuted}" stroke-width="${guideStroke}" />
       <text x="${formatNumber(baseX - 52)}" y="${formatNumber(
         topY + 4,
-      )}" font-size="9" font-family="Arial, sans-serif" font-weight="700" text-anchor="end">${escapeXml(
-        `${level.name || `L${level.level_number}`} +${level.top_m.toFixed(2)}m`,
+      )}" font-size="${primaryLabelFont}" font-family="Arial, sans-serif" font-weight="700" text-anchor="end" data-datum-role="ffl">${escapeXml(
+        `FFL ${datumStage} +${level.top_m.toFixed(2)}m`,
       )}</text>
       <text x="${formatNumber(baseX - 10)}" y="${formatNumber(
         midY,
-      )}" font-size="8" font-family="Arial, sans-serif" text-anchor="end">${escapeXml(
-        level.name || `L${level.level_number}`,
+      )}" font-size="${secondaryLabelFont}" font-family="Arial, sans-serif" text-anchor="end">${escapeXml(
+        stage,
       )}</text>
     `);
   });
 
+  // Ground line: explicitly labelled "FFL GROUND +0.00m" so reviewers can
+  // read the datum without inferring the stage from the absence of a name.
   labels.push(`
     <line x1="${formatNumber(baseX - 46)}" y1="${formatNumber(
       baseY,
     )}" x2="${formatNumber(baseX - 6)}" y2="${formatNumber(
       baseY,
-    )}" stroke="${theme.line}" stroke-width="1.1" />
+    )}" stroke="${theme.line}" stroke-width="${datumStroke}" />
     <text x="${formatNumber(baseX - 52)}" y="${formatNumber(
       baseY + 4,
-    )}" font-size="9" font-family="Arial, sans-serif" font-weight="700" text-anchor="end">FFL +0.00m</text>
+    )}" font-size="${primaryLabelFont}" font-family="Arial, sans-serif" font-weight="700" text-anchor="end" data-datum-role="ffl-ground">FFL GROUND +0.00m</text>
   `);
+
+  // Phase 3 — optional RIDGE datum. Caller passes `{ y, heightM }` when the
+  // ridge height is known so the elevation matches the goal sheet's
+  // "RIDGE +X.XXm" label band.
+  let ridgeDatumCount = 0;
+  if (
+    ridgeInfo &&
+    Number.isFinite(ridgeInfo.y) &&
+    Number.isFinite(ridgeInfo.heightM)
+  ) {
+    const ridgeY = ridgeInfo.y;
+    const ridgeFont = polishSize(9, fontScale);
+    labels.push(`
+      <line x1="${formatNumber(baseX - 46)}" y1="${formatNumber(
+        ridgeY,
+      )}" x2="${formatNumber(baseX - 6)}" y2="${formatNumber(
+        ridgeY,
+      )}" stroke="${theme.line}" stroke-width="${datumStroke}" />
+      <text x="${formatNumber(baseX - 52)}" y="${formatNumber(
+        ridgeY + 4,
+      )}" font-size="${ridgeFont}" font-family="Arial, sans-serif" font-weight="700" text-anchor="end" data-datum-role="ridge">${escapeXml(
+        `RIDGE +${ridgeInfo.heightM.toFixed(2)}m`,
+      )}</text>
+    `);
+    ridgeDatumCount = 1;
+  }
 
   return {
     markup: `<g id="phase8-elevation-datums">${lines.join("")}${labels.join("")}</g>`,
-    count: levelProfiles.length + 1,
+    count: levelProfiles.length + 1 + ridgeDatumCount,
   };
 }
 
@@ -988,39 +1159,43 @@ function renderOverallDimensions(
   layout = {},
   width = 0,
   theme,
+  polish = {},
 ) {
   const topY = layout.top - 14;
   const rightX = width - layout.right + 24;
+  const fontSize = polishSize(10, polish.fontScale || 1);
+  const guideStroke = polishSize(0.9, polish.strokeScale || 1);
+  const primaryStroke = polishSize(1, polish.strokeScale || 1);
   return `
     <g id="phase8-elevation-dimensions">
       <line x1="${formatNumber(baseX)}" y1="${formatNumber(
         baseY - heightPx,
       )}" x2="${formatNumber(baseX)}" y2="${formatNumber(
         topY,
-      )}" stroke="${theme.lineMuted}" stroke-width="0.9"/>
+      )}" stroke="${theme.lineMuted}" stroke-width="${guideStroke}"/>
       <line x1="${formatNumber(baseX + widthPx)}" y1="${formatNumber(
         baseY - heightPx,
       )}" x2="${formatNumber(baseX + widthPx)}" y2="${formatNumber(
         topY,
-      )}" stroke="${theme.lineMuted}" stroke-width="0.9"/>
+      )}" stroke="${theme.lineMuted}" stroke-width="${guideStroke}"/>
       <line x1="${formatNumber(baseX)}" y1="${formatNumber(
         topY,
       )}" x2="${formatNumber(baseX + widthPx)}" y2="${formatNumber(
         topY,
-      )}" stroke="${theme.line}" stroke-width="1"/>
+      )}" stroke="${theme.line}" stroke-width="${primaryStroke}"/>
       <line x1="${formatNumber(baseX)}" y1="${formatNumber(
         topY - 3,
       )}" x2="${formatNumber(baseX)}" y2="${formatNumber(
         topY + 3,
-      )}" stroke="${theme.line}" stroke-width="1"/>
+      )}" stroke="${theme.line}" stroke-width="${primaryStroke}"/>
       <line x1="${formatNumber(baseX + widthPx)}" y1="${formatNumber(
         topY - 3,
       )}" x2="${formatNumber(baseX + widthPx)}" y2="${formatNumber(
         topY + 3,
-      )}" stroke="${theme.line}" stroke-width="1"/>
+      )}" stroke="${theme.line}" stroke-width="${primaryStroke}"/>
       <text x="${formatNumber(baseX + widthPx / 2)}" y="${formatNumber(
         topY - 6,
-      )}" font-size="10" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">${escapeXml(
+      )}" font-size="${fontSize}" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">${escapeXml(
         formatMeters(metrics.width_m),
       )}</text>
 
@@ -1028,30 +1203,30 @@ function renderOverallDimensions(
         baseY - heightPx,
       )}" x2="${formatNumber(rightX)}" y2="${formatNumber(
         baseY - heightPx,
-      )}" stroke="${theme.lineMuted}" stroke-width="0.9"/>
+      )}" stroke="${theme.lineMuted}" stroke-width="${guideStroke}"/>
       <line x1="${formatNumber(baseX + widthPx)}" y1="${formatNumber(
         baseY,
       )}" x2="${formatNumber(rightX)}" y2="${formatNumber(
         baseY,
-      )}" stroke="${theme.lineMuted}" stroke-width="0.9"/>
+      )}" stroke="${theme.lineMuted}" stroke-width="${guideStroke}"/>
       <line x1="${formatNumber(rightX)}" y1="${formatNumber(
         baseY - heightPx,
       )}" x2="${formatNumber(rightX)}" y2="${formatNumber(
         baseY,
-      )}" stroke="${theme.line}" stroke-width="1"/>
+      )}" stroke="${theme.line}" stroke-width="${primaryStroke}"/>
       <line x1="${formatNumber(rightX - 3)}" y1="${formatNumber(
         baseY - heightPx,
       )}" x2="${formatNumber(rightX + 3)}" y2="${formatNumber(
         baseY - heightPx,
-      )}" stroke="${theme.line}" stroke-width="1"/>
+      )}" stroke="${theme.line}" stroke-width="${primaryStroke}"/>
       <line x1="${formatNumber(rightX - 3)}" y1="${formatNumber(
         baseY,
       )}" x2="${formatNumber(rightX + 3)}" y2="${formatNumber(
         baseY,
-      )}" stroke="${theme.line}" stroke-width="1"/>
+      )}" stroke="${theme.line}" stroke-width="${primaryStroke}"/>
       <text x="${formatNumber(rightX + 14)}" y="${formatNumber(
         baseY - heightPx / 2,
-      )}" font-size="10" font-family="Arial, sans-serif" font-weight="700" transform="rotate(90 ${formatNumber(
+      )}" font-size="${fontSize}" font-family="Arial, sans-serif" font-weight="700" transform="rotate(90 ${formatNumber(
         rightX + 14,
       )} ${formatNumber(baseY - heightPx / 2)})" text-anchor="middle">${escapeXml(
         formatMeters(metrics.total_height_m),
@@ -1074,12 +1249,15 @@ function renderScaleBar(
   const y = Number.isFinite(options.y)
     ? options.y
     : height - layout.bottom + 44;
+  const fontScale = options.fontScale || 1;
+  const strokeScale = options.strokeScale || 1;
   const labelYOffset = Number.isFinite(options.labelYOffset)
     ? options.labelYOffset
     : 16;
   const labelFontSize = Number.isFinite(options.fontSize)
     ? options.fontSize
-    : 10;
+    : 10 * fontScale;
+  const strokeWidth = polishSize(1.6, strokeScale);
   return {
     barMeters,
     markup: `
@@ -1088,25 +1266,25 @@ function renderScaleBar(
           y,
         )}" x2="${formatNumber(x + barWidthPx)}" y2="${formatNumber(
           y,
-        )}" stroke="${theme.line}" stroke-width="1.6"/>
+        )}" stroke="${theme.line}" stroke-width="${strokeWidth}"/>
         <line x1="${formatNumber(x)}" y1="${formatNumber(
           y - 4,
         )}" x2="${formatNumber(x)}" y2="${formatNumber(
           y + 4,
-        )}" stroke="${theme.line}" stroke-width="1.6"/>
+        )}" stroke="${theme.line}" stroke-width="${strokeWidth}"/>
         <line x1="${formatNumber(x + barWidthPx / 2)}" y1="${formatNumber(
           y - 4,
         )}" x2="${formatNumber(x + barWidthPx / 2)}" y2="${formatNumber(
           y + 4,
-        )}" stroke="${theme.line}" stroke-width="1.6"/>
+        )}" stroke="${theme.line}" stroke-width="${strokeWidth}"/>
         <line x1="${formatNumber(x + barWidthPx)}" y1="${formatNumber(
           y - 4,
         )}" x2="${formatNumber(x + barWidthPx)}" y2="${formatNumber(
           y + 4,
-        )}" stroke="${theme.line}" stroke-width="1.6"/>
+        )}" stroke="${theme.line}" stroke-width="${strokeWidth}"/>
         <text x="${formatNumber(x + barWidthPx / 2)}" y="${formatNumber(
           y + labelYOffset,
-        )}" font-size="${labelFontSize}" font-family="Arial, sans-serif" text-anchor="middle">${escapeXml(
+        )}" font-size="${formatNumber(labelFontSize, 1)}" font-family="Arial, sans-serif" text-anchor="middle">${escapeXml(
           `${barMeters} m`,
         )}</text>
       </g>
@@ -1124,19 +1302,23 @@ function renderTitleBlock(
 ) {
   const x = layout.left;
   const y = height - layout.bottom + 16;
+  const polish = metadata.polish || {};
+  const titleFont = polishSize(14, polish.fontScale || 1);
+  const metaFont = polishSize(10, polish.fontScale || 1);
+  const titleStroke = polishSize(1.1, polish.strokeScale || 1);
   return `
     <g id="phase7-elevation-title-block">
       <rect x="${formatNumber(x)}" y="${formatNumber(
         y,
-      )}" width="328" height="46" fill="${theme.paper}" stroke="${theme.line}" stroke-width="1.1"/>
+      )}" width="328" height="46" fill="${theme.paper}" stroke="${theme.line}" stroke-width="${titleStroke}"/>
       <text x="${formatNumber(x + 12)}" y="${formatNumber(
         y + 17,
-      )}" font-size="14" font-family="Arial, sans-serif" font-weight="700" class="sheet-critical-label" data-text-role="critical">${escapeXml(
+      )}" font-size="${titleFont}" font-family="Arial, sans-serif" font-weight="700" class="sheet-critical-label" data-text-role="critical">${escapeXml(
         `ELEVATION - ${String(orientation || "south").toUpperCase()}`,
       )}</text>
       <text x="${formatNumber(x + 12)}" y="${formatNumber(
         y + 34,
-      )}" font-size="10" font-family="Arial, sans-serif" class="sheet-critical-label" data-text-role="critical">${escapeXml(
+      )}" font-size="${metaFont}" font-family="Arial, sans-serif" class="sheet-critical-label" data-text-role="critical">${escapeXml(
         `Bounds ${metadata.boundsSource || "building_derived"} · ${Math.round(
           Number(metadata.slotOccupancyRatio || 0) * 100,
         )}% slot occupancy`,
@@ -1174,6 +1356,7 @@ export function renderElevationSvg(
   const width = options.width || 1200;
   const height = options.height || 760;
   const sheetMode = options.sheetMode === true;
+  const sheetPolish = resolveElevationPolish(sheetMode);
   const showInternalTitleBlock =
     !sheetMode || options.showInternalTitleBlock === true;
   const layout = sheetMode
@@ -1181,20 +1364,35 @@ export function renderElevationSvg(
     : { left: 80, top: 62, right: 94, bottom: 118 };
   const availableWidth = Math.max(1, width - layout.left - layout.right);
   const availableHeight = Math.max(1, height - layout.top - layout.bottom);
-  const scale = Math.min(
-    availableWidth / Math.max(metrics.width_m, 1),
-    availableHeight /
-      Math.max(metrics.total_height_m + (sheetMode ? 0.72 : 1.2), 1),
-  );
-  const widthPx = metrics.width_m * scale;
-  const heightPx = metrics.total_height_m * scale;
-  const baseX = layout.left + (availableWidth - widthPx) / 2;
-  const baseY = layout.top + heightPx;
   const roofLanguage = normalizeRoofLanguage(
     resolvedStyleDNA,
     facadeOrientation,
     geometry,
   );
+  const roofPitchInfoBase = buildCanonicalRoofPitchInfo(geometry, {
+    roofLanguage,
+    spanM: metrics.width_m,
+  });
+  const roofAllowanceM = Math.max(
+    sheetMode ? 0.72 : 1.2,
+    Number(roofPitchInfoBase.riseM || 0),
+  );
+  const scale = Math.min(
+    availableWidth / Math.max(metrics.width_m, 1),
+    availableHeight / Math.max(metrics.total_height_m + roofAllowanceM, 1),
+  );
+  const widthPx = metrics.width_m * scale;
+  const heightPx = metrics.total_height_m * scale;
+  const baseX = layout.left + (availableWidth - widthPx) / 2;
+  const baseY = layout.top + heightPx;
+  const roofPitchInfo = {
+    ...roofPitchInfoBase,
+    risePx:
+      Number.isFinite(Number(roofPitchInfoBase.riseM)) &&
+      Number(roofPitchInfoBase.riseM) > 0
+        ? roofPitchInfoBase.riseM * scale
+        : null,
+  };
   const palette = getCanonicalMaterialPalette({
     dna: resolvedStyleDNA,
     projectGeometry: geometry,
@@ -1212,6 +1410,39 @@ export function renderElevationSvg(
     scale,
     theme,
   );
+  // Phase 3/PR-B — derive a ridge datum from canonical roof pitch when it is
+  // available. Missing pitch must stay explicit; final technical output should
+  // not silently invent a 35 degree roof.
+  const flatRoofForDatum =
+    String(roofLanguage || "")
+      .toLowerCase()
+      .includes("flat") ||
+    String(roofLanguage || "")
+      .toLowerCase()
+      .includes("parapet");
+  const totalLevelHeightM = levelProfiles.reduce(
+    (sum, level) => sum + Number(level.height_m || 3.2),
+    0,
+  );
+  const canonicalRoof =
+    geometry.metadata?.canonical_construction_truth?.roof || null;
+  let ridgeHeightM = Number.isFinite(Number(roofPitchInfo.riseM))
+    ? totalLevelHeightM + Number(roofPitchInfo.riseM)
+    : Number(canonicalRoof?.ridge_height_m) ||
+      Number(canonicalRoof?.peak_height_m) ||
+      null;
+  if (!Number.isFinite(ridgeHeightM)) {
+    if (flatRoofForDatum) {
+      ridgeHeightM = totalLevelHeightM + 0.45; // parapet upstand
+    } else {
+      ridgeHeightM = null;
+    }
+  }
+  const ridgeYpx = baseY - ridgeHeightM * scale;
+  const ridgeInfo =
+    Number.isFinite(ridgeHeightM) && ridgeYpx < baseY
+      ? { y: ridgeYpx, heightM: ridgeHeightM }
+      : null;
   const datums = renderLevelDatums(
     baseX,
     baseY,
@@ -1219,6 +1450,8 @@ export function renderElevationSvg(
     levelProfiles,
     scale,
     theme,
+    sheetPolish,
+    ridgeInfo,
   );
   const openings = renderProjectedOpenings(
     sideFacade,
@@ -1268,6 +1501,8 @@ export function renderElevationSvg(
     widthPx,
     roofLanguage,
     theme,
+    roofPitchInfo,
+    sheetPolish,
   );
   const hasEnvelopeGeometry = metrics.width_m > 0 && levelProfiles.length > 0;
   const explicitExteriorWallCount = (geometry.walls || []).filter(
@@ -1373,6 +1608,11 @@ export function renderElevationSvg(
         explicit_side_coverage_ratio: sideFacade.explicitCoverageRatio,
         uses_canonical_material_palette: true,
         roof_language: roofLanguage,
+        roof_pitch_degrees: roofPitchInfo.pitchDeg,
+        roof_pitch_source: roofPitchInfo.source,
+        roof_pitch_status: roofPitchInfo.status,
+        roof_pitch_span_m: roofPitchInfo.spanM,
+        roof_pitch_rise_m: roofPitchInfo.riseM,
         facade_features: features,
         blueprint_theme: theme.name,
       },
@@ -1386,8 +1626,13 @@ export function renderElevationSvg(
     layout,
     theme,
     showInternalTitleBlock
-      ? {}
-      : { y: height - 34, labelYOffset: 14, fontSize: 9 },
+      ? { ...sheetPolish }
+      : {
+          y: height - 34,
+          labelYOffset: 14,
+          fontSize: 9,
+          ...sheetPolish,
+        },
   );
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-theme="${theme.name}" data-bounds-source="${envelope.source}">
@@ -1417,12 +1662,14 @@ export function renderElevationSvg(
     layout,
     width,
     theme,
+    sheetPolish,
   )}
   ${
     showInternalTitleBlock
       ? renderTitleBlock(orientation, width, height, layout, theme, {
           boundsSource: envelope.source,
           slotOccupancyRatio,
+          polish: sheetPolish,
         })
       : ""
   }
@@ -1475,11 +1722,17 @@ export function renderElevationSvg(
       explicit_side_coverage_ratio: sideFacade.explicitCoverageRatio,
       uses_canonical_material_palette: true,
       roof_language: roofLanguage,
+      roof_pitch_degrees: roofPitchInfo.pitchDeg,
+      roof_pitch_source: roofPitchInfo.source,
+      roof_pitch_status: roofPitchInfo.status,
+      roof_pitch_span_m: roofPitchInfo.spanM,
+      roof_pitch_rise_m: roofPitchInfo.riseM,
       facade_features: features,
       opening_rhythm_count:
         facadeOrientation?.opening_rhythm?.opening_count ||
         openings.windowCount,
       blueprint_theme: theme.name,
+      a1_quality_polish: sheetMode ? "elevation_datums_dimensions_v1" : null,
       slot_occupancy_ratio: slotOccupancyRatio,
       scale_bar_meters: scaleBar.barMeters,
     },

@@ -12,6 +12,13 @@ const HAS_SESSION_STORAGE =
 const FEATURE_FLAG_GROUPS = [
   ["useFloorplanEngine", "useFloorplanGenerator"],
   ["useModelRegistryRouter", "modelRegistry"],
+  // PR-D Phase 13 — keep the spec-named A1 hardening flags in sync with the
+  // pre-existing implementations they alias. Aliases that collide with an
+  // already-existing flag of different semantics (strictFingerprintGate,
+  // vectorPanelGeneration) are intentionally NOT grouped here; those names
+  // already mean something else in this codebase.
+  ["geometryAuthorityMandatory", "strictGeometryMaskGate"],
+  ["requireCanonicalPack", "strictCompiledProjectExports"],
 ];
 
 function resolveFeatureFlagGroup(flagName) {
@@ -205,6 +212,29 @@ export const FEATURE_FLAGS = {
    * @default 9000
    */
   togetherImageMinIntervalMs: 9000,
+
+  /**
+   * Phase 4 — Axonometric cutaway prompt (EXPERIMENTAL)
+   *
+   * When enabled (true) AND `PROJECT_GRAPH_IMAGE_GEN_ENABLED=true`, the
+   * axonometric panel prompt switches from a standard exterior 30-degree
+   * isometric to a CUTAWAY axonometric that exposes interior rooms /
+   * furniture from `sheetDesignContext.programSpaces`. The same identity
+   * lock (visualManifest) is preserved across hero_3d / exterior_render /
+   * axonometric / interior_3d so all four panels still describe the same
+   * building.
+   *
+   * When disabled (default), production behaviour is unchanged: the
+   * standard solid-axonometric prompt is used and the deterministic SVG
+   * fallback is identical to what was shipped before this flag.
+   *
+   * Server-side env override: `PROJECT_GRAPH_AXONOMETRIC_CUTAWAY_ENABLED=true`
+   * (read in `projectGraphVerticalSliceService.buildVisual3DPanelArtifacts`).
+   *
+   * @type {boolean}
+   * @default false
+   */
+  axonometricCutawayEnabled: false,
 
   /**
    * Cooldown delay between panel batches (ms)
@@ -427,6 +457,26 @@ export const FEATURE_FLAGS = {
    * @default true
    */
   strictGeometryMaskGate: true,
+
+  /**
+   * PR-D Phase 13 — Demo-only escape hatch for the diffusion fallback path
+   * blocked in PR-A. Default false; setting true (or env
+   * ALLOW_DEMO_TECHNICAL_FALLBACK=1) lets dev preview generate technical
+   * panels via diffusion when the canonical / vector path is unavailable.
+   * Final A1 must NEVER ship with this on.
+   *
+   * Note: the spec-named aliases geometryAuthorityMandatory,
+   * requireCanonicalPack, geometryControlled3D, threeTierPanelConsistency
+   * are defined elsewhere in this object (their pre-existing definitions
+   * are reused). Aliases that collide with existing names of different
+   * semantics — strictFingerprintGate (separate fingerprint validation gate)
+   * and vectorPanelGeneration (a different rendering switch) — are
+   * intentionally NOT aliased to strictPreflightGate / multiPanelA1.
+   *
+   * @type {boolean}
+   * @default false
+   */
+  ALLOW_DEMO_TECHNICAL_FALLBACK: false,
 
   /**
    * Save Geometry Mask Debug Artifacts

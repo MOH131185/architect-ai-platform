@@ -21,13 +21,32 @@ import {
   getBlockedOpenAIReasoningCalls,
 } from "../openaiReasoningExecutor.js";
 import { computeCDSHashSync } from "../validation/cdsHash.js";
-import { rasteriseSheetArtifact } from "../render/svgRasteriser.js";
+import {
+  rasteriseSheetArtifact,
+  isRasterStubModeAllowed,
+} from "../render/svgRasteriser.js";
+import {
+  buildVectorPdfFromSheetSvg,
+  VECTOR_PDF_RENDER_MODE,
+  VECTOR_PDF_SCHEMA_VERSION,
+} from "../render/buildVectorPdfFromSheetSvg.js";
 import {
   buildVisualManifest,
   buildVisualIdentityLockBlock,
 } from "../render/visualManifestService.js";
+import {
+  evaluateVisualIdentity,
+  VISUAL_MANIFEST_VALIDATOR_VERSION,
+} from "../render/visualManifestValidator.js";
+import {
+  buildSheetDesignContext,
+  assertSheetDesignContext,
+  SHEET_DESIGN_CONTEXT_VERSION,
+} from "../dnaPromptContext.js";
+import { isFeatureEnabled } from "../../config/featureFlags.js";
 import { getSiteSnapshotWithMetadata } from "../siteMapSnapshotService.js";
 import { computeSunPath } from "../climate/sunPath.js";
+import weatherService from "../weatherService.js";
 import { listSourceDocumentsForParts } from "../regulation/sourceRegistry.js";
 import {
   resolveJurisdiction,
@@ -51,14 +70,21 @@ import {
   prepareFinalSheetSvgForRasterizationWithReport,
 } from "../../utils/svgFontEmbedder.js";
 import {
+  sanitizeInvalidSvgPaths,
+  sanitizeSvgDataUrl,
+  svgToSanitizedDataUrl,
+} from "../../utils/svgPathSanitizer.js";
+import {
   detectA1GlyphIntegrity,
   detectA1RasterGlyphIntegrity,
   evaluateFinalA1ExportGate,
+  extractTechnicalGroupBlockers,
   resolveA1RenderContract,
 } from "../a1/a1FinalExportContract.js";
 import {
   buildMaterialPaletteCards,
   normalizeMaterialPaletteEntries as normalizeMaterialPaletteEntriesShared,
+  topUpMaterialPaletteWithCanonical,
 } from "../a1/materialTexturePatterns.js";
 import {
   buildClimateRenderContext,
@@ -76,6 +102,11 @@ import {
 } from "./levelUtils.js";
 import { runProgramPreflight } from "./programPreflight.js";
 import { resolveAuthoritativeFloorCount } from "./floorCountAuthority.js";
+import {
+  buildProjectTypeSupportMetadata,
+  getProjectTypeSupport,
+} from "./projectTypeSupportRegistry.js";
+import { resolveMainEntryDirection } from "../site/mainEntryDirectionService.js";
 
 export const PROJECT_GRAPH_SCHEMA_VERSION = "project-graph-v1";
 export const PROJECT_GRAPH_VERTICAL_SLICE_VERSION =
@@ -129,11 +160,20 @@ const TECHNICAL_A1_PANEL_TYPES_BASE = [
   "section_BB",
 ];
 
-function buildRequiredA1PanelTypes(targetStoreys = 1) {
+export function buildRequiredA1PanelTypes(
+  targetStoreys = 1,
+  layoutTemplate = "board-v2",
+) {
   const dynamicFloorPlans = floorPlanPanelTypes(targetStoreys).filter(
     (type) => type !== "floor_plan_ground",
   );
-  return [...REQUIRED_A1_PANEL_TYPES_BASE, ...dynamicFloorPlans];
+  const basePanelTypes =
+    layoutTemplate === "presentation-v3"
+      ? REQUIRED_A1_PANEL_TYPES_BASE.filter(
+          (panelType) => panelType !== "exterior_render",
+        )
+      : REQUIRED_A1_PANEL_TYPES_BASE;
+  return [...basePanelTypes, ...dynamicFloorPlans];
 }
 
 function buildTechnicalA1PanelTypes(targetStoreys = 1) {
@@ -155,6 +195,52 @@ const MIN_TECHNICAL_CONTENT_OCCUPANCY_RATIO = 0.08;
 const MIN_TECHNICAL_CONTENT_WIDTH_RATIO = 0.22;
 const MIN_TECHNICAL_CONTENT_HEIGHT_RATIO = 0.14;
 const MIN_3D_PRIMITIVE_COUNT = 5;
+const REFERENCE_MATCH_PLAN_MIN_SLOT_OCCUPANCY = 0.22;
+const REFERENCE_MATCH_SECTION_MIN_SLOT_OCCUPANCY = 0.12;
+const REFERENCE_MATCH_ELEVATION_MIN_SLOT_OCCUPANCY = 0.08;
+const REFERENCE_MATCH_MIN_SECTION_USEFULNESS = 0.45;
+const REFERENCE_MATCH_MIN_ELEVATION_RICHNESS = 0.18;
+
+function isTruthyFlag(value) {
+  if (value === true) return true;
+  if (value === false || value == null) return false;
+  return [
+    "1",
+    "true",
+    "yes",
+    "on",
+    "reference_match",
+    "reference-match",
+  ].includes(String(value).trim().toLowerCase());
+}
+
+function isReferenceMatchRequested(input = {}, sourceBrief = {}) {
+  return (
+    isTruthyFlag(input.referenceMatch) ||
+    isTruthyFlag(input.reference_match) ||
+    isTruthyFlag(input.a1ReferenceMatch) ||
+    isTruthyFlag(input.finalA1ReferenceMatch) ||
+    isTruthyFlag(sourceBrief.referenceMatch) ||
+    isTruthyFlag(sourceBrief.reference_match) ||
+    String(input.renderIntent || sourceBrief.renderIntent || "")
+      .trim()
+      .toLowerCase() === "reference_match_a1" ||
+    String(input.qualityTarget || sourceBrief.qualityTarget || "")
+      .trim()
+      .toLowerCase() === "reference_match"
+  );
+}
+
+function hasLockedFloorAuthority(projectDetails = {}) {
+  return (
+    Boolean(projectDetails.floorCountLocked) &&
+    Number(
+      projectDetails.floorCount ??
+        projectDetails.floors ??
+        projectDetails.targetStoreys,
+    ) > 0
+  );
+}
 
 function cloneData(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
@@ -206,6 +292,26 @@ export const KNOWN_BUILDING_TYPES = Object.freeze([
   "community",
   "office_studio",
   "education_studio",
+  "clinic",
+  "hospital",
+  "hospitality_hotel",
+  "hospitality_resort",
+  "hospitality_guest_house",
+  "industrial_warehouse",
+  "industrial_manufacturing",
+  "industrial_workshop",
+  "cultural_museum",
+  "cultural_library",
+  "cultural_theatre",
+  "government_town_hall",
+  "government_police_station",
+  "government_fire_station",
+  "religious_mosque",
+  "religious_church",
+  "religious_temple",
+  "recreation_sports_center",
+  "recreation_gym",
+  "recreation_pool",
 ]);
 
 const DWELLING_SYNONYMS = [
@@ -219,14 +325,72 @@ const DWELLING_SYNONYMS = [
   "house",
 ];
 
+const PROJECT_GRAPH_BUILDING_TYPE_ALIASES = Object.freeze({
+  "hospitality-hotel": "hospitality_hotel",
+  hotel: "hospitality_hotel",
+  "hospitality-resort": "hospitality_resort",
+  resort: "hospitality_resort",
+  "hospitality-guest-house": "hospitality_guest_house",
+  "guest-house": "hospitality_guest_house",
+  guesthouse: "hospitality_guest_house",
+  "industrial-warehouse": "industrial_warehouse",
+  warehouse: "industrial_warehouse",
+  "industrial-manufacturing": "industrial_manufacturing",
+  manufacturing: "industrial_manufacturing",
+  factory: "industrial_manufacturing",
+  "industrial-workshop": "industrial_workshop",
+  workshop: "industrial_workshop",
+  "cultural-museum": "cultural_museum",
+  museum: "cultural_museum",
+  "cultural-library": "cultural_library",
+  library: "cultural_library",
+  "cultural-theatre": "cultural_theatre",
+  theatre: "cultural_theatre",
+  theater: "cultural_theatre",
+  "government-town-hall": "government_town_hall",
+  "town-hall": "government_town_hall",
+  "civic-hall": "government_town_hall",
+  "government-police-station": "government_police_station",
+  "police-station": "government_police_station",
+  police: "government_police_station",
+  "government-fire-station": "government_fire_station",
+  "fire-station": "government_fire_station",
+  "fire-service": "government_fire_station",
+  "religious-mosque": "religious_mosque",
+  mosque: "religious_mosque",
+  "religious-church": "religious_church",
+  church: "religious_church",
+  "religious-temple": "religious_temple",
+  temple: "religious_temple",
+  "recreation-sports-center": "recreation_sports_center",
+  "recreation-sports-centre": "recreation_sports_center",
+  "sports-center": "recreation_sports_center",
+  "sports-centre": "recreation_sports_center",
+  "leisure-center": "recreation_sports_center",
+  "leisure-centre": "recreation_sports_center",
+  "recreation-gym": "recreation_gym",
+  gym: "recreation_gym",
+  fitness: "recreation_gym",
+  "fitness-centre": "recreation_gym",
+  "fitness-center": "recreation_gym",
+  "recreation-pool": "recreation_pool",
+  pool: "recreation_pool",
+  "swimming-pool": "recreation_pool",
+});
+
 function normalizeBuildingType(input = {}) {
   const raw = String(
-    input.building_type ||
+    input.canonical_building_type ||
+      input.canonicalBuildingType ||
+      input.project_type_support?.canonicalBuildingType ||
+      input.projectTypeSupport?.canonicalBuildingType ||
+      input.building_type ||
       input.buildingType ||
-      input.category ||
-      input.projectType ||
-      input.program ||
       input.subType ||
+      input.buildingSubType ||
+      input.program ||
+      input.projectType ||
+      input.category ||
       "dwelling",
   )
     .trim()
@@ -235,6 +399,9 @@ function normalizeBuildingType(input = {}) {
 
   if (DWELLING_SYNONYMS.includes(raw)) {
     return "dwelling";
+  }
+  if (PROJECT_GRAPH_BUILDING_TYPE_ALIASES[raw]) {
+    return PROJECT_GRAPH_BUILDING_TYPE_ALIASES[raw];
   }
   if (raw.includes("mixed")) {
     return "mixed_use";
@@ -255,6 +422,22 @@ function normalizeBuildingType(input = {}) {
     raw === "tenement"
   ) {
     return "multi_residential";
+  }
+  if (
+    raw.includes("hospital") ||
+    raw.includes("inpatient") ||
+    raw.includes("ward")
+  ) {
+    return "hospital";
+  }
+  if (
+    raw.includes("clinic") ||
+    raw.includes("medical") ||
+    raw.includes("healthcare") ||
+    raw.includes("health-center") ||
+    raw.includes("health-centre")
+  ) {
+    return "clinic";
   }
   if (
     raw.includes("community") ||
@@ -324,7 +507,7 @@ function buildProgrammeSummaryForRender(brief = {}, programme = null) {
   return {
     total_area_m2: Math.round(totalArea),
     target_storeys: targetStoreys,
-    building_type: brief.building_type || "building",
+    building_type: resolveProgrammeDisplayLabel(brief) || "building",
     rooms_per_level: roomsPerLevel,
     level_areas: levelAreas,
   };
@@ -501,6 +684,23 @@ function normalizeBrief(input = {}) {
   const sourceBrief = input.brief || input.projectBrief || input;
   const projectDetails = input.projectDetails || {};
   const locationData = input.locationData || {};
+  const referenceMatch = isReferenceMatchRequested(input, sourceBrief);
+  const portfolioBlend =
+    input.portfolioBlend || sourceBrief.portfolioBlend || {};
+  const portfolioMaterialWeight = Number(portfolioBlend.materialWeight);
+  const portfolioStyleWeight = Number(portfolioBlend.characteristicWeight);
+  const explicitPortfolioMaterialWeight = Number.isFinite(
+    portfolioMaterialWeight,
+  )
+    ? Math.max(0, Math.min(1, portfolioMaterialWeight))
+    : null;
+  const explicitLocalMaterialStrength =
+    explicitPortfolioMaterialWeight !== null
+      ? round(1 - explicitPortfolioMaterialWeight, 4)
+      : null;
+  const explicitPortfolioStyleStrength = Number.isFinite(portfolioStyleWeight)
+    ? Math.max(0, Math.min(1, portfolioStyleWeight))
+    : null;
   const siteInput = sourceBrief.site_input || sourceBrief.siteInput || {};
   const coordinates =
     locationData.coordinates ||
@@ -509,9 +709,73 @@ function normalizeBrief(input = {}) {
     Number.isFinite(Number(siteInput.lon))
       ? { lat: Number(siteInput.lat), lng: Number(siteInput.lon) }
       : null);
+  const originalCategory =
+    projectDetails.category ||
+    projectDetails.buildingCategory ||
+    sourceBrief.original_category ||
+    sourceBrief.originalCategory ||
+    input.originalCategory ||
+    input.category ||
+    null;
+  const originalSubtype =
+    projectDetails.subType ||
+    projectDetails.buildingSubType ||
+    sourceBrief.original_subtype ||
+    sourceBrief.originalSubtype ||
+    input.originalSubtype ||
+    input.subType ||
+    null;
+  const registrySupport = getProjectTypeSupport(
+    originalCategory,
+    originalSubtype,
+  );
+  const incomingSupport =
+    projectDetails.projectTypeSupport ||
+    sourceBrief.project_type_support ||
+    sourceBrief.projectTypeSupport ||
+    input.projectTypeSupport ||
+    {};
+  const projectTypeSupport = {
+    ...registrySupport,
+    ...incomingSupport,
+    categoryId: incomingSupport.categoryId || originalCategory,
+    subtypeId: incomingSupport.subtypeId || originalSubtype,
+    supportStatus:
+      incomingSupport.supportStatus ||
+      projectDetails.supportStatus ||
+      sourceBrief.support_status ||
+      sourceBrief.supportStatus ||
+      input.supportStatus ||
+      registrySupport.supportStatus,
+    canonicalBuildingType:
+      incomingSupport.canonicalBuildingType ||
+      projectDetails.canonicalBuildingType ||
+      sourceBrief.canonical_building_type ||
+      sourceBrief.canonicalBuildingType ||
+      input.canonicalBuildingType ||
+      registrySupport.canonicalBuildingType,
+    route:
+      incomingSupport.route ||
+      projectDetails.projectTypeRoute ||
+      sourceBrief.project_type_route ||
+      sourceBrief.projectTypeRoute ||
+      input.projectTypeRoute ||
+      registrySupport.route,
+    programmeTemplateKey:
+      incomingSupport.programmeTemplateKey ||
+      projectDetails.programmeTemplateKey ||
+      sourceBrief.programme_template_key ||
+      sourceBrief.programmeTemplateKey ||
+      input.programmeTemplateKey ||
+      registrySupport.programmeTemplateKey,
+  };
+  const projectTypeSupportMetadata =
+    buildProjectTypeSupportMetadata(projectTypeSupport);
   const buildingType = normalizeBuildingType({
     ...projectDetails,
     ...sourceBrief,
+    canonicalBuildingType: projectTypeSupportMetadata.canonicalBuildingType,
+    projectTypeSupport: projectTypeSupportMetadata,
   });
   const targetGiaM2 = Math.max(
     40,
@@ -519,6 +783,9 @@ function normalizeBrief(input = {}) {
       sourceBrief.target_gia_m2 ??
         sourceBrief.targetAreaM2 ??
         sourceBrief.area ??
+        input.target_gia_m2 ??
+        input.targetAreaM2 ??
+        input.area ??
         projectDetails.area ??
         180,
     ) || 180,
@@ -543,6 +810,16 @@ function normalizeBrief(input = {}) {
         {
           ...projectDetails,
           floorCount: projectFloorCount,
+          area: targetGiaM2,
+          targetAreaM2: targetGiaM2,
+          target_gia_m2: targetGiaM2,
+          buildingType,
+          subType:
+            projectDetails.subType ||
+            projectDetails.buildingSubType ||
+            sourceBrief.subType ||
+            sourceBrief.buildingSubType ||
+            buildingType,
         },
         {
           fallback: briefRequestedStoreys,
@@ -550,20 +827,75 @@ function normalizeBrief(input = {}) {
         },
       ).floorCount
     : briefRequestedStoreys;
+  const residentialReferenceMinStoreys =
+    referenceMatch &&
+    isResidentialBuildingType(buildingType) &&
+    !hasLockedFloorAuthority(projectDetails)
+      ? 2
+      : 1;
   const targetStoreys = Math.max(
+    residentialReferenceMinStoreys,
     1,
     Math.min(MAX_TARGET_STOREYS, requestedStoreys),
   );
   const projectName =
     sourceBrief.project_name ||
     sourceBrief.projectName ||
+    input.project_name ||
+    input.projectName ||
+    input.name ||
     projectDetails.projectName ||
     projectDetails.name ||
     "ArchiAI Project";
+  const activeAddress =
+    siteInput.address ||
+    input.address ||
+    input.siteAddress ||
+    locationData.address ||
+    projectDetails.address ||
+    null;
+  const requiredSpacesText =
+    sourceBrief.required_spaces_text ||
+    sourceBrief.requiredSpacesText ||
+    input.required_spaces_text ||
+    input.requiredSpacesText ||
+    projectDetails.requiredSpacesText ||
+    "";
+  const constraintsText =
+    sourceBrief.constraints_text ||
+    sourceBrief.constraintsText ||
+    input.constraints_text ||
+    input.constraintsText ||
+    projectDetails.constraintsText ||
+    "";
+  const briefInputHash = computeCDSHashSync({
+    source: "active_generation_input",
+    project_name: projectName,
+    building_type: buildingType,
+    original_category: originalCategory,
+    original_subtype: originalSubtype,
+    support_status: projectTypeSupportMetadata.supportStatus,
+    programme_template_key: projectTypeSupportMetadata.programmeTemplateKey,
+    project_type_route: projectTypeSupportMetadata.route,
+    address: activeAddress,
+    postcode: siteInput.postcode || locationData.postcode || null,
+    target_gia_m2: round(targetGiaM2, 2),
+    target_storeys: targetStoreys,
+    required_spaces_text: requiredSpacesText,
+    constraints_text: constraintsText,
+    reference_match: referenceMatch,
+  });
 
   return {
     project_name: projectName,
     building_type: buildingType,
+    canonical_building_type: buildingType,
+    original_category: originalCategory,
+    original_subtype: originalSubtype,
+    support_status: projectTypeSupportMetadata.supportStatus,
+    programme_template_key: projectTypeSupportMetadata.programmeTemplateKey,
+    project_type_route: projectTypeSupportMetadata.route,
+    project_type_support: projectTypeSupportMetadata,
     client_goals: toArray(
       sourceBrief.client_goals ||
         sourceBrief.clientGoals ||
@@ -572,11 +904,7 @@ function normalizeBrief(input = {}) {
         [],
     ),
     site_input: {
-      address:
-        siteInput.address ||
-        locationData.address ||
-        projectDetails.address ||
-        null,
+      address: activeAddress,
       postcode: siteInput.postcode || locationData.postcode || null,
       lat: Number(coordinates?.lat ?? siteInput.lat ?? 51.5074),
       lon: Number(
@@ -586,21 +914,22 @@ function normalizeBrief(input = {}) {
     },
     target_gia_m2: round(targetGiaM2, 2),
     target_storeys: targetStoreys,
+    referenceMatch,
+    reference_match: referenceMatch,
+    brief_input_hash: briefInputHash,
+    request_authority: {
+      source: "active_generation_input",
+      briefInputHash,
+      floorCountLocked: Boolean(projectDetails.floorCountLocked),
+      residentialReferenceMinStoreys,
+    },
     budget_band: sourceBrief.budget_band || "unknown",
     sustainability_ambition:
       sourceBrief.sustainability_ambition ||
       projectDetails.sustainabilityAmbition ||
       "low_energy",
-    required_spaces_text:
-      sourceBrief.required_spaces_text ||
-      sourceBrief.requiredSpacesText ||
-      projectDetails.requiredSpacesText ||
-      "",
-    constraints_text:
-      sourceBrief.constraints_text ||
-      sourceBrief.constraintsText ||
-      projectDetails.constraintsText ||
-      "",
+    required_spaces_text: requiredSpacesText,
+    constraints_text: constraintsText,
     user_intent: {
       style_keywords: toArray(
         sourceBrief.style_keywords ||
@@ -619,10 +948,20 @@ function normalizeBrief(input = {}) {
       innovation_strength: Number(
         sourceBrief.user_intent?.innovation_strength ?? 0.35,
       ),
+      portfolio_style_strength:
+        sourceBrief.user_intent?.portfolio_style_strength ??
+        explicitPortfolioStyleStrength,
+      portfolio_material_weight:
+        sourceBrief.user_intent?.portfolio_material_weight ??
+        explicitPortfolioMaterialWeight,
+      local_material_strength:
+        sourceBrief.user_intent?.local_material_strength ??
+        explicitLocalMaterialStrength,
       material_preferences: toArray(
         sourceBrief.material_preferences ||
           sourceBrief.user_intent?.material_preferences ||
           input.materialPreferences ||
+          locationData.localMaterials ||
           [],
       ),
       accessibility_priority:
@@ -931,75 +1270,83 @@ function mixedUseProgrammeTemplate(upperLevel) {
 function officeStudioProgrammeTemplate(upperLevel) {
   return [
     [
-      "Reception and breakout",
-      "client arrival and informal meeting",
+      "Reception and client lounge",
+      "visitor arrival and front-of-house waiting",
       "public",
+      0.08,
+      0,
+      "medium",
+    ],
+    [
+      "Open office floorplate (ground)",
+      "primary desk workspace",
+      "semi_public",
+      0.22,
+      0,
+      "high",
+    ],
+    [
+      "Meeting suite",
+      "bookable meeting and collaboration rooms",
+      "semi_public",
       0.1,
       0,
       "medium",
     ],
     [
-      "Open studio (ground)",
-      "primary collaborative workspace",
+      "Collaboration and breakout",
+      "informal work and team breakout",
       "semi_public",
-      0.3,
-      0,
-      "high",
-    ],
-    [
-      "Meeting room",
-      "enclosed client meeting",
-      "semi_public",
-      0.07,
+      0.08,
       0,
       "medium",
     ],
     ["WC and accessible WC", "inclusive WCs", "service", 0.05, 0, "low"],
     [
-      "Tea point and store",
-      "kitchenette and storage",
-      "service",
-      0.05,
-      0,
-      "low",
-    ],
-    [
       "Ground circulation",
-      "stair, corridor and store",
+      "stair, corridor and reception support",
       "semi_public",
-      0.06,
+      0.07,
       0,
       "medium",
     ],
     [
-      "Open studio (upper)",
-      "additional desk space",
+      "Open office floorplate (upper)",
+      "additional desk workspace",
       "semi_public",
       0.2,
       upperLevel,
       "high",
     ],
     [
-      "Workshop or model room",
-      "physical making and prototyping",
+      "Focus and phone rooms",
+      "quiet focus booths and calls",
       "private",
-      0.08,
+      0.06,
       upperLevel,
       "medium",
     ],
     [
-      "Quiet focus room",
-      "phone and focus booths",
+      "Staff kitchen and welfare",
+      "staff kitchen, lockers and rest area",
       "private",
       0.05,
       upperLevel,
       "medium",
     ],
     [
-      "Upper circulation and store",
-      "landing and storage",
-      "semi_public",
+      "IT, storage and plant",
+      "server, storage and MEP plant",
+      "service",
       0.04,
+      upperLevel,
+      "low",
+    ],
+    [
+      "Upper circulation",
+      "landing, corridor and refuge",
+      "semi_public",
+      0.05,
       upperLevel,
       "medium",
     ],
@@ -1009,73 +1356,189 @@ function officeStudioProgrammeTemplate(upperLevel) {
 function educationStudioProgrammeTemplate(upperLevel) {
   return [
     [
-      "Entrance and showcase",
-      "public arrival and pupil work display",
+      "Entrance, reception and admin",
+      "secure arrival, administration and waiting",
       "public",
+      0.08,
+      0,
+      "high",
+    ],
+    [
+      "Classrooms (ground)",
+      "general teaching rooms",
+      "semi_public",
+      0.2,
+      0,
+      "high",
+    ],
+    [
+      "Assembly and multipurpose hall",
+      "assembly, indoor activity and community use",
+      "semi_public",
       0.1,
       0,
-      "high",
+      "medium",
     ],
     [
-      "Workshop (messy)",
-      "primary making space",
-      "semi_public",
-      0.22,
-      0,
-      "high",
-    ],
-    [
-      "Workshop store and prep",
-      "tool and material store",
+      "Pupil and accessible WCs",
+      "inclusive pupil WCs",
       "service",
-      0.07,
+      0.05,
       0,
       "low",
     ],
-    ["Accessible WC", "inclusive pupil WC", "service", 0.04, 0, "low"],
     [
-      "Plant and cleaner store",
-      "MEP plant and cleaner store",
+      "Dining and kitchen support",
+      "dining support, servery and back-of-house",
+      "service",
+      0.06,
+      0,
+      "medium",
+    ],
+    [
+      "Ground circulation",
+      "secure stair, corridor and cloak support",
+      "semi_public",
+      0.07,
+      0,
+      "medium",
+    ],
+    [
+      "Classrooms (upper)",
+      "additional general teaching rooms",
+      "semi_public",
+      0.22,
+      upperLevel,
+      "high",
+    ],
+    [
+      "Library and resource centre",
+      "reading, resources and small group learning",
+      "semi_public",
+      0.08,
+      upperLevel,
+      "medium",
+    ],
+    [
+      "Staff, prep and SEN support",
+      "staff base, prep and specialist support",
+      "private",
+      0.06,
+      upperLevel,
+      "high",
+    ],
+    [
+      "Plant and stores",
+      "MEP plant, curriculum storage and cleaner store",
+      "service",
+      0.03,
+      upperLevel,
+      "low",
+    ],
+    [
+      "Upper circulation",
+      "landing, corridor and refuge",
+      "semi_public",
+      0.05,
+      upperLevel,
+      "medium",
+    ],
+  ];
+}
+
+function clinicProgrammeTemplate(upperLevel) {
+  return [
+    [
+      "Reception and waiting",
+      "patient arrival and waiting",
+      "public",
+      0.12,
+      0,
+      "medium",
+    ],
+    [
+      "Consult rooms (ground)",
+      "primary consultation and triage rooms",
+      "semi_public",
+      0.16,
+      0,
+      "high",
+    ],
+    [
+      "Treatment suite",
+      "minor procedures and treatment",
+      "semi_public",
+      0.12,
+      0,
+      "medium",
+    ],
+    [
+      "Patient and accessible WCs",
+      "public clinical WCs",
       "service",
       0.04,
       0,
       "low",
     ],
     [
-      "Ground circulation",
-      "stair and corridor",
+      "Clean and dirty utility",
+      "clinical support and disposal",
+      "service",
+      0.06,
+      0,
+      "low",
+    ],
+    [
+      "Ground clinical circulation",
+      "patient corridor, stair and refuge",
       "semi_public",
-      0.07,
+      0.08,
       0,
       "medium",
     ],
     [
-      "Studio (clean)",
-      "drawing and design studio",
+      "Consult rooms (upper)",
+      "additional clinical consultation rooms",
       "semi_public",
-      0.2,
+      0.16,
       upperLevel,
       "high",
     ],
     [
-      "Seminar room",
-      "small group teaching",
-      "semi_public",
-      0.1,
+      "Staff and administration",
+      "clinical administration and staff base",
+      "private",
+      0.08,
       upperLevel,
       "medium",
     ],
     [
-      "Quiet study",
-      "focused individual work",
-      "private",
-      0.1,
+      "Records and clinical store",
+      "secure records and consumables store",
+      "service",
+      0.04,
       upperLevel,
-      "high",
+      "low",
     ],
     [
-      "Upper circulation",
-      "landing and storage",
+      "Staff welfare",
+      "staff rest, lockers and kitchenette",
+      "private",
+      0.04,
+      upperLevel,
+      "medium",
+    ],
+    [
+      "Plant and services",
+      "MEP plant and service riser",
+      "service",
+      0.04,
+      upperLevel,
+      "low",
+    ],
+    [
+      "Upper clinical circulation",
+      "clinical corridor, landing and refuge",
       "semi_public",
       0.06,
       upperLevel,
@@ -1084,7 +1547,1651 @@ function educationStudioProgrammeTemplate(upperLevel) {
   ];
 }
 
+function hospitalProgrammeTemplate(upperLevel) {
+  return [
+    [
+      "Main reception and admissions",
+      "public arrival, admissions and waiting",
+      "public",
+      0.08,
+      0,
+      "medium",
+    ],
+    [
+      "Emergency and outpatient assessment",
+      "triage, outpatient and urgent assessment",
+      "semi_public",
+      0.12,
+      0,
+      "medium",
+    ],
+    [
+      "Diagnostics",
+      "imaging, diagnostics and testing",
+      "semi_public",
+      0.1,
+      0,
+      "low",
+    ],
+    [
+      "Clinical support and utility",
+      "clean utility, dirty utility and treatment support",
+      "service",
+      0.07,
+      0,
+      "low",
+    ],
+    [
+      "Public WCs and cafe support",
+      "public WCs and refreshment support",
+      "public",
+      0.05,
+      0,
+      "medium",
+    ],
+    [
+      "Ground hospital circulation",
+      "public concourse, clinical corridor and stair",
+      "semi_public",
+      0.08,
+      0,
+      "medium",
+    ],
+    [
+      "Ward and day rooms",
+      "patient rooms, bay wards and day space",
+      "private",
+      0.18,
+      upperLevel,
+      "medium",
+    ],
+    [
+      "Treatment and consult suites",
+      "clinical treatment and consultation rooms",
+      "semi_public",
+      0.09,
+      upperLevel,
+      "medium",
+    ],
+    [
+      "Staff and administration base",
+      "staff base, changing and administration",
+      "private",
+      0.07,
+      upperLevel,
+      "medium",
+    ],
+    [
+      "Pharmacy, stores and logistics",
+      "medicines, supplies and FM logistics",
+      "service",
+      0.05,
+      upperLevel,
+      "low",
+    ],
+    [
+      "Plant and services",
+      "MEP plant and service risers",
+      "service",
+      0.04,
+      upperLevel,
+      "low",
+    ],
+    [
+      "Upper hospital circulation",
+      "clinical corridor, lift lobby and refuge",
+      "semi_public",
+      0.07,
+      upperLevel,
+      "medium",
+    ],
+  ];
+}
+
+const PROJECT_GRAPH_PROGRAMME_TEMPLATE_ROWS = Object.freeze({
+  hospitality_hotel: [
+    [
+      "Reception and concierge",
+      "guest arrival and concierge",
+      "public",
+      0.08,
+      0,
+      "medium",
+    ],
+    [
+      "Lobby lounge and bar",
+      "front-of-house lounge and bar",
+      "public",
+      0.12,
+      0,
+      "medium",
+    ],
+    [
+      "Restaurant and breakfast",
+      "guest dining and breakfast service",
+      "public",
+      0.12,
+      0,
+      "high",
+    ],
+    [
+      "Kitchen and back-of-house",
+      "commercial kitchen, stores and staff support",
+      "service",
+      0.07,
+      0,
+      "low",
+    ],
+    [
+      "Public WCs and luggage",
+      "visitor WCs and luggage store",
+      "service",
+      0.03,
+      0,
+      "low",
+    ],
+    [
+      "Ground circulation",
+      "lobby, lift, stair and guest route",
+      "semi_public",
+      0.07,
+      0,
+      "medium",
+    ],
+    [
+      "Guest rooms",
+      "standard guestrooms and ensuites",
+      "private",
+      0.34,
+      "upper",
+      "medium",
+    ],
+    [
+      "Guest amenity lounge",
+      "upper guest lounge and shared amenity",
+      "semi_public",
+      0.08,
+      "upper",
+      "medium",
+    ],
+    [
+      "Staff and administration",
+      "hotel office, housekeeping and staff welfare",
+      "private",
+      0.06,
+      "upper",
+      "medium",
+    ],
+    [
+      "Plant and linen stores",
+      "MEP plant, risers and linen stores",
+      "service",
+      0.05,
+      "upper",
+      "low",
+    ],
+    [
+      "Upper guest circulation",
+      "guest corridors, lift lobby and refuge",
+      "semi_public",
+      0.1,
+      "upper",
+      "medium",
+    ],
+  ],
+  hospitality_resort: [
+    [
+      "Arrival pavilion",
+      "guest arrival, reception and concierge",
+      "public",
+      0.07,
+      0,
+      "medium",
+    ],
+    [
+      "All-day dining",
+      "restaurant, bar and terrace support",
+      "public",
+      0.12,
+      0,
+      "high",
+    ],
+    [
+      "Wellness and spa",
+      "spa, treatment and relaxation areas",
+      "semi_public",
+      0.12,
+      0,
+      "medium",
+    ],
+    [
+      "Event and club lounge",
+      "events, club lounge and guest activity",
+      "semi_public",
+      0.08,
+      0,
+      "medium",
+    ],
+    [
+      "Kitchen and service yard",
+      "kitchen, stores and resort servicing",
+      "service",
+      0.06,
+      0,
+      "low",
+    ],
+    [
+      "Ground circulation",
+      "arrival, lift, stair and guest route",
+      "semi_public",
+      0.07,
+      0,
+      "medium",
+    ],
+    [
+      "Guest suites",
+      "guest suites and private terraces",
+      "private",
+      0.28,
+      "upper",
+      "medium",
+    ],
+    [
+      "Family suites",
+      "larger guest suites and flexible rooms",
+      "private",
+      0.1,
+      "upper",
+      "medium",
+    ],
+    [
+      "Housekeeping and linen",
+      "housekeeping base and linen stores",
+      "service",
+      0.04,
+      "upper",
+      "low",
+    ],
+    [
+      "Plant and services",
+      "MEP plant and vertical risers",
+      "service",
+      0.04,
+      "upper",
+      "low",
+    ],
+    [
+      "Upper guest circulation",
+      "guest corridors, lift lobby and refuge",
+      "semi_public",
+      0.06,
+      "upper",
+      "medium",
+    ],
+  ],
+  hospitality_guest_house: [
+    [
+      "Entrance and guest lounge",
+      "arrival, reception and guest sitting room",
+      "public",
+      0.12,
+      0,
+      "medium",
+    ],
+    [
+      "Breakfast room",
+      "breakfast dining and shared guest space",
+      "public",
+      0.1,
+      0,
+      "high",
+    ],
+    [
+      "Kitchen and service",
+      "guest-house kitchen, pantry and laundry",
+      "service",
+      0.08,
+      0,
+      "low",
+    ],
+    [
+      "Accessible guest room",
+      "ground-floor accessible guest bedroom",
+      "private",
+      0.12,
+      0,
+      "medium",
+    ],
+    [
+      "Guest WC and store",
+      "visitor WC, luggage and cleaner store",
+      "service",
+      0.04,
+      0,
+      "low",
+    ],
+    [
+      "Ground circulation",
+      "arrival, stair and horizontal circulation",
+      "semi_public",
+      0.06,
+      0,
+      "medium",
+    ],
+    [
+      "Guest bedrooms",
+      "upper guest bedrooms and ensuites",
+      "private",
+      0.3,
+      "upper",
+      "medium",
+    ],
+    [
+      "Guest snug",
+      "quiet shared sitting area",
+      "semi_public",
+      0.06,
+      "upper",
+      "medium",
+    ],
+    [
+      "Linen and staff support",
+      "linen store and small staff base",
+      "service",
+      0.05,
+      "upper",
+      "low",
+    ],
+    [
+      "Plant and services",
+      "MEP plant and service riser",
+      "service",
+      0.04,
+      "upper",
+      "low",
+    ],
+    [
+      "Upper circulation",
+      "guest landing, corridor and refuge",
+      "semi_public",
+      0.07,
+      "upper",
+      "medium",
+    ],
+  ],
+  industrial_warehouse: [
+    [
+      "Goods-in and dispatch",
+      "loading, goods-in and dispatch apron",
+      "service",
+      0.16,
+      0,
+      "low",
+    ],
+    [
+      "Warehouse storage hall",
+      "high-bay storage and picking",
+      "semi_public",
+      0.38,
+      0,
+      "medium",
+    ],
+    [
+      "Office and reception",
+      "visitor reception and warehouse office",
+      "semi_public",
+      0.06,
+      0,
+      "medium",
+    ],
+    [
+      "Welfare and WCs",
+      "staff welfare, changing and WCs",
+      "service",
+      0.05,
+      0,
+      "low",
+    ],
+    [
+      "Plant and sprinkler room",
+      "MEP, sprinkler and utility plant",
+      "service",
+      0.04,
+      0,
+      "low",
+    ],
+    [
+      "Warehouse circulation",
+      "forklift aisles, escape routes and stair",
+      "semi_public",
+      0.08,
+      0,
+      "medium",
+    ],
+    [
+      "Mezzanine storage",
+      "light storage and parts mezzanine",
+      "service",
+      0.1,
+      "upper",
+      "low",
+    ],
+    [
+      "Operations office",
+      "shift management and administration",
+      "private",
+      0.05,
+      "upper",
+      "medium",
+    ],
+    [
+      "Training and briefing",
+      "staff training and briefing room",
+      "private",
+      0.04,
+      "upper",
+      "medium",
+    ],
+    [
+      "Upper services",
+      "plant deck and risers",
+      "service",
+      0.04,
+      "upper",
+      "low",
+    ],
+  ],
+  industrial_manufacturing: [
+    [
+      "Production hall",
+      "primary manufacturing floor",
+      "semi_public",
+      0.32,
+      0,
+      "medium",
+    ],
+    [
+      "Assembly and packing",
+      "assembly line, packing and inspection",
+      "semi_public",
+      0.15,
+      0,
+      "medium",
+    ],
+    [
+      "Goods logistics",
+      "goods-in, dispatch and materials handling",
+      "service",
+      0.12,
+      0,
+      "low",
+    ],
+    [
+      "Quality control lab",
+      "testing, metrology and quality control",
+      "private",
+      0.07,
+      0,
+      "medium",
+    ],
+    [
+      "Staff welfare and WCs",
+      "changing, lockers, WCs and rest area",
+      "service",
+      0.05,
+      0,
+      "low",
+    ],
+    [
+      "Process plant",
+      "compressed air, MEP and process support",
+      "service",
+      0.05,
+      0,
+      "low",
+    ],
+    [
+      "Factory circulation",
+      "safe aisles, escape routes and stair",
+      "semi_public",
+      0.08,
+      0,
+      "medium",
+    ],
+    [
+      "Administration",
+      "production office and management",
+      "private",
+      0.06,
+      "upper",
+      "medium",
+    ],
+    [
+      "Parts and secure stores",
+      "components, tools and secure stores",
+      "service",
+      0.05,
+      "upper",
+      "low",
+    ],
+    [
+      "Training room",
+      "staff training and induction",
+      "private",
+      0.02,
+      "upper",
+      "medium",
+    ],
+    ["Upper plant", "plant deck and risers", "service", 0.03, "upper", "low"],
+  ],
+  industrial_workshop: [
+    [
+      "Workshop bay",
+      "primary workshop and repair bays",
+      "semi_public",
+      0.32,
+      0,
+      "medium",
+    ],
+    [
+      "Maker studio",
+      "flexible making, testing and bench work",
+      "semi_public",
+      0.18,
+      0,
+      "high",
+    ],
+    [
+      "Reception and showroom",
+      "client arrival and display",
+      "public",
+      0.09,
+      0,
+      "medium",
+    ],
+    [
+      "Tool and material store",
+      "secure tools, parts and materials",
+      "service",
+      0.08,
+      0,
+      "low",
+    ],
+    [
+      "Welfare and WCs",
+      "staff welfare, changing and WCs",
+      "service",
+      0.05,
+      0,
+      "low",
+    ],
+    [
+      "Plant and extraction",
+      "MEP plant and extract support",
+      "service",
+      0.04,
+      0,
+      "low",
+    ],
+    [
+      "Workshop circulation",
+      "safe aisles, delivery route and stair",
+      "semi_public",
+      0.08,
+      0,
+      "medium",
+    ],
+    [
+      "Office and training",
+      "workshop office and training room",
+      "private",
+      0.06,
+      "upper",
+      "medium",
+    ],
+    [
+      "Upper stores",
+      "light storage and archive",
+      "service",
+      0.04,
+      "upper",
+      "low",
+    ],
+    [
+      "Upper circulation",
+      "landing, corridor and refuge",
+      "semi_public",
+      0.06,
+      "upper",
+      "medium",
+    ],
+  ],
+  cultural_museum: [
+    [
+      "Foyer and ticketing",
+      "public arrival, ticketing and orientation",
+      "public",
+      0.08,
+      0,
+      "medium",
+    ],
+    [
+      "Ground galleries",
+      "primary exhibition galleries",
+      "public",
+      0.22,
+      0,
+      "medium",
+    ],
+    [
+      "Learning studio",
+      "education, workshop and outreach room",
+      "semi_public",
+      0.08,
+      0,
+      "high",
+    ],
+    [
+      "Cafe and museum shop",
+      "public cafe, retail and support",
+      "public",
+      0.08,
+      0,
+      "medium",
+    ],
+    [
+      "Collection handling",
+      "loading, quarantine and object handling",
+      "service",
+      0.06,
+      0,
+      "low",
+    ],
+    ["Public WCs", "visitor and accessible WCs", "service", 0.04, 0, "low"],
+    [
+      "Museum circulation",
+      "gallery route, stair and lift",
+      "semi_public",
+      0.07,
+      0,
+      "medium",
+    ],
+    [
+      "Upper galleries",
+      "temporary and permanent galleries",
+      "public",
+      0.2,
+      "upper",
+      "medium",
+    ],
+    [
+      "Archive and conservation",
+      "archive, conservation and prep",
+      "private",
+      0.06,
+      "upper",
+      "low",
+    ],
+    [
+      "Staff and administration",
+      "curatorial office and staff base",
+      "private",
+      0.04,
+      "upper",
+      "medium",
+    ],
+    [
+      "Plant and upper circulation",
+      "MEP plant, landing and refuge",
+      "service",
+      0.03,
+      "upper",
+      "low",
+    ],
+    [
+      "Upper gallery circulation",
+      "public gallery circulation",
+      "semi_public",
+      0.04,
+      "upper",
+      "medium",
+    ],
+  ],
+  cultural_library: [
+    [
+      "Foyer and help desk",
+      "public arrival, help desk and orientation",
+      "public",
+      0.08,
+      0,
+      "medium",
+    ],
+    ["Lending library", "open shelves and browsing", "public", 0.22, 0, "high"],
+    [
+      "Children and community",
+      "children's library and community room",
+      "semi_public",
+      0.1,
+      0,
+      "high",
+    ],
+    [
+      "Cafe point",
+      "small cafe and informal seating",
+      "public",
+      0.05,
+      0,
+      "medium",
+    ],
+    ["Public WCs", "visitor and accessible WCs", "service", 0.04, 0, "low"],
+    [
+      "Stores and returns",
+      "book return, store and staff support",
+      "service",
+      0.04,
+      0,
+      "low",
+    ],
+    [
+      "Library circulation",
+      "public route, stair and lift",
+      "semi_public",
+      0.07,
+      0,
+      "medium",
+    ],
+    [
+      "Reading room",
+      "quiet reading and study space",
+      "public",
+      0.2,
+      "upper",
+      "high",
+    ],
+    [
+      "Study rooms",
+      "bookable study and tutoring rooms",
+      "private",
+      0.08,
+      "upper",
+      "high",
+    ],
+    [
+      "Staff and administration",
+      "library office and staff base",
+      "private",
+      0.04,
+      "upper",
+      "medium",
+    ],
+    [
+      "Archive and local studies",
+      "archive, local studies and secure store",
+      "private",
+      0.03,
+      "upper",
+      "low",
+    ],
+    [
+      "Upper circulation",
+      "landing, corridor and refuge",
+      "semi_public",
+      0.05,
+      "upper",
+      "medium",
+    ],
+  ],
+  cultural_theatre: [
+    [
+      "Foyer and box office",
+      "public arrival, ticketing and cloakroom",
+      "public",
+      0.1,
+      0,
+      "medium",
+    ],
+    ["Auditorium", "primary audience seating", "public", 0.28, 0, "medium"],
+    [
+      "Stage and backstage",
+      "stage, wings, scene dock and backstage",
+      "semi_public",
+      0.2,
+      0,
+      "low",
+    ],
+    [
+      "Dressing and green rooms",
+      "performer support and green room",
+      "private",
+      0.08,
+      0,
+      "medium",
+    ],
+    [
+      "Bars and interval support",
+      "public bar and interval service",
+      "public",
+      0.05,
+      0,
+      "medium",
+    ],
+    ["Public WCs", "audience and accessible WCs", "service", 0.05, 0, "low"],
+    [
+      "Theatre circulation",
+      "foyer route, stair, lift and escape",
+      "semi_public",
+      0.08,
+      0,
+      "medium",
+    ],
+    [
+      "Rehearsal room",
+      "rehearsal and workshop space",
+      "private",
+      0.06,
+      "upper",
+      "high",
+    ],
+    [
+      "Administration",
+      "production office and administration",
+      "private",
+      0.03,
+      "upper",
+      "medium",
+    ],
+    [
+      "Plant and technical control",
+      "MEP, dimmer, AV and control rooms",
+      "service",
+      0.03,
+      "upper",
+      "low",
+    ],
+    [
+      "Upper circulation",
+      "landing, corridor and refuge",
+      "semi_public",
+      0.04,
+      "upper",
+      "medium",
+    ],
+  ],
+  government_town_hall: [
+    [
+      "Civic foyer",
+      "public arrival and civic reception",
+      "public",
+      0.1,
+      0,
+      "medium",
+    ],
+    ["Council chamber", "formal civic chamber", "public", 0.18, 0, "medium"],
+    [
+      "Public service counters",
+      "customer service and interview booths",
+      "semi_public",
+      0.12,
+      0,
+      "medium",
+    ],
+    [
+      "Community meeting suite",
+      "public meeting and event rooms",
+      "semi_public",
+      0.1,
+      0,
+      "medium",
+    ],
+    ["Public WCs", "visitor and accessible WCs", "service", 0.04, 0, "low"],
+    [
+      "Records and secure store",
+      "records, post and secure store",
+      "service",
+      0.04,
+      0,
+      "low",
+    ],
+    [
+      "Civic circulation",
+      "public route, stair, lift and security line",
+      "semi_public",
+      0.08,
+      0,
+      "medium",
+    ],
+    [
+      "Council offices",
+      "open office and member support",
+      "private",
+      0.14,
+      "upper",
+      "medium",
+    ],
+    [
+      "Committee rooms",
+      "committee and briefing rooms",
+      "semi_public",
+      0.08,
+      "upper",
+      "medium",
+    ],
+    [
+      "Staff welfare",
+      "staff rest, lockers and kitchenette",
+      "private",
+      0.04,
+      "upper",
+      "medium",
+    ],
+    [
+      "Plant and upper circulation",
+      "MEP plant, landing and refuge",
+      "service",
+      0.03,
+      "upper",
+      "low",
+    ],
+    [
+      "Upper civic circulation",
+      "corridor and public waiting",
+      "semi_public",
+      0.05,
+      "upper",
+      "medium",
+    ],
+  ],
+  government_police_station: [
+    [
+      "Public enquiry office",
+      "public reception and reporting desk",
+      "public",
+      0.08,
+      0,
+      "medium",
+    ],
+    [
+      "Interview suite",
+      "victim, witness and interview rooms",
+      "semi_public",
+      0.1,
+      0,
+      "medium",
+    ],
+    [
+      "Response office",
+      "operational response workspace",
+      "private",
+      0.14,
+      0,
+      "medium",
+    ],
+    [
+      "Secure holding",
+      "short-stay secure holding and search",
+      "private",
+      0.1,
+      0,
+      "low",
+    ],
+    [
+      "Evidence and property",
+      "evidence handling and secure property store",
+      "service",
+      0.06,
+      0,
+      "low",
+    ],
+    [
+      "Welfare and WCs",
+      "staff welfare, lockers and WCs",
+      "service",
+      0.06,
+      0,
+      "low",
+    ],
+    [
+      "Secure circulation",
+      "separated public, staff and secure routes",
+      "semi_public",
+      0.08,
+      0,
+      "medium",
+    ],
+    [
+      "Administration",
+      "police administration and casework",
+      "private",
+      0.15,
+      "upper",
+      "medium",
+    ],
+    [
+      "Briefing and incident room",
+      "briefing, tasking and incident control",
+      "private",
+      0.08,
+      "upper",
+      "medium",
+    ],
+    [
+      "Locker and changing",
+      "staff lockers, changing and showers",
+      "private",
+      0.06,
+      "upper",
+      "low",
+    ],
+    [
+      "Plant and services",
+      "MEP plant and secure risers",
+      "service",
+      0.03,
+      "upper",
+      "low",
+    ],
+    [
+      "Upper secure circulation",
+      "corridor, stair and refuge",
+      "semi_public",
+      0.06,
+      "upper",
+      "medium",
+    ],
+  ],
+  government_fire_station: [
+    [
+      "Appliance bay",
+      "fire appliance parking and turnout route",
+      "service",
+      0.3,
+      0,
+      "low",
+    ],
+    [
+      "Watch room",
+      "control, watch desk and public interface",
+      "semi_public",
+      0.08,
+      0,
+      "medium",
+    ],
+    [
+      "Turnout gear store",
+      "PPE, drying and rapid response store",
+      "service",
+      0.08,
+      0,
+      "low",
+    ],
+    [
+      "Decontamination suite",
+      "decon, showers and clean/dirty separation",
+      "service",
+      0.06,
+      0,
+      "low",
+    ],
+    [
+      "Public reception",
+      "community safety reception",
+      "public",
+      0.04,
+      0,
+      "medium",
+    ],
+    [
+      "Workshop and stores",
+      "equipment workshop and stores",
+      "service",
+      0.07,
+      0,
+      "low",
+    ],
+    [
+      "Station circulation",
+      "safe appliance, staff and visitor circulation",
+      "semi_public",
+      0.07,
+      0,
+      "medium",
+    ],
+    [
+      "Dorm and rest rooms",
+      "crew rest and quiet rooms",
+      "private",
+      0.12,
+      "upper",
+      "medium",
+    ],
+    [
+      "Training room",
+      "crew training and community education",
+      "semi_public",
+      0.07,
+      "upper",
+      "medium",
+    ],
+    [
+      "Gym and welfare",
+      "fitness, kitchen and welfare",
+      "private",
+      0.05,
+      "upper",
+      "medium",
+    ],
+    [
+      "Administration and plant",
+      "station office, MEP and risers",
+      "service",
+      0.06,
+      "upper",
+      "low",
+    ],
+  ],
+  religious_mosque: [
+    [
+      "Prayer hall",
+      "main congregational prayer space",
+      "public",
+      0.42,
+      0,
+      "medium",
+    ],
+    [
+      "Ablution areas",
+      "male, female and accessible ablution",
+      "service",
+      0.12,
+      0,
+      "low",
+    ],
+    [
+      "Entrance and shoe lobby",
+      "arrival, shoe storage and orientation",
+      "semi_public",
+      0.07,
+      0,
+      "medium",
+    ],
+    [
+      "Community room",
+      "community meeting and teaching support",
+      "semi_public",
+      0.1,
+      0,
+      "medium",
+    ],
+    [
+      "Administration",
+      "imam office and administration",
+      "private",
+      0.03,
+      0,
+      "medium",
+    ],
+    ["Public WCs", "visitor and accessible WCs", "service", 0.04, 0, "low"],
+    [
+      "Ground circulation",
+      "segregated routes, stair and refuge",
+      "semi_public",
+      0.06,
+      0,
+      "medium",
+    ],
+    [
+      "Teaching rooms",
+      "madrasa and teaching rooms",
+      "semi_public",
+      0.07,
+      "upper",
+      "medium",
+    ],
+    [
+      "Family prayer gallery",
+      "quiet family and overflow prayer",
+      "public",
+      0.06,
+      "upper",
+      "medium",
+    ],
+    [
+      "Plant and stores",
+      "MEP plant, stores and cleaner room",
+      "service",
+      0.03,
+      "upper",
+      "low",
+    ],
+  ],
+  religious_church: [
+    [
+      "Nave and worship space",
+      "main congregational worship",
+      "public",
+      0.38,
+      0,
+      "medium",
+    ],
+    [
+      "Sanctuary and vestry",
+      "sanctuary, vestry and clergy support",
+      "private",
+      0.08,
+      0,
+      "medium",
+    ],
+    [
+      "Narthex and welcome",
+      "arrival, welcome and gathering",
+      "public",
+      0.07,
+      0,
+      "medium",
+    ],
+    [
+      "Parish hall",
+      "community hall and events",
+      "semi_public",
+      0.14,
+      0,
+      "medium",
+    ],
+    ["Kitchen support", "servery and hall kitchen", "service", 0.05, 0, "low"],
+    ["Public WCs", "visitor and accessible WCs", "service", 0.04, 0, "low"],
+    [
+      "Ground circulation",
+      "aisles, lobby, stair and accessible route",
+      "semi_public",
+      0.06,
+      0,
+      "medium",
+    ],
+    [
+      "Classrooms",
+      "Sunday school and meeting rooms",
+      "semi_public",
+      0.07,
+      "upper",
+      "medium",
+    ],
+    [
+      "Administration",
+      "parish office and staff base",
+      "private",
+      0.04,
+      "upper",
+      "medium",
+    ],
+    [
+      "Stores and plant",
+      "chair store, MEP plant and risers",
+      "service",
+      0.03,
+      "upper",
+      "low",
+    ],
+    [
+      "Upper circulation",
+      "landing, corridor and refuge",
+      "semi_public",
+      0.04,
+      "upper",
+      "medium",
+    ],
+  ],
+  religious_temple: [
+    [
+      "Worship hall",
+      "main worship and congregation space",
+      "public",
+      0.36,
+      0,
+      "medium",
+    ],
+    [
+      "Shrine and sanctum",
+      "primary shrine, preparation and ritual support",
+      "private",
+      0.1,
+      0,
+      "medium",
+    ],
+    [
+      "Entrance and shoe lobby",
+      "arrival, shoe storage and orientation",
+      "semi_public",
+      0.06,
+      0,
+      "medium",
+    ],
+    [
+      "Community hall",
+      "gathering, teaching and community events",
+      "semi_public",
+      0.12,
+      0,
+      "medium",
+    ],
+    [
+      "Kitchen and prasad support",
+      "kitchen, servery and stores",
+      "service",
+      0.05,
+      0,
+      "low",
+    ],
+    ["Public WCs", "visitor and accessible WCs", "service", 0.04, 0, "low"],
+    [
+      "Ground circulation",
+      "processional route, stair and accessible path",
+      "semi_public",
+      0.06,
+      0,
+      "medium",
+    ],
+    [
+      "Teaching rooms",
+      "religious education and small group rooms",
+      "semi_public",
+      0.08,
+      "upper",
+      "medium",
+    ],
+    [
+      "Administration",
+      "office and clergy support",
+      "private",
+      0.04,
+      "upper",
+      "medium",
+    ],
+    [
+      "Stores and plant",
+      "ritual store, MEP plant and risers",
+      "service",
+      0.04,
+      "upper",
+      "low",
+    ],
+    [
+      "Upper circulation",
+      "landing, corridor and refuge",
+      "semi_public",
+      0.05,
+      "upper",
+      "medium",
+    ],
+  ],
+  recreation_sports_center: [
+    [
+      "Sports hall",
+      "multi-court sports hall",
+      "semi_public",
+      0.36,
+      0,
+      "medium",
+    ],
+    [
+      "Reception and cafe",
+      "arrival, control desk and cafe",
+      "public",
+      0.06,
+      0,
+      "medium",
+    ],
+    [
+      "Changing village",
+      "changing, showers and lockers",
+      "service",
+      0.12,
+      0,
+      "low",
+    ],
+    [
+      "Fitness studio",
+      "exercise studio and activity room",
+      "semi_public",
+      0.1,
+      0,
+      "high",
+    ],
+    ["Public WCs", "visitor and accessible WCs", "service", 0.04, 0, "low"],
+    [
+      "Equipment stores",
+      "sports equipment and cleaner store",
+      "service",
+      0.05,
+      0,
+      "low",
+    ],
+    [
+      "Sports circulation",
+      "public route, stair and spectator route",
+      "semi_public",
+      0.07,
+      0,
+      "medium",
+    ],
+    [
+      "Multipurpose room",
+      "club, coaching and community room",
+      "semi_public",
+      0.08,
+      "upper",
+      "medium",
+    ],
+    [
+      "Staff and administration",
+      "staff base and sports administration",
+      "private",
+      0.04,
+      "upper",
+      "medium",
+    ],
+    [
+      "Plant and services",
+      "MEP plant, risers and ventilation",
+      "service",
+      0.04,
+      "upper",
+      "low",
+    ],
+    [
+      "Upper circulation",
+      "landing, corridor and refuge",
+      "semi_public",
+      0.04,
+      "upper",
+      "medium",
+    ],
+  ],
+  recreation_gym: [
+    [
+      "Gym floor",
+      "open gym and strength/cardio area",
+      "semi_public",
+      0.4,
+      0,
+      "high",
+    ],
+    [
+      "Reception and retail",
+      "arrival, control desk and retail",
+      "public",
+      0.07,
+      0,
+      "medium",
+    ],
+    [
+      "Changing and showers",
+      "changing, showers and lockers",
+      "service",
+      0.12,
+      0,
+      "low",
+    ],
+    [
+      "Exercise studio",
+      "classes, yoga and group training",
+      "semi_public",
+      0.12,
+      0,
+      "high",
+    ],
+    ["Public WCs", "visitor and accessible WCs", "service", 0.04, 0, "low"],
+    ["Staff base", "staff office and welfare", "private", 0.03, 0, "medium"],
+    [
+      "Gym circulation",
+      "member route, stair and equipment aisles",
+      "semi_public",
+      0.06,
+      0,
+      "medium",
+    ],
+    [
+      "Treatment room",
+      "sports therapy and consultation",
+      "private",
+      0.05,
+      "upper",
+      "medium",
+    ],
+    [
+      "Administration",
+      "management office and membership support",
+      "private",
+      0.03,
+      "upper",
+      "medium",
+    ],
+    [
+      "Plant and services",
+      "MEP plant and ventilation plant",
+      "service",
+      0.03,
+      "upper",
+      "low",
+    ],
+    [
+      "Upper circulation",
+      "landing, corridor and refuge",
+      "semi_public",
+      0.05,
+      "upper",
+      "medium",
+    ],
+  ],
+  recreation_pool: [
+    [
+      "Pool hall",
+      "main swimming pool and poolside",
+      "semi_public",
+      0.42,
+      0,
+      "medium",
+    ],
+    [
+      "Changing village",
+      "changing, showers and lockers",
+      "service",
+      0.14,
+      0,
+      "low",
+    ],
+    [
+      "Reception and viewing",
+      "arrival, control desk and viewing",
+      "public",
+      0.06,
+      0,
+      "medium",
+    ],
+    [
+      "Pool plant",
+      "filtration, chemical store and pool plant",
+      "service",
+      0.1,
+      0,
+      "low",
+    ],
+    [
+      "Spectator seating",
+      "poolside spectator seating",
+      "public",
+      0.06,
+      0,
+      "medium",
+    ],
+    ["Public WCs", "visitor and accessible WCs", "service", 0.03, 0, "low"],
+    [
+      "Pool circulation",
+      "wet and dry circulation routes",
+      "semi_public",
+      0.06,
+      0,
+      "medium",
+    ],
+    [
+      "Studio or classroom",
+      "dry activity, lessons and club room",
+      "semi_public",
+      0.05,
+      "upper",
+      "medium",
+    ],
+    [
+      "Staff and lifeguard base",
+      "lifeguard, first aid and staff base",
+      "private",
+      0.03,
+      "upper",
+      "medium",
+    ],
+    [
+      "Dry plant and stores",
+      "ventilation plant and equipment stores",
+      "service",
+      0.02,
+      "upper",
+      "low",
+    ],
+    [
+      "Upper circulation",
+      "landing, corridor and refuge",
+      "semi_public",
+      0.03,
+      "upper",
+      "medium",
+    ],
+  ],
+});
+
+function typedProjectGraphProgrammeTemplate(buildingType, upperLevel) {
+  const rows = PROJECT_GRAPH_PROGRAMME_TEMPLATE_ROWS[buildingType];
+  if (!rows) return null;
+  return rows.map(([name, fn, zone, ratio, levelIndex, daylight]) => [
+    name,
+    fn,
+    zone,
+    ratio,
+    levelIndex === "upper" ? upperLevel : levelIndex,
+    daylight,
+  ]);
+}
+
 function getProgrammeTemplate(buildingType, upperLevel) {
+  const typedTemplate = typedProjectGraphProgrammeTemplate(
+    buildingType,
+    upperLevel,
+  );
+  if (typedTemplate) {
+    return {
+      template: typedTemplate,
+      fallback: false,
+    };
+  }
+
   switch (buildingType) {
     case "dwelling":
       return {
@@ -1114,6 +3221,16 @@ function getProgrammeTemplate(buildingType, upperLevel) {
     case "education_studio":
       return {
         template: educationStudioProgrammeTemplate(upperLevel),
+        fallback: false,
+      };
+    case "clinic":
+      return {
+        template: clinicProgrammeTemplate(upperLevel),
+        fallback: false,
+      };
+    case "hospital":
+      return {
+        template: hospitalProgrammeTemplate(upperLevel),
         fallback: false,
       };
     default:
@@ -1190,12 +3307,18 @@ function buildTemplateProgramSpaces(brief) {
           source: "fallback_template",
           requested_building_type: fallbackFrom,
           resolved_template: "community",
+          programme_template_key:
+            brief.programme_template_key || brief.building_type,
+          support_status: brief.support_status || null,
           severity: "warning",
           message: `building_type "${fallbackFrom}" not in KNOWN_BUILDING_TYPES; using community template as deterministic fallback.`,
         }
       : {
           source: "matched_template",
           resolved_template: brief.building_type,
+          programme_template_key:
+            brief.programme_template_key || brief.building_type,
+          support_status: brief.support_status || null,
           severity: "info",
         },
   };
@@ -1210,6 +3333,8 @@ function buildProgramme({ brief, programSpaces = [] } = {}) {
     templateProvenance = {
       source: "user_supplied",
       resolved_template: null,
+      programme_template_key: brief.programme_template_key || null,
+      support_status: brief.support_status || null,
       severity: "info",
     };
   } else {
@@ -1289,11 +3414,93 @@ function insetRectFromBbox(bbox, inset = 2) {
   );
 }
 
-function buildSiteContext({ brief, sitePolygon = [], siteMetrics = {} } = {}) {
-  const geoBoundary =
+const SITE_BOUNDARY_AUTHORITY_CONFIDENCE_THRESHOLD = 0.6;
+const SITE_BOUNDARY_ESTIMATED_WARNING_CODE =
+  "SITE_BOUNDARY_ESTIMATED_NOT_AUTHORITATIVE";
+
+function toFiniteMetric(value, fallback = null) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function boundarySourceLooksEstimated(source) {
+  return /intelligent fallback|fallback/i.test(String(source || ""));
+}
+
+function siteAreaOutlierLimitForBrief(brief = {}) {
+  const targetGia = Math.max(0, Number(brief.target_gia_m2 || 0));
+  return Math.max(2500, targetGia * 24);
+}
+
+function isSiteAreaOutlierForBrief(areaM2, brief = {}) {
+  const numericArea = Number(areaM2 || 0);
+  return numericArea > 0 && numericArea > siteAreaOutlierLimitForBrief(brief);
+}
+
+function normalizeMainEntryForProjectGraph(input = {}, sitePolygon = []) {
+  const supplied =
+    input.mainEntry ||
+    input.mainEntryDirection ||
+    input.projectDetails?.mainEntry ||
+    input.projectDetails?.mainEntryDirection ||
+    input.locationData?.mainEntry ||
+    input.locationData?.mainEntryDirection ||
+    input.siteAnalysis?.mainEntry ||
+    input.siteSnapshot?.metadata?.mainEntry ||
+    null;
+  if (supplied && typeof supplied === "object") {
+    const bearingDeg = toFiniteMetric(
+      supplied.bearingDeg ?? supplied.bearing,
+      0,
+    );
+    const confidence = toFiniteMetric(supplied.confidence, 0.5);
+    return {
+      orientation: supplied.orientation || supplied.direction || "north",
+      bearingDeg,
+      frontageEdgeId: supplied.frontageEdgeId || null,
+      mainEntryEdgeId: supplied.mainEntryEdgeId || null,
+      source: supplied.source || "provided",
+      confidence,
+      warnings: Array.isArray(supplied.warnings) ? supplied.warnings : [],
+    };
+  }
+
+  const manualDirection =
+    input.projectDetails?.entranceManualOverride === true
+      ? input.projectDetails?.entranceDirection
+      : null;
+  const resolved = resolveMainEntryDirection({
+    sitePolygon,
+    manualDirection,
+    sunPath:
+      input.locationData?.sunPath || input.siteSnapshot?.metadata?.sunPath,
+  });
+  return {
+    orientation: resolved.orientation,
+    bearingDeg: resolved.bearingDeg,
+    frontageEdgeId: resolved.frontageEdgeId,
+    mainEntryEdgeId: resolved.mainEntryEdgeId,
+    source: resolved.source,
+    confidence: resolved.confidence,
+    warnings: resolved.warnings || [],
+  };
+}
+
+function buildSiteContext({
+  brief,
+  sitePolygon = [],
+  siteMetrics = {},
+  siteBoundarySanity = null,
+  mainEntry = null,
+} = {}) {
+  const boundarySanity = siteBoundarySanity || {};
+  const authoritativeBoundaryAllowed =
+    boundarySanity.boundaryAuthoritative !== false;
+  const suppliedGeoBoundary =
     Array.isArray(sitePolygon) && sitePolygon.length >= 3
       ? sitePolygon
       : polygonFromGeoJson(brief.site_input.boundary_geojson);
+  const geoBoundary = authoritativeBoundaryAllowed ? suppliedGeoBoundary : [];
   const hasGeoBoundary =
     geoBoundary.length >= 3 &&
     Number.isFinite(Number(geoBoundary[0]?.lat)) &&
@@ -1301,34 +3508,107 @@ function buildSiteContext({ brief, sitePolygon = [], siteMetrics = {} } = {}) {
   const origin = hasGeoBoundary
     ? computeGeoCentroid(geoBoundary)
     : { lat: brief.site_input.lat, lng: brief.site_input.lon };
+  const fallbackAreaM2 = Math.max(brief.target_gia_m2 * 2.2, 320);
   const localBoundary = hasGeoBoundary
     ? polygonToLocalXY(geoBoundary, origin).map((point) => ({
         x: roundMetric(point.x),
         y: roundMetric(point.y),
       }))
-    : buildFallbackSitePolygon(Math.max(brief.target_gia_m2 * 2.2, 320));
+    : buildFallbackSitePolygon(fallbackAreaM2);
   const boundaryBbox = buildBoundingBoxFromPolygon(localBoundary);
   const buildablePolygon = insetRectFromBbox(boundaryBbox, 2);
+  const metricAreaM2 = authoritativeBoundaryAllowed
+    ? Number(siteMetrics.areaM2 || 0)
+    : 0;
   const areaM2 =
-    Number(siteMetrics.areaM2 || 0) ||
-    computePolygonArea(localBoundary) ||
-    Math.max(brief.target_gia_m2 * 2.2, 320);
+    metricAreaM2 || computePolygonArea(localBoundary) || fallbackAreaM2;
+  const boundaryAuthoritative = hasGeoBoundary && authoritativeBoundaryAllowed;
+  const boundaryConfidence =
+    toFiniteMetric(boundarySanity.boundaryConfidence, null) ??
+    (boundaryAuthoritative ? 1 : 0.4);
+  const boundarySource =
+    boundarySanity.boundarySource ||
+    (boundaryAuthoritative ? "site_polygon" : "deterministic_context");
+  const estimatedAreaM2 =
+    boundarySanity.estimatedAreaM2 ||
+    (!boundaryAuthoritative && Number(boundarySanity.sourceAreaM2 || 0) > 0
+      ? Number(boundarySanity.sourceAreaM2)
+      : null);
+  const fallbackReason =
+    boundarySanity.fallbackReason ||
+    (!boundaryAuthoritative
+      ? "No authoritative site boundary was supplied; using deterministic context geometry."
+      : null);
+  const dataQuality = boundaryAuthoritative
+    ? [
+        {
+          code: "SITE_BOUNDARY_PROVIDED",
+          severity: "info",
+          message: "Site boundary was supplied by the request.",
+        },
+      ]
+    : [
+        {
+          code: SITE_BOUNDARY_ESTIMATED_WARNING_CODE,
+          severity: "warning",
+          message:
+            "Site boundary is estimated and is not treated as an authoritative parcel boundary or plot area.",
+          details: {
+            boundarySource,
+            boundaryConfidence,
+            fallbackReason,
+            estimatedAreaM2,
+            areaOutlier: boundarySanity.areaOutlier === true,
+          },
+        },
+        {
+          code: "SITE_BOUNDARY_FALLBACK",
+          severity: "warning",
+          message:
+            "No authoritative site boundary was supplied; deterministic fallback boundary used for contextual rendering only.",
+        },
+      ];
 
   return {
     site_id: createStableId("site", brief.project_name, origin.lat, origin.lng),
     address_normalised: brief.site_input.address || null,
     lat: round(origin.lat, 6),
     lon: round(origin.lng ?? origin.lon, 6),
-    boundary: brief.site_input.boundary_geojson || null,
+    boundary: boundaryAuthoritative
+      ? brief.site_input.boundary_geojson || null
+      : null,
     local_boundary_polygon: localBoundary,
     buildable_polygon: buildablePolygon,
     north_angle_degrees: Number(siteMetrics.orientationDeg || 0),
     area_m2: round(areaM2, 2),
+    authoritative_area_m2: boundaryAuthoritative ? round(areaM2, 2) : null,
+    estimated_area_m2:
+      Number(estimatedAreaM2 || 0) > 0 ? round(estimatedAreaM2, 2) : null,
+    boundary_authoritative: boundaryAuthoritative,
+    boundary_confidence: round(boundaryConfidence, 3),
+    boundary_source: boundarySource,
+    boundary_estimated: !boundaryAuthoritative,
+    estimated_only: !boundaryAuthoritative,
+    fallback_reason: fallbackReason,
+    boundary_warning_code: boundaryAuthoritative
+      ? null
+      : SITE_BOUNDARY_ESTIMATED_WARNING_CODE,
+    estimated_geo_boundary: boundaryAuthoritative
+      ? []
+      : boundarySanity.estimatedGeoBoundary || [],
+    boundary_authority_reasons: boundarySanity.reasons || [],
+    main_entry: mainEntry,
     access_edges: [
       {
-        edge_id: "street-edge-primary",
-        label: "Assumed primary street edge",
-        source: hasGeoBoundary ? "site_polygon" : "fallback",
+        edge_id: mainEntry?.frontageEdgeId || "street-edge-primary",
+        main_entry_edge_id: mainEntry?.mainEntryEdgeId || null,
+        label: "Primary frontage / main entry edge",
+        orientation: mainEntry?.orientation || null,
+        bearing_deg: mainEntry?.bearingDeg ?? null,
+        source:
+          mainEntry?.source ||
+          (boundaryAuthoritative ? "site_polygon" : "estimated_context"),
+        confidence: mainEntry?.confidence ?? null,
       },
     ],
     adjacent_roads: [],
@@ -1342,17 +3622,7 @@ function buildSiteContext({ brief, sitePolygon = [], siteMetrics = {} } = {}) {
     },
     heritage_flags: [],
     planning_policy_refs: [],
-    data_quality: [
-      {
-        code: hasGeoBoundary
-          ? "SITE_BOUNDARY_PROVIDED"
-          : "SITE_BOUNDARY_FALLBACK",
-        severity: hasGeoBoundary ? "info" : "warning",
-        message: hasGeoBoundary
-          ? "Site boundary was supplied by the request."
-          : "No authoritative site boundary was supplied; deterministic fallback boundary used.",
-      },
-    ],
+    data_quality: dataQuality,
   };
 }
 
@@ -1366,6 +3636,142 @@ function normalizeGeoPolygonForMap(input = null) {
     .filter(
       (point) => Number.isFinite(point.lat) && Number.isFinite(point.lng),
     );
+}
+
+function resolveSiteBoundarySanity(input = {}, brief = {}) {
+  const siteAnalysis =
+    input.siteAnalysis ||
+    input.locationData?.siteAnalysis ||
+    input.siteSnapshot?.metadata?.siteAnalysis ||
+    {};
+  const siteMetrics = {
+    ...(input.siteSnapshot?.metadata?.siteMetrics || {}),
+    ...(input.sitePolygonMetrics || {}),
+    ...(input.siteMetrics || {}),
+  };
+  const submittedGeoBoundary = normalizeGeoPolygonForMap(
+    input.sitePolygon ||
+      input.site_boundary ||
+      brief.site_input?.boundary_geojson,
+  );
+  const estimatedGeoBoundary = normalizeGeoPolygonForMap(
+    siteAnalysis.estimatedSiteBoundary ||
+      siteAnalysis.contextualSiteBoundary ||
+      siteAnalysis.siteBoundary ||
+      input.locationData?.estimatedSiteBoundary ||
+      input.locationData?.contextualSiteBoundary ||
+      input.siteSnapshot?.polygon ||
+      input.siteSnapshot?.sitePolygon,
+  );
+  const boundarySource =
+    siteAnalysis.boundarySource ||
+    siteMetrics.boundarySource ||
+    input.locationData?.boundarySource ||
+    (submittedGeoBoundary.length >= 3
+      ? "site_polygon"
+      : "deterministic_context");
+  const manualVerifiedBoundary =
+    boundarySource === "manual_verified" ||
+    siteAnalysis.boundarySource === "manual_verified" ||
+    siteMetrics.boundarySource === "manual_verified" ||
+    input.locationData?.boundarySource === "manual_verified";
+  const boundaryConfidence =
+    toFiniteMetric(
+      siteAnalysis.boundaryConfidence ??
+        siteMetrics.boundaryConfidence ??
+        input.locationData?.boundaryConfidence,
+      null,
+    ) ??
+    (manualVerifiedBoundary ? 1 : submittedGeoBoundary.length >= 3 ? 1 : 0.4);
+  const sourceAreaM2 = toFiniteMetric(
+    siteMetrics.areaM2 ??
+      siteMetrics.area ??
+      siteMetrics.surfaceAreaM2 ??
+      siteAnalysis.areaM2 ??
+      siteAnalysis.area ??
+      siteAnalysis.surfaceAreaM2 ??
+      siteAnalysis.surfaceArea ??
+      siteAnalysis.estimatedSurfaceArea ??
+      input.locationData?.areaM2 ??
+      input.locationData?.surfaceAreaM2 ??
+      input.locationData?.surfaceArea,
+    null,
+  );
+  const explicitNonAuthoritative = manualVerifiedBoundary
+    ? false
+    : siteAnalysis.boundaryAuthoritative === false ||
+      siteMetrics.boundaryAuthoritative === false ||
+      input.locationData?.boundaryAuthoritative === false ||
+      siteAnalysis.boundaryEstimated === true ||
+      siteAnalysis.estimatedOnly === true ||
+      input.locationData?.boundaryEstimated === true;
+  const lowConfidence =
+    !manualVerifiedBoundary &&
+    boundaryConfidence < SITE_BOUNDARY_AUTHORITY_CONFIDENCE_THRESHOLD;
+  const fallbackSource =
+    !manualVerifiedBoundary && boundarySourceLooksEstimated(boundarySource);
+  const areaOutlier =
+    !manualVerifiedBoundary && isSiteAreaOutlierForBrief(sourceAreaM2, brief);
+  const hasSubmittedBoundary = submittedGeoBoundary.length >= 3;
+  const reasons = [];
+
+  if (!hasSubmittedBoundary) reasons.push("missing_boundary_polygon");
+  if (explicitNonAuthoritative) reasons.push("explicitly_estimated");
+  if (fallbackSource) reasons.push("fallback_source");
+  if (lowConfidence) reasons.push("low_confidence");
+  if (areaOutlier) reasons.push("area_outlier");
+
+  const boundaryAuthoritative = manualVerifiedBoundary
+    ? hasSubmittedBoundary
+    : hasSubmittedBoundary &&
+      !explicitNonAuthoritative &&
+      !fallbackSource &&
+      !lowConfidence &&
+      !areaOutlier;
+  const sanitizedSiteMetrics = { ...siteMetrics };
+  if (!boundaryAuthoritative) {
+    delete sanitizedSiteMetrics.areaM2;
+  }
+  sanitizedSiteMetrics.boundaryAuthoritative = boundaryAuthoritative;
+  sanitizedSiteMetrics.boundaryConfidence = manualVerifiedBoundary
+    ? 1
+    : boundaryConfidence;
+  sanitizedSiteMetrics.boundarySource = boundarySource;
+  if (Number(sourceAreaM2 || 0) > 0) {
+    sanitizedSiteMetrics.area = sourceAreaM2;
+    sanitizedSiteMetrics.areaM2 = sourceAreaM2;
+    sanitizedSiteMetrics.surfaceAreaM2 = sourceAreaM2;
+  }
+
+  return {
+    boundaryAuthoritative,
+    boundaryConfidence: manualVerifiedBoundary ? 1 : boundaryConfidence,
+    boundarySource,
+    fallbackReason:
+      siteAnalysis.fallbackReason ||
+      siteMetrics.fallbackReason ||
+      input.locationData?.fallbackReason ||
+      (boundaryAuthoritative
+        ? null
+        : "Boundary is estimated and must be verified by survey."),
+    estimatedOnly: !boundaryAuthoritative,
+    areaOutlier,
+    reasons,
+    sourceAreaM2,
+    estimatedAreaM2:
+      !boundaryAuthoritative && Number(sourceAreaM2 || 0) > 0
+        ? sourceAreaM2
+        : null,
+    authoritativeAreaM2:
+      boundaryAuthoritative && Number(sourceAreaM2 || 0) > 0
+        ? sourceAreaM2
+        : null,
+    estimatedGeoBoundary:
+      !boundaryAuthoritative && estimatedGeoBoundary.length >= 3
+        ? estimatedGeoBoundary
+        : [],
+    siteMetrics: sanitizedSiteMetrics,
+  };
 }
 
 function normalizeProvidedSiteSnapshot(siteSnapshot = null) {
@@ -1400,6 +3806,8 @@ function normalizeProvidedSiteSnapshot(siteSnapshot = null) {
         ? "Map data © Google"
         : "Provided site map"),
     sourceUrl: normalizedSource,
+    mapType: siteSnapshot.mapType || siteSnapshot.metadata?.mapType || null,
+    drawPolygonOverlay: siteSnapshot.drawPolygonOverlay !== false,
     hasPolygon: Boolean(
       (Array.isArray(siteSnapshot.polygon) && siteSnapshot.polygon.length) ||
       (Array.isArray(siteSnapshot.sitePolygon) &&
@@ -1410,11 +3818,58 @@ function normalizeProvidedSiteSnapshot(siteSnapshot = null) {
   };
 }
 
+function firstUsableGeoPolygonForMap(candidates = []) {
+  for (const candidate of candidates) {
+    const polygon = normalizeGeoPolygonForMap(candidate);
+    if (polygon.length >= 3) {
+      return polygon;
+    }
+  }
+  return [];
+}
+
+function resolveSiteMapDisplayPolygon({ input = {}, brief = {}, site = {} }) {
+  const siteAnalysis =
+    input.siteAnalysis ||
+    input.locationData?.siteAnalysis ||
+    input.siteSnapshot?.metadata?.siteAnalysis ||
+    {};
+  const snapshotMetadata = input.siteSnapshot?.metadata || {};
+  const authoritativeCandidates = [
+    input.sitePolygon,
+    input.site_boundary,
+    input.siteSnapshot?.sitePolygon,
+    input.siteSnapshot?.polygon,
+    brief.site_input?.boundary_geojson,
+  ];
+
+  if (site?.boundary_authoritative !== false) {
+    return firstUsableGeoPolygonForMap(authoritativeCandidates);
+  }
+
+  return firstUsableGeoPolygonForMap([
+    input.siteSnapshot?.sitePolygon,
+    input.siteSnapshot?.polygon,
+    snapshotMetadata.contextualBoundaryPolygon,
+    input.locationData?.contextualSiteBoundary,
+    input.locationData?.estimatedSiteBoundary,
+    siteAnalysis.contextualSiteBoundary,
+    siteAnalysis.estimatedSiteBoundary,
+    siteAnalysis.siteBoundary,
+  ]);
+}
+
 async function resolveSiteMapSnapshot({ input = {}, brief, site }) {
-  const provided = normalizeProvidedSiteSnapshot(
-    input.siteSnapshot || input.siteMapSnapshot || input.siteMap || null,
-  );
-  if (provided) {
+  const boundaryAuthoritative = site?.boundary_authoritative !== false;
+  const providedSnapshot =
+    input.siteSnapshot || input.siteMapSnapshot || input.siteMap || null;
+  const provided = normalizeProvidedSiteSnapshot(providedSnapshot);
+  const providedMapType = String(
+    provided?.mapType || providedSnapshot?.mapType || "",
+  ).toLowerCase();
+  const requiresRoadmapRecapture =
+    provided && ["hybrid", "satellite"].includes(providedMapType);
+  if (provided && !requiresRoadmapRecapture) {
     return {
       ...provided,
       sourceUrl: provided.sourceUrl || "provided-site-snapshot",
@@ -1422,16 +3877,30 @@ async function resolveSiteMapSnapshot({ input = {}, brief, site }) {
     };
   }
 
-  const polygon = normalizeGeoPolygonForMap(
-    input.sitePolygon ||
-      input.site_boundary ||
-      input.siteSnapshot?.sitePolygon ||
-      input.siteSnapshot?.polygon ||
-      brief.site_input.boundary_geojson,
-  );
+  const polygon = resolveSiteMapDisplayPolygon({ input, brief, site });
   const center = input.siteSnapshot?.center ||
     input.siteSnapshot?.coordinates ||
     input.locationData?.coordinates || { lat: site.lat, lng: site.lon };
+  const sitePlanMode = boundaryAuthoritative
+    ? "authoritative_boundary"
+    : polygon.length >= 3
+      ? "contextual_estimated_boundary"
+      : "context_only";
+
+  // Authoritative/manual boundaries use solid blue; estimated/contextual
+  // boundaries use amber so stale landuse polygons are visibly provisional.
+  const blueAuthoritative = {
+    strokeColor: "#1976D2",
+    strokeWeight: 3,
+    fillColor: "#1976D2",
+    fillOpacity: 0.18,
+  };
+  const amberEstimated = {
+    strokeColor: "#F59E0B",
+    strokeWeight: 2,
+    fillColor: "#F59E0B",
+    fillOpacity: 0.08,
+  };
 
   try {
     const snapshot = await getSiteSnapshotWithMetadata({
@@ -1440,15 +3909,30 @@ async function resolveSiteMapSnapshot({ input = {}, brief, site }) {
         lng: Number(center?.lng ?? center?.lon ?? site.lon),
       },
       polygon: polygon.length >= 3 ? polygon : null,
+      // Always draw the polygon overlay when we have one — the user needs
+      // to see the auto-detected boundary even when it is non-authoritative.
+      // The visual style and the `boundaryEstimated` metadata flag below
+      // continue to differentiate the two states.
+      drawPolygonOverlay: polygon.length >= 3,
+      polygonStyle: boundaryAuthoritative ? blueAuthoritative : amberEstimated,
       zoom: Number(input.siteSnapshot?.zoom || 18),
       size: [1200, 780],
-      mapType: input.siteSnapshot?.mapType || "roadmap",
+      mapType: "roadmap",
     });
     return snapshot
       ? {
           ...snapshot,
           captureStatus: "google_static_maps",
           sourceUrl: snapshot.sourceUrl || "google-static-maps",
+          metadata: {
+            ...(snapshot.metadata || {}),
+            sitePlanMode,
+            boundaryAuthoritative,
+            boundaryEstimated: !boundaryAuthoritative,
+            contextualBoundaryOverlayUsed:
+              !boundaryAuthoritative && polygon.length >= 3,
+            polygonPointCount: polygon.length,
+          },
         }
       : null;
   } catch {
@@ -1456,7 +3940,18 @@ async function resolveSiteMapSnapshot({ input = {}, brief, site }) {
   }
 }
 
-function buildClimatePack(brief, site) {
+function buildClimatePack(brief, site, options = {}) {
+  // Phase 3: optional `weather` is the result of weatherService.getClimateData()
+  // (Met Office → Open-Meteo → OpenWeather chain). When present, it supplies
+  // wind / rainfall facts and brings WEATHER_AUTHORITY_* + WEATHER_PROVIDER_*
+  // codes into climate.data_quality. Climate keeps its own data_quality array
+  // by design (Plan-agent ruling, Phase 1) — we do NOT merge weather codes
+  // into site.data_quality. The slice's provenanceManifest reads
+  // climate.providers separately.
+  const weather =
+    options.weather && typeof options.weather === "object"
+      ? options.weather
+      : null;
   let sunPath = null;
   let sunPathError = null;
   try {
@@ -1490,13 +3985,38 @@ function buildClimatePack(brief, site) {
       passiveMoves.push(note);
     }
   }
-  const dataQuality = [
-    {
+  const dataQuality = [];
+  // Live-weather-or-fallback messaging on data_quality.
+  if (
+    weather &&
+    weather.provider &&
+    weather.provider !== "deterministic-fallback"
+  ) {
+    dataQuality.push({
+      code: "CLIMATE_PACK_WEATHER_LIVE",
+      severity: "info",
+      message: `Live weather supplied by ${weather.provider} (authority=${weather.authority}).`,
+      source: weather.provider,
+    });
+  } else {
+    dataQuality.push({
       code: "CLIMATE_PACK_WEATHER_FALLBACK",
       severity: "warning",
-      message: "No live weather source was used in this vertical slice.",
-    },
-  ];
+      message: weather
+        ? "All weather providers failed; deterministic fallback used."
+        : "No live weather source was used in this vertical slice.",
+    });
+  }
+  // Forward the chain's own data_quality entries onto the climate pack so QA
+  // can read WEATHER_AUTHORITY_* / WEATHER_PROVIDER_FALLBACK / *_TIMEOUT /
+  // *_ERROR codes alongside the climate-pack-level entries above.
+  if (weather && Array.isArray(weather.data_quality)) {
+    for (const entry of weather.data_quality) {
+      if (entry && typeof entry === "object" && entry.code) {
+        dataQuality.push(entry);
+      }
+    }
+  }
   if (sunPathError) {
     dataQuality.push({
       code: "SUN_PATH_COMPUTATION_FAILED",
@@ -1511,10 +4031,16 @@ function buildClimatePack(brief, site) {
         "Sun path computed deterministically from site lat/lon via suncalc.",
     });
   }
+  const usingLiveWeather = Boolean(
+    weather &&
+    weather.provider &&
+    weather.provider !== "deterministic-fallback",
+  );
   return {
     lat: site.lat,
     lon: site.lon,
-    weather_source: "fallback",
+    weather_source: usingLiveWeather ? weather.provider : "fallback",
+    weather_authority: weather?.authority || (usingLiveWeather ? "low" : null),
     weather_file_asset_id: null,
     climate_projection_refs: [
       "UKCP18 reference required before production use",
@@ -1534,14 +4060,24 @@ function buildClimatePack(brief, site) {
           orientation_note:
             "Sun-path computation failed; defaulting to UK southern-glazing heuristic.",
         },
-    wind: {
-      exposure: "unknown",
-      source: "fallback",
-    },
-    rainfall: {
-      exposure: "uk_temperate_assumption",
-      source: "fallback",
-    },
+    wind:
+      usingLiveWeather && weather.wind
+        ? {
+            exposure: weather.wind.cardinal || "unknown",
+            source: weather.provider,
+            speed: weather.wind.speed ?? null,
+            direction: weather.wind.direction ?? null,
+            unit: weather.wind.unit || null,
+          }
+        : { exposure: "unknown", source: "fallback" },
+    rainfall:
+      usingLiveWeather && weather.precipitation
+        ? {
+            exposure: "live_provider_24h",
+            source: weather.provider,
+            daily_mm: weather.precipitation.daily ?? 0,
+          }
+        : { exposure: "uk_temperate_assumption", source: "fallback" },
     overheating: {
       risk_level: overheatingRisk,
       part_o_required: brief.building_type === "dwelling",
@@ -1558,6 +4094,8 @@ function buildClimatePack(brief, site) {
       "Select robust UK external materials and detail exposed edges for rain.",
     ],
     data_quality: dataQuality,
+    providers:
+      weather && Array.isArray(weather.providers) ? weather.providers : [],
   };
 }
 
@@ -1717,6 +4255,7 @@ function addRoomWallsAndOpenings({
   walls,
   doors,
   windows,
+  mainEntryOrientation = null,
 }) {
   const polygon = room.polygon;
   const edges = [
@@ -1767,7 +4306,13 @@ function addRoomWallsAndOpenings({
       Number(wall.end?.y || 0) - Number(wall.start?.y || 0),
     );
   const roomName = String(room.name || "").toLowerCase();
+  const preferredEntryOrientation = String(mainEntryOrientation || "")
+    .toLowerCase()
+    .trim();
   const entranceWall =
+    exteriorWalls.find(
+      (wall) => wall.orientation === preferredEntryOrientation,
+    ) ||
     exteriorWalls.find((wall) => wall.orientation === "south") ||
     exteriorWalls.find((wall) => wall.orientation === "west") ||
     exteriorWalls[0];
@@ -1815,6 +4360,7 @@ function layoutRoomsForLevel({
   walls,
   doors,
   windows,
+  mainEntryOrientation = null,
 }) {
   const levelId = `level-${levelIndex}`;
   const rooms = [];
@@ -1864,6 +4410,7 @@ function layoutRoomsForLevel({
         walls,
         doors,
         windows,
+        mainEntryOrientation,
       });
       rooms.push(room);
       cursorX += roomWidth;
@@ -1943,6 +4490,7 @@ function buildProjectGeometryFromProgramme({
       walls,
       doors,
       windows,
+      mainEntryOrientation: site?.main_entry?.orientation || null,
     });
     rooms.push(...layout.rooms);
     if (layout.stair && levelIndex + 1 < levelCount) {
@@ -2209,8 +4757,17 @@ function drawingTypeForPanel(panelType) {
   return "diagram";
 }
 
-function buildDrawingSet(compiledProject) {
-  const technicalBuild = buildCompiledProjectTechnicalPanels(compiledProject);
+function buildDrawingSet(compiledProject, options = {}) {
+  // Pass layoutTemplate through so the technical pack renders at the slot
+  // aspect of the active sheet template (presentation-v3 for residential,
+  // board-v2 otherwise). Caller resolves via resolvePresentationLayoutTemplate.
+  const layoutTemplate =
+    typeof options.layoutTemplate === "string" && options.layoutTemplate
+      ? options.layoutTemplate
+      : "board-v2";
+  const technicalBuild = buildCompiledProjectTechnicalPanels(compiledProject, {
+    layoutTemplate,
+  });
   const technicalPanels = technicalBuild.technicalPanels || {};
   const drawingViews = Object.entries(technicalPanels).map(
     ([panelType, panel]) => {
@@ -2400,23 +4957,9 @@ function formatPanelTitle(panelType) {
 }
 
 function sanitizeSheetSvgFragment(svgString = "") {
-  return String(svgString || "")
-    .replace(/<script\b[\s\S]*?<\/script>/gi, "")
-    .replace(
-      /<path\b[^>]*\bd=(["'])(.*?)\1[^>]*(?:\/>|>\s*<\/path>)/gi,
-      (match, _quote, pathData) => {
-        const normalizedPathData = String(pathData || "").trim();
-        if (
-          !normalizedPathData ||
-          normalizedPathData === "undefined" ||
-          normalizedPathData === "null" ||
-          normalizedPathData.includes("NaN")
-        ) {
-          return "";
-        }
-        return match;
-      },
-    );
+  return sanitizeInvalidSvgPaths(
+    String(svgString || "").replace(/<script\b[\s\S]*?<\/script>/gi, ""),
+  );
 }
 
 function extractSvgBody(svgString = "") {
@@ -2461,6 +5004,97 @@ function buildPanelArtifactIndex(drawingArtifacts = {}) {
   return { byPanelType, byAssetId };
 }
 
+function getTechnicalQualityMetadata(artifact = null) {
+  return (
+    artifact?.technicalQualityMetadata ||
+    artifact?.metadata?.technicalQualityMetadata ||
+    {}
+  );
+}
+
+function resolvePanelRenderMode(panelType, artifact = null) {
+  const metadata = artifact?.metadata || {};
+  if (REQUIRED_3D_A1_PANEL_TYPES.includes(panelType)) {
+    if (
+      metadata.source === "project_graph_image_renderer" &&
+      metadata.imageRenderFallback === false
+    ) {
+      return metadata.visualRenderMode || "geometry_locked_image_render";
+    }
+    return metadata.visualRenderMode || "deterministic_control";
+  }
+  if (
+    String(panelType || "").startsWith("floor_plan_") ||
+    String(panelType || "").startsWith("section_") ||
+    String(panelType || "").startsWith("elevation_")
+  ) {
+    return "compiled_technical_svg";
+  }
+  return metadata.source || artifact?.asset_type || "project_graph_data_panel";
+}
+
+function buildPanelReferenceMetrics({
+  panelType,
+  artifact = null,
+  placement = null,
+  geometryHash = null,
+  briefInputHash = null,
+  layoutTemplate = "board-v2",
+} = {}) {
+  const bounds = getTechnicalContentBounds(artifact);
+  const technicalQualityMetadata = getTechnicalQualityMetadata(artifact);
+  const contentBBoxRatio = {
+    occupancyRatio: round(Number(bounds?.occupancyRatio || 0), 4),
+    widthRatio: round(Number(bounds?.widthRatio || 0), 4),
+    heightRatio: round(Number(bounds?.heightRatio || 0), 4),
+  };
+  const slotOccupancy = round(
+    Number(
+      technicalQualityMetadata.slot_occupancy_ratio ??
+        technicalQualityMetadata.slotOccupancyRatio ??
+        contentBBoxRatio.occupancyRatio,
+    ),
+    4,
+  );
+  const finalSlotFit = computePanelSlotFitMetrics({
+    panelType,
+    artifact,
+    placement,
+    layoutTemplate: placement?.layoutTemplate || layoutTemplate,
+  });
+  const sourceGeometryHash =
+    artifact?.source_model_hash ||
+    artifact?.geometryHash ||
+    artifact?.metadata?.sourceGeometryHash ||
+    artifact?.metadata?.renderProvenance?.sourceGeometryHash ||
+    placement?.source_model_hash ||
+    geometryHash ||
+    null;
+  const renderMode = resolvePanelRenderMode(panelType, artifact);
+  const panelIdentityHash = computeCDSHashSync({
+    sourceGeometryHash,
+    svgHash: artifact?.svgHash || placement?.svgHash || null,
+    normalizedViewBox: getTechnicalNormalizedViewBox(artifact),
+    contentBBoxRatio,
+    renderMode,
+    drawingType:
+      artifact?.drawingType ||
+      artifact?.metadata?.drawingType ||
+      technicalQualityMetadata.drawing_type ||
+      null,
+  });
+  return {
+    slotOccupancy,
+    finalSlotOccupancy: finalSlotFit?.occupancyRatio ?? null,
+    finalSlotFit,
+    contentBBoxRatio,
+    sourceGeometryHash,
+    panelIdentityHash,
+    briefInputHash: briefInputHash || null,
+    renderMode,
+  };
+}
+
 function polygonPath(points = [], bbox, width, height, padding = 12) {
   if (!Array.isArray(points) || points.length < 3 || !bbox) {
     return "";
@@ -2471,17 +5105,101 @@ function polygonPath(points = [], bbox, width, height, padding = 12) {
   );
   const offsetX = (width - Number(bbox.width || 0) * scale) / 2;
   const offsetY = (height - Number(bbox.height || 0) * scale) / 2;
-  return points
-    .map((point, index) => {
-      const x =
-        offsetX + (Number(point.x || 0) - Number(bbox.min_x || 0)) * scale;
-      const y =
-        height -
-        (offsetY + (Number(point.y || 0) - Number(bbox.min_y || 0)) * scale);
-      return `${index === 0 ? "M" : "L"} ${round(x, 2)} ${round(y, 2)}`;
-    })
-    .join(" ")
-    .concat(" Z");
+  if (
+    !Number.isFinite(scale) ||
+    !Number.isFinite(offsetX) ||
+    !Number.isFinite(offsetY)
+  ) {
+    return "";
+  }
+  const segments = [];
+  for (let index = 0; index < points.length; index += 1) {
+    const point = points[index];
+    const x =
+      offsetX + (Number(point?.x || 0) - Number(bbox.min_x || 0)) * scale;
+    const y =
+      height -
+      (offsetY + (Number(point?.y || 0) - Number(bbox.min_y || 0)) * scale);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      return "";
+    }
+    segments.push(`${index === 0 ? "M" : "L"} ${round(x, 2)} ${round(y, 2)}`);
+  }
+  return `${segments.join(" ")} Z`;
+}
+
+function mapLocalPointToSiteSvg(point, bbox, width, height, padding = 12) {
+  if (!point || !bbox) return null;
+  const scale = Math.min(
+    (width - padding * 2) / Math.max(1, Number(bbox.width || 1)),
+    (height - padding * 2) / Math.max(1, Number(bbox.height || 1)),
+  );
+  const offsetX = (width - Number(bbox.width || 0) * scale) / 2;
+  const offsetY = (height - Number(bbox.height || 0) * scale) / 2;
+  const x = offsetX + (Number(point?.x || 0) - Number(bbox.min_x || 0)) * scale;
+  const y =
+    height -
+    (offsetY + (Number(point?.y || 0) - Number(bbox.min_y || 0)) * scale);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return { x, y };
+}
+
+function parseBoundaryEdgeIndex(edgeId = null) {
+  const match = String(edgeId || "").match(/edge-(\d+)/i);
+  return match ? Number(match[1]) : null;
+}
+
+function resolveMainEntryAnchor(site, bbox, width, height) {
+  const boundary = site?.local_boundary_polygon || [];
+  if (!Array.isArray(boundary) || boundary.length < 3) return null;
+  const edgeIndex = parseBoundaryEdgeIndex(
+    site?.main_entry?.mainEntryEdgeId || site?.main_entry?.frontageEdgeId,
+  );
+  if (Number.isFinite(edgeIndex)) {
+    const start = boundary[edgeIndex % boundary.length];
+    const end = boundary[(edgeIndex + 1) % boundary.length];
+    return mapLocalPointToSiteSvg(
+      {
+        x: (Number(start?.x || 0) + Number(end?.x || 0)) / 2,
+        y: (Number(start?.y || 0) + Number(end?.y || 0)) / 2,
+      },
+      bbox,
+      width,
+      height,
+    );
+  }
+  const bearing = Number(site?.main_entry?.bearingDeg || 0);
+  const radians = (bearing * Math.PI) / 180;
+  const scorePoint = (point) =>
+    Number(point?.x || 0) * Math.sin(radians) +
+    Number(point?.y || 0) * Math.cos(radians);
+  const selected = [...boundary].sort(
+    (a, b) => scorePoint(b) - scorePoint(a),
+  )[0];
+  return mapLocalPointToSiteSvg(selected, bbox, width, height);
+}
+
+function buildMainEntryArrowSvg(site, bbox) {
+  const mainEntry = site?.main_entry || {};
+  const anchor = resolveMainEntryAnchor(site, bbox, 812, 646);
+  if (!anchor) return "";
+  const bearingDeg = Number(mainEntry.bearingDeg || 0);
+  const radians = (bearingDeg * Math.PI) / 180;
+  const length = 82;
+  const dx = Math.sin(radians) * length;
+  const dy = -Math.cos(radians) * length;
+  const startX = round(anchor.x - dx * 0.24, 2);
+  const startY = round(anchor.y - dy * 0.24, 2);
+  const endX = round(anchor.x + dx * 0.76, 2);
+  const endY = round(anchor.y + dy * 0.76, 2);
+  const labelX = round(anchor.x + dx * 0.92, 2);
+  const labelY = round(anchor.y + dy * 0.92, 2);
+  const orientation = mainEntry.orientation || "north";
+  return `<g transform="translate(44 66)" data-main-entry-source="${escapeXml(mainEntry.source || "unknown")}" data-main-entry-orientation="${escapeXml(orientation)}" data-main-entry-bearing="${escapeXml(String(round(bearingDeg, 1)))}">
+    <line x1="${startX}" y1="${startY}" x2="${endX}" y2="${endY}" stroke="#1976D2" stroke-width="7" stroke-linecap="round" marker-end="url(#main-entry-arrowhead)"/>
+    <text x="${labelX}" y="${labelY}" font-family="Arial, sans-serif" font-size="18" font-weight="700" text-anchor="middle" fill="#1976D2">MAIN ENTRY</text>
+    <text x="${labelX}" y="${labelY + 22}" font-family="Arial, sans-serif" font-size="13" text-anchor="middle" fill="#1976D2">${escapeXml(orientation)} ${escapeXml(String(round(bearingDeg, 0)))} deg</text>
+  </g>`;
 }
 
 function buildSiteContextPanelArtifact({
@@ -2495,6 +5213,28 @@ function buildSiteContextPanelArtifact({
   const bbox = buildBoundingBoxFromPolygon(site.local_boundary_polygon || []);
   const sitePath = polygonPath(site.local_boundary_polygon, bbox, 812, 646);
   const buildablePath = polygonPath(site.buildable_polygon, bbox, 812, 646);
+  const buildableBbox = buildBoundingBoxFromPolygon(
+    site.buildable_polygon || site.local_boundary_polygon || [],
+  );
+  const proposedFootprint = rectangleToPolygon(
+    Number(buildableBbox.min_x || 0) + Number(buildableBbox.width || 0) * 0.24,
+    Number(buildableBbox.min_y || 0) + Number(buildableBbox.height || 0) * 0.3,
+    Math.max(8, Number(buildableBbox.width || 0) * 0.52),
+    Math.max(8, Number(buildableBbox.height || 0) * 0.36),
+  );
+  const proposedFootprintPath = polygonPath(proposedFootprint, bbox, 812, 646);
+  const boundaryEstimated =
+    site?.boundary_authoritative === false || site?.boundary_estimated === true;
+  const boundaryLabel =
+    site?.boundary_source === "manual_verified"
+      ? "MANUAL VERIFIED"
+      : boundaryEstimated
+        ? "ESTIMATED / CONTEXTUAL - VERIFY"
+        : "AUTHORITATIVE";
+  const sitePlanMode = boundaryEstimated
+    ? "contextual_estimated_boundary"
+    : "authoritative_boundary";
+  const mainEntryArrowSvg = buildMainEntryArrowSvg(site, bbox);
   const hasMapImage = Boolean(siteSnapshot?.dataUrl);
   const mapSource = hasMapImage
     ? siteSnapshot.sourceUrl || siteSnapshot.source || "provided-site-snapshot"
@@ -2508,29 +5248,66 @@ function buildSiteContextPanelArtifact({
   const attribution = hasMapImage
     ? siteSnapshot.attribution || "Map image supplied by request"
     : "No map snapshot available";
-  const mapLayer = hasMapImage
-    ? `<image x="28" y="52" width="844" height="676" href="${escapeXml(siteSnapshot.dataUrl)}" preserveAspectRatio="xMidYMid slice"/>
+  const mapLayer = boundaryEstimated
+    ? hasMapImage
+      ? `<image x="28" y="52" width="844" height="676" href="${escapeXml(siteSnapshot.dataUrl)}" preserveAspectRatio="xMidYMid slice"/>
+  <rect x="28" y="52" width="844" height="676" fill="none" stroke="#111111" stroke-width="3"/>
+  <g transform="translate(44 66)">
+    <path d="${sitePath}" fill="#b7d7a833" stroke="#e87524" stroke-width="4" stroke-dasharray="16 10"/>
+    <path d="${buildablePath}" fill="none" stroke="#111111" stroke-width="3" stroke-dasharray="8 8"/>
+    <path d="${proposedFootprintPath}" fill="#11111133" stroke="#111111" stroke-width="4"/>
+  </g>
+  <text x="450" y="104" font-family="Arial, sans-serif" font-size="26" font-weight="700" text-anchor="middle" fill="#111111">${boundaryLabel}</text>
+  <text x="450" y="136" font-family="Arial, sans-serif" font-size="16" text-anchor="middle" fill="#555555">Boundary estimated - verify with measured survey before planning submission</text>`
+      : `<rect x="28" y="52" width="844" height="676" fill="#f7f6f0"/>
+  <rect x="28" y="52" width="844" height="676" fill="none" stroke="#111111" stroke-width="3"/>
+  <path d="M 78 636 C 186 586 272 612 354 562 C 456 500 584 520 824 462" fill="none" stroke="#d7d7d7" stroke-width="34" opacity="0.8"/>
+  <path d="M 78 636 C 186 586 272 612 354 562 C 456 500 584 520 824 462" fill="none" stroke="#ffffff" stroke-width="22" opacity="0.96"/>
+  <path d="M 112 142 L 196 186 L 282 152 L 372 206 L 470 166 L 590 222 L 770 190" fill="none" stroke="#c7cfbf" stroke-width="14" opacity="0.7"/>
+  <path d="M 130 506 L 246 452 L 372 474 L 520 424 L 712 444" fill="none" stroke="#c7cfbf" stroke-width="12" opacity="0.6"/>
+  <g transform="translate(44 66)">
+    <path d="${sitePath}" fill="#fff7ed" stroke="#e87524" stroke-width="4" stroke-dasharray="16 10"/>
+    <path d="${buildablePath}" fill="none" stroke="#29332a" stroke-width="3" stroke-dasharray="8 8"/>
+    <path d="${proposedFootprintPath}" fill="#11111122" stroke="#111111" stroke-width="4"/>
+  </g>
+  <text x="450" y="104" font-family="Arial, sans-serif" font-size="26" font-weight="700" text-anchor="middle" fill="#111111">${boundaryLabel}</text>
+  <text x="450" y="136" font-family="Arial, sans-serif" font-size="16" text-anchor="middle" fill="#555555">Boundary estimated - verify with measured survey before planning submission</text>`
+    : hasMapImage
+      ? `<image x="28" y="52" width="844" height="676" href="${escapeXml(siteSnapshot.dataUrl)}" preserveAspectRatio="xMidYMid slice"/>
   <rect x="28" y="52" width="844" height="676" fill="none" stroke="#111111" stroke-width="3"/>
   <g transform="translate(44 66)" opacity="0.88">
-    <path d="${sitePath}" fill="#a9c58d66" stroke="#d64d35" stroke-width="5" stroke-dasharray="18 10"/>
+    <path d="${sitePath}" fill="#1976D222" stroke="#1976D2" stroke-width="5"/>
     <path d="${buildablePath}" fill="none" stroke="#111111" stroke-width="3"/>
-  </g>`
-    : `<rect x="28" y="52" width="844" height="676" fill="#f3efe4" stroke="#111111" stroke-width="3"/>
+    <path d="${proposedFootprintPath}" fill="#11111133" stroke="#111111" stroke-width="4"/>
+  </g>
+  <text x="450" y="104" font-family="Arial, sans-serif" font-size="26" font-weight="700" text-anchor="middle" fill="#111111">${boundaryLabel}</text>`
+      : `<rect x="28" y="52" width="844" height="676" fill="#f3efe4" stroke="#111111" stroke-width="3"/>
   <g transform="translate(44 66)">
-    <path d="${sitePath}" fill="#dfe8d0" stroke="#d64d35" stroke-width="5" stroke-dasharray="18 10"/>
+    <path d="${sitePath}" fill="#1976D222" stroke="#1976D2" stroke-width="5"/>
     <path d="${buildablePath}" fill="none" stroke="#111111" stroke-width="3"/>
+    <path d="${proposedFootprintPath}" fill="#11111133" stroke="#111111" stroke-width="4"/>
   </g>
   <path d="M 64 642 C 186 600 272 620 354 574 C 440 526 552 540 806 488" fill="none" stroke="#c8c8c8" stroke-width="28" opacity="0.55"/>
-  <path d="M 64 642 C 186 600 272 620 354 574 C 440 526 552 540 806 488" fill="none" stroke="#ffffff" stroke-width="18" opacity="0.85"/>`;
-  const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="site_context" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-site-map-source="${escapeXml(mapSource)}" data-site-map-image="${hasMapImage ? "true" : "false"}">
+  <path d="M 64 642 C 186 600 272 620 354 574 C 440 526 552 540 806 488" fill="none" stroke="#ffffff" stroke-width="18" opacity="0.85"/>
+  <text x="450" y="104" font-family="Arial, sans-serif" font-size="26" font-weight="700" text-anchor="middle" fill="#111111">${boundaryLabel}</text>`;
+  const areaLabel = boundaryEstimated
+    ? `Site area: ${site.area_m2} m2 (context) | Boundary source: ${site.boundary_source || "estimated"} | Confidence: ${site.boundary_confidence ?? "n/a"} | Main entry: ${site.main_entry?.orientation || "north"} (${site.main_entry?.source || "fallback"})`
+    : `Site area: ${site.area_m2} m2 | Boundary source: ${site.boundary_source || "site_polygon"} | Confidence: ${site.boundary_confidence ?? "n/a"} | Main entry: ${site.main_entry?.orientation || "north"} (${site.main_entry?.source || "fallback"})`;
+  const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="site_context" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-site-map-source="${escapeXml(mapSource)}" data-site-map-image="${hasMapImage ? "true" : "false"}" data-boundary-source="${escapeXml(site.boundary_source || "")}" data-boundary-confidence="${escapeXml(String(site.boundary_confidence ?? ""))}" data-main-entry-orientation="${escapeXml(site.main_entry?.orientation || "")}">
+  <defs>
+    <marker id="main-entry-arrowhead" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M 0 0 L 12 6 L 0 12 z" fill="#1976D2"/>
+    </marker>
+  </defs>
   <rect width="${width}" height="${height}" fill="#ffffff"/>
   ${mapLayer}
+  ${mainEntryArrowSvg}
   <path d="M 806 142 L 806 70 L 784 116 M 806 70 L 828 116" fill="none" stroke="#111111" stroke-width="5" stroke-linecap="round"/>
   <circle cx="806" cy="112" r="46" fill="none" stroke="#111111" stroke-width="2"/>
   <text x="806" y="58" font-family="Arial, sans-serif" font-size="32" font-weight="700" text-anchor="middle" fill="#111111">N</text>
-  <text x="450" y="342" font-family="Arial, sans-serif" font-size="24" text-anchor="middle" fill="#333333">Rear Garden</text>
-  <text x="450" y="682" font-family="Arial, sans-serif" font-size="24" text-anchor="middle" fill="#333333">Front Garden</text>
-  <text x="82" y="690" font-family="Arial, sans-serif" font-size="20" fill="#333333">Driveway</text>
+  <text x="450" y="342" font-family="Arial, sans-serif" font-size="24" text-anchor="middle" fill="#333333">${boundaryEstimated ? "Proposed Footprint" : "Rear Garden"}</text>
+  <text x="450" y="682" font-family="Arial, sans-serif" font-size="24" text-anchor="middle" fill="#333333">${boundaryEstimated ? "Estimated Boundary" : "Front Garden"}</text>
+  <text x="82" y="690" font-family="Arial, sans-serif" font-size="20" fill="#333333">${boundaryEstimated ? "Context Street" : "Driveway"}</text>
   <line x1="48" y1="790" x2="348" y2="790" stroke="#111111" stroke-width="5"/>
   <line x1="48" y1="780" x2="48" y2="800" stroke="#111111" stroke-width="3"/>
   <line x1="168" y1="780" x2="168" y2="800" stroke="#111111" stroke-width="3"/>
@@ -2541,7 +5318,7 @@ function buildSiteContextPanelArtifact({
   <text x="48" y="860" font-family="Arial, sans-serif" font-size="17" fill="#333333">Scale 1:500</text>
   <text x="852" y="824" font-family="Arial, sans-serif" font-size="15" text-anchor="end" fill="#555555">${escapeXml(mapLabel)}</text>
   <text x="852" y="852" font-family="Arial, sans-serif" font-size="13" text-anchor="end" fill="#777777">${escapeXml(attribution)}</text>
-  <text x="852" y="878" font-family="Arial, sans-serif" font-size="13" text-anchor="end" fill="#777777">Area ${escapeXml(site.area_m2)} m2 | ${escapeXml(geometryHash.slice(0, 12))}</text>
+  <text x="852" y="878" font-family="Arial, sans-serif" font-size="13" text-anchor="end" fill="#777777">${escapeXml(areaLabel)} | ${escapeXml(geometryHash.slice(0, 12))}</text>
 </svg>`;
   const svgHash = computeCDSHashSync({ panelType: "site_context", svgString });
   const assetId = createStableId(
@@ -2567,55 +5344,92 @@ function buildSiteContextPanelArtifact({
       source: hasMapImage ? mapSource : "deterministic_site_context_fallback",
       siteMapSource: mapSource,
       hasMapImage,
+      mapType: siteSnapshot?.mapType || null,
       attribution,
+      sitePlanMode,
+      boundaryAuthoritative: site.boundary_authoritative === true,
+      boundaryEstimated,
+      boundaryConfidence: site.boundary_confidence ?? null,
+      boundarySource: site.boundary_source || null,
+      boundaryLabel,
+      boundaryWarningCode: site.boundary_warning_code || null,
+      fallbackReason: site.fallback_reason || null,
+      siteAreaM2: site.area_m2 ?? null,
+      mainEntry: site.main_entry || null,
+      mainEntryOrientation: site.main_entry?.orientation || null,
+      mainEntryBearingDeg: site.main_entry?.bearingDeg ?? null,
+      mainEntrySource: site.main_entry?.source || null,
+      authoritativeAreaM2: site.authoritative_area_m2 || null,
+      estimatedAreaM2: site.estimated_area_m2 || null,
       svgHash,
     },
   };
 }
 
-function buildMaterialPalettePanelArtifact({
+export function buildMaterialPalettePanelArtifact({
   projectGraphId,
   localStyle,
   compiledProject,
   styleDNA,
   brief,
   geometryHash,
+  // Phase 2 — when present, the SheetDesignContext supplies the canonical
+  // materials list (normalized via getCanonicalMaterialPalette + DNA fallback).
+  // We prefer ctx.materials over the localStyle / DNA collection so style +
+  // material + climate stay coherent across panels. When absent, fall back to
+  // the legacy Phase E collection logic.
+  sheetDesignContext = null,
 }) {
-  const width = 900;
-  const height = 620;
-  const materials = normalizeMaterialPaletteEntriesShared({
-    localStyle,
-    compiledProject,
-    styleDNA,
-    brief,
-  });
+  const width = 700;
+  const height = 900;
+  const ctxMaterials = Array.isArray(sheetDesignContext?.materials)
+    ? sheetDesignContext.materials.filter(
+        (entry) => entry && (entry.name || entry.hexColor || entry.hex),
+      )
+    : [];
+  const baseMaterials =
+    ctxMaterials.length > 0
+      ? ctxMaterials
+      : normalizeMaterialPaletteEntriesShared({
+          localStyle,
+          compiledProject,
+          styleDNA,
+          brief,
+        });
+  // Always render up to 8 cards; if the collection is short, top up from the
+  // canonical 8-material fallback so the 2×4 grid stays visually balanced.
+  const materials = topUpMaterialPaletteWithCanonical(baseMaterials, 8);
   const { defs, cards, cardMetadata } = buildMaterialPaletteCards({
     materials,
     layout: {
-      cols: 3,
-      rows: 2,
-      max: 6,
-      cardWidth: 180,
-      cardHeight: 96,
-      gapX: 32,
-      gapY: 78,
-      startX: 44,
-      startY: 86,
-      labelOffset: 24,
-      subLabelOffset: 48,
-      labelFontSize: 18,
-      subLabelFontSize: 15,
+      // Phase 2: 2 cols × 4 rows = 8 cards on the presentation-v3 row-3 slot.
+      cols: 2,
+      rows: 4,
+      max: 8,
+      cardWidth: 270,
+      cardHeight: 120,
+      gapX: 42,
+      gapY: 60,
+      startX: 58,
+      startY: 110,
+      labelOffset: 20,
+      subLabelOffset: 38,
+      labelFontSize: 17,
+      subLabelFontSize: 13,
       fontFamily: "Arial, sans-serif",
-      labelMaxChars: 28,
-      subLabelMaxChars: 32,
+      labelMaxChars: 22,
+      subLabelMaxChars: 26,
       strokeWidth: 2,
+      showCategoryLabel: true,
+      categoryFontSize: 11,
+      categoryOffset: 10,
     },
   });
   const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="material_palette" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}">
   <defs>${defs}</defs>
   <rect width="${width}" height="${height}" fill="#ffffff"/>
-  <text x="32" y="42" font-family="Arial, sans-serif" font-size="30" font-weight="700" fill="#111111">MATERIAL PALETTE</text>
-  <line x1="32" y1="58" x2="868" y2="58" stroke="#111111" stroke-width="2"/>
+  <text x="34" y="48" font-family="Arial, sans-serif" font-size="32" font-weight="700" fill="#111111">MATERIAL PALETTE</text>
+  <line x1="34" y1="66" x2="666" y2="66" stroke="#111111" stroke-width="2"/>
   ${cards}
 </svg>`;
   const svgHash = computeCDSHashSync({
@@ -2650,11 +5464,19 @@ function buildMaterialPalettePanelArtifact({
       materialCount: materials.length,
       materials,
       cardMetadata,
+      // Phase 2 surfaces:
+      cardCount: cardMetadata.length,
+      categoryCount: new Set(
+        cardMetadata.map((card) => card.category).filter(Boolean),
+      ).size,
+      categories: cardMetadata.map((card) => card.category || null),
+      sheetDesignContextHash: sheetDesignContext?.contextHash || null,
+      sourceContext: sheetDesignContext ? "sheet_design_context" : "legacy_dna",
     },
   };
 }
 
-function splitNoteLines(note = "", maxChars = 36) {
+function splitNoteLines(note = "", maxChars = 36, maxLines = 3) {
   const words = String(note || "")
     .replace(/\s+/g, " ")
     .trim()
@@ -2671,32 +5493,236 @@ function splitNoteLines(note = "", maxChars = 36) {
     }
   });
   if (current) lines.push(current);
-  return lines.slice(0, 3);
+  return lines.slice(0, maxLines);
 }
 
-function buildKeyNoteItems({ brief, site, climate, regulations, localStyle }) {
-  const notes = [
-    `${brief?.building_type || "Building"} brief: ${brief?.target_gia_m2 || "target"} sq m across ${brief?.target_storeys || 1} storeys.`,
-    site?.area_m2
-      ? `Site area ${site.area_m2} sq m; boundary and context sourced from ProjectGraph site analysis.`
-      : "Site boundary is held in the ProjectGraph site model.",
-    `Sustainability ambition: ${brief?.sustainability_ambition || "low_energy"}.`,
-    climate?.overheating?.risk_level
-      ? `Climate precheck: overheating risk ${climate.overheating.risk_level}.`
-      : "Climate precheck uses deterministic fallback where live data is unavailable.",
-    regulations?.jurisdiction
-      ? `Regulation precheck jurisdiction: ${regulations.jurisdiction}.`
-      : "Regulation checks are preliminary and require professional review.",
-    Array.isArray(localStyle?.material_palette) &&
-    localStyle.material_palette.length
-      ? `Facade palette: ${localStyle.material_palette.slice(0, 3).join(", ")}.`
-      : "Facade palette is derived from local style and user intent.",
-    "All dimensions are in metres unless noted; verify before construction.",
-  ];
-  return notes.filter(Boolean).slice(0, 7);
+// Phase 2 — canonical Key Notes group order. The structure stays stable
+// across runs so the panel order is deterministic regardless of input.
+const KEY_NOTE_GROUP_ORDER = Object.freeze([
+  "external_walls",
+  "roof",
+  "windows_doors",
+  "heating_ventilation",
+  "drainage",
+  "sustainability",
+  "climate_strategy",
+  "dimensions_tolerances",
+  "copyright",
+]);
+
+function pickMaterialByCategory(materials, predicate) {
+  if (!Array.isArray(materials)) return null;
+  return materials.find((m) => m && predicate(m)) || null;
 }
 
-function buildKeyNotesPanelArtifact({
+function describeMaterial(material) {
+  if (!material) return null;
+  const name = String(material.name || "").trim();
+  if (!name) return null;
+  const hex = material.hexColor || material.hex || null;
+  const application = String(material.application || "").trim();
+  const tail = [];
+  if (hex) tail.push(hex);
+  if (application) tail.push(application);
+  return tail.length ? `${name} (${tail.join(" / ")})` : name;
+}
+
+export function buildKeyNoteItems({
+  brief,
+  site,
+  climate,
+  regulations,
+  localStyle,
+  sheetDesignContext = null,
+}) {
+  const ctxMaterials =
+    Array.isArray(sheetDesignContext?.materials) &&
+    sheetDesignContext.materials.length
+      ? sheetDesignContext.materials
+      : null;
+  const localPalette = Array.isArray(localStyle?.material_palette)
+    ? localStyle.material_palette
+    : [];
+  const ctxClimate =
+    sheetDesignContext?.climate ||
+    (climate && typeof climate === "object" ? null : null);
+  const climateZone =
+    sheetDesignContext?.climate?.zone ||
+    climate?.zone ||
+    climate?.koppen ||
+    null;
+  const climateRainfall =
+    sheetDesignContext?.climate?.rainfallBand ||
+    sheetDesignContext?.climate?.rainfallMm ||
+    climate?.rainfall_mm ||
+    climate?.annual_rainfall_mm ||
+    null;
+  const climateStrategy =
+    sheetDesignContext?.climate?.strategy ||
+    climate?.strategy ||
+    climate?.design_strategy ||
+    null;
+  const overheatingFlag =
+    sheetDesignContext?.climate?.overheating === true ||
+    climate?.overheating === true ||
+    climate?.overheating?.risk_level === "high" ||
+    climate?.overheating?.risk_level === "moderate";
+
+  const wallMaterial =
+    pickMaterialByCategory(ctxMaterials, (m) =>
+      /external|wall|brick|render|stone|cladding|facade/i.test(
+        `${m.application} ${m.name}`,
+      ),
+    ) ||
+    (ctxMaterials && ctxMaterials[0]) ||
+    null;
+  const roofMaterial = pickMaterialByCategory(ctxMaterials, (m) =>
+    /roof|tile|slate|standing\s*seam/i.test(`${m.application} ${m.name}`),
+  );
+  const openingMaterial = pickMaterialByCategory(ctxMaterials, (m) =>
+    /window|opening|glaz|frame|aluminium|aluminum/i.test(
+      `${m.application} ${m.name}`,
+    ),
+  );
+  const doorMaterial = pickMaterialByCategory(ctxMaterials, (m) =>
+    /door/i.test(`${m.application} ${m.name}`),
+  );
+
+  const wallPrimaryDesc = describeMaterial(wallMaterial);
+  const roofDesc = describeMaterial(roofMaterial);
+  const openingDesc = describeMaterial(openingMaterial);
+  const doorDesc = describeMaterial(doorMaterial);
+  const facadeFallback = localPalette.length
+    ? localPalette
+        .slice(0, 3)
+        .map((entry) =>
+          typeof entry === "string"
+            ? entry
+            : entry?.name || entry?.material || "",
+        )
+        .filter(Boolean)
+        .join(", ")
+    : null;
+
+  const partL =
+    sheetDesignContext?.sustainability?.partL ||
+    regulations?.partL ||
+    regulations?.part_l ||
+    null;
+  const fabricFirst =
+    sheetDesignContext?.sustainability?.fabricFirst === true ||
+    regulations?.fabric_first === true ||
+    regulations?.fabricFirst === true;
+  const sustainabilityAmbition =
+    brief?.sustainability_ambition || "low energy / fabric-first";
+  const programmeLabel = resolveProgrammeDisplayLabel(brief);
+
+  const region =
+    sheetDesignContext?.region ||
+    site?.region ||
+    site?.country ||
+    brief?.site_input?.region ||
+    "UK";
+  const dateLabel = brief?.brief_date || brief?.date || null;
+
+  const groups = {
+    external_walls: {
+      heading: "External walls",
+      lines: [
+        wallPrimaryDesc
+          ? `Primary wall: ${wallPrimaryDesc}.`
+          : facadeFallback
+            ? `Facade palette: ${facadeFallback}.`
+            : "Primary wall finish per local-style pack.",
+        "Insulated cavity construction; verify U-values against Part L 2021.",
+      ],
+    },
+    roof: {
+      heading: "Roof",
+      lines: [
+        roofDesc
+          ? `Roof: ${roofDesc}.`
+          : "Pitched roof per regional vernacular.",
+        "Concealed gutters; rooflights where indicated on plan.",
+      ],
+    },
+    windows_doors: {
+      heading: "Windows / Doors",
+      lines: [
+        openingDesc
+          ? `Windows: ${openingDesc}.`
+          : "Aluminium-framed double glazing, anthracite finish.",
+        doorDesc
+          ? `Front door: ${doorDesc}.`
+          : "Solid timber front door with weather seal.",
+      ],
+    },
+    heating_ventilation: {
+      heading: "Heating / Ventilation",
+      lines: [
+        "Air-source heat pump with underfloor heating to ground floor.",
+        "MVHR (mechanical ventilation with heat recovery) ducted through ceiling void.",
+      ],
+    },
+    drainage: {
+      heading: "Drainage",
+      lines: [
+        "Foul to public sewer; surface water to soakaway / SuDS where appropriate.",
+        "Verify connections with local water authority before construction.",
+      ],
+    },
+    sustainability: {
+      heading: "Sustainability",
+      lines: [
+        partL
+          ? `Compliance: ${String(partL).slice(0, 80)}.`
+          : `Ambition: ${sustainabilityAmbition}; Part L 2021 fabric performance.`,
+        fabricFirst
+          ? "Fabric-first strategy: airtightness, continuous insulation, thermal bridging mitigation."
+          : "Low-energy strategy with fabric performance prioritised over add-on services.",
+      ],
+    },
+    climate_strategy: {
+      heading: "Climate strategy",
+      lines: [
+        climateZone
+          ? `Climate zone ${climateZone}${climateRainfall ? ` / rainfall ${typeof climateRainfall === "number" ? `${climateRainfall} mm/yr` : climateRainfall}` : ""}.`
+          : "Climate strategy uses deterministic UK temperate defaults.",
+        climateStrategy
+          ? `${climateStrategy}.`
+          : overheatingFlag
+            ? "Overheating risk flagged; specify external solar shading and night purge."
+            : "Passive solar + cross-ventilation; minimise summer gain on south-west glazing.",
+      ],
+    },
+    dimensions_tolerances: {
+      heading: "Dimensions / Tolerances",
+      lines: [
+        `Programme: ${programmeLabel}.`,
+        "All dimensions in millimetres unless otherwise noted.",
+        "Do not scale from drawing. Verify on site before construction.",
+      ],
+    },
+    copyright: {
+      heading: "Copyright / Disclaimer",
+      lines: [
+        `© Architecture AI Platform${dateLabel ? ` — ${dateLabel}` : ""}. RIBA Stage concept package, ${region}.`,
+        "Drawings issued for early-stage design; require professional architectural / structural / planning review before construction.",
+      ],
+    },
+  };
+
+  return KEY_NOTE_GROUP_ORDER.map((id) => {
+    const group = groups[id];
+    return {
+      id,
+      heading: group.heading,
+      lines: (group.lines || []).filter(Boolean),
+    };
+  });
+}
+
+export function buildKeyNotesPanelArtifact({
   projectGraphId,
   brief,
   site,
@@ -2704,38 +5730,48 @@ function buildKeyNotesPanelArtifact({
   regulations,
   localStyle,
   geometryHash,
+  sheetDesignContext = null,
 }) {
-  const width = 620;
-  const height = 620;
-  const notes = buildKeyNoteItems({
+  const width = 560;
+  const height = 900;
+  const groups = buildKeyNoteItems({
     brief,
     site,
     climate,
     regulations,
     localStyle,
+    sheetDesignContext,
   });
-  let cursorY = 92;
-  const noteGroups = notes
-    .map((note, index) => {
-      const lines = splitNoteLines(note, 42);
-      const groupY = cursorY;
-      cursorY += 34 + lines.length * 22;
-      return `<g data-key-note="${index + 1}">
-  <text x="34" y="${groupY}" font-size="18" font-family="Arial, sans-serif" font-weight="700" fill="#111111">${index + 1}.</text>
-  ${lines
-    .map(
-      (line, lineIndex) =>
-        `<text x="72" y="${groupY + lineIndex * 22}" font-size="17" font-family="Arial, sans-serif" fill="#222222">${escapeXml(line)}</text>`,
-    )
-    .join("\n  ")}
+  let cursorY = 102;
+  const groupSvg = groups
+    .map((group, index) => {
+      const headingY = cursorY;
+      const headingFontSize = 15;
+      const bodyFontSize = 13;
+      const lineHeight = 18;
+      const bodyLines = group.lines.flatMap((line) =>
+        splitNoteLines(line, 60, 2),
+      );
+      const blockHeight = 22 + bodyLines.length * lineHeight + 12;
+      const bodyTextSvg = bodyLines
+        .map(
+          (line, lineIndex) =>
+            `<text x="48" y="${headingY + 22 + lineIndex * lineHeight}" font-size="${bodyFontSize}" font-family="Arial, sans-serif" fill="#222222">${escapeXml(line)}</text>`,
+        )
+        .join("\n  ");
+      const block = `<g data-key-note-id="${escapeXml(group.id)}" data-key-note-index="${index + 1}">
+  <text x="34" y="${headingY}" font-size="${headingFontSize}" font-family="Arial, sans-serif" font-weight="700" fill="#111111" class="sheet-critical-label" data-text-role="critical">${index + 1}. ${escapeXml(group.heading)}</text>
+  ${bodyTextSvg}
 </g>`;
+      cursorY += blockHeight;
+      return block;
     })
     .join("\n");
   const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="key_notes" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}">
   <rect width="${width}" height="${height}" fill="#ffffff"/>
-  <text x="30" y="44" font-family="Arial, sans-serif" font-size="30" font-weight="700" fill="#111111">KEY NOTES</text>
-  <line x1="30" y1="60" x2="590" y2="60" stroke="#111111" stroke-width="2"/>
-  ${noteGroups}
+  <text x="30" y="48" font-family="Arial, sans-serif" font-size="28" font-weight="700" fill="#111111">KEY NOTES</text>
+  <line x1="30" y1="66" x2="530" y2="66" stroke="#111111" stroke-width="2"/>
+  ${groupSvg}
 </svg>`;
   const svgHash = computeCDSHashSync({
     panelType: "key_notes",
@@ -2765,54 +5801,165 @@ function buildKeyNotesPanelArtifact({
       source: "project_graph_key_notes",
       panelType: "key_notes",
       geometryHash,
-      noteCount: notes.length,
+      noteCount: groups.length,
+      groupOrder: KEY_NOTE_GROUP_ORDER.slice(),
+      groupIds: groups.map((g) => g.id),
+      groupHeadings: groups.map((g) => g.heading),
+      programmeLabel: resolveProgrammeDisplayLabel(brief),
+      buildingType: brief?.building_type || null,
+      programmeTemplateKey: brief?.programme_template_key || null,
+      sheetDesignContextHash: sheetDesignContext?.contextHash || null,
+      sourceContext: sheetDesignContext ? "sheet_design_context" : "legacy_dna",
     },
   };
 }
 
-function buildTitleBlockPanelArtifact({
+// Phase 2 — parse RIBA stage label from brief.user_intent.portfolio_mood,
+// brief.riba_stage, or sheetPlan label fallback.
+function resolveRibaStageLabel(brief, sheetPlan) {
+  const fromBrief =
+    brief?.riba_stage ||
+    brief?.user_intent?.portfolio_mood ||
+    brief?.user_intent?.riba_stage ||
+    null;
+  if (typeof fromBrief === "string") {
+    const match = fromBrief.match(/(?:riba[_\s]*stage[_\s]*)?(\d)\b/i);
+    if (match) return `RIBA Stage ${match[1]}`;
+  }
+  if (typeof fromBrief === "number" && Number.isFinite(fromBrief)) {
+    return `RIBA Stage ${fromBrief}`;
+  }
+  if (sheetPlan?.label) {
+    const match = String(sheetPlan.label).match(/RIBA\s*Stage\s*(\d)/i);
+    if (match) return `RIBA Stage ${match[1]}`;
+  }
+  return "RIBA Stage 2";
+}
+
+function todayIsoDate() {
+  try {
+    return new Date().toISOString().slice(0, 10);
+  } catch {
+    return "";
+  }
+}
+
+function resolveProgrammeDisplayLabel(brief = {}) {
+  return String(
+    brief?.project_type_support?.label ||
+      brief?.projectTypeSupport?.label ||
+      brief?.programme_label ||
+      brief?.programmeLabel ||
+      brief?.building_type ||
+      "architecture",
+  )
+    .replace(/[_-]+/g, " ")
+    .trim();
+}
+
+export function buildTitleBlockPanelArtifact({
   projectGraphId,
   brief,
   geometryHash,
   sheetPlan,
+  sheetDesignContext = null,
 }) {
   const width = 620;
-  const height = 620;
+  const height = 900;
   const location =
-    brief?.site_input?.address || brief?.site_input?.postcode || "Project site";
+    sheetDesignContext?.region && brief?.site_input?.address
+      ? `${brief.site_input.address}, ${sheetDesignContext.region}`
+      : brief?.site_input?.address ||
+        brief?.site_input?.postcode ||
+        sheetDesignContext?.region ||
+        "Project site";
   const drawingNumber = sheetPlan?.sheet_number || "A1-00";
   const sheetLabel = sheetPlan?.label || "RIBA Stage 2 Master";
   const projectTitle = String(brief?.project_name || "ArchiAI Project")
     .replace(/\s+/g, " ")
     .trim()
     .toUpperCase();
+  const titleLines = splitNoteLines(projectTitle, 22, 2);
+  const programmeLabel = resolveProgrammeDisplayLabel(brief);
+  const ribaStageLabel = resolveRibaStageLabel(brief, sheetPlan);
+  const status = String(
+    brief?.status ||
+      brief?.delivery_status ||
+      sheetPlan?.status ||
+      "Draft for review",
+  ).trim();
+  const revision = String(
+    brief?.revision || brief?.rev || sheetPlan?.revision || "P01",
+  ).trim();
+  const dateLabel = String(
+    brief?.brief_date || brief?.date || sheetPlan?.date || todayIsoDate(),
+  ).trim();
+  const architectName = String(
+    brief?.architect ||
+      sheetDesignContext?.architect ||
+      "Architecture AI Platform",
+  ).trim();
+  const studioFooter = String(
+    brief?.studio_footer ||
+      sheetDesignContext?.studio_footer ||
+      "Architecture | Design | Planning",
+  ).trim();
+  // Phase 2 — broader RIBA-style metadata. The first 5 rows preserve the
+  // existing data source (so existing tests and downstream readers continue
+  // working). The new rows surface RIBA Stage / Status / Revision / Date /
+  // Drawing No. so reviewers get the full set on the sheet.
   const rows = [
     ["Project", brief?.project_name || "ArchiAI Project"],
     ["Location", location],
-    ["Stage", sheetLabel],
-    ["Scale", "As shown"],
-    ["Date", "Generated"],
+    ["Programme", programmeLabel],
+    ["Target GIA", `${round(brief?.target_gia_m2 || 0, 1)} m²`],
+    ["Storeys", `${brief?.target_storeys || 1}`],
+    ["RIBA Stage", ribaStageLabel],
+    ["Status", status],
+    ["Revision", revision],
+    ["Date", dateLabel],
     ["Drawing No.", drawingNumber],
   ];
+  const rowStartY = 232;
+  const rowGap = 50;
   const rowSvg = rows
     .map((row, index) => {
-      const y = 230 + index * 48;
+      const y = rowStartY + index * rowGap;
+      const rawValue = String(row[1] || "");
+      const valueMaxChars = index <= 1 ? 34 : 28;
+      const valueLines = splitNoteLines(rawValue, valueMaxChars, 2);
+      const valueFontSize =
+        rawValue.length > 54 ? 12 : rawValue.length > 38 ? 14 : 16;
       return `<g>
-  <line x1="34" y1="${y - 28}" x2="586" y2="${y - 28}" stroke="#999999" stroke-width="1"/>
-  <text x="42" y="${y}" font-size="18" font-family="Arial, sans-serif" fill="#222222">${escapeXml(row[0])}</text>
-  <text x="236" y="${y}" font-size="18" font-family="Arial, sans-serif" font-weight="700" fill="#111111">${escapeXml(row[1])}</text>
+  <line x1="34" y1="${y - 24}" x2="586" y2="${y - 24}" stroke="#999999" stroke-width="1"/>
+  <text x="42" y="${y}" font-size="15" font-family="Arial, sans-serif" fill="#222222">${escapeXml(row[0])}</text>
+  ${valueLines
+    .map(
+      (line, lineIndex) =>
+        `<text x="220" y="${y + lineIndex * (valueFontSize + 3)}" font-size="${valueFontSize}" font-family="Arial, sans-serif" font-weight="700" fill="#111111">${escapeXml(line)}</text>`,
+    )
+    .join("\n  ")}
 </g>`;
     })
     .join("\n");
-  const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="title_block" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}">
+  const titleSvg = titleLines
+    .map(
+      (line, index) =>
+        `<text x="34" y="${76 + index * 40}" font-family="Arial, sans-serif" font-size="32" font-weight="700" fill="#111111">${escapeXml(line)}</text>`,
+    )
+    .join("\n  ");
+  const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="title_block" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-brief-input-hash="${escapeXml(brief?.brief_input_hash || "")}">
   <rect width="${width}" height="${height}" fill="#ffffff"/>
-  <rect x="18" y="18" width="584" height="584" fill="none" stroke="#111111" stroke-width="3"/>
-  <text x="34" y="70" font-family="Arial, sans-serif" font-size="34" font-weight="700" fill="#111111">${escapeXml(projectTitle)}</text>
-  <text x="34" y="112" font-family="Arial, sans-serif" font-size="22" fill="#333333">${escapeXml((brief?.building_type || "architecture").replace(/_/g, " ").toUpperCase())}</text>
-  <line x1="34" y1="146" x2="586" y2="146" stroke="#111111" stroke-width="2"/>
+  <rect x="18" y="18" width="584" height="864" fill="none" stroke="#111111" stroke-width="3"/>
+  ${titleSvg}
+  <text x="34" y="170" font-family="Arial, sans-serif" font-size="20" fill="#333333">${escapeXml(programmeLabel.toUpperCase())}</text>
+  <line x1="34" y1="206" x2="586" y2="206" stroke="#111111" stroke-width="2"/>
   ${rowSvg}
-  <text x="34" y="560" font-family="Arial, sans-serif" font-size="15" fill="#555555">source_model_hash ${escapeXml(String(geometryHash || "").slice(0, 16))}</text>
-  <text x="586" y="560" font-family="Arial, sans-serif" font-size="15" text-anchor="end" fill="#555555">ARCHITECT AI PLATFORM</text>
+  <line x1="34" y1="780" x2="586" y2="780" stroke="#111111" stroke-width="1"/>
+  <text x="34" y="808" font-family="Arial, sans-serif" font-size="15" font-weight="700" fill="#222222">${escapeXml(architectName.toUpperCase())}</text>
+  <text x="34" y="828" font-family="Arial, sans-serif" font-size="12" fill="#555555">${escapeXml(studioFooter)}</text>
+  <text x="34" y="862" font-family="Arial, sans-serif" font-size="11" fill="#888888">source_model_hash ${escapeXml(String(geometryHash || "").slice(0, 16))}</text>
+  <text x="586" y="862" font-family="Arial, sans-serif" font-size="11" text-anchor="end" fill="#888888">${escapeXml(`${ribaStageLabel} • Rev ${revision}`)}</text>
 </svg>`;
   const svgHash = computeCDSHashSync({
     panelType: "title_block",
@@ -2842,10 +5989,61 @@ function buildTitleBlockPanelArtifact({
       source: "project_graph_title_block",
       panelType: "title_block",
       geometryHash,
+      briefInputHash: brief?.brief_input_hash || null,
+      referenceMatch: brief?.reference_match === true,
+      projectName: brief?.project_name || null,
+      location,
+      targetGiaM2: Number(brief?.target_gia_m2 || 0),
+      targetStoreys: Number(brief?.target_storeys || 1),
+      buildingType: brief?.building_type || null,
+      programmeLabel,
+      supportStatus: brief?.support_status || null,
+      programmeTemplateKey: brief?.programme_template_key || null,
+      projectTypeRoute: brief?.project_type_route || null,
       drawingNumber,
       sheetLabel,
+      // Phase 2 — RIBA-style metadata fields
+      ribaStage: ribaStageLabel,
+      status,
+      revision,
+      date: dateLabel,
+      architect: architectName,
+      studioFooter,
+      rowKeys: rows.map((r) => r[0]),
+      sheetDesignContextHash: sheetDesignContext?.contextHash || null,
+      sourceContext: sheetDesignContext
+        ? "sheet_design_context"
+        : "legacy_brief",
     },
   };
+}
+
+function buildProjectGraphVisualContinuityBlock(visualManifest) {
+  if (!visualManifest || typeof visualManifest !== "object") {
+    return "";
+  }
+
+  const manifest = visualManifest;
+  const roofForm = manifest.roof?.form || "specified roof form";
+  const roofMaterial = manifest.roof?.materialName || "specified roof material";
+  const primaryMaterial =
+    manifest.primaryFacadeMaterial?.name || "specified primary facade material";
+  const secondaryMaterial =
+    manifest.secondaryFacadeMaterial?.name ||
+    "specified secondary facade material";
+  const windowRhythm = manifest.windowRhythm || "specified window rhythm";
+  const entrance =
+    manifest.entranceOrientation || "specified entrance position";
+
+  return [
+    "VISUAL CONTINUITY CONSTRAINTS:",
+    `- Preserve the exact ${manifest.storeyCount || "specified"} storey count, footprint proportions, silhouette, and roofline from the geometry reference.`,
+    `- Preserve roof form "${roofForm}" with ${roofMaterial}; do not flatten, steepen, rotate, or restyle the roof.`,
+    `- Preserve facade material order: primary ${primaryMaterial}; secondary ${secondaryMaterial}; do not swap materials between panels.`,
+    `- Preserve the ${windowRhythm} window rhythm, opening sizes, and opening positions from the reference geometry.`,
+    `- Preserve the entrance at ${entrance}; do not relocate the front door.`,
+    "- Do not invent extra bays, extra storeys, neighbouring buildings, signage, diagram labels, or text overlays.",
+  ].join("\n");
 }
 
 // Build a climate + style + programme aware prompt for image-edit-based
@@ -2853,6 +6051,50 @@ function buildTitleBlockPanelArtifact({
 // so the gpt-image call sees the same upstream drivers (UK temperate,
 // red brick + timber vernacular, 3-storey detached programme, etc.) that
 // the deterministic pipeline already computed.
+// Phase 4 — version stamp for the visual-panel render prompt + identity lock
+// surface. Bump when the prompt structure or identity metadata changes so QA
+// and tests can detect drift.
+export const RENDER_PROMPT_IDENTITY_VERSION =
+  "phase4-render-prompt-identity-v1";
+
+function summariseProgramSpacesForCutaway(programSpaces) {
+  if (!Array.isArray(programSpaces) || programSpaces.length === 0) return "";
+  const grouped = new Map();
+  for (const space of programSpaces) {
+    if (!space || !space.name) continue;
+    const level = String(space.level || space.floor || "Ground");
+    if (!grouped.has(level)) grouped.set(level, []);
+    grouped.get(level).push(String(space.name).trim());
+  }
+  if (grouped.size === 0) return "";
+  const parts = [];
+  for (const [level, rooms] of grouped) {
+    const top = rooms.slice(0, 6).join(", ");
+    parts.push(`${level}: ${top}`);
+  }
+  return parts.join(" | ");
+}
+
+function buildAxonometricCutawayIntent({ sheetDesignContext, brief }) {
+  const programSummary = summariseProgramSpacesForCutaway(
+    sheetDesignContext?.programSpaces,
+  );
+  const programmeLine = programSummary
+    ? `Reveal the rooms and furniture as compositionally indicated by the programme — ${programSummary}.`
+    : "Reveal the principal rooms and furniture as indicated by the programme.";
+  const storeysHint = brief?.target_storeys
+    ? `Show ${brief.target_storeys} storey(s) cleanly stacked with the upper slab cut away to expose the floors below.`
+    : "Show all storeys cleanly stacked with each upper slab cut away to expose the floor below.";
+  return [
+    "Photoreal CUTAWAY axonometric 3D projection (30 degrees isometric) — architectural sectional axonometric.",
+    "The roof and the upper portion of the building are partially removed (cut-away) so interior rooms, walls, doors, and key furniture are visible from above.",
+    storeysHint,
+    programmeLine,
+    "Match the reference massing, roof outline, opening layout, materials, and entrance position exactly — only the cut-away reveal differs from the standard axonometric.",
+    "Material textures legible on the remaining facades and on visible interior surfaces.",
+  ].join(" ");
+}
+
 export function buildProjectGraphRenderPrompt({
   panelType,
   brief,
@@ -2863,13 +6105,19 @@ export function buildProjectGraphRenderPrompt({
   programmeSummary,
   region,
   visualManifest = null,
+  // Phase 4 — optional SheetDesignContext for cutaway programme injection
+  // and stable identity hashing on every visual panel.
+  sheetDesignContext = null,
+  axonometricCutawayEnabled = false,
 }) {
   const reasoning = buildReasoningChainBlock({
     locationData: { climate, region },
     masterDNA: { localStyle, styleDNA },
     projectContext: { programmeSummary, targetStoreys: brief?.target_storeys },
   });
-  const intent =
+  const cutawayActive =
+    axonometricCutawayEnabled === true && panelType === "axonometric";
+  const baseIntent =
     {
       hero_3d:
         "Photoreal hero exterior 3D perspective — magazine-cover quality. Match the silhouette of the reference image exactly (same massing, same roof shape, same opening positions, same storey count). Apply the materials, lighting, and detailing from the reasoning chain below.",
@@ -2880,6 +6128,9 @@ export function buildProjectGraphRenderPrompt({
       interior_3d:
         "Photoreal interior perspective — main living/kitchen space. Use the SAME materials and palette as the exterior. Match the reference interior volume.",
     }[panelType] || "Photoreal architectural render.";
+  const intent = cutawayActive
+    ? buildAxonometricCutawayIntent({ sheetDesignContext, brief })
+    : baseIntent;
   const buildingType = brief?.building_type || "building";
   const projectName = brief?.project_name || "project";
   // Phase D: every visual-panel prompt is prefixed with the visual identity
@@ -2887,8 +6138,11 @@ export function buildProjectGraphRenderPrompt({
   // interior_3d) describe the same building. The block is identical across
   // panels for the same manifest, so OpenAI image generation cannot drift.
   const identityLock = buildVisualIdentityLockBlock(visualManifest);
+  const visualContinuity =
+    buildProjectGraphVisualContinuityBlock(visualManifest);
   return [
     identityLock,
+    visualContinuity,
     `Project: ${projectName} — ${buildingType}.`,
     intent,
     reasoning,
@@ -2915,7 +6169,23 @@ async function buildVisual3DPanelArtifacts({
   programmeSummary = null,
   region = null,
   visualManifest = null,
+  // Phase 4 — optional SheetDesignContext for cutaway programme injection
+  // and identity metadata propagation.
+  sheetDesignContext = null,
 }) {
+  // Phase 4 — feature flag gate. Default off; production behaviour
+  // unchanged. Server-side env override is `PROJECT_GRAPH_AXONOMETRIC_CUTAWAY_ENABLED=true`.
+  const cutawayEnvOverride = String(
+    (typeof process !== "undefined" &&
+      process.env?.PROJECT_GRAPH_AXONOMETRIC_CUTAWAY_ENABLED) ||
+      "",
+  )
+    .toLowerCase()
+    .trim();
+  const axonometricCutawayEnabled =
+    cutawayEnvOverride === "true" ||
+    cutawayEnvOverride === "1" ||
+    isFeatureEnabled("axonometricCutawayEnabled");
   const renderInputs = ensureCompiledProjectRenderInputs(compiledProject, {
     geometryHash,
     views: REQUIRED_3D_A1_PANEL_TYPES,
@@ -2936,6 +6206,7 @@ async function buildVisual3DPanelArtifacts({
       // when the image-gen call fails.
       let svgString = deterministicSvgString;
       let renderProvenance = null;
+      let imageRenderByteLength = null;
       let imageRenderFallbackReason = "gate_disabled";
       let renderResult = null;
       if (deterministicSvgString) {
@@ -2949,6 +6220,8 @@ async function buildVisual3DPanelArtifacts({
           programmeSummary,
           region,
           visualManifest,
+          sheetDesignContext,
+          axonometricCutawayEnabled,
         });
         try {
           renderResult = await renderProjectGraphPanelImage({
@@ -2972,6 +6245,7 @@ async function buildVisual3DPanelArtifacts({
             renderErr?.fallbackReason || "openai_error";
         }
         if (renderResult?.pngBuffer) {
+          imageRenderByteLength = renderResult.pngBuffer.length;
           svgString = wrapPngAsSvgPanel(
             renderResult.pngBuffer,
             viewBox,
@@ -3037,6 +6311,7 @@ async function buildVisual3DPanelArtifacts({
             imageRenderFallbackReason,
             imageRenderModel: renderProvenance?.model || null,
             imageRenderSize: renderProvenance?.size || null,
+            imageRenderByteLength,
             imageProviderUsed: renderProvenance ? "openai" : "deterministic",
             openaiConfigured:
               renderResult?.openaiConfigured ??
@@ -3067,6 +6342,17 @@ async function buildVisual3DPanelArtifacts({
             visualManifestId: visualManifest?.manifestId || null,
             visualManifestHash: visualManifest?.manifestHash || null,
             visualIdentityLocked: Boolean(visualManifest?.manifestHash),
+            // Phase 4 — extended identity metadata. Surfaces the
+            // SheetDesignContext hash + cutaway flag + render prompt
+            // identity version on every visual panel so QA, validators,
+            // and downstream readers can prove the four panels share the
+            // same source of truth and detect any drift quickly.
+            sheetDesignContextHash: sheetDesignContext?.contextHash || null,
+            axonometricCutawayEnabled:
+              panelType === "axonometric"
+                ? axonometricCutawayEnabled === true
+                : false,
+            renderPromptIdentityVersion: RENDER_PROMPT_IDENTITY_VERSION,
           },
         },
       ];
@@ -3090,6 +6376,10 @@ async function buildSheetPanelArtifacts({
   siteSnapshot = null,
   sheetPlan = null,
   visualManifest = null,
+  // Phase 1: optional SheetDesignContext. Reserved for downstream
+  // consumers; not consumed by the existing data-panel builders yet.
+  // eslint-disable-next-line no-unused-vars
+  sheetDesignContext = null,
 }) {
   const siteContext = buildSiteContextPanelArtifact({
     projectGraphId,
@@ -3107,6 +6397,7 @@ async function buildSheetPanelArtifacts({
     styleDNA,
     brief,
     geometryHash,
+    sheetDesignContext,
   });
   const keyNotes = buildKeyNotesPanelArtifact({
     projectGraphId,
@@ -3116,12 +6407,14 @@ async function buildSheetPanelArtifacts({
     regulations,
     localStyle,
     geometryHash,
+    sheetDesignContext,
   });
   const titleBlock = buildTitleBlockPanelArtifact({
     projectGraphId,
     brief,
     geometryHash,
     sheetPlan,
+    sheetDesignContext,
   });
   const visual3d = await buildVisual3DPanelArtifacts({
     compiledProject,
@@ -3133,6 +6426,7 @@ async function buildSheetPanelArtifacts({
     programmeSummary,
     region,
     visualManifest,
+    sheetDesignContext,
   });
   return {
     [siteContext.asset_id]: siteContext,
@@ -3213,21 +6507,22 @@ export function resolvePresentationLayoutTemplate(brief = {}) {
 // Phase B closeout v3: presentation-v3 row 1 metrics depend on storey count.
 // For 3-storey residential (the only multi-plan case that fits on one A1
 // after sheetSplitter forces 4+ to A1-002), shrink row 1 to 130mm and
-// widen the plans column so each plan slot becomes landscape (aspect ≥1.2)
-// and the floor plan SVG actually fills the slot. The recovered 58mm goes
-// to row 2 so sections + axonometric have more vertical room. 1-/2-storey
-// keep the existing 188mm row 1 (their plans already fill well).
+// widen the plans column so each plan slot becomes landscape (aspect >=1.2).
+// Standard 1-/2-storey boards use a tighter 180/178/200mm row stack so
+// sections stop floating in oversized frames and bottom data panels fill
+// the reference-board title/material area.
 export function buildPresentationV3SheetPanelSpecs(targetStoreys = 1) {
   const storeyCount = Math.max(1, Number(targetStoreys) || 1);
   const isMultiStorey = storeyCount >= 3;
 
   // Row geometry (mm; A1 landscape = 841×594mm with 10mm side margins).
+  const ROW_GAP = 8;
   const ROW1_Y = 10;
-  const ROW1_H = isMultiStorey ? 130 : 188;
-  const ROW2_Y = ROW1_Y + ROW1_H + 10;
-  const ROW2_H = isMultiStorey ? 246 : 188;
-  const ROW3_Y = ROW2_Y + ROW2_H + 10;
-  const ROW3_H = 178;
+  const ROW1_H = isMultiStorey ? 130 : 180;
+  const ROW2_Y = ROW1_Y + ROW1_H + ROW_GAP;
+  const ROW2_H = isMultiStorey ? 246 : 178;
+  const ROW3_Y = ROW2_Y + ROW2_H + ROW_GAP;
+  const ROW3_H = isMultiStorey ? 178 : 200;
 
   // Top-row column ranges. For 3-storey we trade 40mm of site width and
   // 100mm of elevation width for a wider plans column (510mm vs 370mm)
@@ -3238,7 +6533,7 @@ export function buildPresentationV3SheetPanelSpecs(targetStoreys = 1) {
   const PLANS_W_TOTAL = isMultiStorey ? 510 : 370;
   const ELEV_X = PLANS_X + PLANS_W_TOTAL + 10;
   const ELEV_W = isMultiStorey ? 151 : 251;
-  const ELEV_HALF_H = isMultiStorey ? 62 : 92;
+  const ELEV_HALF_H = isMultiStorey ? 62 : 88;
 
   // Row 1 right-column N/S elevations (stacked).
   const elevationsRow1 = [
@@ -3265,7 +6560,7 @@ export function buildPresentationV3SheetPanelSpecs(targetStoreys = 1) {
   // Row 2 right-column E/W elevations. In multi-storey row 2 is 246mm
   // tall, so each elevation gets ~121mm height (still a comfortable
   // 2:1+ aspect). Standard rows keep 92mm halves.
-  const ELEV_R2_HALF_H = isMultiStorey ? 121 : 92;
+  const ELEV_R2_HALF_H = isMultiStorey ? 121 : 87;
   const ELEV_R2_X = isMultiStorey ? 580 : ELEV_X;
   const ELEV_R2_W = isMultiStorey ? 251 : ELEV_W;
   const elevationsRow2 = [
@@ -3590,6 +6885,8 @@ function buildPanelPlacements({
   targetStoreys,
   allowedPanelTypes = null,
   layoutTemplate = "board-v2",
+  geometryHash = null,
+  briefInputHash = null,
 }) {
   const artifactIndex = buildPanelArtifactIndex(panelArtifacts);
   const allowed = allowedPanelTypes ? new Set(allowedPanelTypes) : null;
@@ -3616,22 +6913,48 @@ function buildPanelPlacements({
       if (!artifact && !slot.required) {
         return null;
       }
+      const title = formatPanelTitle(slot.panelType);
+      const scale = drawing?.scale || slot.scale;
+      const metricPlacement = {
+        ...slot,
+        title,
+        scale,
+        layoutTemplate,
+      };
+      const referenceMetrics = buildPanelReferenceMetrics({
+        panelType: slot.panelType,
+        artifact,
+        placement: metricPlacement,
+        layoutTemplate,
+        geometryHash,
+        briefInputHash,
+      });
       return {
         slotIndex: index,
         panelType: slot.panelType,
         panelId: createStableId("sheet-panel", slot.panelType, index),
-        title: formatPanelTitle(slot.panelType),
-        scale: drawing?.scale || slot.scale,
+        title,
+        scale,
         x: slot.x,
         y: slot.y,
         width: slot.width,
         height: slot.height,
+        layoutTemplate,
         required: slot.required,
         sourcePanelAssetId: artifact?.asset_id || assetId,
         sourceDrawingId: drawing?.drawing_id || null,
         source_model_hash: artifact?.source_model_hash || null,
         geometryHash: artifact?.source_model_hash || null,
         svgHash: artifact?.svgHash || null,
+        slotOccupancy: referenceMetrics.slotOccupancy,
+        finalSlotOccupancy: referenceMetrics.finalSlotOccupancy,
+        finalSlotFit: referenceMetrics.finalSlotFit,
+        contentBBoxRatio: referenceMetrics.contentBBoxRatio,
+        sourceGeometryHash: referenceMetrics.sourceGeometryHash,
+        panelIdentityHash: referenceMetrics.panelIdentityHash,
+        briefInputHash: referenceMetrics.briefInputHash,
+        renderMode: referenceMetrics.renderMode,
+        referenceMetrics,
         status: artifact?.svgString ? "ready" : "missing",
         empty: !artifact?.svgString,
       };
@@ -3868,6 +7191,71 @@ function applyOpenAIReasoningBlockersToQa(qa, blockedCalls = []) {
   };
 }
 
+// Phase 4: fold technical-group blockers from the upstream A1 export gate
+// into qa. Mirrors applyOpenAIReasoningBlockersToQa. Visual-panel blockers
+// are intentionally NOT included here — they remain warning-only on
+// sheetArtifact.quality.exportGate per Phase 4 scope.
+//
+// Codes raised by this helper:
+//   PANEL_CONTENT_EMPTY        → technical drawing missing/blank
+//   CROSS_VIEW_INCONSISTENT    → drawingConsistencyChecks errors
+//   A1_REQUIRED_PANEL_MISSING  → required-panel registry mismatch
+//   A1_LAYOUT_BROKEN           → layout evaluator failure
+//   A1_SHEET_SPLIT_REQUIRED    → A1-01 overflow without companion
+//
+// All folded under a single qa issue code to keep the slice's response
+// shape stable: A1_EXPORT_GATE_TECHNICAL_BLOCKED. Per-source detail is
+// preserved on the issue.details + the addCheck payload.
+function applyUpstreamGateTechnicalBlockersToQa(qa, exportGate) {
+  if (!exportGate) return qa;
+  const summary = extractTechnicalGroupBlockers(exportGate);
+  if (!summary.blocked) return qa;
+  const checks = [...(qa.checks || [])];
+  addCheck(
+    checks,
+    "A1_EXPORT_GATE_TECHNICAL_PANELS_PASS",
+    false,
+    {
+      sources: summary.sources,
+      codes: summary.codes,
+      blockerCount: summary.blockers.length,
+      blockedPanels: summary.blockedPanels,
+      blockers: summary.blockers,
+    },
+    "graphic",
+    0,
+  );
+  const issues = [
+    ...(qa.issues || []),
+    buildIssue(
+      "A1_EXPORT_GATE_TECHNICAL_BLOCKED",
+      "error",
+      "A1 final export blocked by technical-panel evidence (content-empty or cross-view inconsistent).",
+      {
+        sources: summary.sources,
+        codes: summary.codes,
+        blockedPanels: summary.blockedPanels,
+        blockers: summary.blockers,
+      },
+    ),
+  ];
+  const warningCount = issues.filter(
+    (issue) => issue.severity === "warning",
+  ).length;
+  const errorCount = issues.filter(
+    (issue) => issue.severity === "error",
+  ).length;
+  return {
+    ...qa,
+    status: "fail",
+    checks,
+    issues,
+    score: Math.max(0, 100 - errorCount * 18 - warningCount * 6),
+    upstreamGateTechnicalBlocked: true,
+    upstreamGateTechnicalSummary: summary,
+  };
+}
+
 // Phase B closeout: per-panel-type fit policy for presentation-v3.
 // Technical drawings cropped tight to contentBounds (with small padding) so
 // drawings fill 80–92% of the slot; site/3D/data panels keep the previous
@@ -3999,6 +7387,85 @@ export function computePanelCaptionLayout({
   };
 }
 
+function parseViewBoxTuple(viewBox = "") {
+  const values = String(viewBox || "")
+    .trim()
+    .split(/[\s,]+/)
+    .map(Number);
+  if (values.length < 4 || values.some((value) => !Number.isFinite(value))) {
+    return null;
+  }
+  const [, , width, height] = values;
+  if (!(width > 0) || !(height > 0)) {
+    return null;
+  }
+  return {
+    x: values[0],
+    y: values[1],
+    width,
+    height,
+  };
+}
+
+export function computePanelSlotFitMetrics({
+  panelType,
+  artifact,
+  placement = null,
+  layoutTemplate = "board-v2",
+} = {}) {
+  if (
+    !placement ||
+    !(Number(placement.width) > 0) ||
+    !(Number(placement.height) > 0)
+  ) {
+    return null;
+  }
+  const caption = computePanelCaptionLayout({
+    title: placement.title || formatPanelTitle(panelType),
+    scale: placement.scale || "",
+    panelWidth: Number(placement.width),
+    layoutTemplate,
+  });
+  const slotContentWidth =
+    Number(placement.width) - CAPTION_HORIZONTAL_PADDING_MM * 2;
+  const slotContentHeight =
+    Number(placement.height) -
+    caption.contentTopOffset -
+    caption.contentBottomPadding;
+  const viewBox = selectPanelContentViewBox({
+    panelType,
+    artifact,
+    layoutTemplate,
+  });
+  const parsedViewBox = parseViewBoxTuple(viewBox);
+  if (!parsedViewBox || !(slotContentWidth > 0) || !(slotContentHeight > 0)) {
+    return null;
+  }
+
+  const contentAspect = parsedViewBox.width / parsedViewBox.height;
+  const slotAspect = slotContentWidth / slotContentHeight;
+  let widthRatio = 1;
+  let heightRatio = 1;
+  if (contentAspect > slotAspect) {
+    heightRatio = slotAspect / contentAspect;
+  } else {
+    widthRatio = contentAspect / slotAspect;
+  }
+
+  return {
+    occupancyRatio: round(widthRatio * heightRatio, 4),
+    widthRatio: round(widthRatio, 4),
+    heightRatio: round(heightRatio, 4),
+    slotContentWidth: round(slotContentWidth, 2),
+    slotContentHeight: round(slotContentHeight, 2),
+    contentAspect: round(contentAspect, 4),
+    slotAspect: round(slotAspect, 4),
+    viewBox,
+    captionLayout: caption.layout,
+    preserveAspectRatio: "xMidYMid meet",
+  };
+}
+
 function renderSheetPanel({
   placement,
   artifact,
@@ -4069,7 +7536,7 @@ function buildSheetSvg({
     .map((placement) => placement.sourcePanelAssetId)
     .filter(Boolean);
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${A1_SHEET_SIZE_MM.width}mm" height="${A1_SHEET_SIZE_MM.height}mm" viewBox="0 0 ${A1_SHEET_SIZE_MM.width} ${A1_SHEET_SIZE_MM.height}" data-layout-version="${A1_SHEET_LAYOUT_VERSION}" data-layout-template="${escapeXml(layoutTemplate)}" data-placeholder-only="false" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-sheet-number="${escapeXml(sheetNumber)}" data-sheet-label="${escapeXml(sheetLabel)}" data-qa-status="${escapeXml(qaStatus || "pending")}">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${A1_SHEET_SIZE_MM.width}mm" height="${A1_SHEET_SIZE_MM.height}mm" viewBox="0 0 ${A1_SHEET_SIZE_MM.width} ${A1_SHEET_SIZE_MM.height}" data-layout-version="${A1_SHEET_LAYOUT_VERSION}" data-layout-template="${escapeXml(layoutTemplate)}" data-placeholder-only="false" data-reference-match="${brief?.reference_match === true ? "true" : "false"}" data-brief-input-hash="${escapeXml(brief?.brief_input_hash || "")}" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-sheet-number="${escapeXml(sheetNumber)}" data-sheet-label="${escapeXml(sheetLabel)}" data-qa-status="${escapeXml(qaStatus || "pending")}">
   <rect width="${A1_SHEET_SIZE_MM.width}" height="${A1_SHEET_SIZE_MM.height}" fill="#ffffff"/>
   <rect x="5" y="5" width="831" height="584" fill="none" stroke="#111111" stroke-width="0.7"/>
   <desc>Reference board A1 package for ${escapeXml(brief.project_name)}. Panels ${sourcePanelAssetIds.length}. Geometry hash ${escapeXml(geometryHash)}.</desc>
@@ -4095,7 +7562,19 @@ async function buildA1Sheet({
   siteSnapshot = null,
   sheetPlan = null,
   visualManifest = null,
+  // Phase 1: optional SheetDesignContext. Existing callers may omit it; the
+  // function does not yet hard-depend on it.
+  sheetDesignContext = null,
 }) {
+  const __a1sheetStart = Date.now();
+  const __a1sheetLog = (step, sinceMs, extra = "") => {
+    const now = Date.now();
+    const tail = extra ? ` ${extra}` : "";
+    // eslint-disable-next-line no-console
+    console.log(`[VS_TIMING] step=a1sheet.${step} ms=${now - sinceMs}${tail}`);
+    return now;
+  };
+  let __a1mark = __a1sheetStart;
   const drawingNumber = sheetPlan?.sheet_number || "A1-00";
   const sheetLabel = sheetPlan?.label || "RIBA Stage 2 Master";
   const supplementalPanelArtifacts = await buildSheetPanelArtifacts({
@@ -4117,7 +7596,9 @@ async function buildA1Sheet({
       label: sheetLabel,
     },
     visualManifest,
+    sheetDesignContext,
   });
+  __a1mark = __a1sheetLog("build_panel_artifacts", __a1mark);
   const panelArtifacts = {
     ...drawingArtifacts,
     ...supplementalPanelArtifacts,
@@ -4135,6 +7616,8 @@ async function buildA1Sheet({
     targetStoreys,
     allowedPanelTypes: sheetPlan?.panel_types || null,
     layoutTemplate,
+    geometryHash,
+    briefInputHash: brief?.brief_input_hash || null,
   });
   const drawingIds = drawingSet.drawings.map((drawing) => drawing.drawing_id);
   const sourcePanelAssetIds = panelPlacements
@@ -4157,6 +7640,11 @@ async function buildA1Sheet({
     sheetLabel,
     layoutTemplate,
   });
+  __a1mark = __a1sheetLog(
+    "build_sheet_svg",
+    __a1mark,
+    `svg_chars=${rawSvgString.length}`,
+  );
   // Embed fonts immediately so every downstream consumer - frontend viewer,
   // PDF rasteriser, SVG download - works with a single self-contained sheet.
   // prepareFinalSheetSvgForRasterization prefers bundled NotoSans from
@@ -4168,6 +7656,7 @@ async function buildA1Sheet({
       textToPath: true,
     },
   );
+  __a1mark = __a1sheetLog("prepare_sheet_for_raster", __a1mark);
   const { svgString, textRenderStatus } = preparedSheet;
   if (!svgString.includes("@font-face")) {
     throw new Error(
@@ -4190,10 +7679,29 @@ async function buildA1Sheet({
   const presentationSummary = summarizePresentationMode(panelArtifacts);
   const svgHash = computeCDSHashSync({ svg: svgString });
   const sheetAssetId = createStableId("asset-a1-svg", sheetId, svgHash);
-  const requiredPlacementTypes = buildRequiredA1PanelTypes(targetStoreys);
+  const requiredPlacementTypes = buildRequiredA1PanelTypes(
+    targetStoreys,
+    layoutTemplate,
+  );
   const requiredPlacements = panelPlacements.filter((placement) =>
     requiredPlacementTypes.includes(placement.panelType),
   );
+  const panelReferenceMetrics = Object.fromEntries(
+    panelPlacements.map((placement) => [
+      placement.panelType,
+      placement.referenceMetrics || {
+        slotOccupancy: placement.slotOccupancy || 0,
+        finalSlotOccupancy: placement.finalSlotOccupancy || null,
+        finalSlotFit: placement.finalSlotFit || null,
+        contentBBoxRatio: placement.contentBBoxRatio || null,
+        sourceGeometryHash: placement.sourceGeometryHash || null,
+        panelIdentityHash: placement.panelIdentityHash || null,
+        briefInputHash: placement.briefInputHash || null,
+        renderMode: placement.renderMode || null,
+      },
+    ]),
+  );
+  __a1sheetLog("a1sheet_done", __a1sheetStart, `chars=${svgString.length}`);
   return {
     sheetSet: {
       sheets: [
@@ -4236,6 +7744,8 @@ async function buildA1Sheet({
       source_model_hash: geometryHash,
       drawing_number: drawingNumber,
       sheet_label: sheetLabel,
+      referenceMatch: brief?.reference_match === true,
+      briefInputHash: brief?.brief_input_hash || null,
       quality: {
         placeholderOnly: false,
         requiredPanelCount: sheetPlan
@@ -4243,6 +7753,9 @@ async function buildA1Sheet({
           : requiredPlacementTypes.length,
         requiredPanelsPlaced: requiredPlacements.length,
         totalPanelsPlaced: panelPlacements.length,
+        referenceMatch: brief?.reference_match === true,
+        briefInputHash: brief?.brief_input_hash || null,
+        panelReferenceMetrics,
       },
       svgHash,
       svgString,
@@ -4254,6 +7767,9 @@ async function buildA1Sheet({
         presentationSummary.visualPanelsFallbackReasons,
       metadata: {
         textRenderStatus,
+        referenceMatch: brief?.reference_match === true,
+        briefInputHash: brief?.brief_input_hash || null,
+        panelReferenceMetrics,
         presentationMode: presentationSummary.presentationMode,
         visualFidelityStatus: presentationSummary.visualFidelityStatus,
         visualPanelsRenderMode: presentationSummary.visualPanelsRenderMode,
@@ -4270,7 +7786,31 @@ async function buildA1Sheet({
 
 const MM_TO_PT = 72 / 25.4;
 
-async function analyseRenderedSheetPng(pngBuffer) {
+async function analyseRenderedSheetPng(pngBuffer, options = {}) {
+  // PR-D follow-up: when stub raster mode is on the heavy 280M-iteration
+  // pixel walk would still run on the 1×1 stub PNG (cheap) but its result
+  // would report nonBackgroundPixelRatio=0 and fail the
+  // MIN_RENDERED_SHEET_INK_RATIO gate. Return synthetic healthy metrics
+  // that report the dimensions a full render would have produced so the
+  // gate passes and the test asserts metadata / layout / geometry only.
+  //
+  // Codex integration finding: forward isFinalA1 (when known by the caller)
+  // through the production-safety gate so synthetic ink metrics can NEVER
+  // be substituted into a final A1 export — even if A1_TEST_RASTER_MODE=stub
+  // is somehow set in production / Vercel.
+  if (isRasterStubModeAllowed({ isFinalA1: options.isFinalA1 === true })) {
+    const widthPx = Number(options.expectedWidthPx) || 9933;
+    const heightPx = Number(options.expectedHeightPx) || 7016;
+    return {
+      widthPx,
+      heightPx,
+      pixelCount: widthPx * heightPx,
+      backgroundRgb: [243, 239, 229],
+      nonWhitePixelRatio: 0.18,
+      nonBackgroundPixelRatio: 0.18,
+      stub: true,
+    };
+  }
   try {
     const sharp = (await import("sharp")).default;
     const raw = await sharp(pngBuffer)
@@ -4330,6 +7870,13 @@ function buildPanelRenderSummary(sheetArtifact = {}) {
     svgHash: placement.svgHash || null,
     sourceModelHash: placement.source_model_hash || null,
     geometryHash: placement.geometryHash || null,
+    slotOccupancy: placement.slotOccupancy || 0,
+    finalSlotOccupancy: placement.finalSlotOccupancy || null,
+    finalSlotFit: placement.finalSlotFit || null,
+    contentBBoxRatio: placement.contentBBoxRatio || null,
+    panelIdentityHash: placement.panelIdentityHash || null,
+    briefInputHash: placement.briefInputHash || null,
+    renderMode: placement.renderMode || null,
     hasSvg: placement.status === "ready" && Boolean(placement.svgHash),
   }));
 }
@@ -4357,9 +7904,7 @@ function normalizeBinaryBytes(value, label = "binary data") {
 }
 
 function svgToDataUrl(svgString = "") {
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
-    String(svgString || ""),
-  )}`;
+  return svgToSanitizedDataUrl(String(svgString || ""));
 }
 
 function buildResultPanelMap(panelArtifacts = {}) {
@@ -4371,6 +7916,12 @@ function buildResultPanelMap(panelArtifacts = {}) {
         const safeSvgString = artifact.svgString
           ? sanitizeSheetSvgFragment(artifact.svgString)
           : null;
+        const safeDataUrl = artifact.dataUrl
+          ? sanitizeSvgDataUrl(artifact.dataUrl)
+          : null;
+        const safeImageUrl = artifact.imageUrl
+          ? sanitizeSvgDataUrl(artifact.imageUrl)
+          : null;
         return [
           panelType,
           {
@@ -4378,9 +7929,10 @@ function buildResultPanelMap(panelArtifacts = {}) {
             label: formatPanelTitle(panelType),
             url:
               (safeSvgString ? svgToDataUrl(safeSvgString) : null) ||
-              artifact.dataUrl ||
-              artifact.imageUrl,
-            dataUrl: artifact.dataUrl || null,
+              safeDataUrl ||
+              safeImageUrl,
+            dataUrl: safeDataUrl,
+            imageUrl: safeImageUrl,
             svgString: safeSvgString || null,
             sourceType: artifact.asset_type || null,
             authoritySource:
@@ -4411,6 +7963,15 @@ async function buildA1PdfArtifact({
   qaStatus = "pending",
   renderIntent = "final_a1",
 }) {
+  const __a1pdfStart = Date.now();
+  const __a1pdfLog = (step, sinceMs, extra = "") => {
+    const now = Date.now();
+    const tail = extra ? ` ${extra}` : "";
+    // eslint-disable-next-line no-console
+    console.log(`[VS_TIMING] step=a1pdf.${step} ms=${now - sinceMs}${tail}`);
+    return now;
+  };
+  let __pdfMark = __a1pdfStart;
   const isFinalA1 = renderIntent === "final_a1";
   const widthPt = 841 * MM_TO_PT;
   const heightPt = 594 * MM_TO_PT;
@@ -4437,10 +7998,18 @@ async function buildA1PdfArtifact({
   const targetDensityDpi = isFinalA1
     ? FINAL_A1_RASTER_DPI
     : PREVIEW_A1_RASTER_DPI;
+  // Codex integration finding: forward isFinalA1 so the raster stub gate
+  // refuses to substitute a 1×1 PNG even if A1_TEST_RASTER_MODE=stub is set.
   const renderedSheet = await rasteriseSheetArtifact({
     sheetArtifact,
     densityDpi: targetDensityDpi,
+    isFinalA1,
   });
+  __pdfMark = __a1pdfLog(
+    "rasterise_sheet",
+    __pdfMark,
+    `dpi=${targetDensityDpi} bytes=${renderedSheet?.pngBuffer?.length || "?"}`,
+  );
   const renderedPngBytes = normalizeBinaryBytes(
     renderedSheet.pngBuffer,
     "rendered A1 sheet PNG",
@@ -4450,13 +8019,25 @@ async function buildA1PdfArtifact({
     png: Buffer.from(renderedPngBytes).toString("base64"),
     geometryHash,
   });
-  const occupancy = await analyseRenderedSheetPng(renderedPngBytes);
+  __pdfMark = __a1pdfLog("hash_png", __pdfMark);
+  // Pass expected dims so the stub-mode shortcut returns metrics matching
+  // the dimensions the stub raster claimed (otherwise the stub would always
+  // report 9933×7016 even for the preview 144 DPI path).
+  const occupancy = await analyseRenderedSheetPng(renderedPngBytes, {
+    expectedWidthPx: Number(renderedSheet.metadata?.width_px) || undefined,
+    expectedHeightPx: Number(renderedSheet.metadata?.height_px) || undefined,
+    // Codex integration finding: forward isFinalA1 so synthetic ink metrics
+    // can never substitute for the real ink walk on a final A1 export.
+    isFinalA1,
+  });
+  __pdfMark = __a1pdfLog("analyse_png", __pdfMark);
   const panelOccupancy = buildPanelRenderSummary(sheetArtifact);
   const textRenderStatus = await analyseRenderedTextProof({
     pngBuffer: renderedPngBytes,
     sheetSvg: rawSheetSvg,
     requiredLabels: REQUIRED_A1_TEXT_PROOF_LABELS,
   });
+  __pdfMark = __a1pdfLog("analyse_text_proof", __pdfMark);
   // Phase A: post-rasterisation tofu QA. Sample each panel's caption band on
   // the rendered PNG (not the SVG source) and refuse final PDF emission if
   // any band matches the tofu signature. Coordinates are derived from the
@@ -4495,6 +8076,7 @@ async function buildA1PdfArtifact({
       sharp: sharpModule,
       panelLabelCoordinates,
     });
+    __pdfMark = __a1pdfLog("glyph_integrity", __pdfMark);
   } catch (err) {
     rasterGlyphIntegrity = {
       version: "phase22-a1-raster-glyph-integrity-v1",
@@ -4591,6 +8173,7 @@ async function buildA1PdfArtifact({
   pdfDoc.setModificationDate(new Date(0));
   const page = pdfDoc.addPage([widthPt, heightPt]);
   const sheetImage = await pdfDoc.embedPng(renderedPngBytes);
+  __pdfMark = __a1pdfLog("pdf_embed_png", __pdfMark);
   page.drawImage(sheetImage, {
     x: 0,
     y: 0,
@@ -4613,6 +8196,12 @@ async function buildA1PdfArtifact({
   }
 
   const pdfDataUri = await pdfDoc.saveAsBase64({ dataUri: true });
+  __a1pdfLog("pdf_save_data_uri", __pdfMark);
+  __a1pdfLog(
+    "a1pdf_done",
+    __a1pdfStart,
+    `dataUri_kb=${Math.round(pdfDataUri.length / 1024)}`,
+  );
   const contentHash = computeCDSHashSync({
     sourceSvgHash: sheetArtifact.svgHash,
     renderedPngHash,
@@ -4651,6 +8240,70 @@ async function buildA1PdfArtifact({
     hybridVectorPdfFollowUp: true,
   };
 
+  // Phase 5D: optional vector PDF as an *additional* artifact behind a
+  // feature flag (`PROJECT_GRAPH_VECTOR_PDF_ENABLED=true`). The raster
+  // PDF above remains the production deliverable; the vector PDF is
+  // emitted alongside for Preview/local evaluation. Failure of the
+  // vector path is recorded as warning metadata and NEVER blocks the
+  // raster artifact.
+  const vectorPdfFlag = String(
+    (typeof process !== "undefined" &&
+      process.env?.PROJECT_GRAPH_VECTOR_PDF_ENABLED) ||
+      "",
+  )
+    .toLowerCase()
+    .trim();
+  const vectorPdfEnabled = vectorPdfFlag === "true" || vectorPdfFlag === "1";
+  let vectorPdf = null;
+  if (vectorPdfEnabled && isFinalA1) {
+    try {
+      const t0 = Date.now();
+      vectorPdf = await buildVectorPdfFromSheetSvg({
+        svgString: rawSheetSvg,
+        title:
+          (brief?.project_name ? `${brief.project_name} — ` : "") +
+          "ArchiAI A1 Sheet (vector)",
+        author: brief?.architect || "ArchiAI",
+        geometryHash,
+      });
+      __pdfMark = __a1pdfLog(
+        "vector_pdf_build",
+        __pdfMark,
+        `ok=${vectorPdf.ok} bytes=${vectorPdf.byteLength} draws=${vectorPdf.summary?.drawCalls || 0} took_ms=${Date.now() - t0}`,
+      );
+    } catch (vectorErr) {
+      vectorPdf = {
+        ok: false,
+        pdfBytes: null,
+        dataUrl: null,
+        pdfHash: null,
+        byteLength: 0,
+        pageCount: 0,
+        pageSizeMm: { width: 841, height: 594 },
+        pdfRenderMode: VECTOR_PDF_RENDER_MODE,
+        schemaVersion: VECTOR_PDF_SCHEMA_VERSION,
+        summary: { drawCalls: 0, skipped: {}, warnings: [] },
+        error: `vector_pdf_threw:${vectorErr?.message || "unknown"}`,
+      };
+    }
+  }
+  if (vectorPdf) {
+    pdfMetadata.vectorPdf = {
+      enabled: vectorPdfEnabled,
+      ok: vectorPdf.ok === true,
+      schemaVersion: vectorPdf.schemaVersion,
+      pdfRenderMode: vectorPdf.pdfRenderMode,
+      pdfHash: vectorPdf.pdfHash,
+      byteLength: vectorPdf.byteLength,
+      drawCalls: vectorPdf.summary?.drawCalls ?? 0,
+      skipped: vectorPdf.summary?.skipped || {},
+      warnings: vectorPdf.summary?.warnings || [],
+      error: vectorPdf.error || null,
+    };
+  } else {
+    pdfMetadata.vectorPdf = { enabled: vectorPdfEnabled, ok: false };
+  }
+
   return {
     asset_id: assetId,
     asset_type: "a1_sheet_pdf",
@@ -4670,6 +8323,13 @@ async function buildA1PdfArtifact({
     pdfHash: contentHash,
     pdfMetadata,
     dataUrl: pdfDataUri,
+    // Phase 5D: vector artifact alongside the raster one. Consumers
+    // that want to download the vector PDF should read `vectorPdfDataUrl`.
+    // When the flag is off or the vector build failed, these are null.
+    vectorPdfDataUrl: vectorPdf?.ok ? vectorPdf.dataUrl : null,
+    vectorPdfBytes: vectorPdf?.ok ? vectorPdf.byteLength : 0,
+    vectorPdfHash: vectorPdf?.ok ? vectorPdf.pdfHash : null,
+    vectorPdfRenderMode: vectorPdf?.ok ? vectorPdf.pdfRenderMode : null,
   };
 }
 
@@ -4694,8 +8354,11 @@ function addCheck(
   });
 }
 
-function expectedRequiredPanelTypes(targetStoreys = 1) {
-  return buildRequiredA1PanelTypes(targetStoreys);
+function expectedRequiredPanelTypes(
+  targetStoreys = 1,
+  layoutTemplate = "board-v2",
+) {
+  return buildRequiredA1PanelTypes(targetStoreys, layoutTemplate);
 }
 
 function artifactArray(artifacts = {}) {
@@ -4723,6 +8386,36 @@ function svgLooksRenderable(svgString = "") {
   return /<(?:path|rect|line|polyline|polygon|circle|ellipse|image|text)\b/i.test(
     svg,
   );
+}
+
+function evaluatePanelRenderability(artifact = null) {
+  const svg = String(artifact?.svgString || "");
+  const length = svg.length;
+  const hasInvalidTokens = svgHasInvalidTokens(svg);
+  const hasRenderableElement =
+    /<(?:path|rect|line|polyline|polygon|circle|ellipse|image|text)\b/i.test(
+      svg,
+    );
+  let reason = null;
+  if (!artifact) {
+    reason = "missing_artifact";
+  } else if (length === 0) {
+    reason = "empty_svg_string";
+  } else if (length < 200) {
+    reason = "svg_too_short";
+  } else if (hasInvalidTokens) {
+    reason = "has_invalid_tokens";
+  } else if (!hasRenderableElement) {
+    reason = "no_renderable_element";
+  }
+  return {
+    present: Boolean(artifact),
+    length,
+    hasInvalidTokens,
+    hasRenderableElement,
+    reason,
+    ok: reason === null,
+  };
 }
 
 function expectedDrawingTypeForPanel(panelType = "") {
@@ -4789,31 +8482,274 @@ function technicalContentBoundsTooSmall(artifact = null) {
   );
 }
 
+function referenceMatchTechnicalThresholds(panelType = "") {
+  if (String(panelType).startsWith("floor_plan_")) {
+    return {
+      slotOccupancy: REFERENCE_MATCH_PLAN_MIN_SLOT_OCCUPANCY,
+      finalSlotOccupancy: 0.5,
+      widthRatio: 0.42,
+      heightRatio: 0.28,
+    };
+  }
+  if (String(panelType).startsWith("section_")) {
+    return {
+      slotOccupancy: REFERENCE_MATCH_SECTION_MIN_SLOT_OCCUPANCY,
+      finalSlotOccupancy: 0.28,
+      widthRatio: 0.4,
+      heightRatio: 0.2,
+      sectionUsefulness: REFERENCE_MATCH_MIN_SECTION_USEFULNESS,
+      cutRoomCount: 1,
+    };
+  }
+  if (String(panelType).startsWith("elevation_")) {
+    return {
+      slotOccupancy: REFERENCE_MATCH_ELEVATION_MIN_SLOT_OCCUPANCY,
+      finalSlotOccupancy: 0.35,
+      widthRatio: 0.38,
+      heightRatio: 0.14,
+      facadeRichness: REFERENCE_MATCH_MIN_ELEVATION_RICHNESS,
+    };
+  }
+  return {
+    slotOccupancy: MIN_TECHNICAL_CONTENT_OCCUPANCY_RATIO,
+    finalSlotOccupancy: 0.3,
+    widthRatio: MIN_TECHNICAL_CONTENT_WIDTH_RATIO,
+    heightRatio: MIN_TECHNICAL_CONTENT_HEIGHT_RATIO,
+  };
+}
+
+function evaluateReferenceMatchTechnicalPanel({
+  panelType,
+  artifact,
+  placement = null,
+  geometryHash = null,
+  briefInputHash = null,
+} = {}) {
+  const metrics = buildPanelReferenceMetrics({
+    panelType,
+    artifact,
+    placement,
+    geometryHash,
+    briefInputHash,
+  });
+  const thresholds = referenceMatchTechnicalThresholds(panelType);
+  const technicalQualityMetadata = getTechnicalQualityMetadata(artifact);
+  const failures = [];
+  if (!artifact) {
+    failures.push("missing_artifact");
+  }
+  if (!svgLooksRenderable(artifact?.svgString || "")) {
+    failures.push("not_renderable");
+  }
+  if (metrics.slotOccupancy < thresholds.slotOccupancy) {
+    failures.push("slot_occupancy_low");
+  }
+  if (
+    Number(metrics.finalSlotOccupancy || 0) > 0 &&
+    Number(metrics.finalSlotOccupancy || 0) < thresholds.finalSlotOccupancy
+  ) {
+    failures.push("final_slot_fit_low");
+  }
+  if (
+    Number(metrics.contentBBoxRatio?.widthRatio || 0) < thresholds.widthRatio
+  ) {
+    failures.push("content_width_low");
+  }
+  if (
+    Number(metrics.contentBBoxRatio?.heightRatio || 0) < thresholds.heightRatio
+  ) {
+    failures.push("content_height_low");
+  }
+  if (
+    thresholds.sectionUsefulness &&
+    Number(technicalQualityMetadata.section_usefulness_score || 0) <
+      thresholds.sectionUsefulness
+  ) {
+    failures.push("section_usefulness_low");
+  }
+  if (
+    thresholds.cutRoomCount &&
+    Number(technicalQualityMetadata.cut_room_count || 0) <
+      thresholds.cutRoomCount
+  ) {
+    failures.push("section_cut_room_missing");
+  }
+  if (
+    thresholds.facadeRichness &&
+    Number(technicalQualityMetadata.facade_richness_score || 0) <
+      thresholds.facadeRichness
+  ) {
+    failures.push("facade_richness_low");
+  }
+  return {
+    panelType,
+    ok: failures.length === 0,
+    failures,
+    thresholds,
+    metrics,
+    technicalQualityMetadata: {
+      slot_occupancy_ratio:
+        technicalQualityMetadata.slot_occupancy_ratio || null,
+      section_usefulness_score:
+        technicalQualityMetadata.section_usefulness_score || null,
+      cut_room_count: technicalQualityMetadata.cut_room_count || null,
+      facade_richness_score:
+        technicalQualityMetadata.facade_richness_score || null,
+      window_count: technicalQualityMetadata.window_count || null,
+      door_count: technicalQualityMetadata.door_count || null,
+    },
+  };
+}
+
 function count3DGeometryElements(svgString = "") {
   return (String(svgString || "").match(/<(?:polygon|polyline|path)\b/gi) || [])
     .length;
 }
 
-function visual3DArtifactTooWeak(artifact = null) {
-  if (!artifact) return true;
-  const metadata = artifact.metadata || {};
-  const primitiveCount = Number(
+function stripEmbeddedImageDataForPlaceholderScan(svg = "") {
+  return String(svg || "")
+    .replace(
+      /\b(xlink:href|href)=["']data:image\/[a-zA-Z0-9.+-]+;base64,[^"']+["']/g,
+      '$1="data:image/<redacted>;base64,<redacted>"',
+    )
+    .replace(
+      /data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+/g,
+      "data:image/<redacted>;base64,<redacted>",
+    );
+}
+
+function getVisual3DPrimitiveCount(artifact = null) {
+  const metadata = artifact?.metadata || {};
+  return Number(
     metadata.primitiveCount ??
       metadata.surfaceCount ??
       metadata.geometryPrimitiveCount ??
       0,
   );
-  const hasCamera = Boolean(
-    metadata.camera && typeof metadata.camera === "object",
+}
+
+function visual3DArtifactHasCamera(artifact = null) {
+  const metadata = artifact?.metadata || {};
+  return Boolean(metadata.camera && typeof metadata.camera === "object");
+}
+
+function visual3DArtifactIsGeometryLockedImage(artifact = null) {
+  const metadata = artifact?.metadata || {};
+  return (
+    metadata.source === "project_graph_image_renderer" ||
+    metadata.imageRenderFallback === false ||
+    metadata.openaiImageUsed === true ||
+    metadata.presentationMode === "geometry_locked_image_render" ||
+    metadata.visualRenderMode === "photoreal_image_gen"
   );
+}
+
+function visual3DArtifactHasImagePayload(artifact = null) {
+  const metadata = artifact?.metadata || {};
+  const byteLength = Number(
+    metadata.imageRenderByteLength ?? metadata.renderProvenance?.bytes ?? 0,
+  );
+  return (
+    byteLength > 0 ||
+    /<image\b[^>]+\b(?:href|xlink:href)=["']data:image\/png;base64,/i.test(
+      artifact?.svgString || "",
+    )
+  );
+}
+
+function visual3DArtifactHasCompiledControlEvidence(artifact = null) {
+  if (!artifact) return false;
+  const metadata = artifact.metadata || {};
+  const sourceGeometryHash =
+    metadata.sourceGeometryHash ||
+    metadata.renderProvenance?.sourceGeometryHash ||
+    null;
+  const artifactGeometryHash =
+    artifact.source_model_hash || artifact.geometryHash || null;
+  const hashMatches =
+    Boolean(sourceGeometryHash) &&
+    (!artifactGeometryHash || sourceGeometryHash === artifactGeometryHash);
+  return (
+    metadata.referenceSource === "compiled_3d_control_svg" &&
+    hashMatches &&
+    getVisual3DPrimitiveCount(artifact) >= MIN_3D_PRIMITIVE_COUNT &&
+    visual3DArtifactHasCamera(artifact)
+  );
+}
+
+function evaluateVisual3DArtifactStrength(artifact = null) {
+  if (!artifact) {
+    return {
+      ok: false,
+      reason: "missing_artifact",
+      details: {
+        primitiveCount: 0,
+        hasCamera: false,
+        geometryElementCount: 0,
+        hashMatches: false,
+        hasImagePayload: false,
+        isGeometryLockedImage: false,
+      },
+    };
+  }
+  const metadata = artifact.metadata || {};
+  const primitiveCount = getVisual3DPrimitiveCount(artifact);
+  const hasCamera = visual3DArtifactHasCamera(artifact);
+  const isGeometryLockedImage = visual3DArtifactIsGeometryLockedImage(artifact);
+  const hasImagePayload = visual3DArtifactHasImagePayload(artifact);
+  const sourceGeometryHash =
+    metadata.sourceGeometryHash ||
+    metadata.renderProvenance?.sourceGeometryHash ||
+    null;
+  const artifactGeometryHash =
+    artifact.source_model_hash || artifact.geometryHash || null;
+  const hashMatches =
+    Boolean(sourceGeometryHash) &&
+    (!artifactGeometryHash || sourceGeometryHash === artifactGeometryHash);
   const geometryElementCount = count3DGeometryElements(
     artifact.svgString || "",
   );
-  return (
-    primitiveCount < MIN_3D_PRIMITIVE_COUNT ||
-    !hasCamera ||
-    geometryElementCount < MIN_3D_PRIMITIVE_COUNT
-  );
+  const details = {
+    primitiveCount,
+    hasCamera,
+    geometryElementCount,
+    hashMatches,
+    hasImagePayload,
+    isGeometryLockedImage,
+  };
+
+  if (isGeometryLockedImage) {
+    if (!visual3DArtifactHasCompiledControlEvidence(artifact)) {
+      return {
+        ok: false,
+        reason: "missing_compiled_control_evidence",
+        details,
+      };
+    }
+    if (!hasImagePayload) {
+      return { ok: false, reason: "missing_image_payload", details };
+    }
+    return { ok: true, reason: null, details };
+  }
+
+  if (primitiveCount < MIN_3D_PRIMITIVE_COUNT) {
+    return { ok: false, reason: "primitive_count_below_minimum", details };
+  }
+  if (!hasCamera) {
+    return { ok: false, reason: "missing_camera", details };
+  }
+  if (geometryElementCount < MIN_3D_PRIMITIVE_COUNT) {
+    return {
+      ok: false,
+      reason: "geometry_element_count_below_minimum",
+      details,
+    };
+  }
+  return { ok: true, reason: null, details };
+}
+
+function visual3DArtifactTooWeak(artifact = null) {
+  return !evaluateVisual3DArtifactStrength(artifact).ok;
 }
 
 // RIBA A1 plan §10 scorecard category weights — must total 100.
@@ -4872,6 +8808,17 @@ export function validateProjectGraphVerticalSlice({
   const checks = [];
   const issues = [];
   const geometryHash = projectGraph?.selected_design?.source_model_hash;
+  const referenceMatch =
+    projectGraph?.brief?.reference_match === true ||
+    projectGraph?.brief?.referenceMatch === true ||
+    artifacts?.referenceMatch === true ||
+    artifacts?.a1Sheet?.referenceMatch === true ||
+    artifacts?.a1Sheet?.metadata?.referenceMatch === true;
+  const briefInputHash =
+    projectGraph?.brief?.brief_input_hash ||
+    artifacts?.a1Sheet?.briefInputHash ||
+    artifacts?.a1Sheet?.metadata?.briefInputHash ||
+    null;
   const programmeIds = new Set(
     (projectGraph?.programme?.spaces || []).map((space) => space.space_id),
   );
@@ -5174,18 +9121,61 @@ export function validateProjectGraphVerticalSlice({
     ...(artifacts.drawings || {}),
     ...(artifacts.panelArtifacts || {}),
   };
+  const placementByPanelType = new Map(
+    (artifacts.a1Sheet?.panelPlacements || []).map((placement) => [
+      placement.panelType,
+      placement,
+    ]),
+  );
   const expectedPanels = expectedRequiredPanelTypes(
     projectGraph?.brief?.target_storeys || 1,
+    artifacts.a1Sheet?.layoutTemplate ||
+      resolvePresentationLayoutTemplate(projectGraph?.brief || {}),
   );
-  const missingRequiredPanels = expectedPanels.filter((panelType) => {
+  const panelRenderabilityRecords = expectedPanels.map((panelType) => {
     const artifact = findPanelArtifact(panelArtifacts, panelType);
-    return !svgLooksRenderable(artifact?.svgString || "");
+    const evaluation = evaluatePanelRenderability(artifact);
+    const placement = placementByPanelType.get(panelType) || null;
+    const referenceMetrics = buildPanelReferenceMetrics({
+      panelType,
+      artifact,
+      placement,
+      geometryHash,
+      briefInputHash,
+    });
+    return {
+      panelType,
+      ...evaluation,
+      assetId: artifact?.asset_id || null,
+      assetType: artifact?.asset_type || null,
+      source: artifact?.metadata?.source || null,
+      drawingType:
+        artifact?.drawingType || artifact?.metadata?.drawingType || null,
+      slotOccupancy: referenceMetrics.slotOccupancy,
+      finalSlotOccupancy: referenceMetrics.finalSlotOccupancy,
+      finalSlotFit: referenceMetrics.finalSlotFit,
+      contentBBoxRatio: referenceMetrics.contentBBoxRatio,
+      sourceGeometryHash: referenceMetrics.sourceGeometryHash,
+      panelIdentityHash: referenceMetrics.panelIdentityHash,
+      briefInputHash: referenceMetrics.briefInputHash,
+      renderMode: referenceMetrics.renderMode,
+    };
   });
+  const missingRequiredPanels = panelRenderabilityRecords.filter(
+    (record) => !record.ok,
+  );
+  const missingRequiredPanelTypes = missingRequiredPanels.map(
+    (record) => record.panelType,
+  );
   addCheck(
     checks,
     "A1_REQUIRED_PANEL_CONTENT_PRESENT",
     missingRequiredPanels.length === 0,
-    { missingRequiredPanels, expectedPanels },
+    {
+      missingRequiredPanels,
+      missingRequiredPanelTypes,
+      expectedPanels,
+    },
     "graphic",
     0,
   );
@@ -5195,9 +9185,141 @@ export function validateProjectGraphVerticalSlice({
         "A1_PANEL_CONTENT_MISSING",
         "error",
         "One or more required A1 panels are missing renderable source content.",
-        { missingRequiredPanels },
+        {
+          missingRequiredPanels,
+          missingRequiredPanelTypes,
+        },
       ),
     );
+  }
+
+  if (referenceMatch) {
+    const activeBrief = projectGraph?.brief || {};
+    const titleBlockArtifact = findPanelArtifact(panelArtifacts, "title_block");
+    const titleMetadata = titleBlockArtifact?.metadata || {};
+    const titleBriefMatches =
+      titleMetadata.briefInputHash === briefInputHash &&
+      titleMetadata.projectName === activeBrief.project_name &&
+      Number(titleMetadata.targetGiaM2 || 0) ===
+        Number(activeBrief.target_gia_m2 || 0) &&
+      Number(titleMetadata.targetStoreys || 0) ===
+        Number(activeBrief.target_storeys || 0) &&
+      String(titleMetadata.location || "") ===
+        String(
+          activeBrief.site_input?.address ||
+            activeBrief.site_input?.postcode ||
+            "",
+        );
+    addCheck(
+      checks,
+      "REFERENCE_MATCH_BRIEF_AUTHORITY_CURRENT",
+      titleBriefMatches,
+      {
+        titleBlock: {
+          briefInputHash: titleMetadata.briefInputHash || null,
+          projectName: titleMetadata.projectName || null,
+          location: titleMetadata.location || null,
+          targetGiaM2: titleMetadata.targetGiaM2 || null,
+          targetStoreys: titleMetadata.targetStoreys || null,
+        },
+        activeBrief: {
+          briefInputHash,
+          projectName: activeBrief.project_name || null,
+          location:
+            activeBrief.site_input?.address ||
+            activeBrief.site_input?.postcode ||
+            null,
+          targetGiaM2: activeBrief.target_gia_m2 || null,
+          targetStoreys: activeBrief.target_storeys || null,
+        },
+      },
+      "graphic",
+      0,
+    );
+    if (!titleBriefMatches) {
+      issues.push(
+        buildIssue(
+          "REFERENCE_MATCH_STALE_BRIEF_DATA",
+          "error",
+          "Reference-match A1 title block does not match the active generation brief.",
+          {
+            titleMetadata,
+            activeBrief: {
+              briefInputHash,
+              projectName: activeBrief.project_name || null,
+              siteInput: activeBrief.site_input || null,
+              targetGiaM2: activeBrief.target_gia_m2 || null,
+              targetStoreys: activeBrief.target_storeys || null,
+            },
+          },
+        ),
+      );
+    }
+
+    const expectedUpperFloorPanels = floorPlanPanelTypes(
+      activeBrief.target_storeys || 1,
+    ).slice(1);
+    const missingUpperFloorPanels = expectedUpperFloorPanels.filter(
+      (panelType) => {
+        const record = panelRenderabilityRecords.find(
+          (entry) => entry.panelType === panelType,
+        );
+        return !record?.ok;
+      },
+    );
+    addCheck(
+      checks,
+      "REFERENCE_MATCH_UPPER_FLOORS_PRESENT",
+      missingUpperFloorPanels.length === 0,
+      { expectedUpperFloorPanels, missingUpperFloorPanels },
+      "graphic",
+      0,
+    );
+    if (missingUpperFloorPanels.length) {
+      issues.push(
+        buildIssue(
+          "REFERENCE_MATCH_UPPER_FLOOR_MISSING",
+          "error",
+          "Reference-match residential board is missing a requested upper-floor plan.",
+          { expectedUpperFloorPanels, missingUpperFloorPanels },
+        ),
+      );
+    }
+
+    const blankTechnicalPanels = panelRenderabilityRecords.filter((record) => {
+      if (
+        !String(record.panelType || "").startsWith("floor_plan_") &&
+        !String(record.panelType || "").startsWith("section_") &&
+        !String(record.panelType || "").startsWith("elevation_")
+      ) {
+        return false;
+      }
+      return (
+        !record.ok ||
+        Number(record.slotOccupancy || 0) <= 0 ||
+        Number(record.finalSlotOccupancy || 0) <= 0 ||
+        Number(record.contentBBoxRatio?.widthRatio || 0) <= 0 ||
+        Number(record.contentBBoxRatio?.heightRatio || 0) <= 0
+      );
+    });
+    addCheck(
+      checks,
+      "REFERENCE_MATCH_NO_BLANK_PANEL_AREA",
+      blankTechnicalPanels.length === 0,
+      { blankTechnicalPanels },
+      "graphic",
+      0,
+    );
+    if (blankTechnicalPanels.length) {
+      issues.push(
+        buildIssue(
+          "REFERENCE_MATCH_BLANK_PANEL_AREA",
+          "error",
+          "Reference-match A1 contains a technical panel with blank or unmeasured content area.",
+          { blankTechnicalPanels },
+        ),
+      );
+    }
   }
 
   const technicalPanelTypesForStoreys = buildTechnicalA1PanelTypes(
@@ -5372,6 +9494,23 @@ export function validateProjectGraphVerticalSlice({
       ),
     );
   }
+  if (siteMapArtifact?.metadata?.boundaryAuthoritative === false) {
+    issues.push(
+      buildIssue(
+        SITE_BOUNDARY_ESTIMATED_WARNING_CODE,
+        "warning",
+        "Site boundary is estimated only and was not treated as authoritative plot area.",
+        {
+          boundarySource: siteMapArtifact.metadata.boundarySource || null,
+          boundaryConfidence:
+            siteMapArtifact.metadata.boundaryConfidence ?? null,
+          fallbackReason: siteMapArtifact.metadata.fallbackReason || null,
+          estimatedAreaM2: siteMapArtifact.metadata.estimatedAreaM2 || null,
+          sitePlanMode: siteMapArtifact.metadata.sitePlanMode || null,
+        },
+      ),
+    );
+  }
   addCheck(
     checks,
     "TECHNICAL_DRAWINGS_CONTENT_BOUNDS_TIGHT",
@@ -5387,29 +9526,156 @@ export function validateProjectGraphVerticalSlice({
     0,
   );
 
+  if (referenceMatch) {
+    const referenceTechnicalEvaluations = technicalPanelTypesForStoreys.map(
+      (panelType) =>
+        evaluateReferenceMatchTechnicalPanel({
+          panelType,
+          artifact: findPanelArtifact(artifacts.drawings || {}, panelType),
+          placement: placementByPanelType.get(panelType) || null,
+          geometryHash,
+          briefInputHash,
+        }),
+    );
+    const referenceTechnicalFailures = referenceTechnicalEvaluations.filter(
+      (entry) => !entry.ok,
+    );
+    const weakSectionCuts = referenceTechnicalFailures.filter((entry) =>
+      String(entry.panelType || "").startsWith("section_"),
+    );
+    addCheck(
+      checks,
+      "REFERENCE_MATCH_TECHNICAL_PANEL_READABILITY",
+      referenceTechnicalFailures.length === 0,
+      {
+        referenceTechnicalFailures,
+        thresholds: {
+          planSlotOccupancy: REFERENCE_MATCH_PLAN_MIN_SLOT_OCCUPANCY,
+          sectionSlotOccupancy: REFERENCE_MATCH_SECTION_MIN_SLOT_OCCUPANCY,
+          elevationSlotOccupancy: REFERENCE_MATCH_ELEVATION_MIN_SLOT_OCCUPANCY,
+          planFinalSlotOccupancy: 0.5,
+          sectionFinalSlotOccupancy: 0.28,
+          elevationFinalSlotOccupancy: 0.35,
+          sectionUsefulness: REFERENCE_MATCH_MIN_SECTION_USEFULNESS,
+          elevationRichness: REFERENCE_MATCH_MIN_ELEVATION_RICHNESS,
+        },
+      },
+      "graphic",
+      0,
+    );
+    if (referenceTechnicalFailures.length) {
+      issues.push(
+        buildIssue(
+          "REFERENCE_MATCH_LOW_PANEL_OCCUPANCY",
+          "error",
+          "Reference-match technical panels do not meet the stricter A1 readability thresholds.",
+          { referenceTechnicalFailures },
+        ),
+      );
+    }
+    if (weakSectionCuts.length) {
+      issues.push(
+        buildIssue(
+          "REFERENCE_MATCH_WEAK_SECTION_CUT",
+          "error",
+          "Reference-match section cuts are too weak for a professional A1 board.",
+          { weakSectionCuts },
+        ),
+      );
+    }
+
+    const elevationIdentityRecords = referenceTechnicalEvaluations
+      .filter((entry) => String(entry.panelType || "").startsWith("elevation_"))
+      .map((entry) => ({
+        panelType: entry.panelType,
+        panelIdentityHash: entry.metrics.panelIdentityHash,
+        slotOccupancy: entry.metrics.slotOccupancy,
+        finalSlotOccupancy: entry.metrics.finalSlotOccupancy,
+        finalSlotFit: entry.metrics.finalSlotFit,
+        contentBBoxRatio: entry.metrics.contentBBoxRatio,
+      }));
+    const distinctElevationIdentities = new Set(
+      elevationIdentityRecords.map((entry) => entry.panelIdentityHash),
+    );
+    const elevationsDistinct =
+      elevationIdentityRecords.length === 4 &&
+      distinctElevationIdentities.size === elevationIdentityRecords.length;
+    addCheck(
+      checks,
+      "REFERENCE_MATCH_ELEVATION_IDENTITIES_DISTINCT",
+      elevationsDistinct,
+      { elevationIdentityRecords },
+      "graphic",
+      0,
+    );
+    if (!elevationsDistinct) {
+      issues.push(
+        buildIssue(
+          "REFERENCE_MATCH_REPEATED_ELEVATION_IDENTITY",
+          "error",
+          "North, south, east and west elevations must be side-specific in reference-match exports.",
+          { elevationIdentityRecords },
+        ),
+      );
+    }
+  }
+
+  const required3dPanelTypes = REQUIRED_3D_A1_PANEL_TYPES.filter((panelType) =>
+    expectedPanels.includes(panelType),
+  );
   const visuals3d = artifacts.visuals3d || {};
-  const missing3dPanels = REQUIRED_3D_A1_PANEL_TYPES.filter((panelType) => {
+  const missing3dPanels = required3dPanelTypes.filter((panelType) => {
     const artifact =
       visuals3d[panelType] || findPanelArtifact(panelArtifacts, panelType);
     return !artifact || !svgLooksRenderable(artifact.svgString || "");
   });
-  const wrong3dHashPanels = REQUIRED_3D_A1_PANEL_TYPES.filter((panelType) => {
+  const wrong3dHashPanels = required3dPanelTypes.filter((panelType) => {
     const artifact =
       visuals3d[panelType] || findPanelArtifact(panelArtifacts, panelType);
     return artifact && artifact.source_model_hash !== geometryHash;
   });
-  const placeholder3dPanels = REQUIRED_3D_A1_PANEL_TYPES.filter((panelType) => {
-    const artifact =
-      visuals3d[panelType] || findPanelArtifact(panelArtifacts, panelType);
-    const svg = artifact?.svgString || "";
-    return (
-      artifact &&
-      (artifact.metadata?.source === "placeholder" ||
-        svg.length < 1200 ||
-        /1x1|placeholder_3d|geometryRenderService/i.test(svg) ||
-        visual3DArtifactTooWeak(artifact))
-    );
-  });
+  const placeholder3dPanels = required3dPanelTypes
+    .map((panelType) => {
+      const artifact =
+        visuals3d[panelType] || findPanelArtifact(panelArtifacts, panelType);
+      if (!artifact) return null;
+      const svg = artifact.svgString || "";
+      const svgLength = svg.length;
+      const strength = evaluateVisual3DArtifactStrength(artifact);
+      const baseDetails = {
+        panelType,
+        svgLength,
+        isGeometryLockedImage: strength.details.isGeometryLockedImage,
+        primitiveCount: strength.details.primitiveCount,
+        hasCamera: strength.details.hasCamera,
+        geometryElementCount: strength.details.geometryElementCount,
+        hasImagePayload: strength.details.hasImagePayload,
+        hashMatches: strength.details.hashMatches,
+        sourceGeometryHash:
+          artifact.metadata?.sourceGeometryHash ||
+          artifact.metadata?.renderProvenance?.sourceGeometryHash ||
+          null,
+        artifactGeometryHash:
+          artifact.source_model_hash || artifact.geometryHash || null,
+      };
+      if (artifact.metadata?.source === "placeholder") {
+        return { ...baseDetails, reason: "metadata_source_placeholder" };
+      }
+      if (!strength.details.isGeometryLockedImage && svgLength < 1200) {
+        return { ...baseDetails, reason: "svg_too_short" };
+      }
+      const placeholderScanSvg = stripEmbeddedImageDataForPlaceholderScan(svg);
+      if (
+        /1x1|placeholder_3d|geometryRenderService/i.test(placeholderScanSvg)
+      ) {
+        return { ...baseDetails, reason: "regex_match_placeholder" };
+      }
+      if (!strength.ok) {
+        return { ...baseDetails, reason: strength.reason || "too_weak" };
+      }
+      return null;
+    })
+    .filter(Boolean);
   addCheck(
     checks,
     "REQUIRED_3D_PANELS_PRESENT",
@@ -5417,7 +9683,7 @@ export function validateProjectGraphVerticalSlice({
     {
       missing3dPanels,
       wrong3dHashPanels,
-      expected: REQUIRED_3D_A1_PANEL_TYPES,
+      expected: required3dPanelTypes,
       primitiveMinimum: MIN_3D_PRIMITIVE_COUNT,
     },
     "consistency_2d_3d",
@@ -5481,11 +9747,21 @@ export function validateProjectGraphVerticalSlice({
     issues.push(
       buildIssue(
         "PRESENTATION_RENDER_FALLBACK_USED",
-        "warning",
+        referenceMatch ? "error" : "warning",
         "Photoreal presentation image rendering was unavailable; deterministic ProjectGraph control renders were used instead.",
-        { fallbackPresentationPanels },
+        { fallbackPresentationPanels, referenceMatch },
       ),
     );
+    if (referenceMatch) {
+      issues.push(
+        buildIssue(
+          "REFERENCE_MATCH_PHOTOREAL_FALLBACK_USED",
+          "error",
+          "Reference-match A1 export requires geometry-locked photoreal image panels; deterministic fallback is not publishable.",
+          { fallbackPresentationPanels },
+        ),
+      );
+    }
   }
 
   // Plan §10 site/context category (15 pts)
@@ -5743,6 +10019,9 @@ export function validateProjectGraphVerticalSlice({
     totalScore,
     categoryScores,
     source_model_hash: geometryHash,
+    referenceMatch,
+    briefInputHash,
+    panelRenderabilityRecords,
     checks,
     issues,
     constraint_conflicts: constraintConflicts,
@@ -5792,6 +10071,7 @@ function buildProjectGraph({
     jurisdiction: regulations?.jurisdiction || "england",
     brief,
     user_intent: brief.user_intent,
+    project_type_support: brief.project_type_support || null,
     site,
     climate,
     regulations,
@@ -5838,7 +10118,24 @@ function buildProjectGraph({
 }
 
 export async function buildArchitectureProjectVerticalSlice(input = {}) {
+  // Diagnostics: per-step timing logs so the next 504/timeout reveals which
+  // step is consuming the budget. Output goes to stdout (Vercel captures it
+  // as Function Logs). Format is greppable: `[VS_TIMING] step=<name> ms=<n> total_ms=<n>`.
+  const __vsRunStart = Date.now();
+  const __vsLog = (step, prevMs, extra = "") => {
+    const now = Date.now();
+    const deltaMs = now - prevMs;
+    const totalMs = now - __vsRunStart;
+    const tail = extra ? ` ${extra}` : "";
+    // eslint-disable-next-line no-console
+    console.log(
+      `[VS_TIMING] step=${step} ms=${deltaMs} total_ms=${totalMs}${tail}`,
+    );
+    return now;
+  };
+  let __vsMark = __vsRunStart;
   const brief = normalizeBrief(input);
+  __vsMark = __vsLog("normalize_brief", __vsMark);
   // Programme preflight gate. Mirrors the UI-layer gate in
   // ArchitectAIWizardContainer so API-submitted requests cannot bypass
   // validation. A failure short-circuits with success:false; the route
@@ -5873,21 +10170,55 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       };
     }
   }
+  const siteBoundarySanity = resolveSiteBoundarySanity(input, brief);
   const deterministicSite = buildSiteContext({
     brief,
-    sitePolygon: input.sitePolygon || input.site_boundary || [],
-    siteMetrics: input.siteMetrics || {},
+    sitePolygon: siteBoundarySanity.boundaryAuthoritative
+      ? input.sitePolygon || input.site_boundary || []
+      : [],
+    siteMetrics: siteBoundarySanity.siteMetrics,
+    siteBoundarySanity,
+    mainEntry: normalizeMainEntryForProjectGraph(
+      input,
+      siteBoundarySanity.boundaryAuthoritative
+        ? input.sitePolygon || input.site_boundary || []
+        : siteBoundarySanity.estimatedGeoBoundary || [],
+    ),
   });
-  // Plan §6.2 / §14: opt-in enrichment via Planning Data, EA flood, OSM. The
-  // slice stays offline-safe by default; callers pass fetchImpl or
-  // useDefaultFetch=true to invoke real providers.
-  const site =
-    input.contextProviders &&
-    (input.contextProviders.fetchImpl || input.contextProviders.useDefaultFetch)
-      ? await enrichSiteContext(deterministicSite, input.contextProviders)
-      : deterministicSite;
+  // Plan §6.2 / §14 + Phase 1 amendment #2: every slice run goes through
+  // enrichSiteContext so the resulting `site` always carries the providers
+  // manifest. The aggregator handles the offline / browser-guard / bad-coords
+  // branches internally and stamps the appropriate data_quality codes.
+  //
+  // Phase 3: weather is pulled in parallel via the Met Office → Open-Meteo →
+  // OpenWeather chain when context providers are enabled. The chain itself
+  // is server-only and falls back to deterministic data on any failure, so
+  // the slice never fails on weather alone. buildClimatePack stays sync —
+  // we resolve the weather promise first and pass the result in.
+  const contextProviderOptions = input.contextProviders || {};
+  const providersEnabled = Boolean(
+    contextProviderOptions.fetchImpl ||
+    contextProviderOptions.useDefaultFetch === true,
+  );
+  const detLat = Number(deterministicSite?.lat);
+  const detLon = Number(deterministicSite?.lon);
+  const weatherFetchPromise =
+    providersEnabled && Number.isFinite(detLat) && Number.isFinite(detLon)
+      ? weatherService.getClimateData(detLat, detLon, {
+          fetchImpl: contextProviderOptions.fetchImpl,
+          providerTimeoutMs: contextProviderOptions.providerTimeoutMs,
+          metOfficeApiKey: contextProviderOptions.metOfficeApiKey,
+          openWeatherApiKey: contextProviderOptions.openWeatherApiKey,
+        })
+      : Promise.resolve(null);
+  const [site, weather] = await Promise.all([
+    enrichSiteContext(deterministicSite, contextProviderOptions),
+    weatherFetchPromise,
+  ]);
+  __vsMark = __vsLog("site_context", __vsMark);
   const siteMapSnapshot = await resolveSiteMapSnapshot({ input, brief, site });
-  const climate = buildClimatePack(brief, site);
+  __vsMark = __vsLog("site_map_snapshot", __vsMark);
+  const climate = buildClimatePack(brief, site, { weather });
   const regulationsMetadata = buildRegulationPack(brief);
   const localStyle = buildLocalStylePack(brief, site, climate);
   const draftProgramme = buildProgramme({
@@ -5902,6 +10233,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     climate,
   });
   const programme = syncProgrammeActuals(draftProgramme, projectGeometry);
+  __vsMark = __vsLog("programme_and_geometry", __vsMark);
   // Programme-level QA. Catches both empty levels and the forensic
   // "every space collapsed to Ground" regression. Errors halt generation
   // with a structured response so the API surfaces a 422 instead of
@@ -5957,6 +10289,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       localMaterials: localStyle.material_palette,
     },
   });
+  __vsMark = __vsLog("compile_project", __vsMark);
   // Compiled-project QA. Catches geometry layers losing a level (e.g. the
   // 3-level brief silently producing a 2-level model). The level-count
   // mismatch is fatal; missing rooms on a level are a warning attached
@@ -5980,9 +10313,23 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     };
   }
   const selectedDesign = buildSelectedDesign(compiledProject, programme);
-  const { drawingSet, drawingArtifacts, technicalBuild } =
-    buildDrawingSet(compiledProject);
+  // Resolve the active sheet template for this brief (presentation-v3 for
+  // residential, board-v2 otherwise) BEFORE the technical pack runs so floor
+  // plans and sections render at the slot aspect of the layout that will
+  // ultimately receive them. Sheet-split overrides on individual sheetPlan
+  // entries continue to apply downstream in buildA1Sheet.
+  const drawingSetLayoutTemplate = resolvePresentationLayoutTemplate(brief);
+  const { drawingSet, drawingArtifacts, technicalBuild } = buildDrawingSet(
+    compiledProject,
+    { layoutTemplate: drawingSetLayoutTemplate },
+  );
+  __vsMark = __vsLog(
+    "build_drawing_set",
+    __vsMark,
+    `panel_count=${Object.keys(drawingArtifacts || {}).length}`,
+  );
   const scene3d = build3DProjection(compiledProject);
+  __vsMark = __vsLog("build_3d_projection", __vsMark);
   const modelRegistry = resolveArchitectureModelRegistry({
     steps: [
       "BRIEF",
@@ -6057,7 +10404,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     localStyle?.styleDNA || localStyle?.style_dna || null;
   const visualManifest = buildVisualManifest({
     compiledProject,
-    projectGraph: { projectGraphId, id: projectGraphId },
+    projectGraph: { projectGraphId, id: projectGraphId, site },
     brief,
     masterDNA: input?.masterDNA || null,
     siteSnapshot: siteMapSnapshot,
@@ -6066,8 +10413,37 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     styleDNA: styleDNAForManifest,
     materialPalette: localStyle?.material_palette || null,
   });
+  __vsMark = __vsLog("visual_manifest", __vsMark);
+  // Phase 1 — SheetDesignContext foundation. One frozen contract object
+  // built once per generation. Wraps (does not replace) visualManifest and
+  // adds material/style/climate/portfolio/programme surfaces so future panel
+  // renderers can consume one source of truth. Phase 1 is wiring-only; no
+  // render output changes. The validator below is warn-only — existing
+  // callers that ignore the context keep working unchanged.
+  const sheetDesignContext = buildSheetDesignContext({
+    masterDNA: input?.masterDNA || null,
+    brief,
+    compiledProject,
+    climate,
+    localStyle,
+    styleDNA: styleDNAForManifest,
+    regulations,
+    programmeSummary,
+    region,
+    projectGraphId,
+    visualManifest,
+  });
+  const sheetDesignContextReport = assertSheetDesignContext(sheetDesignContext);
+  __vsMark = __vsLog(
+    "sheet_design_context",
+    __vsMark,
+    `hash=${sheetDesignContext.contextHash} ok=${sheetDesignContextReport.ok} gaps=${sheetDesignContextReport.gaps.length}`,
+  );
   const renderedSheets = [];
   for (const sheetPlan of splitDecision.sheets) {
+    const sheetIndex = renderedSheets.length;
+    const sheetTag = `sheet_${sheetIndex}`;
+    const sheetStart = Date.now();
     const sheetResult = await buildA1Sheet({
       projectGraphId,
       brief,
@@ -6086,7 +10462,10 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       siteSnapshot: siteMapSnapshot,
       sheetPlan,
       visualManifest,
+      sheetDesignContext,
     });
+    __vsMark = __vsLog(`build_a1_sheet[${sheetTag}]`, __vsMark);
+    const pdfStart = Date.now();
     const pdf = await buildA1PdfArtifact({
       projectGraphId,
       brief,
@@ -6094,11 +10473,15 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       sheetArtifact: sheetResult.sheetArtifact,
       renderIntent: "final_a1",
     });
+    __vsMark = __vsLog(`build_a1_pdf[${sheetTag}]`, pdfStart);
+    __vsLog(`sheet_total[${sheetTag}]`, sheetStart);
     sheetResult.sheetArtifact.renderProof = pdf.renderedProof;
     sheetResult.sheetArtifact.metadata = {
       ...(sheetResult.sheetArtifact.metadata || {}),
       renderProof: pdf.renderedProof,
       textRenderStatus: pdf.renderedProof?.textRenderStatus,
+      sheetDesignContextHash: sheetDesignContext.contextHash,
+      sheetDesignContextVersion: SHEET_DESIGN_CONTEXT_VERSION,
     };
     renderedSheets.push({
       sheetPlan,
@@ -6126,6 +10509,55 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       )
       .map((artifact) => [artifact.panel_type, artifact]),
   );
+  // Phase 5B: post-render visual identity validation. Reports only — does
+  // NOT block the export gate by default. Strict mode (opt-in via
+  // PROJECT_GRAPH_VISUAL_IDENTITY_STRICT=true) promotes warnings to error
+  // severity so a downstream gate can choose to demote, but this
+  // validator never throws and never decides for the gate. The report is
+  // stamped onto sheetArtifact.metadata.visualIdentityValidation and
+  // surfaced at artifacts.visualIdentityValidation for QA / API consumers.
+  const visualIdentityStrictMode =
+    String(
+      (typeof process !== "undefined" &&
+        process.env?.PROJECT_GRAPH_VISUAL_IDENTITY_STRICT) ||
+        "",
+    )
+      .toLowerCase()
+      .trim() === "true";
+  let visualIdentityValidation;
+  try {
+    visualIdentityValidation = evaluateVisualIdentity({
+      visualManifest,
+      sheetDesignContext,
+      sheetDesignContextHash: sheetDesignContext?.contextHash || null,
+      panelArtifacts: visuals3d,
+      sheetMetadata: sheetArtifact?.metadata || null,
+      options: { strictMode: visualIdentityStrictMode },
+    });
+  } catch (validationError) {
+    visualIdentityValidation = {
+      version: VISUAL_MANIFEST_VALIDATOR_VERSION,
+      status: "warning",
+      severity: "warning",
+      strictMode: visualIdentityStrictMode,
+      summary: { totalPanels: 4, error: true },
+      warnings: [
+        `Visual identity validator threw: ${validationError?.message || "unknown"}.`,
+      ],
+      panels: {},
+      sheetChecks: {},
+      sheetWarnings: [],
+    };
+  }
+  sheetArtifact.metadata = {
+    ...(sheetArtifact.metadata || {}),
+    visualIdentityValidation,
+  };
+  __vsMark = __vsLog(
+    "visual_identity_validation",
+    __vsMark,
+    `status=${visualIdentityValidation.status} warnings=${visualIdentityValidation.summary?.totalWarnings ?? 0}`,
+  );
   const openaiReasoningExecution =
     input.openaiReasoningExecution ||
     input.providerExecution?.openaiReasoning ||
@@ -6151,6 +10583,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     },
     execution: openaiReasoningExecution,
   });
+  __vsMark = __vsLog("openai_reasoning_steps", __vsMark);
   const imageProviderCalls = buildImageProviderCalls(visuals3d);
   const allProviderCalls = [...providerCalls, ...imageProviderCalls];
   const openaiQaMetadata = buildOpenAIQaMetadata({
@@ -6186,8 +10619,10 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       1,
       Number(brief?.target_storeys || 1),
     );
-    const phaseFRequiredPanels =
-      buildRequiredA1PanelTypes(targetStoreysForGate);
+    const phaseFRequiredPanels = buildRequiredA1PanelTypes(
+      targetStoreysForGate,
+      sheetArtifact.layoutTemplate || resolvePresentationLayoutTemplate(brief),
+    );
     const visualPanelArtifacts = Object.values(primaryPanelArtifacts).filter(
       (artifact) =>
         REQUIRED_3D_A1_PANEL_TYPES.includes(artifact?.panel_type) ||
@@ -6221,6 +10656,33 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
         hasSvg: placement.status === "ready",
       }),
     );
+    // Phase 4: bucket the deterministic drawing SVGs by drawing type so the
+    // gate's cross-view evidence evaluator (drawingConsistencyChecks) can
+    // inspect them. Only artifacts with an `svgString` participate; the
+    // checker reads `svg` so we forward it through. We also forward
+    // `sheet_mode` for plan entries so the validator can relax the per-panel
+    // north-arrow / title-block marker requirements that the sheet composes
+    // globally (the plan renderer omits them when sheetMode:true was used).
+    const drawingsForGate = { plan: [], elevation: [], section: [] };
+    for (const artifact of Object.values(drawingArtifacts || {})) {
+      const dt = artifact?.drawingType || artifact?.metadata?.drawingType;
+      const svg = artifact?.svgString;
+      if (!svg || !dt) continue;
+      if (dt === "plan") {
+        const planSheetMode =
+          artifact?.technicalQualityMetadata?.sheet_mode === true ||
+          artifact?.metadata?.technicalQualityMetadata?.sheet_mode === true;
+        drawingsForGate.plan.push({
+          level_id: artifact?.metadata?.level_id || null,
+          svg,
+          sheet_mode: planSheetMode,
+        });
+      } else if (dt === "elevation") {
+        drawingsForGate.elevation.push({ svg, window_count: 0 });
+      } else if (dt === "section") {
+        drawingsForGate.section.push({ svg, stair_count: 0 });
+      }
+    }
     const upstreamRenderContract = resolveA1RenderContract({
       renderIntent: "final_a1",
     });
@@ -6234,13 +10696,19 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       visualPanels: visualPanelsForGate,
       materialPalette: materialPaletteForGate,
       openaiProvider: openaiQaMetadata,
-      strictPhotoreal: process.env.OPENAI_STRICT_IMAGE_GEN === "true",
+      strictPhotoreal:
+        brief?.reference_match === true ||
+        process.env.OPENAI_STRICT_IMAGE_GEN === "true",
       imageGenEnabled: process.env.PROJECT_GRAPH_IMAGE_GEN_ENABLED === "true",
       scope: "upstream_partial",
+      // Phase 4: cross-view consistency evidence inputs.
+      drawings: drawingsForGate,
+      projectGeometry,
     });
     sheetArtifact.quality = {
       ...(sheetArtifact.quality || {}),
       exportGate: upstreamGate,
+      referenceMatch: brief?.reference_match === true,
     };
   } catch (gateError) {
     // Never fail the slice on gate evaluation; surface the error in metadata.
@@ -6350,6 +10818,8 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     textRenderStatus: pdfArtifact.renderedProof?.textRenderStatus,
     presentationMode: sheetArtifact.presentationMode,
     visualFidelityStatus: sheetArtifact.visualFidelityStatus,
+    referenceMatch: brief?.reference_match === true,
+    briefInputHash: brief?.brief_input_hash || null,
     openai: openaiQaMetadata,
     openaiConfigured: openaiQaMetadata.openaiConfigured,
     openaiReasoningUsed: openaiQaMetadata.openaiReasoningUsed,
@@ -6377,6 +10847,20 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     // metadata.visualManifestId / Hash / visualIdentityLocked.
     visualManifest,
     visualManifestHash: visualManifest.manifestHash,
+    // Phase 1 — SheetDesignContext foundation. Frozen contract object that
+    // wraps visualManifest with material/style/climate/portfolio/programme.
+    // Surfaced here so downstream tests/consumers can prove every panel
+    // was driven by the same design context. No render output changes.
+    sheetDesignContext,
+    sheetDesignContextHash: sheetDesignContext.contextHash,
+    sheetDesignContextReport,
+    // Phase 5B — post-render visual identity validation report. Warning-
+    // only by default; opt-in strict mode lets a downstream export gate
+    // demote on visual-identity drift. The validator reads what panel
+    // artifacts already stamp (visualManifestHash / Id / locked) plus the
+    // sheet-level sheetDesignContextHash and emits a structured per-panel
+    // report. See src/services/render/visualManifestValidator.js.
+    visualIdentityValidation,
     technicalBuild: {
       ok: technicalBuild.ok,
       technicalPanelTypes: technicalBuild.technicalPanelTypes,
@@ -6393,6 +10877,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       exportSteps,
     },
   };
+  __vsMark = __vsLog("artifacts_assembled", __vsMark);
   let qa = validateProjectGraphVerticalSlice({
     projectGraph: graphWithStableId,
     artifacts,
@@ -6401,7 +10886,17 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     qa,
     getBlockedOpenAIReasoningCalls(providerCalls),
   );
+  // Phase 4: fold the upstream A1 export gate's technical-group blockers
+  // (PANEL_CONTENT_EMPTY, CROSS_VIEW_INCONSISTENT, A1_REQUIRED_PANEL_MISSING,
+  // A1_LAYOUT_BROKEN, A1_SHEET_SPLIT_REQUIRED) into qa so the slice returns
+  // success: false → API maps to 422. Visual-panel blockers stay warning-only
+  // on sheetArtifact.quality.exportGate per Phase 4 scope.
+  qa = applyUpstreamGateTechnicalBlockersToQa(
+    qa,
+    artifacts?.a1Sheet?.quality?.exportGate || null,
+  );
   qa.openai = openaiQaMetadata;
+  __vsMark = __vsLog("validate_qa", __vsMark, `qa_status=${qa.status}`);
 
   // Phase 5: structured reasoning chain — Brief → Site → Climate → Style →
   // Programme — exposed as both a structured object (for QA / API consumers)
@@ -6426,6 +10921,12 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     brief: {
       project_name: brief?.project_name || null,
       building_type: brief?.building_type || null,
+      original_category: brief?.original_category || null,
+      original_subtype: brief?.original_subtype || null,
+      canonical_building_type: brief?.canonical_building_type || null,
+      support_status: brief?.support_status || null,
+      programme_template_key: brief?.programme_template_key || null,
+      project_type_route: brief?.project_type_route || null,
       target_gia_m2: brief?.target_gia_m2 || null,
       target_storeys: brief?.target_storeys || null,
       floorCountLocked:
@@ -6484,12 +10985,56 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     qa,
   };
   finalGraph.project_graph_hash = computeCDSHashSync(finalGraph);
+  __vsLog("vertical_slice_done", __vsRunStart, `qa_status=${qa.status}`);
+
+  // Phase 1 amendment #9: provenance manifest. Surfaces the list of factual
+  // data providers used for the site (Phase 1) and climate (Phase 3 placeholder),
+  // a consolidated data_quality view, and a statically-derived assertion that
+  // OpenAI / LLMs are not used as factual providers (amendment #1).
+  const siteDataProviders = Array.isArray(site.providers) ? site.providers : [];
+  const climateDataProviders = Array.isArray(climate?.providers)
+    ? climate.providers
+    : [];
+  const consolidatedDataQuality = [
+    ...(site.data_quality || []),
+    ...(climate?.data_quality || []),
+  ];
+  const allProviderNames = [
+    ...siteDataProviders.map((p) => String(p?.name || "")),
+    ...climateDataProviders.map((p) => String(p?.name || "")),
+  ];
+  const openaiAsFactualProvider = allProviderNames.some((name) =>
+    /openai|gpt|chatgpt/i.test(name),
+  );
+  const provenanceManifest = {
+    schema_version: "provenance-manifest-v1",
+    siteDataProviders,
+    climateDataProviders,
+    dataQuality: consolidatedDataQuality,
+    factualProviderAssertion: {
+      openaiAsFactualProvider,
+      factualFieldsList: [
+        "site.heritage_flags",
+        "site.flood_risk",
+        "site.neighbouring_buildings",
+        "site.context_height_stats",
+        "site.building_footprints",
+        "climate.weather_source",
+        "climate.wind",
+        "climate.rainfall",
+      ],
+      assertion_message:
+        "OpenAI / LLM models are not used as factual providers for site, boundary, planning, flood, footprint, weather, climate, or UKCP18 data. Interpretation only.",
+    },
+  };
 
   return {
     success: qa.status === "pass",
     pipelineVersion: PROJECT_GRAPH_VERTICAL_SLICE_VERSION,
     geometryHash: compiledProject.geometryHash,
+    projectTypeSupport: brief.project_type_support || null,
     projectGraph: finalGraph,
+    provenanceManifest,
     artifacts: {
       ...artifacts,
       qaReport: {
@@ -6529,6 +11074,19 @@ export async function buildArchitectureProjectVerticalSliceWithRepair(
     maxAttempts,
   });
 }
+
+export const __projectGraphVerticalSliceInternals = Object.freeze({
+  normalizeBrief,
+  buildProgramme,
+  buildSiteContext,
+  buildClimatePack,
+  buildLocalStylePack,
+  buildProjectGeometryFromProgramme,
+  syncProgrammeActuals,
+  compileProject,
+  // Phase 4: exposed for unit testing the upstream-gate technical-blocker fold.
+  applyUpstreamGateTechnicalBlockersToQa,
+});
 
 export default {
   PROJECT_GRAPH_SCHEMA_VERSION,

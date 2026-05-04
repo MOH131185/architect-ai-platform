@@ -9,12 +9,36 @@ import {
   evaluateFinalA1ExportGate,
   resolveA1RenderContract,
 } from "../../services/a1/a1FinalExportContract.js";
+import composeHandler from "../../../api/a1/compose.js";
 
 // Phase F changed the gate success vocabulary from "allowed" to
 // "pass" | "warning" | "blocked". The stable contract for downstream callers
 // is `gate.allowed` (true for pass+warning, false for blocked) — `status` is
 // for richer UI messaging. Tests that previously asserted status === "allowed"
 // now assert allowed === true plus the new status string.
+
+function createMockComposeResponse() {
+  return {
+    statusCode: 200,
+    headers: {},
+    body: null,
+    setHeader(name, value) {
+      this.headers[name] = value;
+    },
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(payload) {
+      this.body = payload;
+      return this;
+    },
+    end() {
+      this.ended = true;
+      return this;
+    },
+  };
+}
 
 describe("a1FinalExportContract", () => {
   test("resolves explicit final A1 exports to print-master dimensions and gates", () => {
@@ -44,6 +68,57 @@ describe("a1FinalExportContract", () => {
     expect(contract.isFinalA1).toBe(false);
     expect(contract.highRes).toBe(false);
     expect(contract.includePdf).toBe(false);
+  });
+
+  test("final A1 compose returns 422 for bad authority even with bypass flags", async () => {
+    const res = createMockComposeResponse();
+    await composeHandler(
+      {
+        method: "POST",
+        body: {
+          designId: "final-authority-bypass-regression",
+          renderIntent: "final_a1",
+          skipValidation: true,
+          skipMissingPanelCheck: true,
+          dnaHash: "dna-hash",
+          geometryHash: "geometry-hash",
+          programHash: "program-hash",
+          panels: [
+            {
+              type: "floor_plan_ground",
+              imageUrl: "data:image/svg+xml;base64,PHN2Zy8+",
+              geometryHash: "geometry-hash",
+              authorityUsed: "enhanced_geometry_adapter",
+              authoritySource: "masterDNA",
+              compiledProjectSchemaVersion: "canonical-project-geometry-v2",
+              svgHash: "svg-hash",
+              meta: {
+                geometryHash: "geometry-hash",
+                authorityUsed: "enhanced_geometry_adapter",
+                authoritySource: "masterDNA",
+                compiledProjectSchemaVersion: "canonical-project-geometry-v2",
+                svgHash: "svg-hash",
+                roomCount: 1,
+                wallCount: 4,
+              },
+            },
+          ],
+        },
+      },
+      res,
+    );
+
+    expect(res.statusCode).toBe(422);
+    expect(res.body?.error).toBe("DISALLOWED_TECHNICAL_PANEL_AUTHORITY");
+    expect(res.body?.details?.disallowedTechnicalAuthorityPanels).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          panelType: "floor_plan_ground",
+          authorityUsed: "enhanced_geometry_adapter",
+          authoritySource: "masterDNA",
+        }),
+      ]),
+    );
   });
 
   test("builds a sheet text contract from panel captions and project metadata", () => {

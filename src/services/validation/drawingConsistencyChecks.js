@@ -2,6 +2,39 @@ function hasSvgPayload(entry) {
   return Boolean(entry?.svg && String(entry.svg).includes("<svg"));
 }
 
+// A plan SVG is "sheet-mode" when it is being composed inside the global A1
+// sheet (which renders ONE north arrow and ONE title block at the sheet
+// chrome level, not per panel). The plan renderer intentionally omits the
+// per-panel north-arrow / title-block in that case to avoid double-rendering.
+// We accept any of the well-known signals callers may attach so the check is
+// resilient to future plumbing tweaks:
+//   - explicit `entry.sheet_mode === true` (slice-level forwarded flag)
+//   - `entry.technicalQualityMetadata.sheet_mode === true`
+//     (camelCase key used by canonical pack builder)
+//   - `entry.technical_quality_metadata.sheet_mode === true`
+//     (snake_case key as the renderer originally emits it)
+//   - `entry.metadata.technicalQualityMetadata.sheet_mode === true`
+//   - `entry.metadata.technical_quality_metadata.sheet_mode === true`
+//   - SVG carries the `data-sheet-mode="true"` attribute (defensive — not
+//     emitted today, allows the renderer to opt in later without re-touching
+//     this validator).
+function isSheetModePlan(entry) {
+  if (!entry || typeof entry !== "object") return false;
+  if (entry.sheet_mode === true || entry.sheetMode === true) return true;
+  const metaCandidates = [
+    entry.technicalQualityMetadata,
+    entry.technical_quality_metadata,
+    entry.metadata?.technicalQualityMetadata,
+    entry.metadata?.technical_quality_metadata,
+  ];
+  for (const meta of metaCandidates) {
+    if (meta && meta.sheet_mode === true) return true;
+  }
+  const svg = String(entry.svg || "");
+  if (svg.includes('data-sheet-mode="true"')) return true;
+  return false;
+}
+
 function validateCollection(name, entries = [], minimumCount = 1) {
   const warnings = [];
   const errors = [];
@@ -38,11 +71,37 @@ function validatePlanCollection(entries = [], levelCount = 1) {
     }
 
     const svg = String(entry?.svg || "");
-    if (svg && !svg.includes('id="north-arrow"')) {
+    const sheetModeEntry = isSheetModePlan(entry);
+    // Per-panel north-arrow and title-block are required for STANDALONE
+    // technical exports (single-plan PDFs, vector previews, etc). They are
+    // INTENTIONALLY omitted when the plan is composed into the A1 sheet,
+    // because the sheet renders a single global north arrow + title block.
+    // Only relax these two specific marker requirements for sheet-mode —
+    // everything else (scale-bar, room-label, dimension-chain warnings,
+    // cross-view storey/window agreement, SVG payload presence) stays.
+    if (svg && !sheetModeEntry && !svg.includes('id="north-arrow"')) {
       errors.push(`drawings.plan[${index}] is missing the north-arrow marker.`);
     }
-    if (svg && !svg.includes('id="title-block"')) {
+    if (svg && !sheetModeEntry && !svg.includes('id="title-block"')) {
       errors.push(`drawings.plan[${index}] is missing the title-block marker.`);
+    }
+    // Reliability checks added 2026-05-02 to surface common A1 floor-plan
+    // regressions (missing scale bar, no room labels, no dimension chains)
+    // as warnings rather than letting them slip through silently.
+    if (svg && !svg.includes('id="scale-bar"')) {
+      warnings.push(
+        `drawings.plan[${index}] has no scale-bar marker — A1 plans should include a scale bar.`,
+      );
+    }
+    if (svg && !svg.match(/<text[^>]*class="room-label"|id="room-label"/)) {
+      warnings.push(
+        `drawings.plan[${index}] has no room-label text elements — rooms may render unlabelled.`,
+      );
+    }
+    if (svg && !svg.includes('class="dimension-chain"')) {
+      warnings.push(
+        `drawings.plan[${index}] has no dimension-chain — outer dimensions may be missing.`,
+      );
     }
   });
 
@@ -71,6 +130,23 @@ function validateElevationCollection(entries = [], projectGeometry = {}) {
     );
   }
 
+  // Reliability checks added 2026-05-02: every elevation should mark FFL
+  // (finished floor level) and have a ground line — without these the
+  // user can't read floor heights off the elevation.
+  entries.forEach((entry, index) => {
+    const svg = String(entry?.svg || "");
+    if (svg && !svg.includes('id="ground-line"')) {
+      warnings.push(
+        `drawings.elevation[${index}] is missing the ground-line marker.`,
+      );
+    }
+    if (svg && !svg.match(/FFL|finished floor|level-marker/i)) {
+      warnings.push(
+        `drawings.elevation[${index}] has no FFL / level markers — floor heights unreadable.`,
+      );
+    }
+  });
+
   return { warnings, errors };
 }
 
@@ -90,13 +166,122 @@ function validateSectionCollection(entries = [], projectGeometry = {}) {
     );
   }
 
+  // Reliability checks added 2026-05-02: sections without ground lines or
+  // section markers (A-A / B-B labels) can't be cross-referenced with
+  // their cut-line on the plan.
+  entries.forEach((entry, index) => {
+    const svg = String(entry?.svg || "");
+    if (svg && !svg.includes('id="ground-line"')) {
+      warnings.push(
+        `drawings.section[${index}] is missing the ground-line marker.`,
+      );
+    }
+    if (svg && !svg.match(/section[- ]?[A-Z]-[A-Z]/i)) {
+      warnings.push(
+        `drawings.section[${index}] has no section identifier (A-A, B-B) — cannot cross-reference with plan.`,
+      );
+    }
+  });
+
   return { warnings, errors };
+}
+
+/**
+ * Cross-view consistency: compare counts that should agree across drawing
+ * types. The 2D drawings and the 3D panels are derived from the same
+ * ProjectGraph, so disagreement here means a render path silently dropped
+ * or invented elements that aren't in the source geometry.
+ *
+ * Returns warnings (not errors) — a discrepancy is a strong smell but
+ * shouldn't block export until we are confident the per-view counters
+ * are reliable.
+ */
+function validateCrossViewConsistency({ drawings = {}, projectGeometry = {} }) {
+  const warnings = [];
+  const planEntries = drawings.plan || [];
+  const elevationEntries = drawings.elevation || [];
+  const sectionEntries = drawings.section || [];
+
+  // 1. Plan window count vs elevation window count. The plan shows windows
+  // as openings on the perimeter; elevations show them as glazing panels.
+  // For a single building these should match exactly.
+  const planWindowCount = planEntries.reduce(
+    (sum, entry) => sum + Number(entry?.window_count || 0),
+    0,
+  );
+  const elevationWindowCount = elevationEntries.reduce(
+    (sum, entry) => sum + Number(entry?.window_count || 0),
+    0,
+  );
+  if (
+    planWindowCount > 0 &&
+    elevationWindowCount > 0 &&
+    planWindowCount !== elevationWindowCount
+  ) {
+    warnings.push(
+      `Cross-view: plan reports ${planWindowCount} windows but elevations report ${elevationWindowCount} — same building should have the same opening count.`,
+    );
+  }
+
+  // 2. Floor count in plan vs section. A two-storey plan must have a
+  // section that spans both storeys.
+  const planLevelCount = planEntries.length;
+  const expectedFloorCount = Math.max(1, (projectGeometry.levels || []).length);
+  const reportedSectionFloorCount = sectionEntries.reduce(
+    (max, entry) => Math.max(max, Number(entry?.floor_count || 0)),
+    0,
+  );
+  if (
+    expectedFloorCount > 1 &&
+    reportedSectionFloorCount > 0 &&
+    reportedSectionFloorCount < expectedFloorCount
+  ) {
+    warnings.push(
+      `Cross-view: project has ${expectedFloorCount} floors but section only depicts ${reportedSectionFloorCount} — section must span all storeys.`,
+    );
+  }
+  if (
+    planLevelCount > 0 &&
+    expectedFloorCount > 0 &&
+    planLevelCount !== expectedFloorCount
+  ) {
+    warnings.push(
+      `Cross-view: ${planLevelCount} plan(s) returned for ${expectedFloorCount} ProjectGraph level(s).`,
+    );
+  }
+
+  // 3. Visual identity hash agreement (3D panels). When `visualIdentityLocked`
+  // is true on the panels, all panels must carry the same
+  // `visualManifestHash` so 2D and 3D are derived from the same geometry.
+  const panels = Array.isArray(drawings.panels) ? drawings.panels : [];
+  if (panels.length > 1) {
+    const hashes = panels
+      .map((panel) => panel?.metadata?.visualManifestHash)
+      .filter(Boolean);
+    const distinct = [...new Set(hashes)];
+    if (hashes.length === panels.length && distinct.length > 1) {
+      warnings.push(
+        `Cross-view: panels carry ${distinct.length} different visualManifestHash values — 2D and 3D derive from different geometry.`,
+      );
+    }
+    const allLocked = panels.every(
+      (panel) => panel?.metadata?.visualIdentityLocked === true,
+    );
+    if (!allLocked) {
+      warnings.push(
+        "Cross-view: at least one panel reports visualIdentityLocked=false — 2D/3D consistency cannot be guaranteed.",
+      );
+    }
+  }
+
+  return warnings;
 }
 
 export function runDrawingConsistencyChecks({
   projectGeometry,
   drawings = {},
   drawingTypes = ["plan", "elevation", "section"],
+  enableCrossViewChecks = true,
 } = {}) {
   const warnings = [];
   const errors = [];
@@ -126,6 +311,14 @@ export function runDrawingConsistencyChecks({
     errors.push(...sectionCheck.errors);
   }
 
+  if (enableCrossViewChecks) {
+    const crossViewWarnings = validateCrossViewConsistency({
+      drawings,
+      projectGeometry,
+    });
+    warnings.push(...crossViewWarnings);
+  }
+
   return {
     valid: errors.length === 0,
     warnings,
@@ -133,15 +326,20 @@ export function runDrawingConsistencyChecks({
     checks: {
       requestedTypes: drawingTypes,
       levelCount,
+      crossViewChecks: enableCrossViewChecks,
       counts: {
         plan: (drawings.plan || []).length,
         elevation: (drawings.elevation || []).length,
         section: (drawings.section || []).length,
+        panels: (drawings.panels || []).length,
       },
     },
   };
 }
 
+export { validateCrossViewConsistency };
+
 export default {
   runDrawingConsistencyChecks,
+  validateCrossViewConsistency,
 };

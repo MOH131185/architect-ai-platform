@@ -380,6 +380,15 @@ export function normalizeSiteSnapshot(snapshot) {
   return {
     address: snapshot.address || "",
     coordinates: snapshot.coordinates || snapshot.center || { lat: 0, lng: 0 },
+    center: snapshot.center || snapshot.coordinates || { lat: 0, lng: 0 },
+    zoom: snapshot.zoom || null,
+    mapType: snapshot.mapType || null,
+    size: snapshot.size || null,
+    sha256: snapshot.sha256 || null,
+    source: snapshot.source || snapshot.sourceUrl || null,
+    sourceUrl: snapshot.sourceUrl || snapshot.source || null,
+    attribution: snapshot.attribution || null,
+    drawPolygonOverlay: snapshot.drawPolygonOverlay !== false,
     sitePolygon: Array.isArray(snapshot.sitePolygon)
       ? snapshot.sitePolygon
       : Array.isArray(snapshot.polygon)

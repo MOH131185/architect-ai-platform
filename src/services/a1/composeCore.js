@@ -309,6 +309,12 @@ const CANONICAL_KEY_MAP = {
   climate: "climate_card",
   schedules: "schedules_notes",
   notes: "schedules_notes",
+  // Phase 2 — `key_notes` is the active canonical name for the panel that
+  // the ProjectGraph vertical slice builds (`buildKeyNotesPanelArtifact`).
+  // Compose-grid lookups still resolve to the existing `schedules_notes`
+  // slot during the one-release shim window so existing fixtures, sheet
+  // splitter consumers, and final-export contract paths keep working.
+  key_notes: "schedules_notes",
 
   // Legacy image-generation types used by panelOrchestrator PANEL_DEFINITIONS
   exterior_front_3d: "hero_3d",

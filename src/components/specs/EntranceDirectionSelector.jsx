@@ -1,14 +1,14 @@
 /**
  * Entrance Direction Selector Component
- * 
+ *
  * Compass-based selector for main entrance direction with auto-detection
  */
 
-import React from 'react';
-import { motion } from 'framer-motion';
-import { Navigation, Loader2 } from 'lucide-react';
-import { getAllDirections } from '../../utils/entranceOrientation.js';
-import Button from '../ui/Button.jsx';
+import React from "react";
+import { motion } from "framer-motion";
+import { Navigation, Loader2 } from "lucide-react";
+import { getAllDirections } from "../../utils/entranceOrientation.js";
+import Button from "../ui/Button.jsx";
 
 const EntranceDirectionSelector = ({
   selectedDirection,
@@ -16,7 +16,8 @@ const EntranceDirectionSelector = ({
   onAutoDetect,
   isDetecting = false,
   autoDetectResult = null,
-  showAutoDetect = true
+  showAutoDetect = true,
+  needsReview = false,
 }) => {
   const directions = getAllDirections();
 
@@ -39,7 +40,7 @@ const EntranceDirectionSelector = ({
               const isSelected = selectedDirection === dir.code;
               const angle = dir.bearing;
               const radius = 100; // pixels from center
-              
+
               // Calculate position
               const x = Math.sin((angle * Math.PI) / 180) * radius;
               const y = -Math.cos((angle * Math.PI) / 180) * radius;
@@ -50,12 +51,12 @@ const EntranceDirectionSelector = ({
                   onClick={() => handleDirectionClick(dir.code)}
                   className={`absolute flex items-center justify-center w-12 h-12 rounded-full transition-all duration-200 ${
                     isSelected
-                      ? 'bg-royal-500 text-white scale-110 shadow-glow'
-                      : 'bg-navy-700 text-gray-300 hover:bg-navy-600'
+                      ? "bg-royal-500 text-white scale-110 shadow-glow"
+                      : "bg-navy-700 text-gray-300 hover:bg-navy-600"
                   }`}
                   style={{
                     left: `calc(50% + ${x}px - 24px)`,
-                    top: `calc(50% + ${y}px - 24px)`
+                    top: `calc(50% + ${y}px - 24px)`,
                   }}
                   whileHover={{ scale: isSelected ? 1.1 : 1.05 }}
                   whileTap={{ scale: 0.95 }}
@@ -75,12 +76,16 @@ const EntranceDirectionSelector = ({
                 <div
                   style={{
                     transform: `rotate(${
-                      directions.find(d => d.code === selectedDirection)?.bearing || 0
-                    }deg)`
+                      directions.find((d) => d.code === selectedDirection)
+                        ?.bearing || 0
+                    }deg)`,
                   }}
                   className="transition-transform duration-500"
                 >
-                  <Navigation className="w-8 h-8 text-royal-400" fill="currentColor" />
+                  <Navigation
+                    className="w-8 h-8 text-royal-400"
+                    fill="currentColor"
+                  />
                 </div>
               </motion.div>
             )}
@@ -110,8 +115,16 @@ const EntranceDirectionSelector = ({
           >
             <p className="text-sm text-gray-400">Main Entrance</p>
             <p className="text-lg font-semibold text-white">
-              {directions.find(d => d.code === selectedDirection)?.label}
+              {directions.find((d) => d.code === selectedDirection)?.label}
             </p>
+            {needsReview && (
+              <p
+                className="mt-2 inline-block rounded-full border border-amber-400/40 bg-amber-500/10 px-3 py-1 text-xs uppercase tracking-wide text-amber-200"
+                data-testid="entrance-needs-review-badge"
+              >
+                Auto-detected — please confirm
+              </p>
+            )}
           </motion.div>
         )}
       </div>
@@ -124,9 +137,15 @@ const EntranceDirectionSelector = ({
             size="md"
             onClick={onAutoDetect}
             disabled={isDetecting}
-            icon={isDetecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Navigation className="w-4 h-4" />}
+            icon={
+              isDetecting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Navigation className="w-4 h-4" />
+              )
+            }
           >
-            {isDetecting ? 'Detecting...' : 'Auto-Detect Entrance'}
+            {isDetecting ? "Detecting..." : "Auto-Detect Entrance"}
           </Button>
         </div>
       )}
@@ -139,13 +158,16 @@ const EntranceDirectionSelector = ({
           className="p-3 rounded-lg bg-navy-800/60 border border-navy-700"
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-semibold text-white">Auto-Detected:</span>
+            <span className="text-sm font-semibold text-white">
+              Auto-Detected:
+            </span>
             <span className="text-xs uppercase tracking-wide px-2 py-1 rounded bg-royal-500/20 text-royal-300">
               {Math.round(autoDetectResult.confidence * 100)}% confidence
             </span>
           </div>
           <p className="text-sm text-gray-300">
-            {autoDetectResult.rationale?.[0]?.message || 'Based on site analysis'}
+            {autoDetectResult.rationale?.[0]?.message ||
+              "Based on site analysis"}
           </p>
         </motion.div>
       )}
@@ -154,4 +176,3 @@ const EntranceDirectionSelector = ({
 };
 
 export default EntranceDirectionSelector;
-

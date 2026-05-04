@@ -4,15 +4,247 @@
  * Supports polygons, triangles, irregular shapes, and complex geometries
  */
 
+import {
+  BOUNDARY_POLICY_VERSION,
+  buildBoundaryMeasurements,
+  classifyParcelCandidate,
+  classifyBuildingCandidate,
+  normalizeBoundaryAreaFields,
+  polygonAreaM2,
+} from "./site/boundaryPolicy.js";
+
 const API_ENDPOINTS = {
   OVERPASS: "https://overpass-api.de/api/interpreter",
   NOMINATIM: "https://nominatim.openstreetmap.org/search",
 };
 
+// Phase 5C: server-side proxy that runs the same Overpass queries but
+// without browser CORS restrictions. The browser path calls this URL
+// instead of skipping Overpass and going straight to the estimated
+// fallback. A fetch failure / non-OK response / null polygon causes the
+// caller to fall through to the existing Intelligent Fallback chain —
+// the proxy is purely additive evidence, never the safety net itself.
+export const SITE_BOUNDARY_PROXY_URL = "/api/site/boundary";
+export const SITE_BOUNDARY_PROXY_TIMEOUT_MS = 9000;
+
+export const INTELLIGENT_FALLBACK_BOUNDARY_SOURCE = "Intelligent Fallback";
+export const INTELLIGENT_FALLBACK_BOUNDARY_CONFIDENCE = 0.4;
+
+export function buildEstimatedBoundaryMetadata({
+  source = INTELLIGENT_FALLBACK_BOUNDARY_SOURCE,
+  confidence = INTELLIGENT_FALLBACK_BOUNDARY_CONFIDENCE,
+  reason = "No real boundary data available",
+  extra = {},
+  ...rest
+} = {}) {
+  return {
+    ...rest,
+    ...extra,
+    boundaryAuthoritative: false,
+    boundaryConfidence: confidence,
+    boundarySource: source,
+    fallbackReason: reason,
+    estimatedOnly: true,
+  };
+}
+
+export function isEstimatedBoundaryResult(result = {}) {
+  const source = String(
+    result?.boundarySource ||
+      result?.source ||
+      result?.metadata?.boundarySource ||
+      result?.metadata?.source ||
+      "",
+  );
+  const confidence = Number(
+    result?.boundaryConfidence ??
+      result?.confidence ??
+      result?.metadata?.boundaryConfidence,
+  );
+  const lowConfidence = Number.isFinite(confidence) && confidence < 0.6;
+
+  return (
+    result?.boundaryAuthoritative === false ||
+    result?.metadata?.boundaryAuthoritative === false ||
+    result?.estimatedOnly === true ||
+    result?.metadata?.estimatedOnly === true ||
+    /intelligent fallback|fallback/i.test(source) ||
+    lowConfidence
+  );
+}
+
 function isBrowserRuntime() {
   return (
     typeof window !== "undefined" && typeof window.document !== "undefined"
   );
+}
+
+function buildMeasurementFields(polygon, fallbackAreaM2 = 0) {
+  const measurements = buildBoundaryMeasurements(polygon);
+  const areaM2 =
+    measurements.areaM2 ||
+    (Number.isFinite(Number(fallbackAreaM2)) ? Number(fallbackAreaM2) : 0);
+  return {
+    area: areaM2,
+    areaM2,
+    surfaceAreaM2: areaM2,
+    perimeterM: measurements.perimeterM,
+    segments: measurements.segments,
+    angles: measurements.angles,
+    siteMetrics: {
+      areaM2,
+      surfaceAreaM2: areaM2,
+      perimeterM: measurements.perimeterM,
+      segmentCount: measurements.segmentCount,
+      angleCount: measurements.angleCount,
+    },
+  };
+}
+
+/**
+ * Phase 5C: call the server-side `/api/site/boundary` proxy from the
+ * browser. Returns a normalised `{ polygon, source, confidence,
+ * boundaryAuthoritative, ... }` object on success, or `null` on any
+ * failure (network error, timeout, non-OK status, empty result, or
+ * low-confidence response). A null return is the explicit signal for
+ * `detectPropertyBoundary` to continue down the existing chain into the
+ * Intelligent Fallback — the proxy is *additive* evidence and never a
+ * replacement for the existing safety net.
+ *
+ * Pure-ish: the only side effects are the fetch and a console.warn on
+ * failure. Accepts an injected `fetchImpl` so tests can mock without
+ * monkey-patching globals.
+ *
+ * @param {object} params
+ * @param {{lat:number,lng:number}} params.coordinates
+ * @param {string} [params.address]
+ * @param {string} [params.proxyUrl=SITE_BOUNDARY_PROXY_URL]
+ * @param {number} [params.timeoutMs=SITE_BOUNDARY_PROXY_TIMEOUT_MS]
+ * @param {function} [params.fetchImpl]
+ * @returns {Promise<Object|null>}
+ */
+/**
+ * Extract a UK postcode from a free-form address string. Returns null
+ * for non-UK addresses. The proxy uses this to gate INSPIRE lookups by
+ * country (England + Wales only).
+ */
+export function extractPostcodeFromAddress(address) {
+  if (typeof address !== "string") return null;
+  // UK postcode pattern: 1-2 letters + 1-2 digits + optional letter,
+  // space, 1 digit + 2 letters. Anchor to word boundary so we don't
+  // match house-number-like fragments.
+  const match = address.match(/\b([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\b/i);
+  return match ? match[1].toUpperCase().replace(/\s+/g, " ").trim() : null;
+}
+
+export async function fetchSiteBoundaryFromProxy({
+  coordinates,
+  address = null,
+  postcode = null,
+  proxyUrl = SITE_BOUNDARY_PROXY_URL,
+  timeoutMs = SITE_BOUNDARY_PROXY_TIMEOUT_MS,
+  fetchImpl = typeof fetch === "function" ? fetch : null,
+} = {}) {
+  if (typeof fetchImpl !== "function") return null;
+  if (
+    !coordinates ||
+    !Number.isFinite(Number(coordinates.lat)) ||
+    !Number.isFinite(Number(coordinates.lng))
+  ) {
+    return null;
+  }
+
+  const controller =
+    typeof AbortController === "function" ? new AbortController() : null;
+  const timer = controller
+    ? setTimeout(
+        () => controller.abort("site_boundary_proxy_timeout"),
+        timeoutMs,
+      )
+    : null;
+
+  // Resolve postcode: explicit param wins; otherwise try extracting from
+  // the address. The proxy does its own gating with `isEnglandOrWales`,
+  // so passing a non-UK postcode (or omitting it) is safe.
+  const resolvedPostcode =
+    postcode || extractPostcodeFromAddress(address) || null;
+
+  try {
+    const response = await fetchImpl(proxyUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        lat: Number(coordinates.lat),
+        lng: Number(coordinates.lng),
+        postcode: resolvedPostcode,
+        address,
+      }),
+      signal: controller?.signal,
+    });
+    if (!response.ok) {
+      console.warn(
+        `[site-boundary-proxy] non-OK response ${response.status}; falling through to existing chain`,
+      );
+      return null;
+    }
+    const json = await response.json();
+    if (!json || !Array.isArray(json.polygon) || json.polygon.length < 3) {
+      // No polygon found server-side. The browser chain falls through
+      // to the existing Intelligent Fallback path. We deliberately do
+      // NOT promote `polygon: null` from the proxy to anything else.
+      return null;
+    }
+    const proxyMeasurementFields = buildMeasurementFields(
+      json.polygon,
+      Number(json.areaM2) || 0,
+    );
+    const areaM2 = Number(json.areaM2) || proxyMeasurementFields.areaM2;
+    const perimeterM =
+      Number(json.perimeterM) || proxyMeasurementFields.perimeterM;
+    const segments = Array.isArray(json.segments)
+      ? json.segments
+      : proxyMeasurementFields.segments;
+    const angles = Array.isArray(json.angles)
+      ? json.angles
+      : proxyMeasurementFields.angles;
+    return normalizeBoundaryAreaFields({
+      polygon: json.polygon,
+      shapeType: analyzeShapeType(json.polygon),
+      source: json.source,
+      confidence: Number(json.confidence) || 0,
+      areaM2,
+      area: areaM2,
+      surfaceAreaM2: Number(json.surfaceAreaM2) || areaM2,
+      perimeterM,
+      segments,
+      angles,
+      boundaryAuthoritative: Boolean(json.boundaryAuthoritative),
+      boundaryConfidence: Number(json.confidence) || 0,
+      boundarySource: json.source,
+      estimateReason: json.estimateReason || null,
+      estimatedOnly: json.boundaryAuthoritative !== true,
+      policyVersion: json.policyVersion || BOUNDARY_POLICY_VERSION,
+      hash: json.hash || null,
+      metadata: {
+        ...(json.metadata || {}),
+        proxyHash: json.hash,
+        proxyCached: Boolean(json.cached),
+        proxySchemaVersion: json.schemaVersion,
+        policyVersion: json.policyVersion || BOUNDARY_POLICY_VERSION,
+        siteMetrics:
+          json.metadata?.siteMetrics ||
+          proxyMeasurementFields.siteMetrics ||
+          null,
+      },
+    });
+  } catch (error) {
+    console.warn(
+      `[site-boundary-proxy] fetch failed (${error?.name || "error"}: ${error?.message || error}); falling through to existing chain`,
+    );
+    return null;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 function createSeededRandom(seedInput) {
@@ -34,16 +266,69 @@ function createSeededRandom(seedInput) {
 }
 
 /**
- * Detect property boundary shape from coordinates
+ * Detect property boundary shape from coordinates.
+ *
+ * Phase 5C: the browser path now starts by calling the
+ * `/api/site/boundary` server proxy so Overpass evidence is available
+ * without CORS. If the proxy returns no polygon, we fall through to
+ * the existing chain (which still ends in the Intelligent Fallback).
+ * The estimated-boundary safety net at the bottom of the chain is
+ * untouched — the proxy is purely additive evidence.
+ *
  * @param {Object} coordinates - { lat, lng }
  * @param {string} address - Full address string
+ * @param {Object} [options]
+ * @param {boolean} [options.bypassProxy=false] - skip the `/api/site/boundary`
+ *        proxy call. Used by Jest fixtures that stub the existing chain
+ *        directly so the proxy doesn't interfere with their assertions.
+ *        The corresponding env override is `BYPASS_SITE_BOUNDARY_PROXY=true`.
+ * @param {function} [options.fetchImpl] - injected fetch for the proxy
+ *        call (tests).
  * @returns {Promise<Object>} Boundary data with shape type
  */
-export async function detectPropertyBoundary(coordinates, address) {
+export async function detectPropertyBoundary(
+  coordinates,
+  address,
+  options = {},
+) {
   console.log("🔍 Detecting property boundary for:", address);
 
   try {
     const browserRuntime = isBrowserRuntime();
+    const bypassProxy =
+      options?.bypassProxy === true ||
+      (typeof process !== "undefined" &&
+        String(process.env?.BYPASS_SITE_BOUNDARY_PROXY || "")
+          .toLowerCase()
+          .trim() === "true");
+
+    // Phase 5C: server-side proxy call. Browser-only — server runtime
+    // already calls Overpass directly via the existing chain, so we
+    // skip the proxy hop there.
+    if (browserRuntime && !bypassProxy) {
+      const proxyResult = await fetchSiteBoundaryFromProxy({
+        coordinates,
+        address,
+        fetchImpl: options?.fetchImpl,
+      });
+      if (
+        proxyResult &&
+        Array.isArray(proxyResult.polygon) &&
+        proxyResult.polygon.length >= 3
+      ) {
+        const estimated = isEstimatedBoundaryResult(proxyResult);
+        if (estimated) {
+          console.warn(
+            `⚠️ Proxy returned a measured non-authoritative boundary (source=${proxyResult.source}, confidence=${proxyResult.confidence}); using it as the editable site shape instead of random fallback.`,
+          );
+        } else {
+          console.log(
+            `✅ Boundary detected via /api/site/boundary: ${proxyResult.shapeType} (${proxyResult.polygon.length} pts, source=${proxyResult.source})`,
+          );
+        }
+        return proxyResult;
+      }
+    }
 
     // Try multiple detection methods in order of accuracy
     const methods = browserRuntime
@@ -61,7 +346,7 @@ export async function detectPropertyBoundary(coordinates, address) {
 
     if (browserRuntime) {
       console.info(
-        "Skipping direct Overpass boundary detection in browser runtime; using CORS-safe fallbacks.",
+        "Falling through to CORS-safe browser chain (proxy returned no authoritative polygon).",
       );
     }
 
@@ -69,13 +354,26 @@ export async function detectPropertyBoundary(coordinates, address) {
       try {
         const result = await method();
         if (result && result.polygon && result.polygon.length >= 3) {
-          console.log(
-            "✅ Boundary detected:",
-            result.shapeType,
-            "with",
-            result.polygon.length,
-            "points",
-          );
+          const estimatedBoundary = isEstimatedBoundaryResult(result);
+
+          if (estimatedBoundary) {
+            console.warn(
+              "⚠️ Estimated boundary generated:",
+              result.shapeType,
+              "with",
+              result.polygon.length,
+              "points",
+            );
+          } else {
+            console.log(
+              "✅ Boundary detected:",
+              result.shapeType,
+              "with",
+              result.polygon.length,
+              "points",
+            );
+          }
+
           return result;
         }
       } catch (error) {
@@ -129,16 +427,72 @@ async function detectFromOSMParcel(coordinates) {
     if (closestParcel) {
       const polygon = extractPolygonFromElement(closestParcel);
       const shapeType = analyzeShapeType(polygon);
+      // Reuse the shared classifier so the legacy path applies the same
+      // demotion rules as the modern proxy: landuse-district tags, oversized
+      // polygons (>1500 m² for residential), or excessive vertex counts.
+      // The polygon shape from extractPolygonFromElement is { lat, lng } so
+      // it matches what classifyParcelCandidate expects.
+      const polygonForClassifier = polygon
+        .map((point) =>
+          point && Number.isFinite(point.lat) && Number.isFinite(point.lng)
+            ? { lat: Number(point.lat), lng: Number(point.lng) }
+            : null,
+        )
+        .filter(Boolean);
+      const estimateReason = classifyParcelCandidate({
+        polygon: polygonForClassifier,
+        element: closestParcel,
+      });
+      const measuredAreaM2 = polygonAreaM2(polygonForClassifier);
+      const fallbackAreaM2 = calculatePolygonArea(polygon);
+      const areaM2 =
+        Number.isFinite(measuredAreaM2) && measuredAreaM2 > 0
+          ? measuredAreaM2
+          : fallbackAreaM2;
+      const measurementFields = buildMeasurementFields(polygon, areaM2);
+
+      // When the parcel is implausible (oversized landuse district, etc.)
+      // we still return the polygon so downstream UI has *something* to
+      // render, but mark it as estimated and lower confidence so the
+      // gating logic / UI label treats it as contextual, not authoritative.
+      if (estimateReason) {
+        return {
+          polygon,
+          shapeType,
+          source: "OSM Parcel (estimated)",
+          confidence: 0.55,
+          ...measurementFields,
+          boundaryAuthoritative: false,
+          boundaryConfidence: 0.55,
+          boundarySource: "OSM Parcel (estimated)",
+          estimatedOnly: true,
+          estimateReason,
+          policyVersion: BOUNDARY_POLICY_VERSION,
+          metadata: {
+            landuse: closestParcel.tags?.landuse,
+            osmId: closestParcel.id,
+            estimateReason,
+            policyVersion: BOUNDARY_POLICY_VERSION,
+            siteMetrics: measurementFields.siteMetrics,
+          },
+        };
+      }
 
       return {
         polygon,
         shapeType,
         source: "OSM Parcel",
         confidence: 0.95,
-        area: calculatePolygonArea(polygon),
+        ...measurementFields,
+        boundaryAuthoritative: true,
+        boundaryConfidence: 0.95,
+        boundarySource: "OSM Parcel",
+        policyVersion: BOUNDARY_POLICY_VERSION,
         metadata: {
           landuse: closestParcel.tags?.landuse,
           osmId: closestParcel.id,
+          policyVersion: BOUNDARY_POLICY_VERSION,
+          siteMetrics: measurementFields.siteMetrics,
         },
       };
     }
@@ -181,19 +535,70 @@ async function detectFromOSMBuilding(coordinates) {
     if (closestBuilding) {
       const buildingPolygon = extractPolygonFromElement(closestBuilding);
 
-      // Expand building footprint by 15% to estimate property boundary
-      const expandedPolygon = expandPolygon(buildingPolygon, 1.15);
-      const shapeType = analyzeShapeType(expandedPolygon);
+      // Use the exact measured building footprint. Expanding this shape made
+      // tight urban/apartment addresses drift away from the actual project
+      // footprint and produced misleading site metrics.
+      const sitePolygon = buildingPolygon;
+      const shapeType = analyzeShapeType(sitePolygon);
+      // Same demotion logic as detectFromOSMParcel: oversized buildings
+      // (>600 m² for residential) are almost certainly multi-unit blocks
+      // and should not be treated as authoritative single-house footprints.
+      const polygonForClassifier = buildingPolygon
+        .map((point) =>
+          point && Number.isFinite(point.lat) && Number.isFinite(point.lng)
+            ? { lat: Number(point.lat), lng: Number(point.lng) }
+            : null,
+        )
+        .filter(Boolean);
+      const buildingEstimateReason = classifyBuildingCandidate({
+        polygon: polygonForClassifier,
+      });
+      const measuredAreaM2 = polygonAreaM2(polygonForClassifier);
+      const fallbackAreaM2 = calculatePolygonArea(sitePolygon);
+      const areaM2 =
+        Number.isFinite(measuredAreaM2) && measuredAreaM2 > 0
+          ? measuredAreaM2
+          : fallbackAreaM2;
+      const measurementFields = buildMeasurementFields(sitePolygon, areaM2);
+
+      if (buildingEstimateReason) {
+        return {
+          polygon: sitePolygon,
+          shapeType,
+          source: "OSM Building Footprint (estimated)",
+          confidence: 0.55,
+          ...measurementFields,
+          boundaryAuthoritative: false,
+          boundaryConfidence: 0.55,
+          boundarySource: "OSM Building Footprint (estimated)",
+          estimatedOnly: true,
+          estimateReason: buildingEstimateReason,
+          policyVersion: BOUNDARY_POLICY_VERSION,
+          metadata: {
+            buildingType: closestBuilding.tags?.building,
+            osmId: closestBuilding.id,
+            estimateReason: buildingEstimateReason,
+            policyVersion: BOUNDARY_POLICY_VERSION,
+            siteMetrics: measurementFields.siteMetrics,
+          },
+        };
+      }
 
       return {
-        polygon: expandedPolygon,
+        polygon: sitePolygon,
         shapeType,
-        source: "OSM Building (expanded)",
+        source: "OSM Building Footprint",
         confidence: 0.75,
-        area: calculatePolygonArea(expandedPolygon),
+        ...measurementFields,
+        boundaryAuthoritative: true,
+        boundaryConfidence: 0.75,
+        boundarySource: "OSM Building Footprint",
+        policyVersion: BOUNDARY_POLICY_VERSION,
         metadata: {
           buildingType: closestBuilding.tags?.building,
           osmId: closestBuilding.id,
+          policyVersion: BOUNDARY_POLICY_VERSION,
+          siteMetrics: measurementFields.siteMetrics,
         },
       };
     }
@@ -247,13 +652,20 @@ async function detectFromNearbyFeatures(coordinates) {
 
     if (polygon && polygon.length >= 3) {
       const shapeType = analyzeShapeType(polygon);
+      const areaM2 = calculatePolygonArea(polygon);
+      const measurementFields = buildMeasurementFields(polygon, areaM2);
 
       return {
         polygon,
         shapeType,
         source: "Nearby Features",
         confidence: 0.6,
-        area: calculatePolygonArea(polygon),
+        ...measurementFields,
+        boundaryAuthoritative: false,
+        boundaryConfidence: 0.6,
+        boundarySource: "Nearby Features",
+        estimatedOnly: true,
+        policyVersion: BOUNDARY_POLICY_VERSION,
       };
     }
   }
@@ -286,15 +698,12 @@ function generateIntelligentFallback(coordinates, address) {
     polygon = generateLShapedLot(coordinates, 25, 20);
     shapeType = "L-shaped";
   } else if (isUrban) {
-    // Urban lots can be rectangular or irregular
-    const isNarrow = rng() > 0.5; // Could be enhanced with street analysis
-    if (isNarrow) {
-      polygon = generateRectangularLot(coordinates, 12, 30); // Narrow urban lot
-      shapeType = "rectangular";
-    } else {
-      polygon = generateIrregularQuad(coordinates, 20, 25, rng);
-      shapeType = "irregular quadrilateral";
-    }
+    // Urban address fallback must be bounded and predictable. If the proxy
+    // cannot prove a real boundary, use a compact single-unit footprint
+    // instead of a large random lot so apartment/terrace cases do not inflate
+    // to several hundred square metres.
+    polygon = generateRectangularLot(coordinates, 8.2, 8.2);
+    shapeType = "compact urban footprint";
   } else {
     // Suburban/rural lots can be larger and more varied
     const shapes = ["rectangular", "pentagon", "irregular"];
@@ -312,16 +721,30 @@ function generateIntelligentFallback(coordinates, address) {
     }
   }
 
+  const areaM2 = calculatePolygonArea(polygon);
+  const measurementFields = buildMeasurementFields(polygon, areaM2);
+
   return {
     polygon,
     shapeType,
-    source: "Intelligent Fallback",
-    confidence: 0.4,
-    area: calculatePolygonArea(polygon),
-    metadata: {
+    source: INTELLIGENT_FALLBACK_BOUNDARY_SOURCE,
+    confidence: INTELLIGENT_FALLBACK_BOUNDARY_CONFIDENCE,
+    boundaryAuthoritative: false,
+    boundaryConfidence: INTELLIGENT_FALLBACK_BOUNDARY_CONFIDENCE,
+    boundarySource: INTELLIGENT_FALLBACK_BOUNDARY_SOURCE,
+    fallbackReason: "No real boundary data available",
+    estimatedOnly: true,
+    ...measurementFields,
+    policyVersion: BOUNDARY_POLICY_VERSION,
+    metadata: buildEstimatedBoundaryMetadata({
       reason: "No real boundary data available",
       addressAnalysis: { isUrban, isCorner },
-    },
+      areaM2: measurementFields.areaM2,
+      surfaceAreaM2: measurementFields.surfaceAreaM2,
+      perimeterM: measurementFields.perimeterM,
+      siteMetrics: measurementFields.siteMetrics,
+      policyVersion: BOUNDARY_POLICY_VERSION,
+    }),
   };
 }
 
@@ -496,24 +919,6 @@ export function calculatePolygonArea(polygon) {
   area = Math.abs((area * R * R) / 2);
 
   return area;
-}
-
-/**
- * Expand polygon by a scale factor
- */
-function expandPolygon(polygon, scale) {
-  const centroid = polygon.reduce(
-    (acc, point) => ({
-      lat: acc.lat + point.lat / polygon.length,
-      lng: acc.lng + point.lng / polygon.length,
-    }),
-    { lat: 0, lng: 0 },
-  );
-
-  return polygon.map((point) => ({
-    lat: centroid.lat + (point.lat - centroid.lat) * scale,
-    lng: centroid.lng + (point.lng - centroid.lng) * scale,
-  }));
 }
 
 /**

@@ -10,6 +10,8 @@
  * Authority rule:
  * - if projectDetails.floorCountLocked === true: floorCount wins (source: locked).
  * - else: autoDetectedFloorCount || floorCount || fallback (source: auto/manual/fallback).
+ * - unlocked family-house briefs may raise a too-low auto/manual value to the
+ *   professional two-storey residential default (source: policy).
  *
  * Memory rule (feedback_floor_count_autodetect): manual selections must
  * propagate without silent caps. The resolver clamps only when the caller
@@ -19,6 +21,7 @@
 
 import autoLevelAssignmentService from "../autoLevelAssignmentService.js";
 import { levelName, normalizeProgramSpaces } from "./levelUtils.js";
+import { resolveResidentialFloorCountPolicy } from "./residentialFloorPolicy.js";
 
 export function resolveAuthoritativeFloorCount(
   projectDetails = {},
@@ -52,13 +55,24 @@ export function resolveAuthoritativeFloorCount(
     Number.isFinite(Number(maxFloors)) && Number(maxFloors) > 0
       ? Math.max(1, Math.floor(Number(maxFloors)))
       : null;
-  const clamped = cap ? Math.min(requested, cap) : requested;
+  const floorPolicy = resolveResidentialFloorCountPolicy(
+    projectDetails,
+    requested,
+    { maxFloors: cap },
+  );
+  const policyRequested = Math.max(requested, floorPolicy.floorCount);
+  const clamped = cap ? Math.min(policyRequested, cap) : policyRequested;
+  const policyAdjusted = floorPolicy.applied && clamped > requested;
   return {
     floorCount: clamped,
     requested,
-    source,
+    source: policyAdjusted ? "policy" : source,
     clampedFromUser: cap ? requested > cap : false,
     maxFloors: cap,
+    policyAdjusted,
+    policyReason: policyAdjusted ? floorPolicy.reason : null,
+    policy: floorPolicy,
+    sourceBeforePolicy: source,
   };
 }
 

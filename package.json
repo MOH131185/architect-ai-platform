@@ -82,6 +82,7 @@
     "eject": "react-scripts eject",
     "check:env": "node scripts/check-env.cjs",
     "smoke:openai": "node scripts/smoke/openai-provider-smoke.mjs",
+    "smoke:a1-consistency": "node scripts/smoke/runA1ConsistencySmoke.mjs",
     "check:model-routes": "node scripts/check-model-routes.cjs",
     "check:contracts": "node scripts/check-contracts.cjs",
     "check:genarch-contracts": "node scripts/check-genarch-contracts.cjs",

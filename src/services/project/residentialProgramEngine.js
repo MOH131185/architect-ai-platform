@@ -1,5 +1,6 @@
 import { createProjectBrief } from "./v2ProjectContracts.js";
 import { levelIndexFromLabel, levelName } from "./levelUtils.js";
+import { resolveResidentialFloorCountPolicy } from "./residentialFloorPolicy.js";
 
 function round(value, precision = 2) {
   const numeric = Number(value);
@@ -799,13 +800,25 @@ function resolveLevelCountWithMeta(
     siteAreaM2,
   );
   if (siteFitLevelCount) {
+    const floorPolicy = resolveResidentialFloorCountPolicy(
+      {
+        subType,
+        buildingType: subType,
+        area: totalAreaM2,
+        totalAreaM2,
+      },
+      siteFitLevelCount,
+      { maxFloors: maxLevels },
+    );
+    const levelCount = clamp(floorPolicy.floorCount, minLevels, maxLevels);
     return {
-      levelCount: siteFitLevelCount,
+      levelCount,
       requestedLevelCount: null,
       clampedBy: null,
-      source: "site-fit",
+      source: floorPolicy.applied ? "site-fit-policy" : "site-fit",
       maxLevels,
       minLevels,
+      floorPolicy,
     };
   }
 
@@ -820,13 +833,30 @@ function resolveLevelCountWithMeta(
     levelCount = Math.max(levelCount, 3);
   }
 
+  const floorPolicy = resolveResidentialFloorCountPolicy(
+    {
+      subType,
+      buildingType: subType,
+      area: totalAreaM2,
+      totalAreaM2,
+    },
+    levelCount,
+    { maxFloors: maxLevels },
+  );
+  const resolvedLevelCount = clamp(
+    floorPolicy.floorCount,
+    minLevels,
+    maxLevels,
+  );
+
   return {
-    levelCount: clamp(levelCount, minLevels, maxLevels),
+    levelCount: resolvedLevelCount,
     requestedLevelCount: null,
     clampedBy: null,
-    source: "default",
+    source: floorPolicy.applied ? "default-policy" : "default",
     maxLevels,
     minLevels,
+    floorPolicy,
   };
 }
 

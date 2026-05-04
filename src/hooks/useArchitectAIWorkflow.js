@@ -16,6 +16,7 @@ import * as generationGate from "../services/generationGate.js";
 import { modifySheet } from "../services/pureModificationService.js";
 import exportService from "../services/exportService.js";
 import designHistoryRepository from "../services/designHistoryRepository.js";
+import { buildSheetResultFromDesignHistoryEntry } from "../services/designHistoryResultHydrator.js";
 import dnaWorkflowOrchestrator from "../services/dnaWorkflowOrchestrator.js";
 import logger from "../utils/logger.js";
 import { normalizeMultiPanelResult } from "../types/schemas.js";
@@ -28,11 +29,19 @@ import {
 import { PIPELINE_MODE } from "../config/pipelineMode.js";
 import { createSheetArtifactManifest } from "../services/project/v2ProjectContracts.js";
 import {
+  buildProjectTypeSupportMetadata,
+  getProjectTypeSupport,
+} from "../services/project/projectTypeSupportRegistry.js";
+import {
   levelIndexFromLabel,
   levelName,
   normalizeLevelIndex,
 } from "../services/project/levelUtils.js";
 import { resolveAuthoritativeFloorCount } from "../services/project/floorCountAuthority.js";
+import {
+  sanitizeInvalidSvgPaths,
+  sanitizeSvgDataUrl,
+} from "../utils/svgPathSanitizer.js";
 
 const STAGES = Object.freeze([
   "analysis",
@@ -45,6 +54,19 @@ const PROJECT_GRAPH_REQUEST_SOFT_LIMIT_CHARS = 750_000;
 const PROJECT_GRAPH_SITE_SNAPSHOT_DATA_URL_MAX_CHARS = 600_000;
 const SITE_SNAPSHOT_IMAGE_DATA_URL_RE =
   /^data:image\/(?:png|jpe?g|webp);base64,[a-z0-9+/=\s]+$/i;
+
+function isTruthyRequestFlag(value) {
+  if (value === true) return true;
+  if (value === false || value == null) return false;
+  return [
+    "1",
+    "true",
+    "yes",
+    "on",
+    "reference_match",
+    "reference-match",
+  ].includes(String(value).trim().toLowerCase());
+}
 
 const getStageForStep = (step) =>
   STAGES[Math.max(0, Math.min(STAGES.length - 1, Number(step || 0) - 1))] ||
@@ -75,6 +97,23 @@ function compactLatLngPolygon(polygon = []) {
   }
   const normalized = polygon.map(normalizeLatLngPoint).filter(Boolean);
   return normalized.length >= 3 ? normalized : [];
+}
+
+function compactMainEntry(entry = null) {
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+  const bearingDeg = Number(entry.bearingDeg ?? entry.bearing);
+  const confidence = Number(entry.confidence);
+  return {
+    orientation: entry.orientation || entry.direction || null,
+    bearingDeg: Number.isFinite(bearingDeg) ? bearingDeg : null,
+    frontageEdgeId: entry.frontageEdgeId || null,
+    mainEntryEdgeId: entry.mainEntryEdgeId || null,
+    source: entry.source || null,
+    confidence: Number.isFinite(confidence) ? confidence : null,
+    warnings: Array.isArray(entry.warnings) ? entry.warnings : [],
+  };
 }
 
 function buildManifestPanels(multiPanelResult = {}) {
@@ -117,26 +156,46 @@ export function sanitizeProjectGraphSvg(svgString = "") {
     return "";
   }
 
-  return svgString.replace(
-    /<path\b[^>]*\bd=(["'])(.*?)\1[^>]*(?:\/>|>\s*<\/path>)/gi,
-    (match, _quote, pathData) => {
-      const normalizedPathData = String(pathData || "").trim();
-      if (
-        !normalizedPathData ||
-        normalizedPathData === "undefined" ||
-        normalizedPathData === "null" ||
-        normalizedPathData.includes("NaN")
-      ) {
-        return "";
-      }
-      return match;
-    },
-  );
+  return sanitizeInvalidSvgPaths(svgString);
 }
 
 function svgToDataUrl(svgString = "") {
   const safeSvgString = sanitizeProjectGraphSvg(svgString);
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(safeSvgString)}`;
+}
+
+export function sanitizeProjectGraphPanelMap(panelMap = {}) {
+  if (!panelMap || typeof panelMap !== "object" || Array.isArray(panelMap)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(panelMap).map(([panelType, panel]) => {
+      const svgString =
+        typeof panel?.svgString === "string"
+          ? sanitizeProjectGraphSvg(panel.svgString)
+          : null;
+      const svg =
+        typeof panel?.svg === "string"
+          ? sanitizeProjectGraphSvg(panel.svg)
+          : null;
+      const url = svgString
+        ? svgToDataUrl(svgString)
+        : sanitizeSvgDataUrl(panel?.url || panel?.imageUrl || panel?.dataUrl);
+
+      return [
+        panelType,
+        {
+          ...panel,
+          url: url || null,
+          imageUrl: panel?.imageUrl ? sanitizeSvgDataUrl(panel.imageUrl) : null,
+          dataUrl: panel?.dataUrl ? sanitizeSvgDataUrl(panel.dataUrl) : null,
+          svgString,
+          svg,
+        },
+      ];
+    }),
+  );
 }
 
 function compactSiteSnapshotForRequest(siteSnapshot = null) {
@@ -168,6 +227,7 @@ function compactSiteSnapshotForRequest(siteSnapshot = null) {
     center: siteSnapshot.center || siteSnapshot.coordinates || null,
     zoom: siteSnapshot.zoom || null,
     mapType: siteSnapshot.mapType || null,
+    drawPolygonOverlay: siteSnapshot.drawPolygonOverlay !== false,
     size: siteSnapshot.size || null,
     sha256: siteSnapshot.sha256 || null,
     dataUrl,
@@ -185,6 +245,25 @@ function compactSiteSnapshotForRequest(siteSnapshot = null) {
           ? sourceLabel
           : null,
       siteMetrics: siteSnapshot.metadata?.siteMetrics || null,
+      sitePlanMode: siteSnapshot.metadata?.sitePlanMode || null,
+      boundaryAuthoritative:
+        siteSnapshot.metadata?.boundaryAuthoritative === true
+          ? true
+          : siteSnapshot.metadata?.boundaryAuthoritative === false
+            ? false
+            : null,
+      boundaryEstimated: siteSnapshot.metadata?.boundaryEstimated === true,
+      siteSnapshotPolygonRole:
+        siteSnapshot.metadata?.siteSnapshotPolygonRole || null,
+      contextualBoundaryOverlayUsed:
+        siteSnapshot.metadata?.contextualBoundaryOverlayUsed === true,
+      contextualBoundaryPolygon: compactLatLngPolygon(
+        siteSnapshot.metadata?.contextualBoundaryPolygon || [],
+      ),
+      mainEntry: compactMainEntry(siteSnapshot.metadata?.mainEntry),
+      mainEntryDirection: compactMainEntry(
+        siteSnapshot.metadata?.mainEntryDirection,
+      ),
       sunPath: siteSnapshot.metadata?.sunPath || null,
       wind: siteSnapshot.metadata?.wind || null,
       climateSummary: siteSnapshot.metadata?.climateSummary || null,
@@ -209,12 +288,68 @@ function compactLocationDataForRequest(locationData = {}) {
     wind: locationData.wind || null,
     recommendedStyle: locationData.recommendedStyle || null,
     localMaterials: locationData.localMaterials || [],
+    boundaryAuthoritative:
+      locationData.boundaryAuthoritative === true
+        ? true
+        : locationData.boundaryAuthoritative === false
+          ? false
+          : null,
+    boundaryEstimated: locationData.boundaryEstimated === true,
+    boundaryWarningCode: locationData.boundaryWarningCode || null,
+    boundarySource:
+      locationData.boundarySource ||
+      locationData.siteAnalysis?.boundarySource ||
+      null,
+    boundaryConfidence:
+      locationData.boundaryConfidence ??
+      locationData.siteAnalysis?.boundaryConfidence ??
+      null,
+    mainEntry: compactMainEntry(locationData.mainEntry),
+    mainEntryDirection: compactMainEntry(locationData.mainEntryDirection),
+    estimatedSiteBoundary: compactLatLngPolygon(
+      locationData.estimatedSiteBoundary || [],
+    ),
+    contextualSiteBoundary: compactLatLngPolygon(
+      locationData.contextualSiteBoundary || [],
+    ),
+    buildingFootprint: compactLatLngPolygon(
+      locationData.buildingFootprint || [],
+    ),
     siteAnalysis: locationData.siteAnalysis
       ? {
           area: locationData.siteAnalysis.area || null,
+          areaM2: locationData.siteAnalysis.areaM2 || null,
+          surfaceAreaM2: locationData.siteAnalysis.surfaceAreaM2 || null,
           shape: locationData.siteAnalysis.shape || null,
           confidence: locationData.siteAnalysis.confidence || null,
           source: locationData.siteAnalysis.source || null,
+          boundarySource: locationData.siteAnalysis.boundarySource || null,
+          boundaryConfidence:
+            locationData.siteAnalysis.boundaryConfidence ?? null,
+          boundaryAuthoritative:
+            locationData.siteAnalysis.boundaryAuthoritative === true
+              ? true
+              : locationData.siteAnalysis.boundaryAuthoritative === false
+                ? false
+                : null,
+          boundaryEstimated:
+            locationData.siteAnalysis.boundaryEstimated === true ||
+            locationData.siteAnalysis.estimatedOnly === true,
+          estimatedOnly: locationData.siteAnalysis.estimatedOnly === true,
+          fallbackReason: locationData.siteAnalysis.fallbackReason || null,
+          surfaceArea: locationData.siteAnalysis.surfaceArea || null,
+          estimatedSurfaceArea:
+            locationData.siteAnalysis.estimatedSurfaceArea || null,
+          mainEntry: compactMainEntry(locationData.siteAnalysis.mainEntry),
+          mainEntryDirection: compactMainEntry(
+            locationData.siteAnalysis.mainEntryDirection,
+          ),
+          estimatedSiteBoundary: compactLatLngPolygon(
+            locationData.siteAnalysis.estimatedSiteBoundary || [],
+          ),
+          contextualSiteBoundary: compactLatLngPolygon(
+            locationData.siteAnalysis.contextualSiteBoundary || [],
+          ),
         }
       : null,
   };
@@ -307,6 +442,61 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
     designSpec.program?.spaces ||
     designSpec.rooms ||
     [];
+  const originalCategory =
+    projectDetails.category ||
+    projectDetails.buildingCategory ||
+    designSpec.originalCategory ||
+    designSpec.buildingCategory ||
+    designSpec.projectTypeSupport?.categoryId ||
+    null;
+  const originalSubtype =
+    projectDetails.subType ||
+    projectDetails.buildingSubType ||
+    designSpec.originalSubtype ||
+    designSpec.buildingSubType ||
+    designSpec.projectTypeSupport?.subtypeId ||
+    null;
+  const registrySupport = getProjectTypeSupport(
+    originalCategory,
+    originalSubtype,
+  );
+  const incomingSupport =
+    projectDetails.projectTypeSupport || designSpec.projectTypeSupport || {};
+  const projectTypeSupport = {
+    ...registrySupport,
+    ...incomingSupport,
+    categoryId: incomingSupport.categoryId || originalCategory,
+    subtypeId: incomingSupport.subtypeId || originalSubtype,
+    supportStatus:
+      incomingSupport.supportStatus ||
+      projectDetails.supportStatus ||
+      designSpec.supportStatus ||
+      registrySupport.supportStatus,
+    canonicalBuildingType:
+      incomingSupport.canonicalBuildingType ||
+      projectDetails.canonicalBuildingType ||
+      designSpec.canonicalBuildingType ||
+      registrySupport.canonicalBuildingType,
+    route:
+      incomingSupport.route ||
+      projectDetails.projectTypeRoute ||
+      designSpec.projectTypeRoute ||
+      registrySupport.route,
+    programmeTemplateKey:
+      incomingSupport.programmeTemplateKey ||
+      projectDetails.programmeTemplateKey ||
+      designSpec.programmeTemplateKey ||
+      registrySupport.programmeTemplateKey,
+  };
+  const projectTypeSupportMetadata =
+    buildProjectTypeSupportMetadata(projectTypeSupport);
+  const canonicalBuildingType =
+    projectTypeSupportMetadata.canonicalBuildingType ||
+    projectDetails.canonicalBuildingType ||
+    designSpec.canonicalBuildingType ||
+    projectDetails.buildingType ||
+    designSpec.buildingType ||
+    null;
 
   // Single resolver across the workflow: ensures floorCountLocked /
   // autoDetectedFloorCount semantics are honoured even on replay/import paths
@@ -319,6 +509,33 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
         designSpec.floorCount ??
         designSpec.floors ??
         designSpec.targetStoreys,
+      area:
+        projectDetails.area ??
+        projectDetails.targetAreaM2 ??
+        designSpec.targetAreaM2 ??
+        designSpec.area ??
+        designSpec.floorArea,
+      targetAreaM2:
+        projectDetails.targetAreaM2 ??
+        designSpec.targetAreaM2 ??
+        projectDetails.area ??
+        designSpec.area,
+      buildingType:
+        canonicalBuildingType ||
+        projectDetails.buildingType ||
+        designSpec.buildingType ||
+        designSpec.buildingSubType ||
+        projectDetails.subType ||
+        designSpec.buildingProgram ||
+        projectDetails.category,
+      subType:
+        projectDetails.subType ||
+        projectDetails.buildingSubType ||
+        designSpec.buildingSubType,
+      program:
+        projectDetails.program ||
+        designSpec.buildingProgram ||
+        designSpec.buildingSubType,
       autoDetectedFloorCount:
         projectDetails.autoDetectedFloorCount ??
         designSpec.autoDetectedFloorCount,
@@ -335,11 +552,58 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
   ).floorCount;
   const sourceProjectBrief =
     designSpec.brief || designSpec.projectBrief || null;
+  const referenceMatch =
+    isTruthyRequestFlag(params.referenceMatch) ||
+    isTruthyRequestFlag(params.reference_match) ||
+    isTruthyRequestFlag(params.a1ReferenceMatch) ||
+    isTruthyRequestFlag(designSpec.referenceMatch) ||
+    isTruthyRequestFlag(designSpec.reference_match) ||
+    isTruthyRequestFlag(designSpec.a1ReferenceMatch) ||
+    String(params.renderIntent || designSpec.renderIntent || "")
+      .trim()
+      .toLowerCase() === "reference_match_a1" ||
+    String(params.qualityTarget || designSpec.qualityTarget || "")
+      .trim()
+      .toLowerCase() === "reference_match";
   const resolvedBrief = sourceProjectBrief
     ? {
         ...sourceProjectBrief,
+        building_type:
+          canonicalBuildingType ||
+          sourceProjectBrief.building_type ||
+          "dwelling",
+        canonical_building_type:
+          canonicalBuildingType ||
+          sourceProjectBrief.canonical_building_type ||
+          sourceProjectBrief.building_type ||
+          "dwelling",
+        original_category:
+          originalCategory || sourceProjectBrief.original_category || null,
+        original_subtype:
+          originalSubtype || sourceProjectBrief.original_subtype || null,
+        support_status:
+          projectTypeSupportMetadata.supportStatus ||
+          sourceProjectBrief.support_status ||
+          null,
+        programme_template_key:
+          projectTypeSupportMetadata.programmeTemplateKey ||
+          sourceProjectBrief.programme_template_key ||
+          null,
+        project_type_route:
+          projectTypeSupportMetadata.route ||
+          sourceProjectBrief.project_type_route ||
+          null,
+        project_type_support:
+          projectTypeSupportMetadata ||
+          sourceProjectBrief.project_type_support ||
+          null,
         target_storeys: resolvedFloorCount,
         targetStoreys: resolvedFloorCount,
+        referenceMatch,
+        reference_match: referenceMatch,
+        renderIntent: referenceMatch
+          ? "reference_match_a1"
+          : sourceProjectBrief.renderIntent,
       }
     : {
         project_name:
@@ -354,30 +618,85 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
           designSpec.area ??
           180,
         target_storeys: resolvedFloorCount,
-        building_type:
-          projectDetails.buildingType ||
-          projectDetails.subType ||
-          designSpec.buildingType ||
-          "dwelling",
+        targetStoreys: resolvedFloorCount,
+        building_type: canonicalBuildingType || "dwelling",
+        canonical_building_type: canonicalBuildingType || "dwelling",
+        original_category: originalCategory,
+        original_subtype: originalSubtype,
+        support_status: projectTypeSupportMetadata.supportStatus,
+        programme_template_key: projectTypeSupportMetadata.programmeTemplateKey,
+        project_type_route: projectTypeSupportMetadata.route,
+        project_type_support: projectTypeSupportMetadata,
         required_spaces_text:
           projectDetails.requiredSpacesText ||
           designSpec.requiredSpacesText ||
           "",
         constraints_text:
           projectDetails.constraintsText || designSpec.constraintsText || "",
+        referenceMatch,
+        reference_match: referenceMatch,
+        renderIntent: referenceMatch ? "reference_match_a1" : undefined,
       };
+  const rawSiteMetrics =
+    designSpec.siteMetrics ||
+    designSpec.sitePolygonMetrics ||
+    compactSiteSnapshot?.metadata?.siteMetrics ||
+    {};
+  const siteMetricsNonAuthoritative =
+    rawSiteMetrics?.boundaryAuthoritative === false ||
+    rawSiteMetrics?.estimatedOnly === true ||
+    rawSiteMetrics?.source === "google_building_outline";
+  const requestSiteMetrics = siteMetricsNonAuthoritative
+    ? {
+        ...rawSiteMetrics,
+        areaM2: undefined,
+        boundaryAuthoritative: false,
+      }
+    : rawSiteMetrics;
+  const requestSitePolygon = siteMetricsNonAuthoritative
+    ? []
+    : compactSitePolygon.length >= 3
+      ? compactSitePolygon
+      : compactSiteSnapshot?.sitePolygon || [];
+  const requestMainEntry = compactMainEntry(
+    projectDetails.mainEntry ||
+      projectDetails.mainEntryDirection ||
+      designSpec.mainEntry ||
+      designSpec.mainEntryDirection ||
+      locationData?.mainEntry ||
+      locationData?.mainEntryDirection ||
+      compactSiteSnapshot?.metadata?.mainEntry,
+  );
 
   return {
+    referenceMatch,
+    reference_match: referenceMatch,
+    renderIntent: referenceMatch
+      ? "reference_match_a1"
+      : params.renderIntent || designSpec.renderIntent || "final_a1",
+    qualityTarget: referenceMatch
+      ? "reference_match"
+      : params.qualityTarget || designSpec.qualityTarget || null,
     projectDetails: {
-      category: projectDetails.category || designSpec.buildingCategory || null,
-      subType: projectDetails.subType || designSpec.buildingSubType || null,
+      category: originalCategory,
+      subType: originalSubtype,
       program:
         projectDetails.program ||
         designSpec.buildingProgram ||
         designSpec.buildingSubType ||
         null,
+      canonicalBuildingType,
+      buildingType: canonicalBuildingType,
+      projectTypeRoute: projectTypeSupportMetadata.route,
+      supportStatus: projectTypeSupportMetadata.supportStatus,
+      programmeTemplateKey: projectTypeSupportMetadata.programmeTemplateKey,
+      projectTypeSupport: projectTypeSupportMetadata,
       area: projectDetails.area ?? designSpec.area ?? designSpec.floorArea,
       floorCount: resolvedFloorCount,
+      autoDetectedFloorCount:
+        projectDetails.autoDetectedFloorCount ??
+        designSpec.autoDetectedFloorCount ??
+        null,
       floorCountLocked: Boolean(
         projectDetails.floorCountLocked ?? designSpec.floorCountLocked,
       ),
@@ -387,19 +706,19 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
         designSpec.entranceDirection ||
         designSpec.entranceOrientation ||
         null,
+      mainEntry: requestMainEntry,
+      mainEntryDirection: requestMainEntry,
+      mainEntryBearingDeg: requestMainEntry?.bearingDeg ?? null,
+      frontageEdgeId: requestMainEntry?.frontageEdgeId || null,
+      mainEntryEdgeId: requestMainEntry?.mainEntryEdgeId || null,
       pipelineVersion: designSpec.pipelineVersion || null,
     },
     locationData: compactLocationDataForRequest(locationData),
     siteSnapshot: compactSiteSnapshot,
-    sitePolygon:
-      compactSitePolygon.length >= 3
-        ? compactSitePolygon
-        : compactSiteSnapshot?.sitePolygon || [],
-    siteMetrics:
-      designSpec.siteMetrics ||
-      designSpec.sitePolygonMetrics ||
-      compactSiteSnapshot?.metadata?.siteMetrics ||
-      {},
+    sitePolygon: requestSitePolygon,
+    siteMetrics: requestSiteMetrics,
+    mainEntry: requestMainEntry,
+    mainEntryDirection: requestMainEntry,
     programSpaces: compactProgramSpacesForRequest(
       programSpaces,
       resolvedFloorCount,
@@ -473,7 +792,86 @@ async function runProjectGraphVerticalSliceWorkflow({
   const verticalSlice = await response.json().catch(() => ({}));
 
   if (!response.ok || !verticalSlice?.success) {
-    const issue = verticalSlice?.qa?.issues?.[0];
+    const issues = Array.isArray(verticalSlice?.qa?.issues)
+      ? verticalSlice.qa.issues
+      : [];
+    const safeStringify = (value) => {
+      try {
+        return JSON.stringify(value);
+      } catch {
+        return String(value);
+      }
+    };
+    const summarizePanelTypes = (entries) => {
+      if (!Array.isArray(entries)) return null;
+      const labels = entries
+        .map((entry) => {
+          if (typeof entry === "string") return entry;
+          const panelType = entry?.panelType || entry?.type || "?";
+          const reason = entry?.reason ? `:${entry.reason}` : "";
+          return `${panelType}${reason}`;
+        })
+        .filter(Boolean);
+      return labels.length ? labels.join(", ") : null;
+    };
+    const placeholderIssue = issues.find(
+      (entry) => entry?.code === "PLACEHOLDER_3D_RENDER_USED",
+    );
+    if (placeholderIssue?.details?.placeholder3dPanels) {
+      const summary = summarizePanelTypes(
+        placeholderIssue.details.placeholder3dPanels,
+      );
+      console.error(
+        `[ProjectGraph] PLACEHOLDER_3D_RENDER_USED panels=${summary || "?"}`,
+      );
+      console.error(
+        "[ProjectGraph] PLACEHOLDER_3D_RENDER_USED detail",
+        placeholderIssue.details.placeholder3dPanels,
+      );
+      console.error(
+        "[ProjectGraph] PLACEHOLDER_3D_RENDER_USED detail (json)",
+        safeStringify(placeholderIssue.details.placeholder3dPanels),
+      );
+    }
+    const panelContentIssue = issues.find(
+      (entry) => entry?.code === "A1_PANEL_CONTENT_MISSING",
+    );
+    if (panelContentIssue?.details) {
+      const flatTypes =
+        panelContentIssue.details.missingRequiredPanelTypes ||
+        summarizePanelTypes(panelContentIssue.details.missingRequiredPanels);
+      console.error(
+        `[ProjectGraph] A1_PANEL_CONTENT_MISSING panels=${
+          Array.isArray(flatTypes) ? flatTypes.join(", ") : flatTypes || "?"
+        }`,
+      );
+      if (panelContentIssue.details.missingRequiredPanels) {
+        console.error(
+          "[ProjectGraph] A1_PANEL_CONTENT_MISSING detail",
+          panelContentIssue.details.missingRequiredPanels,
+        );
+        console.error(
+          "[ProjectGraph] A1_PANEL_CONTENT_MISSING detail (json)",
+          safeStringify(panelContentIssue.details.missingRequiredPanels),
+        );
+      }
+    }
+    const errorIssues = issues.filter((entry) => entry?.severity === "error");
+    if (errorIssues.length) {
+      console.error("[ProjectGraph] vertical slice QA errors", errorIssues);
+      errorIssues.forEach((entry) => {
+        console.error(
+          `[ProjectGraph] issue ${entry?.code || "UNKNOWN"}:`,
+          entry?.message || "",
+          entry?.details || {},
+        );
+        console.error(
+          `[ProjectGraph] issue ${entry?.code || "UNKNOWN"} details (json)`,
+          safeStringify(entry?.details || {}),
+        );
+      });
+    }
+    const issue = issues[0];
     throw new Error(
       verticalSlice?.error ||
         issue?.message ||
@@ -492,7 +890,7 @@ async function runProjectGraphVerticalSliceWorkflow({
   const serverPanelMap =
     verticalSlice.artifacts?.panelMap &&
     typeof verticalSlice.artifacts.panelMap === "object"
-      ? verticalSlice.artifacts.panelMap
+      ? sanitizeProjectGraphPanelMap(verticalSlice.artifacts.panelMap)
       : null;
   const drawingAssets = normalizeProjectGraphDrawingArtifacts(
     verticalSlice.artifacts?.drawings,
@@ -510,13 +908,16 @@ async function runProjectGraphVerticalSliceWorkflow({
           if (!panelType) {
             return null;
           }
+          const safeSvgString = drawing.svgString
+            ? sanitizeProjectGraphSvg(drawing.svgString)
+            : null;
 
           return [
             panelType,
             {
               panelType,
-              url: drawing.svgString ? svgToDataUrl(drawing.svgString) : null,
-              svgString: drawing.svgString || null,
+              url: safeSvgString ? svgToDataUrl(safeSvgString) : null,
+              svgString: safeSvgString,
               sourceType: "project_graph_drawing_svg",
               authorityUsed: "ProjectGraph",
               authoritySource: "project_graph",
@@ -1168,7 +1569,17 @@ export function useArchitectAIWorkflow() {
         throw new Error(`Design ${designId} not found`);
       }
 
-      return design;
+      const restoredResult = buildSheetResultFromDesignHistoryEntry(design);
+      setResult(restoredResult);
+      setProgress({
+        step: 5,
+        total: 5,
+        message: "Design restored",
+        stage: "finalizing",
+        percentage: 100,
+      });
+
+      return restoredResult;
     } catch (err) {
       logger.error("Failed to load design", err);
       setError(err.message);

@@ -1,0 +1,357 @@
+/**
+ * Phase 5C — `/api/site/boundary` server proxy.
+ *
+ * Browser code cannot call Overpass directly because OSM does not send
+ * CORS headers. This Vercel Function runs the same Overpass query
+ * server-side, normalises the response, and returns a stable JSON
+ * shape that `propertyBoundaryService.js` can consume from the browser.
+ *
+ * Request:
+ *   GET  /api/site/boundary?lat=52.4&lng=-1.9
+ *   POST /api/site/boundary  with JSON { lat, lng, buildingRadiusM?, parcelRadiusM? }
+ *
+ * Response (200 always when the request is well-formed):
+ *   {
+ *     schemaVersion: "site-boundary-proxy-v1",
+ *     polygon: [{lat,lng}, …] | null,
+ *     source:  "openstreetmap-overpass-building-contains-point" | … | null,
+ *     confidence: 0.0–0.95,
+ *     boundaryAuthoritative: bool,
+ *     areaM2: integer,
+ *     hash: hex string,
+ *     cached: bool,
+ *     timestamp: ISO,
+ *     metadata: { osmId, buildingTag, … }
+ *   }
+ *
+ * The endpoint NEVER returns the legacy "Intelligent Fallback" estimated
+ * polygon. When Overpass returns nothing, the response carries
+ * `polygon: null` and `boundaryAuthoritative: false`; the browser
+ * client (`propertyBoundaryService.js`) is responsible for falling
+ * through to the existing fallback chain. This keeps the proxy purely
+ * about authoritative evidence.
+ *
+ * Caching: per-instance LRU keyed on `${lat},${lng}` rounded to 6 dp.
+ * Hits are served without an Overpass call. We deliberately do NOT use
+ * Vercel Runtime Cache (KV) in Phase 5C to keep the diff small and
+ * avoid a marketplace dep; Lambda warmth on Vercel covers most cases
+ * within the 10-minute idle window. A KV upgrade is a follow-up.
+ */
+
+import { setCorsHeaders, handlePreflight } from "../_shared/cors.js";
+import {
+  fetchBuildingAndParcel,
+  OverpassRateLimitError,
+  OverpassTimeoutError,
+} from "./_lib/overpassClient.js";
+import {
+  BOUNDARY_POLICY_VERSION,
+  buildBoundaryResponse,
+  buildEmptyResponse,
+  selectBestBoundaryCandidate,
+} from "./_lib/boundaryNormalize.js";
+import { fetchInspireParcelsNear } from "./_lib/inspirePolygonsClient.js";
+import { fetchTitleBoundariesNear } from "./_lib/digitalLandTitleBoundaryClient.js";
+import { isEnglandOrWales } from "./_lib/postcodeRegion.js";
+
+const CACHE_MAX_ENTRIES = 256;
+const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days for found
+const CACHE_NEGATIVE_TTL_MS = 60 * 60 * 1000; // 1 hour for negatives
+
+const cache = new Map();
+
+function cacheKey({
+  lat,
+  lng,
+  buildingRadiusM,
+  parcelRadiusM,
+  postcode,
+  address,
+}) {
+  return [
+    BOUNDARY_POLICY_VERSION,
+    Number(lat).toFixed(6),
+    Number(lng).toFixed(6),
+    Number(buildingRadiusM),
+    Number(parcelRadiusM),
+    // Postcode is part of the key because INSPIRE coverage depends on
+    // the LA fixture chosen by postcode area; same lat/lng with two
+    // different postcodes (rare but happens at ward boundaries) must
+    // not share a cache slot.
+    String(postcode || ""),
+    // Address can influence exact building-footprint selection when OSM
+    // carries addr:* tags for multiple nearby footprints.
+    String(address || "")
+      .toLowerCase()
+      .trim(),
+  ].join("|");
+}
+
+function cacheGet(key) {
+  const entry = cache.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    cache.delete(key);
+    return null;
+  }
+  // Refresh LRU position
+  cache.delete(key);
+  cache.set(key, entry);
+  return entry.value;
+}
+
+function cacheSet(key, value) {
+  while (cache.size >= CACHE_MAX_ENTRIES) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey === undefined) break;
+    cache.delete(oldestKey);
+  }
+  const ttl = value?.polygon ? CACHE_TTL_MS : CACHE_NEGATIVE_TTL_MS;
+  cache.set(key, {
+    expiresAt: Date.now() + ttl,
+    value,
+  });
+}
+
+function parseLatLng(req) {
+  if (req.method === "GET") {
+    const lat = Number(req.query?.lat);
+    const lng = Number(req.query?.lng);
+    return {
+      lat,
+      lng,
+      buildingRadiusM: Number(req.query?.buildingRadiusM) || 30,
+      parcelRadiusM: Number(req.query?.parcelRadiusM) || 50,
+      postcode:
+        typeof req.query?.postcode === "string" ? req.query.postcode : null,
+      address:
+        typeof req.query?.address === "string" ? req.query.address : null,
+    };
+  }
+  const body = req.body || {};
+  return {
+    lat: Number(body.lat),
+    lng: Number(body.lng),
+    buildingRadiusM: Number(body.buildingRadiusM) || 30,
+    parcelRadiusM: Number(body.parcelRadiusM) || 50,
+    postcode: typeof body.postcode === "string" ? body.postcode : null,
+    address: typeof body.address === "string" ? body.address : null,
+  };
+}
+
+function isValidPoint(lat, lng) {
+  return (
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    lat >= -90 &&
+    lat <= 90 &&
+    lng >= -180 &&
+    lng <= 180
+  );
+}
+
+/**
+ * Pure handler used by Jest. The default export wraps this with
+ * Vercel-style req/res. Tests can call this directly with already-
+ * parsed inputs and an injected `fetchImpl`.
+ *
+ * @param {object} params
+ * @param {number} params.lat
+ * @param {number} params.lng
+ * @param {number} [params.buildingRadiusM]
+ * @param {number} [params.parcelRadiusM]
+ * @param {function} [params.fetchImpl]
+ * @param {boolean} [params.useCache=true]
+ * @returns {Promise<{ status: number, body: object }>}
+ */
+export async function resolveBoundaryRequest({
+  lat,
+  lng,
+  buildingRadiusM = 30,
+  parcelRadiusM = 50,
+  postcode = null,
+  address = null,
+  fetchImpl,
+  useCache = true,
+  enableTitleBoundaryLookup = true,
+} = {}) {
+  if (!isValidPoint(lat, lng)) {
+    return {
+      status: 400,
+      body: {
+        error: "invalid_lat_lng",
+        message: "Both lat and lng must be finite numbers in valid ranges.",
+      },
+    };
+  }
+
+  const key = cacheKey({
+    lat,
+    lng,
+    buildingRadiusM,
+    parcelRadiusM,
+    postcode,
+    address,
+  });
+  if (useCache) {
+    const cached = cacheGet(key);
+    if (cached) {
+      return {
+        status: 200,
+        body: { ...cached, cached: true },
+      };
+    }
+  }
+
+  // For England/Wales addresses, query Digital Land's `title-boundary`
+  // dataset (republished HM Land Registry INSPIRE Index Polygons) in
+  // parallel with Overpass. The Digital Land API is per-point real-time —
+  // no fixture, no GDAL, no bundle. Local-fixture INSPIRE lookup is
+  // kept as a secondary source; on cold-start the synthetic placeholder
+  // returns empty, which is fine: Digital Land is the new primary.
+  const isUk = isEnglandOrWales({ postcode, lat, lng });
+  const digitalLandPromise =
+    isUk && enableTitleBoundaryLookup !== false
+      ? fetchTitleBoundariesNear({ lat, lng, fetchImpl }).catch((err) => {
+          console.warn(
+            "[/api/site/boundary] Digital Land title-boundary error:",
+            err?.message || err,
+          );
+          return [];
+        })
+      : Promise.resolve([]);
+
+  let inspireElements = [];
+  if (isUk) {
+    try {
+      inspireElements = fetchInspireParcelsNear({ lat, lng, postcode });
+    } catch (inspireErr) {
+      // Never fail the proxy because of an INSPIRE fixture issue. Log and
+      // fall through to OSM.
+      console.warn(
+        "[/api/site/boundary] INSPIRE fixture lookup error:",
+        inspireErr?.message || inspireErr,
+      );
+      inspireElements = [];
+    }
+  }
+
+  let buildingElements;
+  let parcelElements;
+  let overpassError;
+  try {
+    const result = await fetchBuildingAndParcel({
+      lat,
+      lng,
+      buildingRadiusM,
+      parcelRadiusM,
+      fetchImpl,
+    });
+    buildingElements = result.buildingElements;
+    parcelElements = result.parcelElements;
+  } catch (err) {
+    overpassError = err;
+    buildingElements = [];
+    parcelElements = [];
+  }
+
+  // Resolve the Digital Land lookup — by now the Overpass call has
+  // either completed or errored, so we are not double-blocking.
+  const digitalLandElements = await digitalLandPromise;
+  // Digital Land entries always go in front of the bundled fixture so
+  // when both are present the live source wins.
+  const allInspireElements = [...digitalLandElements, ...inspireElements];
+
+  let body;
+  // If INSPIRE/Digital Land has a match we can skip the Overpass error
+  // path entirely: those sources are higher-authority and their presence
+  // makes the OSM lookup outcome irrelevant for the response.
+  if (overpassError && allInspireElements.length === 0) {
+    const reason = overpassError.rateLimited
+      ? "overpass_rate_limited"
+      : overpassError.timedOut
+        ? "overpass_timeout"
+        : "overpass_unavailable";
+    body = buildEmptyResponse({
+      reason,
+      cached: false,
+      queryRadiusM: buildingRadiusM,
+    });
+    body.metadata = {
+      ...body.metadata,
+      overpassError: overpassError?.message || String(overpassError),
+    };
+    if (useCache) cacheSet(key, body);
+    return { status: 200, body };
+  }
+
+  const best = selectBestBoundaryCandidate({
+    inspireElements: allInspireElements,
+    buildingElements,
+    parcelElements,
+    point: { lat, lng },
+    address,
+  });
+
+  if (!best) {
+    body = buildEmptyResponse({
+      reason: "no_polygon_found",
+      cached: false,
+      queryRadiusM: buildingRadiusM,
+    });
+  } else {
+    body = buildBoundaryResponse({
+      polygon: best.polygon,
+      source: best.source,
+      osmElement: best.element,
+      queryRadiusM: buildingRadiusM,
+      cached: false,
+      estimateReason: best.estimateReason || null,
+      demotedParcel: best.demotedParcel || null,
+    });
+  }
+  if (useCache) cacheSet(key, body);
+  return { status: 200, body };
+}
+
+export default async function handler(req, res) {
+  if (handlePreflight(req, res, { methods: "GET, POST, OPTIONS" })) return;
+  setCorsHeaders(req, res, { methods: "GET, POST, OPTIONS" });
+  if (req.method !== "GET" && req.method !== "POST") {
+    res.status(405).json({ error: "method_not_allowed" });
+    return;
+  }
+
+  const params = parseLatLng(req);
+  try {
+    const { status, body } = await resolveBoundaryRequest(params);
+    res.status(status).json(body);
+  } catch (err) {
+    // Defensive: pure handler shouldn't throw on its own, but if a
+    // surprise happens (e.g. fetch missing in runtime), degrade to
+    // empty response so the browser falls through to fallback rather
+    // than seeing a 500.
+    console.warn("[/api/site/boundary] handler error:", err?.message || err);
+    const body = buildEmptyResponse({
+      reason: "proxy_handler_error",
+      cached: false,
+      queryRadiusM: params?.buildingRadiusM || 30,
+    });
+    body.metadata = {
+      ...body.metadata,
+      handlerError: err?.message || String(err),
+    };
+    res.status(200).json(body);
+  }
+}
+
+export const __testing = Object.freeze({
+  cache,
+  cacheKey,
+  cacheGet,
+  cacheSet,
+  parseLatLng,
+  isValidPoint,
+  OverpassRateLimitError,
+  OverpassTimeoutError,
+});

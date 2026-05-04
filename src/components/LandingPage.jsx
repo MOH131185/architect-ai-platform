@@ -123,7 +123,7 @@ const NavLink = ({ href, children }) => (
   </a>
 );
 
-const LandingPage = ({ onStart, onDemo }) => {
+const LandingPage = ({ onStart, onDemo, historyControl = null }) => {
   return (
     <div className="relative min-h-screen bg-navy-950 text-white">
       {/* Subtle blueprint grid — single layer, low contrast */}
@@ -169,6 +169,7 @@ const LandingPage = ({ onStart, onDemo }) => {
           </div>
 
           <div className="flex items-center gap-3">
+            {historyControl}
             <button
               type="button"
               onClick={onDemo}

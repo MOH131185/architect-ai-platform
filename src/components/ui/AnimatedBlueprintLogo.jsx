@@ -4,13 +4,14 @@
  * Matches the exact geometry of ArchitecturalLogo:
  * - Document shape with folded corner
  * - House icon centered
- * 
+ *
  * Uses framer-motion for stroke drawing animation.
  */
 
 import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import PropTypes from "prop-types";
+import { isInvalidSvgPathData } from "../../utils/svgPathSanitizer.js";
 
 // Colors from ArchitecturalLogo (Blue-600 mostly)
 const COLORS = {
@@ -18,7 +19,7 @@ const COLORS = {
   fill: "rgba(255, 255, 255, 0.5)", // From folded corner
   fillGradientStart: "#FFFFFF",
   fillGradientEnd: "#F1F5F9",
-  shadow: "rgba(15, 23, 42, 0.15)"
+  shadow: "rgba(15, 23, 42, 0.15)",
 };
 
 const TIMING = {
@@ -28,7 +29,7 @@ const TIMING = {
   roof: 1.2,
   body: 1.6,
   door: 2.0,
-  fill: 2.4
+  fill: 2.4,
 };
 
 const AnimatedPath = ({
@@ -39,8 +40,12 @@ const AnimatedPath = ({
   strokeWidth = 2,
   fill = "none",
   className = "",
-  style = {}
+  style = {},
 }) => {
+  if (isInvalidSvgPathData(d)) {
+    return null;
+  }
+
   return (
     <motion.path
       d={d}
@@ -53,7 +58,7 @@ const AnimatedPath = ({
       animate={{ pathLength: 1, opacity: 1 }}
       transition={{
         pathLength: { delay, duration, ease: TIMING.easing },
-        opacity: { delay, duration: 0.1 }
+        opacity: { delay, duration: 0.1 },
       }}
       className={className}
       style={style}
@@ -61,18 +66,29 @@ const AnimatedPath = ({
   );
 };
 
+AnimatedPath.propTypes = {
+  d: PropTypes.string,
+  delay: PropTypes.number,
+  duration: PropTypes.number,
+  stroke: PropTypes.string,
+  strokeWidth: PropTypes.number,
+  fill: PropTypes.string,
+  className: PropTypes.string,
+  style: PropTypes.object,
+};
+
 const AnimatedBlueprintLogo = ({
   size = 48,
   className = "",
   autoPlay = true,
   onAnimationComplete,
-  style
+  style,
 }) => {
   const [isAnimating, setIsAnimating] = useState(autoPlay);
   const [animationKey, setAnimationKey] = useState(0);
 
   // Generate unique IDs
-  const uid = React.useId().replace(/:/g, '');
+  const uid = React.useId().replace(/:/g, "");
   const gradientId = `anim-logo-gradient-${uid}`;
   const shadowId = `anim-logo-shadow-${uid}`;
 
@@ -109,19 +125,45 @@ const AnimatedBlueprintLogo = ({
       onClick={replay}
     >
       <defs>
-        <linearGradient id={gradientId} x1="32" y1="8" x2="32" y2="56" gradientUnits="userSpaceOnUse">
-            <stop offset="0" stopColor={COLORS.fillGradientStart} stopOpacity="0">
-                 <animate attributeName="stop-opacity" from="0" to="1" dur="0.5s" begin={`${TIMING.fill}s`} fill="freeze" />
-            </stop>
-            <stop offset="1" stopColor={COLORS.fillGradientEnd} stopOpacity="0">
-                <animate attributeName="stop-opacity" from="0" to="1" dur="0.5s" begin={`${TIMING.fill}s`} fill="freeze" />
-            </stop>
+        <linearGradient
+          id={gradientId}
+          x1="32"
+          y1="8"
+          x2="32"
+          y2="56"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop offset="0" stopColor={COLORS.fillGradientStart} stopOpacity="0">
+            <animate
+              attributeName="stop-opacity"
+              from="0"
+              to="1"
+              dur="0.5s"
+              begin={`${TIMING.fill}s`}
+              fill="freeze"
+            />
+          </stop>
+          <stop offset="1" stopColor={COLORS.fillGradientEnd} stopOpacity="0">
+            <animate
+              attributeName="stop-opacity"
+              from="0"
+              to="1"
+              dur="0.5s"
+              begin={`${TIMING.fill}s`}
+              fill="freeze"
+            />
+          </stop>
         </linearGradient>
         <filter id={shadowId} x="-20%" y="-20%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor={COLORS.shadow} />
+          <feDropShadow
+            dx="0"
+            dy="2"
+            stdDeviation="3"
+            floodColor={COLORS.shadow}
+          />
         </filter>
       </defs>
-      
+
       {/* Document Shape */}
       <AnimatedPath
         d="M14 8C11.7909 8 10 9.79086 10 12V52C10 54.2091 11.7909 56 14 56H50C52.2091 56 54 54.2091 54 52V20L42 8H14Z"
@@ -129,7 +171,7 @@ const AnimatedBlueprintLogo = ({
         stroke={COLORS.stroke}
         strokeWidth={2}
       />
-      
+
       {/* Fill for Document (Fades in) */}
       <motion.path
         d="M14 8C11.7909 8 10 9.79086 10 12V52C10 54.2091 11.7909 56 14 56H50C52.2091 56 54 54.2091 54 52V20L42 8H14Z"
@@ -147,8 +189,8 @@ const AnimatedBlueprintLogo = ({
         stroke={COLORS.stroke}
         strokeWidth={2}
       />
-      
-      <motion.path 
+
+      <motion.path
         d="M42 8V20H54"
         fill={COLORS.fill}
         initial={{ opacity: 0 }}
@@ -179,7 +221,6 @@ const AnimatedBlueprintLogo = ({
         stroke={COLORS.stroke}
         strokeWidth={2}
       />
-
     </motion.svg>
   );
 };
@@ -190,7 +231,7 @@ AnimatedBlueprintLogo.propTypes = {
   autoPlay: PropTypes.bool,
   onAnimationComplete: PropTypes.func,
   style: PropTypes.object,
-  showBackground: PropTypes.bool
+  showBackground: PropTypes.bool,
 };
 
 export default AnimatedBlueprintLogo;

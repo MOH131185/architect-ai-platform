@@ -18,8 +18,13 @@ import {
   resolveCompiledProjectGeometryInput,
   resolveCompiledProjectStyleDNA,
 } from "./drawingBounds.js";
+import { buildCanonicalRoofPitchInfo } from "./roofPitchResolver.js";
 
 const SECTION_THEME = getBlueprintTheme();
+const SHEET_SECTION_POLISH = Object.freeze({
+  fontScale: 1.12,
+  strokeScale: 1.12,
+});
 
 function escapeXml(value) {
   return String(value)
@@ -74,6 +79,14 @@ function chooseScaleBarMeters(scalePxPerMeter = 1) {
   return eligible[eligible.length - 1] || 1;
 }
 
+function resolveSectionPolish(sheetMode = false) {
+  return sheetMode ? SHEET_SECTION_POLISH : { fontScale: 1, strokeScale: 1 };
+}
+
+function polishSize(value, scale = 1) {
+  return formatNumber(Number(value || 0) * Number(scale || 1), 1);
+}
+
 function getLevelProfiles(geometry = {}) {
   let offset = 0;
   return (geometry.levels || [])
@@ -104,6 +117,45 @@ function projectRoomForSection(room = {}, sectionType = "longitudinal") {
         start: Number(room.bbox?.min_x || 0),
         end: Number(room.bbox?.max_x || 0),
       };
+}
+
+function buildContextualSectionRooms(
+  geometry = {},
+  sectionType = "longitudinal",
+  levelProfiles = [],
+) {
+  const roomsByLevel = new Map();
+  for (const room of geometry.rooms || []) {
+    const levelId = room.level_id || room.levelId || room.actual_level_id;
+    if (!levelId) continue;
+    if (!roomsByLevel.has(levelId)) roomsByLevel.set(levelId, []);
+    roomsByLevel.get(levelId).push(room);
+  }
+  const contextualRooms = [];
+  for (const level of levelProfiles) {
+    const levelRooms = roomsByLevel.get(level.id) || [];
+    levelRooms
+      .slice()
+      .sort(
+        (left, right) =>
+          Number(right.actual_area || right.actual_area_m2 || 0) -
+          Number(left.actual_area || left.actual_area_m2 || 0),
+      )
+      .slice(0, 2)
+      .forEach((room) => {
+        contextualRooms.push({
+          ...room,
+          level,
+          level_id: level.id,
+          range: sectionDisplayRange(room, sectionType),
+          truthState: "derived",
+          name: room.name || room.function || room.id || "Room",
+          actual_area:
+            room.actual_area || room.actual_area_m2 || room.target_area_m2 || 0,
+        });
+      });
+  }
+  return contextualRooms;
 }
 
 function sectionDisplayRange(entry = {}, sectionType = "longitudinal") {
@@ -180,17 +232,92 @@ function buildFallbackSectionProfile(
       };
 }
 
+// Phase 3 — stronger ground / grade hatch beneath the foundation band.
+// Adds a deterministic 45-degree diagonal hatch pattern in the earth zone
+// below ground level so the section reads with proper grade continuity at
+// architectural-standard density. Pure SVG; no geometry mutation.
+function renderGroundHatch(
+  baseX,
+  baseY,
+  widthPx,
+  height,
+  padding,
+  options = {},
+) {
+  const margin = 14;
+  const startY = baseY + 32; // below the existing foundation soil band
+  // The grade band sits in the lower margin BELOW baseY (which is at
+  // height - padding). Allow it to extend almost to the bottom edge of the
+  // SVG, leaving a small gutter for the scale bar / overall dimensions.
+  const maxEndY = Math.max(startY, height - 18);
+  const bandHeight = Math.max(0, Math.min(140, maxEndY - startY));
+  if (bandHeight < 12) {
+    return { markup: "", count: 0 };
+  }
+  const startX = baseX - margin;
+  const bandWidth = widthPx + margin * 2;
+  const fillOpacity = Number.isFinite(options.fillOpacity)
+    ? options.fillOpacity
+    : 0.32;
+  const strokeWidth = options.strokeWidth || 0.85;
+  const stepPx = options.stepPx || 14;
+  const stroke = options.stroke || SECTION_THEME.lineLight;
+  const fill = options.fill || SECTION_THEME.fillSoft;
+  const lines = [];
+  // 45-degree hatch: project diagonal lines across the band.
+  for (
+    let offset = -bandHeight;
+    offset < bandWidth + bandHeight;
+    offset += stepPx
+  ) {
+    const x1 = startX + offset;
+    const y1 = startY;
+    const x2 = x1 + bandHeight;
+    const y2 = startY + bandHeight;
+    // Clip to band rectangle
+    const minX = startX;
+    const maxX = startX + bandWidth;
+    let cx1 = x1;
+    let cy1 = y1;
+    let cx2 = x2;
+    let cy2 = y2;
+    if (cx1 < minX) {
+      cy1 += minX - cx1;
+      cx1 = minX;
+    }
+    if (cx2 > maxX) {
+      cy2 -= cx2 - maxX;
+      cx2 = maxX;
+    }
+    if (cx2 <= cx1 || cy2 <= cy1) continue;
+    lines.push(
+      `<line x1="${formatNumber(cx1)}" y1="${formatNumber(cy1)}" x2="${formatNumber(cx2)}" y2="${formatNumber(cy2)}" stroke="${stroke}" stroke-width="${strokeWidth}"/>`,
+    );
+  }
+  return {
+    markup: `<g id="phase3-section-ground-hatch" data-grade-band="true">
+      <rect x="${formatNumber(startX)}" y="${formatNumber(startY)}" width="${formatNumber(bandWidth)}" height="${formatNumber(bandHeight)}" fill="${fill}" fill-opacity="${fillOpacity}"/>
+      ${lines.join("")}
+      <line x1="${formatNumber(startX)}" y1="${formatNumber(startY)}" x2="${formatNumber(startX + bandWidth)}" y2="${formatNumber(startY)}" stroke="${SECTION_THEME.line}" stroke-width="1.1"/>
+    </g>`,
+    count: lines.length,
+  };
+}
+
 function renderScaleBar(scalePxPerMeter, width, height, padding, options = {}) {
   const barMeters = chooseScaleBarMeters(scalePxPerMeter);
   const barWidthPx = barMeters * scalePxPerMeter;
   const x = width - padding - barWidthPx - 8;
   const y = Number.isFinite(options.y) ? options.y : height - padding + 38;
+  const fontScale = options.fontScale || 1;
+  const strokeScale = options.strokeScale || 1;
   const labelYOffset = Number.isFinite(options.labelYOffset)
     ? options.labelYOffset
     : 16;
   const labelFontSize = Number.isFinite(options.fontSize)
     ? options.fontSize
-    : 9;
+    : 9 * fontScale;
+  const strokeWidth = polishSize(1.6, strokeScale);
   return {
     barMeters,
     markup: `
@@ -199,25 +326,25 @@ function renderScaleBar(scalePxPerMeter, width, height, padding, options = {}) {
           y,
         )}" x2="${formatNumber(x + barWidthPx)}" y2="${formatNumber(
           y,
-        )}" stroke="${SECTION_THEME.line}" stroke-width="1.6"/>
+        )}" stroke="${SECTION_THEME.line}" stroke-width="${strokeWidth}"/>
         <line x1="${formatNumber(x)}" y1="${formatNumber(
           y - 4,
         )}" x2="${formatNumber(x)}" y2="${formatNumber(
           y + 4,
-        )}" stroke="${SECTION_THEME.line}" stroke-width="1.6"/>
+        )}" stroke="${SECTION_THEME.line}" stroke-width="${strokeWidth}"/>
         <line x1="${formatNumber(x + barWidthPx / 2)}" y1="${formatNumber(
           y - 4,
         )}" x2="${formatNumber(x + barWidthPx / 2)}" y2="${formatNumber(
           y + 4,
-        )}" stroke="${SECTION_THEME.line}" stroke-width="1.6"/>
+        )}" stroke="${SECTION_THEME.line}" stroke-width="${strokeWidth}"/>
         <line x1="${formatNumber(x + barWidthPx)}" y1="${formatNumber(
           y - 4,
         )}" x2="${formatNumber(x + barWidthPx)}" y2="${formatNumber(
           y + 4,
-        )}" stroke="${SECTION_THEME.line}" stroke-width="1.6"/>
+        )}" stroke="${SECTION_THEME.line}" stroke-width="${strokeWidth}"/>
         <text x="${formatNumber(x + barWidthPx / 2)}" y="${formatNumber(
           y + labelYOffset,
-        )}" font-size="${labelFontSize}" font-family="Arial, sans-serif" text-anchor="middle">${escapeXml(
+        )}" font-size="${formatNumber(labelFontSize, 1)}" font-family="Arial, sans-serif" text-anchor="middle">${escapeXml(
           `${barMeters} m`,
         )}</text>
       </g>
@@ -234,39 +361,43 @@ function renderOverallSectionDimensions(
   horizontalExtentM,
   width,
   padding,
+  polish = {},
 ) {
   const topY = padding - 18;
   const rightX = width - padding + 18;
+  const fontSize = polishSize(10, polish.fontScale || 1);
+  const guideStroke = polishSize(0.9, polish.strokeScale || 1);
+  const primaryStroke = polishSize(1, polish.strokeScale || 1);
   return `
     <g id="phase8-section-dimensions">
       <line x1="${formatNumber(baseX)}" y1="${formatNumber(
         baseY - heightPx,
       )}" x2="${formatNumber(baseX)}" y2="${formatNumber(
         topY,
-      )}" stroke="${SECTION_THEME.lineMuted}" stroke-width="0.9"/>
+      )}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${guideStroke}"/>
       <line x1="${formatNumber(baseX + widthPx)}" y1="${formatNumber(
         baseY - heightPx,
       )}" x2="${formatNumber(baseX + widthPx)}" y2="${formatNumber(
         topY,
-      )}" stroke="${SECTION_THEME.lineMuted}" stroke-width="0.9"/>
+      )}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${guideStroke}"/>
       <line x1="${formatNumber(baseX)}" y1="${formatNumber(
         topY,
       )}" x2="${formatNumber(baseX + widthPx)}" y2="${formatNumber(
         topY,
-      )}" stroke="${SECTION_THEME.line}" stroke-width="1"/>
+      )}" stroke="${SECTION_THEME.line}" stroke-width="${primaryStroke}"/>
       <line x1="${formatNumber(baseX)}" y1="${formatNumber(
         topY - 3,
       )}" x2="${formatNumber(baseX)}" y2="${formatNumber(
         topY + 3,
-      )}" stroke="${SECTION_THEME.line}" stroke-width="1"/>
+      )}" stroke="${SECTION_THEME.line}" stroke-width="${primaryStroke}"/>
       <line x1="${formatNumber(baseX + widthPx)}" y1="${formatNumber(
         topY - 3,
       )}" x2="${formatNumber(baseX + widthPx)}" y2="${formatNumber(
         topY + 3,
-      )}" stroke="${SECTION_THEME.line}" stroke-width="1"/>
+      )}" stroke="${SECTION_THEME.line}" stroke-width="${primaryStroke}"/>
       <text x="${formatNumber(baseX + widthPx / 2)}" y="${formatNumber(
         topY - 6,
-      )}" font-size="10" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">${escapeXml(
+      )}" font-size="${fontSize}" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">${escapeXml(
         formatMeters(horizontalExtentM),
       )}</text>
 
@@ -274,30 +405,30 @@ function renderOverallSectionDimensions(
         baseY - heightPx,
       )}" x2="${formatNumber(rightX)}" y2="${formatNumber(
         baseY - heightPx,
-      )}" stroke="${SECTION_THEME.lineMuted}" stroke-width="0.9"/>
+      )}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${guideStroke}"/>
       <line x1="${formatNumber(baseX + widthPx)}" y1="${formatNumber(
         baseY,
       )}" x2="${formatNumber(rightX)}" y2="${formatNumber(
         baseY,
-      )}" stroke="${SECTION_THEME.lineMuted}" stroke-width="0.9"/>
+      )}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${guideStroke}"/>
       <line x1="${formatNumber(rightX)}" y1="${formatNumber(
         baseY - heightPx,
       )}" x2="${formatNumber(rightX)}" y2="${formatNumber(
         baseY,
-      )}" stroke="${SECTION_THEME.line}" stroke-width="1"/>
+      )}" stroke="${SECTION_THEME.line}" stroke-width="${primaryStroke}"/>
       <line x1="${formatNumber(rightX - 3)}" y1="${formatNumber(
         baseY - heightPx,
       )}" x2="${formatNumber(rightX + 3)}" y2="${formatNumber(
         baseY - heightPx,
-      )}" stroke="${SECTION_THEME.line}" stroke-width="1"/>
+      )}" stroke="${SECTION_THEME.line}" stroke-width="${primaryStroke}"/>
       <line x1="${formatNumber(rightX - 3)}" y1="${formatNumber(
         baseY,
       )}" x2="${formatNumber(rightX + 3)}" y2="${formatNumber(
         baseY,
-      )}" stroke="${SECTION_THEME.line}" stroke-width="1"/>
+      )}" stroke="${SECTION_THEME.line}" stroke-width="${primaryStroke}"/>
       <text x="${formatNumber(rightX + 14)}" y="${formatNumber(
         baseY - heightPx / 2,
-      )}" font-size="10" font-family="Arial, sans-serif" font-weight="700" transform="rotate(90 ${formatNumber(
+      )}" font-size="${fontSize}" font-family="Arial, sans-serif" font-weight="700" transform="rotate(90 ${formatNumber(
         rightX + 14,
       )} ${formatNumber(baseY - heightPx / 2)})" text-anchor="middle">${escapeXml(
         formatMeters(totalHeightM),
@@ -313,11 +444,17 @@ function renderLevelDatums(
   levelProfiles,
   scale,
   lineweights = {},
+  polish = {},
 ) {
   const lines = [];
   const labels = [];
-  const datumWeight = lineweights.datum || 1.05;
-  const labelStroke = lineweights.guide || 0.78;
+  const fontScale = polish.fontScale || 1;
+  const strokeScale = polish.strokeScale || 1;
+  const datumWeight = polishSize(lineweights.datum || 1.05, strokeScale);
+  const labelStroke = polishSize(lineweights.guide || 0.78, strokeScale);
+  const secondaryStroke = polishSize(lineweights.secondary || 1, strokeScale);
+  const primaryLabelFont = polishSize(9, fontScale);
+  const secondaryLabelFont = polishSize(8.5, fontScale);
   levelProfiles.forEach((level) => {
     const topY = baseY - level.top_m * scale;
     const midY =
@@ -327,13 +464,13 @@ function renderLevelDatums(
     );
     labels.push(`
       <g class="phase8-section-level-label">
-        <line x1="${baseX - 52}" y1="${topY}" x2="${baseX - 6}" y2="${topY}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${lineweights.secondary || 1}" />
+        <line x1="${baseX - 52}" y1="${topY}" x2="${baseX - 6}" y2="${topY}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${secondaryStroke}" />
         <rect x="${baseX - 176}" y="${topY - 11}" width="118" height="16" rx="3" ry="3" fill="${SECTION_THEME.paper}" fill-opacity="0.94" stroke="${SECTION_THEME.guide}" stroke-width="${labelStroke}" />
-        <text x="${baseX - 166}" y="${topY + 1}" font-size="9" font-family="Arial, sans-serif" font-weight="700" text-anchor="start" class="sheet-critical-label" data-text-role="critical">${escapeXml(
+        <text x="${baseX - 166}" y="${topY + 1}" font-size="${primaryLabelFont}" font-family="Arial, sans-serif" font-weight="700" text-anchor="start" class="sheet-critical-label" data-text-role="critical">${escapeXml(
           `${level.name || `L${level.level_number}`} +${level.top_m.toFixed(2)}m`,
         )}</text>
         <rect x="${baseX - 84}" y="${midY - 9}" width="66" height="14" rx="3" ry="3" fill="${SECTION_THEME.paper}" fill-opacity="0.92" stroke="${SECTION_THEME.guide}" stroke-width="${labelStroke}" />
-        <text x="${baseX - 51}" y="${midY + 1}" font-size="8.5" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">${escapeXml(
+        <text x="${baseX - 51}" y="${midY + 1}" font-size="${secondaryLabelFont}" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">${escapeXml(
           level.name || `L${level.level_number}`,
         )}</text>
       </g>
@@ -341,9 +478,9 @@ function renderLevelDatums(
   });
 
   labels.push(`
-    <line x1="${baseX - 52}" y1="${baseY}" x2="${baseX - 6}" y2="${baseY}" stroke="${SECTION_THEME.line}" stroke-width="${lineweights.secondary || 1}" />
+    <line x1="${baseX - 52}" y1="${baseY}" x2="${baseX - 6}" y2="${baseY}" stroke="${SECTION_THEME.line}" stroke-width="${secondaryStroke}" />
     <rect x="${baseX - 144}" y="${baseY - 11}" width="86" height="16" rx="3" ry="3" fill="${SECTION_THEME.paper}" fill-opacity="0.94" stroke="${SECTION_THEME.guide}" stroke-width="${labelStroke}" />
-    <text x="${baseX - 134}" y="${baseY + 1}" font-size="9" font-family="Arial, sans-serif" font-weight="700" text-anchor="start" class="sheet-critical-label" data-text-role="critical">FFL +0.00m</text>
+    <text x="${baseX - 134}" y="${baseY + 1}" font-size="${primaryLabelFont}" font-family="Arial, sans-serif" font-weight="700" text-anchor="start" class="sheet-critical-label" data-text-role="critical">FFL +0.00m</text>
   `);
 
   return {
@@ -467,6 +604,45 @@ function renderFoundation(
   `;
 }
 
+function renderRoofPitchLabel(baseX, ridgeY, widthPx, roofPitchInfo) {
+  const numericPitch = Number(roofPitchInfo?.pitchDeg);
+  if (!Number.isFinite(numericPitch) || numericPitch <= 0) {
+    return "";
+  }
+  const cx = baseX + widthPx / 2 + 32;
+  const cy = ridgeY + 18;
+  return `
+    <g id="phase14-section-roof-pitch" data-roof-pitch-deg="${numericPitch.toFixed(1)}" data-roof-pitch-source="${escapeXml(roofPitchInfo.source || "unknown")}" data-roof-span-m="${formatNumber(roofPitchInfo.spanM, 2)}" data-roof-rise-m="${formatNumber(roofPitchInfo.riseM, 2)}">
+      <text x="${cx}" y="${cy}" font-size="10" font-family="Arial, sans-serif" font-weight="700" fill="${SECTION_THEME.line}" data-text-role="roof-pitch">PITCH ${numericPitch.toFixed(0)}°</text>
+    </g>
+  `;
+}
+
+function renderRoofPitchDataAttributes(roofPitchInfo = {}) {
+  const attrs = [
+    `data-roof-pitch-status="${escapeXml(roofPitchInfo.status || "missing")}"`,
+  ];
+  if (roofPitchInfo.source) {
+    attrs.push(`data-roof-pitch-source="${escapeXml(roofPitchInfo.source)}"`);
+  }
+  if (
+    roofPitchInfo.pitchDeg != null &&
+    Number.isFinite(Number(roofPitchInfo.pitchDeg)) &&
+    Number(roofPitchInfo.pitchDeg) > 0
+  ) {
+    attrs.push(
+      `data-roof-pitch-deg="${Number(roofPitchInfo.pitchDeg).toFixed(1)}"`,
+    );
+  }
+  if (Number.isFinite(Number(roofPitchInfo.spanM))) {
+    attrs.push(`data-roof-span-m="${formatNumber(roofPitchInfo.spanM, 2)}"`);
+  }
+  if (Number.isFinite(Number(roofPitchInfo.riseM))) {
+    attrs.push(`data-roof-rise-m="${formatNumber(roofPitchInfo.riseM, 2)}"`);
+  }
+  return attrs.join(" ");
+}
+
 function renderRoof(
   baseX,
   topY,
@@ -475,7 +651,7 @@ function renderRoof(
   lineweights = {},
   roofTruthQuality = "weak",
   roofGeometry = null,
-  scale = 1,
+  roofPitchInfo = {},
 ) {
   const quality = String(roofTruthQuality || "weak").toLowerCase();
   const truthMode = String(roofGeometry?.supportMode || "missing");
@@ -532,7 +708,14 @@ function renderRoof(
     .join("");
   if (flat) {
     return `
-      <g id="phase14-section-roof" data-truth="${quality}" data-truth-mode="${truthMode}" data-truth-state="${truthState}">
+      <g id="phase14-section-roof" data-truth="${quality}" data-truth-mode="${truthMode}" data-truth-state="${truthState}" ${renderRoofPitchDataAttributes(
+        {
+          ...roofPitchInfo,
+          status: "flat",
+          pitchDeg: null,
+          riseM: null,
+        },
+      )}>
       <rect x="${roofX}" y="${topY - 16}" width="${roofWidth}" height="4" fill="${SECTION_THEME.paper}" stroke="${SECTION_THEME.line}" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.secondary || 1}"${dasharray} />
       <rect x="${roofX}" y="${topY - 12}" width="${roofWidth}" height="12" fill="${SECTION_THEME.fillSoft}" fill-opacity="${quality === "blocked" ? 0.45 : quality === "weak" ? 0.68 : 1}" stroke="${SECTION_THEME.line}" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.primary || 1.6}"${dasharray} />
       <line x1="${roofX}" y1="${topY - 12}" x2="${roofX + roofWidth}" y2="${topY - 12}" stroke="${SECTION_THEME.line}" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.cutOutline || 2}"${dasharray} />
@@ -548,25 +731,32 @@ function renderRoof(
     `;
   }
 
-  // Scale-aware ridge apex. When roof_plane primitives carry ridge / eave
-  // heights (set in sectionConstructionGeometryService.js), draw the gable
-  // proportionally to the section scale so the triangle reads correctly at
-  // 1:50, 1:100, and 1:200. Fall back to the historical 52px placeholder when
-  // heights are not supplied (degraded / contextual roof evidence).
-  const ridgeHeightMRaw = Number(roofGeometry?.ridgeHeightM);
-  const eaveHeightMRaw = Number(roofGeometry?.eaveHeightM);
-  const ridgeRiseM =
-    Number.isFinite(ridgeHeightMRaw) && Number.isFinite(eaveHeightMRaw)
-      ? ridgeHeightMRaw - eaveHeightMRaw
-      : NaN;
-  const ridgeRisePx =
-    Number.isFinite(ridgeRiseM) && ridgeRiseM > 0 && Number.isFinite(scale)
-      ? Math.max(24, Math.min(160, ridgeRiseM * scale))
-      : 52;
-  const ridgeY = topY - ridgeRisePx;
-  const undersideY = ridgeY + Math.max(8, ridgeRisePx * 0.22);
+  // Resolve the ridge apex height in pixels. Preferred source is the canonical
+  // pitch resolver (roofPitchInfo.risePx, derived from roof_primitives'
+  // pitch_deg + section span via trigonometry); when that is unavailable the
+  // caller may inject a fallback derived from direct ridge / eave heights via
+  // roofGeometry.heightsRisePx. Final fallback is the historical 52px
+  // placeholder for degraded / contextual roof evidence.
+  const heightsRisePxRaw = Number(roofGeometry?.heightsRisePx);
+  let resolvedRisePx =
+    Number.isFinite(Number(roofPitchInfo?.risePx)) &&
+    Number(roofPitchInfo.risePx) > 0
+      ? Number(roofPitchInfo.risePx)
+      : Number.isFinite(heightsRisePxRaw) && heightsRisePxRaw > 0
+        ? Math.max(24, Math.min(160, heightsRisePxRaw))
+        : 52;
+  const ridgeY = topY - resolvedRisePx;
+  // Underside scales proportionally with the apex so the gable reads correctly
+  // at any scale, instead of the previous fixed 12px gap.
+  const undersideY = ridgeY + Math.max(8, resolvedRisePx * 0.22);
+  const pitchLabel = renderRoofPitchLabel(
+    roofX,
+    ridgeY,
+    roofWidth,
+    roofPitchInfo,
+  );
   return `
-    <g id="phase14-section-roof" data-truth="${quality}" data-truth-mode="${truthMode}" data-truth-state="${truthState}">
+    <g id="phase14-section-roof" data-truth="${quality}" data-truth-mode="${truthMode}" data-truth-state="${truthState}" ${renderRoofPitchDataAttributes(roofPitchInfo)}>
     <path d="M ${roofX - 4} ${topY} L ${roofX + roofWidth / 2} ${ridgeY} L ${roofX + roofWidth + 4} ${topY} L ${roofX + roofWidth - 12} ${topY} L ${roofX + roofWidth / 2} ${undersideY} L ${roofX + 12} ${topY} Z" fill="${SECTION_THEME.fillSoft}" fill-opacity="${quality === "blocked" ? 0.42 : quality === "weak" ? 0.66 : 0.92}" stroke="${SECTION_THEME.lineMuted}" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.primary || 1.4}"${dasharray} />
     <path d="M ${roofX} ${topY} L ${roofX + roofWidth / 2} ${ridgeY} L ${roofX + roofWidth} ${topY}" fill="none" stroke="${SECTION_THEME.line}" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.cutOutline || 2}"${dasharray} />
     <path d="M ${roofX + 12} ${topY} L ${roofX + roofWidth / 2} ${undersideY} L ${roofX + roofWidth - 12} ${topY}" fill="none" stroke="${SECTION_THEME.lineMuted}" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.primary || 1.2}"${dasharray} />
@@ -578,6 +768,7 @@ function renderRoof(
     ${valleyMarkup}
     ${attachmentMarkup}
     </g>
+    ${pitchLabel}
   `;
 }
 
@@ -910,6 +1101,7 @@ export function renderSectionSvg(
   const width = options.width || 1200;
   const height = options.height || 760;
   const sheetMode = options.sheetMode === true;
+  const sheetPolish = resolveSectionPolish(sheetMode);
   const showInternalTitleBlock =
     !sheetMode || options.showInternalTitleBlock === true;
   const padding = sheetMode ? 34 : 86;
@@ -924,13 +1116,35 @@ export function renderSectionSvg(
       (sum, level) => sum + Number(level.height_m || 3.2),
       0,
     ) || 3.2;
+  const roofLanguage =
+    resolvedStyleDNA.roof_language || geometry.roof?.type || "pitched gable";
+  const roofPitchInfoBase = buildCanonicalRoofPitchInfo(geometry, {
+    roofLanguage,
+    spanM: horizontalExtent,
+  });
+  const roofAllowanceM = Math.max(
+    sheetMode ? 0.82 : 1.4,
+    Number(roofPitchInfoBase.riseM || 0),
+  );
   const scale = Math.min(
     (width - padding * 2) / Math.max(horizontalExtent, 1),
-    (height - padding * 2) /
-      Math.max(totalHeight + (sheetMode ? 0.82 : 1.4), 1),
+    (height - padding * 2) / Math.max(totalHeight + roofAllowanceM, 1),
   );
+  const roofPitchInfo = {
+    ...roofPitchInfoBase,
+    risePx:
+      Number.isFinite(Number(roofPitchInfoBase.riseM)) &&
+      Number(roofPitchInfoBase.riseM) > 0
+        ? roofPitchInfoBase.riseM * scale
+        : null,
+  };
   const baseX = (width - horizontalExtent * scale) / 2;
-  const baseY = height - padding;
+  const sectionHeightPx = totalHeight * scale;
+  const availableHeightPx = Math.max(1, height - padding * 2);
+  const centeredBaseY = padding + (availableHeightPx + sectionHeightPx) / 2;
+  const baseY = sheetMode
+    ? Math.min(height - padding, centeredBaseY)
+    : height - padding;
   const sectionEvidence =
     options.sectionEvidence || buildSectionEvidence(geometry, sectionProfile);
   const sectionTruthModel = sectionEvidence.sectionTruthModel || null;
@@ -1004,6 +1218,18 @@ export function renderSectionSvg(
     scale,
     levelProfiles,
   });
+  const contextualSectionRooms =
+    constructionGeometry.rooms.length || cutRooms.length
+      ? []
+      : buildContextualSectionRooms(geometry, sectionType, levelProfiles);
+  const renderedSectionRooms = constructionGeometry.rooms.length
+    ? constructionGeometry.rooms
+    : cutRooms.length
+      ? cutRooms
+      : contextualSectionRooms;
+  const renderedCutRoomCount = renderedSectionRooms.length;
+  const renderedStairCount =
+    constructionGeometry.stairs.length || intersectedStairs.length;
 
   if (
     isFeatureEnabled("useSectionRendererUpgradePhase8") &&
@@ -1045,6 +1271,7 @@ export function renderSectionSvg(
     levelProfiles,
     scale,
     lineweights,
+    sheetPolish,
   );
   const foundation = renderFoundation(
     baseX,
@@ -1054,8 +1281,18 @@ export function renderSectionSvg(
     foundationTruthQuality,
     constructionGeometry.foundation,
   );
+  // Phase 3 — render the grade hatch beneath the foundation band so the
+  // section reads with proper earth/ground continuity. Render-only; sits
+  // behind the foundation visually (composed earlier in the SVG).
+  const groundHatch = renderGroundHatch(
+    baseX,
+    baseY,
+    horizontalExtent * scale,
+    height,
+    padding,
+  );
   const cutRoomMarkup = renderCutRooms(
-    constructionGeometry.rooms.length ? constructionGeometry.rooms : cutRooms,
+    renderedSectionRooms,
     sectionType,
     levelProfiles,
     baseX,
@@ -1127,26 +1364,43 @@ export function renderSectionSvg(
     lineweights,
     slabTruthQuality,
   );
+  // Inject a heights-derived rise (from roof_plane primitives' ridge / eave
+  // heights via sectionConstructionGeometryService.js) so renderRoof can fall
+  // back to it when the canonical pitch resolver returned no risePx.
+  const ridgeHeightMResolved = Number(constructionGeometry.roof?.ridgeHeightM);
+  const eaveHeightMResolved = Number(constructionGeometry.roof?.eaveHeightM);
+  const heightsRiseM =
+    Number.isFinite(ridgeHeightMResolved) &&
+    Number.isFinite(eaveHeightMResolved)
+      ? ridgeHeightMResolved - eaveHeightMResolved
+      : NaN;
+  const roofGeometryWithHeightsRisePx =
+    Number.isFinite(heightsRiseM) && heightsRiseM > 0
+      ? {
+          ...constructionGeometry.roof,
+          heightsRisePx: Math.max(24, Math.min(160, heightsRiseM * scale)),
+        }
+      : constructionGeometry.roof;
   const roof = renderRoof(
     baseX,
     baseY - totalHeight * scale,
     horizontalExtent * scale,
-    resolvedStyleDNA.roof_language || geometry.roof?.type || "pitched gable",
+    roofLanguage,
     lineweights,
     roofTruthQuality,
-    constructionGeometry.roof,
-    scale,
+    roofGeometryWithHeightsRisePx,
+    roofPitchInfo,
   );
+  const evidenceUsefulnessScore = Math.max(
+    Number(sectionSemantics?.scores?.usefulness || 0),
+    Number(sectionEvidence.summary?.usefulnessScore || 0),
+  );
+  const renderedUsefulnessScore =
+    (renderedCutRoomCount > 0 ? 0.62 : 0.2) +
+    (renderedStairCount > 0 ? 0.18 : 0) +
+    (levelProfiles.length > 1 ? 0.12 : 0.04);
   const usefulnessScore = roundMetric(
-    clamp(
-      Number(sectionSemantics?.scores?.usefulness || 0) ||
-        Number(sectionEvidence.summary?.usefulnessScore || 0) ||
-        (cutRooms.length > 0 ? 0.62 : 0.2) +
-          (intersectedStairs.length > 0 ? 0.18 : 0) +
-          (levelProfiles.length > 1 ? 0.12 : 0.04),
-      0,
-      1,
-    ),
+    clamp(Math.max(evidenceUsefulnessScore, renderedUsefulnessScore), 0, 1),
   );
   const slotOccupancyRatio = Number(
     clamp(
@@ -1162,25 +1416,33 @@ export function renderSectionSvg(
     height,
     padding,
     showInternalTitleBlock
-      ? {}
-      : { y: height - 34, labelYOffset: 14, fontSize: 9 },
+      ? { ...sheetPolish }
+      : {
+          y: height - 34,
+          labelYOffset: 14,
+          fontSize: 9,
+          ...sheetPolish,
+        },
   );
+  const titleBlockStroke = polishSize(1.1, sheetPolish.strokeScale);
+  const titleBlockTitleFont = polishSize(14, sheetPolish.fontScale);
+  const titleBlockMetaFont = polishSize(10, sheetPolish.fontScale);
   const titleBlockMarkup = showInternalTitleBlock
     ? `
     <g id="phase8-section-title-block">
       <rect x="${formatNumber(padding)}" y="${formatNumber(
         height - padding + 10,
-      )}" width="338" height="46" fill="${SECTION_THEME.paper}" stroke="${SECTION_THEME.line}" stroke-width="1.1"/>
+      )}" width="338" height="46" fill="${SECTION_THEME.paper}" stroke="${SECTION_THEME.line}" stroke-width="${titleBlockStroke}"/>
       <text x="${formatNumber(padding + 12)}" y="${formatNumber(
         height - padding + 27,
-      )}" font-size="14" font-family="Arial, sans-serif" font-weight="700" class="sheet-critical-label" data-text-role="critical">${escapeXml(
+      )}" font-size="${titleBlockTitleFont}" font-family="Arial, sans-serif" font-weight="700" class="sheet-critical-label" data-text-role="critical">${escapeXml(
         sectionProfile?.strategyName
           ? `${sectionProfile.strategyName} Section`
           : `Section - ${sectionType.toUpperCase()}`,
       )}</text>
       <text x="${formatNumber(padding + 12)}" y="${formatNumber(
         height - padding + 43,
-      )}" font-size="10" font-family="Arial, sans-serif" class="sheet-critical-label" data-text-role="critical">${escapeXml(
+      )}" font-size="${titleBlockMetaFont}" font-family="Arial, sans-serif" class="sheet-critical-label" data-text-role="critical">${escapeXml(
         `Bounds ${envelopeBounds.source} · ${Math.round(
           slotOccupancyRatio * 100,
         )}% slot occupancy`,
@@ -1205,6 +1467,7 @@ export function renderSectionSvg(
     `Cut coordinate ${cutCoordinate.toFixed(2)}m / usefulness ${usefulnessScore.toFixed(2)} / ${String(sectionProfile?.strategyId || "default-cut")}`,
   )}</text>`
   }
+  ${groundHatch.markup}
   ${foundation}
   ${roof}
   ${datums.markup}
@@ -1222,6 +1485,7 @@ export function renderSectionSvg(
     horizontalExtent,
     width,
     padding,
+    sheetPolish,
   )}
   ${titleBlockMarkup}
   ${scaleBar.markup}
@@ -1242,16 +1506,23 @@ export function renderSectionSvg(
       has_scale_bar: true,
       has_overall_dimensions: true,
       geometry_complete: geometryComplete,
-      stair_count: intersectedStairs.length,
-      room_label_count: options.hideRoomLabels ? 0 : cutRooms.length,
+      stair_count: renderedStairCount,
+      room_label_count: options.hideRoomLabels ? 0 : renderedCutRoomCount,
       wall_cut_count: cutWalls.length,
       slab_line_count: levelProfiles.length,
       level_label_count: levelProfiles.length,
-      cut_room_count: cutRooms.length,
+      cut_room_count: renderedCutRoomCount,
       cut_opening_count: cutOpenings.length,
       foundation_marker_count: 1,
+      ground_hatch_band_lines: groundHatch.count,
+      ground_hatch_visible: groundHatch.count > 0,
       stair_tread_count: stairMarkup.treadCount,
       roof_profile_visible: true,
+      roof_pitch_degrees: roofPitchInfo.pitchDeg,
+      roof_pitch_source: roofPitchInfo.source,
+      roof_pitch_status: roofPitchInfo.status,
+      roof_pitch_span_m: roofPitchInfo.spanM,
+      roof_pitch_rise_m: roofPitchInfo.riseM,
       section_usefulness_score: usefulnessScore,
       section_candidate_quality:
         sectionProfile?.sectionCandidateQuality || null,
@@ -1271,6 +1542,7 @@ export function renderSectionSvg(
       cut_coordinate_m: cutCoordinate,
       bounds_source: envelopeBounds.source,
       blueprint_theme: SECTION_THEME.name,
+      a1_quality_polish: sheetMode ? "section_datums_dimensions_v1" : null,
       slot_occupancy_ratio: slotOccupancyRatio,
       scale_bar_meters: scaleBar.barMeters,
       section_evidence_quality:

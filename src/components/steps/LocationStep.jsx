@@ -16,6 +16,10 @@ import { Skeleton } from "../ui/feedback/Loader.jsx";
 import IconWrapper from "../ui/IconWrapper.jsx";
 import StepContainer from "../layout/StepContainer.jsx";
 import { fadeInUp, staggerChildren } from "../../styles/animations.js";
+import {
+  selectContextualBoundaryPolygon,
+  shouldEnableBoundaryAutoDetect,
+} from "../../services/siteBoundaryAutoDetectPolicy.js";
 
 import LocationAccuracyBadge from "../ui/LocationAccuracyBadge.jsx";
 
@@ -34,6 +38,10 @@ const LocationStep = ({
 }) => {
   const canProceed = locationData && address;
   const hasResults = !!locationData;
+  const boundaryAutoDetectEnabled =
+    shouldEnableBoundaryAutoDetect(locationData);
+  const contextualBoundaryPolygon =
+    selectContextualBoundaryPolygon(locationData);
 
   return (
     <StepContainer
@@ -164,6 +172,14 @@ const LocationStep = ({
               onBoundaryChange={onBoundaryUpdated}
               apiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY}
               center={locationData.coordinates}
+              autoDetectEnabled={boundaryAutoDetectEnabled}
+              autoDetectOnLoad={boundaryAutoDetectEnabled}
+              contextualBoundaryPolygon={contextualBoundaryPolygon}
+              boundarySource={
+                locationData?.boundarySource ||
+                locationData?.siteAnalysis?.boundary?.source ||
+                null
+              }
             />
           </motion.div>
         )}
