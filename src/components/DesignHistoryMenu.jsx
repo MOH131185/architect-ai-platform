@@ -1,6 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
-import { ChevronDown, FileImage, History, Loader2, RefreshCw } from "lucide-react";
+import {
+  ChevronDown,
+  FileImage,
+  History,
+  Loader2,
+  RefreshCw,
+} from "lucide-react";
 import Button from "./ui/Button.jsx";
 
 function formatUpdatedAt(value) {
@@ -133,9 +139,7 @@ const DesignHistoryMenu = ({ listDesigns, onLoadDesign, className = "" }) => {
           <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
             <div>
               <p className="text-sm font-semibold text-white">Recent Designs</p>
-              <p className="text-xs text-white/45">
-                Reopen from local history
-              </p>
+              <p className="text-xs text-white/45">Reopen from local history</p>
             </div>
             <button
               type="button"

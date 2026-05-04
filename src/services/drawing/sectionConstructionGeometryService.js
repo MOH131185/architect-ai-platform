@@ -520,8 +520,34 @@ export function buildSectionConstructionGeometry({
         };
       })()
     : null;
+  // Pull ridge / eave heights off the underlying roof_plane primitives so the
+  // section renderer can draw a scale-correct gable triangle instead of the
+  // hardcoded 52px placeholder. Multiple planes -> max ridge, min eave.
+  const roofHeightSource = roofSource.filter(
+    (entry) =>
+      entry &&
+      String(entry.primitive_family || "") === "roof_plane" &&
+      (Number.isFinite(Number(entry.ridge_height_m)) ||
+        Number.isFinite(Number(entry.ridgeHeightM))),
+  );
+  const ridgeHeightM = roofHeightSource.length
+    ? Math.max(
+        ...roofHeightSource.map((entry) =>
+          Number(entry.ridge_height_m ?? entry.ridgeHeightM ?? 0),
+        ),
+      )
+    : null;
+  const eaveHeightM = roofHeightSource.length
+    ? Math.min(
+        ...roofHeightSource.map((entry) =>
+          Number(entry.eave_height_m ?? entry.eaveHeightM ?? 0),
+        ),
+      )
+    : null;
   const roof = {
     directRoofCount: directRoof.length,
+    ridgeHeightM,
+    eaveHeightM,
     contextual:
       !directRoof.some((entry) => carriesExplicitConstructionTruth(entry)) &&
       roofSource.length > 0,

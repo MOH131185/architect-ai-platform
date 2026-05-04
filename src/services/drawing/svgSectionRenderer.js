@@ -731,13 +731,24 @@ function renderRoof(
     `;
   }
 
-  const resolvedRisePx =
+  // Resolve the ridge apex height in pixels. Preferred source is the canonical
+  // pitch resolver (roofPitchInfo.risePx, derived from roof_primitives'
+  // pitch_deg + section span via trigonometry); when that is unavailable the
+  // caller may inject a fallback derived from direct ridge / eave heights via
+  // roofGeometry.heightsRisePx. Final fallback is the historical 52px
+  // placeholder for degraded / contextual roof evidence.
+  const heightsRisePxRaw = Number(roofGeometry?.heightsRisePx);
+  let resolvedRisePx =
     Number.isFinite(Number(roofPitchInfo?.risePx)) &&
     Number(roofPitchInfo.risePx) > 0
       ? Number(roofPitchInfo.risePx)
-      : 52;
+      : Number.isFinite(heightsRisePxRaw) && heightsRisePxRaw > 0
+        ? Math.max(24, Math.min(160, heightsRisePxRaw))
+        : 52;
   const ridgeY = topY - resolvedRisePx;
-  const undersideY = ridgeY + 12;
+  // Underside scales proportionally with the apex so the gable reads correctly
+  // at any scale, instead of the previous fixed 12px gap.
+  const undersideY = ridgeY + Math.max(8, resolvedRisePx * 0.22);
   const pitchLabel = renderRoofPitchLabel(
     roofX,
     ridgeY,
@@ -1353,6 +1364,23 @@ export function renderSectionSvg(
     lineweights,
     slabTruthQuality,
   );
+  // Inject a heights-derived rise (from roof_plane primitives' ridge / eave
+  // heights via sectionConstructionGeometryService.js) so renderRoof can fall
+  // back to it when the canonical pitch resolver returned no risePx.
+  const ridgeHeightMResolved = Number(constructionGeometry.roof?.ridgeHeightM);
+  const eaveHeightMResolved = Number(constructionGeometry.roof?.eaveHeightM);
+  const heightsRiseM =
+    Number.isFinite(ridgeHeightMResolved) &&
+    Number.isFinite(eaveHeightMResolved)
+      ? ridgeHeightMResolved - eaveHeightMResolved
+      : NaN;
+  const roofGeometryWithHeightsRisePx =
+    Number.isFinite(heightsRiseM) && heightsRiseM > 0
+      ? {
+          ...constructionGeometry.roof,
+          heightsRisePx: Math.max(24, Math.min(160, heightsRiseM * scale)),
+        }
+      : constructionGeometry.roof;
   const roof = renderRoof(
     baseX,
     baseY - totalHeight * scale,
@@ -1360,7 +1388,7 @@ export function renderSectionSvg(
     roofLanguage,
     lineweights,
     roofTruthQuality,
-    constructionGeometry.roof,
+    roofGeometryWithHeightsRisePx,
     roofPitchInfo,
   );
   const evidenceUsefulnessScore = Math.max(

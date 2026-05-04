@@ -152,9 +152,17 @@ function buildMaterialPatternDefs(theme) {
         <rect width="18" height="12" fill="${theme.fillSoft}" />
         <path d="M 0 0 H 18 M 0 6 H 18 M 0 12 H 18 M 9 0 V 6 M 0 6 V 12 M 18 6 V 12" stroke="${theme.lineMuted}" stroke-width="0.7" />
       </pattern>
+      <pattern id="phase8-elev-brick-coarse" width="36" height="24" patternUnits="userSpaceOnUse">
+        <rect width="36" height="24" fill="${theme.fillSoft}" />
+        <path d="M 0 0 H 36 M 0 12 H 36 M 0 24 H 36 M 18 0 V 12 M 0 12 V 24 M 36 12 V 24" stroke="${theme.lineMuted}" stroke-width="0.55" stroke-opacity="0.6" />
+      </pattern>
       <pattern id="phase8-elev-clapboard" width="16" height="10" patternUnits="userSpaceOnUse">
         <rect width="16" height="10" fill="${theme.paper}" />
         <path d="M 0 0 H 16 M 0 5 H 16 M 0 10 H 16" stroke="${theme.lineLight}" stroke-width="0.8" />
+      </pattern>
+      <pattern id="phase8-elev-clapboard-coarse" width="32" height="20" patternUnits="userSpaceOnUse">
+        <rect width="32" height="20" fill="${theme.paper}" />
+        <path d="M 0 0 H 32 M 0 10 H 32 M 0 20 H 32" stroke="${theme.lineLight}" stroke-width="0.55" stroke-opacity="0.7" />
       </pattern>
       <pattern id="phase8-elev-render" width="10" height="10" patternUnits="userSpaceOnUse">
         <rect width="10" height="10" fill="${theme.paper}" />
@@ -165,6 +173,10 @@ function buildMaterialPatternDefs(theme) {
       <pattern id="phase8-elev-timber" width="12" height="16" patternUnits="userSpaceOnUse">
         <rect width="12" height="16" fill="${theme.paper}" />
         <path d="M 0 0 V 16 M 6 0 V 16 M 12 0 V 16" stroke="${theme.lineMuted}" stroke-width="0.8" />
+      </pattern>
+      <pattern id="phase8-elev-timber-coarse" width="24" height="32" patternUnits="userSpaceOnUse">
+        <rect width="24" height="32" fill="${theme.paper}" />
+        <path d="M 0 0 V 32 M 12 0 V 32 M 24 0 V 32" stroke="${theme.lineMuted}" stroke-width="0.55" stroke-opacity="0.7" />
       </pattern>
       <pattern id="phase8-elev-roof" width="12" height="12" patternUnits="userSpaceOnUse">
         <rect width="12" height="12" fill="${theme.fillSoft}" />
@@ -178,11 +190,24 @@ function buildMaterialPatternDefs(theme) {
   `;
 }
 
-function getPatternId(hatch = "") {
+// Scale-aware density thresholds (px/m). Below SCALE_DETAIL_THRESHOLD we treat
+// the drawing as ~1:200 territory and suppress fine markup. Below
+// SCALE_HATCH_THRESHOLD we use the coarse hatch variants instead of fine ones.
+const SCALE_DETAIL_THRESHOLD = 6;
+const SCALE_HATCH_THRESHOLD = 8;
+
+function getPatternId(hatch = "", scale = Number.POSITIVE_INFINITY) {
   const normalized = String(hatch || "").toLowerCase();
-  if (normalized.includes("brick")) return "phase8-elev-brick";
-  if (normalized.includes("clapboard")) return "phase8-elev-clapboard";
-  if (normalized.includes("timber")) return "phase8-elev-timber";
+  const coarse = Number.isFinite(scale) && scale < SCALE_HATCH_THRESHOLD;
+  if (normalized.includes("brick")) {
+    return coarse ? "phase8-elev-brick-coarse" : "phase8-elev-brick";
+  }
+  if (normalized.includes("clapboard")) {
+    return coarse ? "phase8-elev-clapboard-coarse" : "phase8-elev-clapboard";
+  }
+  if (normalized.includes("timber")) {
+    return coarse ? "phase8-elev-timber-coarse" : "phase8-elev-timber";
+  }
   if (normalized.includes("render") || normalized.includes("stone")) {
     return "phase8-elev-render";
   }
@@ -650,6 +675,11 @@ function renderRhythmGuides(
   scale = 1,
   theme,
 ) {
+  // Bay-rhythm dashed guides are useful at 1:50/1:100 for proportion checks but
+  // double up with facade articulation and overwhelm the drawing at 1:200.
+  if (Number.isFinite(scale) && scale < SCALE_DETAIL_THRESHOLD) {
+    return { markup: "", count: 0 };
+  }
   const bays = facadeOrientation?.components?.bays || [];
   const guidePositions = bays.length
     ? Array.from(
@@ -759,7 +789,7 @@ function renderMaterialZones(
             baseY - heightPx,
           )}" width="${formatNumber(zoneWidthPx)}" height="${formatNumber(
             heightPx,
-          )}" fill="url(#${getPatternId(materialKey)})" fill-opacity="0.96" />
+          )}" fill="url(#${getPatternId(materialKey, scale)})" fill-opacity="0.96" />
           <line x1="${formatNumber(x)}" y1="${formatNumber(
             baseY - heightPx,
           )}" x2="${formatNumber(x)}" y2="${formatNumber(
@@ -839,31 +869,41 @@ function renderFacadeArticulation(
     count += 1;
   });
 
-  const boundaryPositions = [
-    ...wallZones.flatMap((zone) => [Number(zone.startM), Number(zone.endM)]),
-    ...openingGroups.flatMap((group) => [
-      Number(group.spanStartM),
-      Number(group.spanEndM),
-    ]),
-  ]
-    .filter((entry) => Number.isFinite(entry) && entry > 0)
-    .sort((left, right) => left - right)
-    .filter(
-      (entry, index, values) =>
-        index === 0 || Math.abs(entry - values[index - 1]) > 0.18,
-    );
+  // Skip the dense vertical boundary striping at small drawing scales (1:200
+  // territory). It overwhelms the elevation and reads as noise rather than
+  // facade articulation. The boundary detail still renders at 1:50/1:100.
+  if (Number.isFinite(scale) && scale >= SCALE_DETAIL_THRESHOLD) {
+    const boundaryPositions = [
+      ...wallZones.flatMap((zone) => [Number(zone.startM), Number(zone.endM)]),
+      ...openingGroups.flatMap((group) => [
+        Number(group.spanStartM),
+        Number(group.spanEndM),
+      ]),
+    ]
+      .filter((entry) => Number.isFinite(entry) && entry > 0)
+      .sort((left, right) => left - right)
+      .filter(
+        (entry, index, values) =>
+          index === 0 || Math.abs(entry - values[index - 1]) > 0.18,
+      );
 
-  boundaryPositions.forEach((positionM) => {
-    const x = baseX + positionM * scale;
-    markup.push(
-      `<line x1="${formatNumber(x)}" y1="${formatNumber(
-        baseY - heightPx + 10,
-      )}" x2="${formatNumber(x)}" y2="${formatNumber(
-        baseY - 2,
-      )}" stroke="${theme.guide}" stroke-width="0.75" stroke-dasharray="4 6" />`,
-    );
-    count += 1;
-  });
+    boundaryPositions.forEach((positionM) => {
+      const x = baseX + positionM * scale;
+      // Clip "ghost" boundary lines that extend past the building envelope
+      // (e.g. neighbouring-wall data leaking through wallZones / openingGroups).
+      if (x < baseX || x > baseX + widthPx) {
+        return;
+      }
+      markup.push(
+        `<line x1="${formatNumber(x)}" y1="${formatNumber(
+          baseY - heightPx + 10,
+        )}" x2="${formatNumber(x)}" y2="${formatNumber(
+          baseY - 2,
+        )}" stroke="${theme.guide}" stroke-width="0.75" stroke-dasharray="4 6" />`,
+      );
+      count += 1;
+    });
+  }
 
   openingGroups.forEach((group) => {
     const x1 = baseX + Number(group.spanStartM || 0) * scale;
