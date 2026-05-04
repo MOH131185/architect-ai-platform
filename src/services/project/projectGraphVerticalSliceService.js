@@ -21,6 +21,7 @@ import {
   getBlockedOpenAIReasoningCalls,
 } from "../openaiReasoningExecutor.js";
 import { computeCDSHashSync } from "../validation/cdsHash.js";
+import { validateProgrammeAdjacency } from "../validation/programmeAdjacencyValidator.js";
 import {
   rasteriseSheetArtifact,
   isRasterStubModeAllowed,
@@ -10066,6 +10067,53 @@ export function validateProjectGraphVerticalSlice({
     0, // architecture category already has 10 pts allocated; this is informational
   );
 
+  // Programme adjacency validator (paper §4.2 grey-box: domain-rule layer over
+  // ML output). Pure addition, gated; issues stay warning-only unless the
+  // blocking flag is also enabled. Failures of the optional flag → never fail.
+  let adjacencyResult = null;
+  if (isFeatureEnabled("programmeAdjacencyValidator")) {
+    try {
+      adjacencyResult = validateProgrammeAdjacency({
+        compiledProject: artifacts?.compiledProject || null,
+        canonicalProjectType:
+          projectGraph?.brief?.canonical_building_type ||
+          projectGraph?.brief?.canonicalBuildingType ||
+          projectGraph?.brief?.project_type_support?.canonicalBuildingType ||
+          "",
+      });
+      for (const adjCheck of adjacencyResult.checks) {
+        checks.push({
+          code: adjCheck.code,
+          status: adjCheck.status,
+          details: adjCheck.details,
+          category: "programme_adjacency",
+          weight: 0,
+        });
+      }
+      const blocking = isFeatureEnabled("programmeAdjacencyValidatorBlocking");
+      for (const adjIssue of adjacencyResult.issues) {
+        issues.push(
+          buildIssue(
+            adjIssue.code,
+            blocking ? "error" : "warning",
+            adjIssue.message,
+            adjIssue.details || {},
+          ),
+        );
+      }
+    } catch (error) {
+      // Validator must never break the pipeline. Record the failure as a
+      // diagnostic check and move on.
+      checks.push({
+        code: "PROGRAMME_ADJACENCY_VALIDATOR_ERROR",
+        status: "fail",
+        details: { error: String(error?.message || error) },
+        category: "programme_adjacency",
+        weight: 0,
+      });
+    }
+  }
+
   const errorCount = issues.filter(
     (issue) => issue.severity === "error",
   ).length;
@@ -10089,6 +10137,14 @@ export function validateProjectGraphVerticalSlice({
     checks,
     issues,
     constraint_conflicts: constraintConflicts,
+    programmeAdjacency: adjacencyResult
+      ? {
+          score: adjacencyResult.score,
+          status: adjacencyResult.status,
+          packId: adjacencyResult.packId,
+          ruleCount: adjacencyResult.ruleCount,
+        }
+      : null,
     disclaimer: PROFESSIONAL_REVIEW_DISCLAIMER,
   };
 }
