@@ -42,6 +42,37 @@ function sectionSvg({ groundLine = true, sectionId = true } = {}) {
   ].join("");
 }
 
+function productionPlanSvg() {
+  return [
+    SVG_HEADER,
+    '<g id="north-arrow"/>',
+    '<g id="title-block"/>',
+    '<g id="blueprint-scale-bar"/>',
+    '<g id="plan-room-labels"><g class="plan-room-label"><text>Reading Room</text></g></g>',
+    '<g class="dimension-chain horizontal"/>',
+    SVG_FOOTER,
+  ].join("");
+}
+
+function productionElevationSvg() {
+  return [
+    SVG_HEADER,
+    '<g id="phase8-ground-line"/>',
+    '<g class="phase8-window"/>',
+    "<text>FFL +0.000</text>",
+    SVG_FOOTER,
+  ].join("");
+}
+
+function productionSectionSvg() {
+  return [
+    SVG_HEADER,
+    '<g id="phase3-section-ground-hatch"/>',
+    '<g id="phase8-section-stair-cuts"/>',
+    SVG_FOOTER,
+  ].join("");
+}
+
 describe("runDrawingConsistencyChecks — per-view reliability", () => {
   test("clean drawings produce no errors and no per-view warnings", () => {
     const result = runDrawingConsistencyChecks({
@@ -127,6 +158,47 @@ describe("runDrawingConsistencyChecks — per-view reliability", () => {
     expect(result.warnings.some((w) => w.includes("section identifier"))).toBe(
       true,
     );
+  });
+
+  test("accepts current board-v2 renderer markers and forwarded counts", () => {
+    const result = runDrawingConsistencyChecks({
+      projectGeometry: {
+        levels: [{ id: 0 }, { id: 1 }],
+        windows: [{ id: "window-1" }],
+        stairs: [{ id: "stair-1" }],
+      },
+      drawings: {
+        plan: [
+          {
+            level_id: "0",
+            svg: productionPlanSvg(),
+            window_count: 1,
+            room_label_count: 1,
+            dimension_chain_count: 1,
+          },
+          {
+            level_id: "1",
+            svg: productionPlanSvg(),
+            window_count: 0,
+            room_label_count: 1,
+            dimension_chain_count: 1,
+          },
+        ],
+        elevation: [{ svg: productionElevationSvg(), window_count: 1 }],
+        section: [
+          {
+            svg: productionSectionSvg(),
+            section_id: "SECTION A-A",
+            stair_count: 1,
+            floor_count: 2,
+          },
+        ],
+      },
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.errors).toEqual([]);
+    expect(result.warnings).toEqual([]);
   });
 
   // Hotfix coverage: in the A1 sheet, the global title-block + north arrow

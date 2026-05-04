@@ -1,5 +1,6 @@
 import {
   buildArchitectureProjectVerticalSlice,
+  buildRequiredA1PanelTypes,
   validateProjectGraphVerticalSlice,
   KNOWN_BUILDING_TYPES,
   buildKeyNotesPanelArtifact,
@@ -622,6 +623,9 @@ describe("projectGraphVerticalSliceService", () => {
         "title_block",
       ]),
     );
+    expect(
+      result.artifacts.a1Sheet.panelPlacements.map((p) => p.panelType),
+    ).not.toContain("exterior_render");
     expectPanelPlacementsDoNotOverlap(result.artifacts.a1Sheet.panelPlacements);
     expect(placementByType.site_context.y).toBeLessThan(
       placementByType.section_AA.y,
@@ -638,6 +642,7 @@ describe("projectGraphVerticalSliceService", () => {
     expect(result.artifacts.a1Sheet.svgString).toContain("MATERIAL PALETTE");
     expect(result.artifacts.a1Sheet.svgString).toContain("KEY NOTES");
     expect(result.artifacts.a1Sheet.svgString).toContain("Drawing No.");
+    expect(result.artifacts.a1Sheet.svgString).toMatch(/professional review/i);
     expect(result.artifacts.panelMap.material_palette.svgString).toContain(
       "<pattern",
     );
@@ -653,6 +658,17 @@ describe("projectGraphVerticalSliceService", () => {
     expect(result.artifacts.panelMap.title_block.geometryHash).toBe(
       result.geometryHash,
     );
+    expect(result.artifacts.panelMap.title_block.metadata.disclaimer).toMatch(
+      /professional review/i,
+    );
+    expect(
+      result.artifacts.a1Sheet.quality.exportGate.evidence
+        .crossViewConsistencyStatus,
+    ).toMatchObject({
+      status: "pass",
+      warnings: [],
+      blockers: [],
+    });
     expect(Object.keys(result.artifacts.visuals3d).sort()).toEqual([
       "axonometric",
       "exterior_render",
@@ -1893,6 +1909,25 @@ describe("projectGraphVerticalSliceService", () => {
     expect(required3dCheck.details.expected.sort()).toEqual(
       ["axonometric", "hero_3d", "interior_3d"].sort(),
     );
+  });
+
+  test("board-v2 required A1 panel registry matches placed sheet panels", () => {
+    const required = buildRequiredA1PanelTypes(2, "board-v2");
+
+    expect(required).toEqual(
+      expect.arrayContaining([
+        "site_context",
+        "floor_plan_ground",
+        "floor_plan_first",
+        "hero_3d",
+        "axonometric",
+        "interior_3d",
+        "material_palette",
+        "key_notes",
+        "title_block",
+      ]),
+    );
+    expect(required).not.toContain("exterior_render");
   });
 
   test("QA accepts geometry-locked OpenAI image wrappers with compiled 3D control provenance", async () => {

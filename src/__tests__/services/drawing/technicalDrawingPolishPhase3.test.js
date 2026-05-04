@@ -357,6 +357,7 @@ describe("Phase 3 — section ground hatch and cut rooms", () => {
       { sectionType: "longitudinal" },
     );
     expect(result.svg).toContain('id="phase3-section-ground-hatch"');
+    expect(result.svg).toContain('id="ground-line"');
     expect(result.svg).toContain('data-grade-band="true"');
     expect(result.technical_quality_metadata.ground_hatch_visible).toBe(true);
     expect(

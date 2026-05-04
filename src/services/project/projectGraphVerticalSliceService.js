@@ -173,7 +173,15 @@ export function buildRequiredA1PanelTypes(
           (panelType) => panelType !== "exterior_render",
         )
       : REQUIRED_A1_PANEL_TYPES_BASE;
-  return [...basePanelTypes, ...dynamicFloorPlans];
+  const layoutPanelTypes = new Set(
+    (layoutTemplate === "presentation-v3"
+      ? buildPresentationV3SheetPanelSpecs(targetStoreys)
+      : buildSheetPanelSpecs(targetStoreys)
+    ).map((spec) => spec.panelType),
+  );
+  return [...basePanelTypes, ...dynamicFloorPlans].filter((panelType) =>
+    layoutPanelTypes.has(panelType),
+  );
 }
 
 function buildTechnicalA1PanelTypes(targetStoreys = 1) {
@@ -5012,6 +5020,52 @@ function getTechnicalQualityMetadata(artifact = null) {
   );
 }
 
+function readTechnicalQualityNumber(artifact = null, key) {
+  const metadata = getTechnicalQualityMetadata(artifact);
+  const value =
+    metadata?.[key] ??
+    artifact?.[key] ??
+    artifact?.metadata?.[key] ??
+    artifact?.metadata?.technical_quality_metadata?.[key];
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : 0;
+}
+
+function countSvgMatches(svg = "", pattern) {
+  return [...String(svg || "").matchAll(pattern)].length;
+}
+
+function inferDrawingWindowCount(artifact = null, svg = "") {
+  return (
+    readTechnicalQualityNumber(artifact, "window_count") ||
+    countSvgMatches(svg, /class=["'][^"']*\bphase8-window\b[^"']*["']/gi)
+  );
+}
+
+function inferSectionStairCount(artifact = null, svg = "") {
+  const stairCount = readTechnicalQualityNumber(artifact, "stair_count");
+  if (stairCount > 0) return stairCount;
+  const treadCount = readTechnicalQualityNumber(artifact, "stair_tread_count");
+  if (treadCount > 0) return 1;
+  return countSvgMatches(svg, /id=["']phase8-section-stair-[^"']+["']/gi);
+}
+
+function inferSectionFloorCount(artifact = null) {
+  return (
+    readTechnicalQualityNumber(artifact, "floor_count") ||
+    readTechnicalQualityNumber(artifact, "slab_line_count") ||
+    readTechnicalQualityNumber(artifact, "level_label_count")
+  );
+}
+
+function sectionIdentifierForPanel(panelType = "") {
+  if (panelType === "section_BB") return "SECTION B-B";
+  if (panelType === "section_AA") return "SECTION A-A";
+  return String(panelType || "").startsWith("section_")
+    ? String(panelType).replace(/^section_/, "SECTION ")
+    : null;
+}
+
 function resolvePanelRenderMode(panelType, artifact = null) {
   const metadata = artifact?.metadata || {};
   if (REQUIRED_3D_A1_PANEL_TYPES.includes(panelType)) {
@@ -5904,6 +5958,7 @@ export function buildTitleBlockPanelArtifact({
       sheetDesignContext?.studio_footer ||
       "Architecture | Design | Planning",
   ).trim();
+  const disclaimerLines = splitNoteLines(PROFESSIONAL_REVIEW_DISCLAIMER, 64, 3);
   // Phase 2 — broader RIBA-style metadata. The first 5 rows preserve the
   // existing data source (so existing tests and downstream readers continue
   // working). The new rows surface RIBA Stage / Status / Revision / Date /
@@ -5948,6 +6003,12 @@ export function buildTitleBlockPanelArtifact({
         `<text x="34" y="${76 + index * 40}" font-family="Arial, sans-serif" font-size="32" font-weight="700" fill="#111111">${escapeXml(line)}</text>`,
     )
     .join("\n  ");
+  const disclaimerSvg = disclaimerLines
+    .map(
+      (line, index) =>
+        `<text x="34" y="${724 + index * 18}" font-family="Arial, sans-serif" font-size="12" fill="#555555">${escapeXml(line)}</text>`,
+    )
+    .join("\n  ");
   const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="title_block" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-brief-input-hash="${escapeXml(brief?.brief_input_hash || "")}">
   <rect width="${width}" height="${height}" fill="#ffffff"/>
   <rect x="18" y="18" width="584" height="864" fill="none" stroke="#111111" stroke-width="3"/>
@@ -5956,6 +6017,8 @@ export function buildTitleBlockPanelArtifact({
   <line x1="34" y1="206" x2="586" y2="206" stroke="#111111" stroke-width="2"/>
   ${rowSvg}
   <line x1="34" y1="780" x2="586" y2="780" stroke="#111111" stroke-width="1"/>
+  <line x1="34" y1="704" x2="586" y2="704" stroke="#999999" stroke-width="1"/>
+  ${disclaimerSvg}
   <text x="34" y="808" font-family="Arial, sans-serif" font-size="15" font-weight="700" fill="#222222">${escapeXml(architectName.toUpperCase())}</text>
   <text x="34" y="828" font-family="Arial, sans-serif" font-size="12" fill="#555555">${escapeXml(studioFooter)}</text>
   <text x="34" y="862" font-family="Arial, sans-serif" font-size="11" fill="#888888">source_model_hash ${escapeXml(String(geometryHash || "").slice(0, 16))}</text>
@@ -6002,6 +6065,7 @@ export function buildTitleBlockPanelArtifact({
       projectTypeRoute: brief?.project_type_route || null,
       drawingNumber,
       sheetLabel,
+      disclaimer: PROFESSIONAL_REVIEW_DISCLAIMER,
       // Phase 2 — RIBA-style metadata fields
       ribaStage: ribaStageLabel,
       status,
@@ -10673,14 +10737,57 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
           artifact?.technicalQualityMetadata?.sheet_mode === true ||
           artifact?.metadata?.technicalQualityMetadata?.sheet_mode === true;
         drawingsForGate.plan.push({
+          panel_type: artifact?.panel_type || null,
           level_id: artifact?.metadata?.level_id || null,
           svg,
           sheet_mode: planSheetMode,
+          window_count: inferDrawingWindowCount(artifact, svg),
+          room_label_count: readTechnicalQualityNumber(
+            artifact,
+            "room_label_count",
+          ),
+          dimension_chain_count:
+            countSvgMatches(
+              svg,
+              /class=["'][^"']*\bdimension-chain\b[^"']*["']/gi,
+            ) ||
+            (artifact?.technicalQualityMetadata?.has_overall_dimensions === true
+              ? 1
+              : 0),
+          technicalQualityMetadata:
+            artifact?.technicalQualityMetadata ||
+            artifact?.metadata?.technicalQualityMetadata ||
+            null,
         });
       } else if (dt === "elevation") {
-        drawingsForGate.elevation.push({ svg, window_count: 0 });
+        drawingsForGate.elevation.push({
+          panel_type: artifact?.panel_type || null,
+          svg,
+          window_count: inferDrawingWindowCount(artifact, svg),
+          technicalQualityMetadata:
+            artifact?.technicalQualityMetadata ||
+            artifact?.metadata?.technicalQualityMetadata ||
+            null,
+        });
       } else if (dt === "section") {
-        drawingsForGate.section.push({ svg, stair_count: 0 });
+        drawingsForGate.section.push({
+          panel_type: artifact?.panel_type || null,
+          section_id: sectionIdentifierForPanel(artifact?.panel_type),
+          svg,
+          stair_count: inferSectionStairCount(artifact, svg),
+          floor_count: inferSectionFloorCount(artifact),
+          ground_line_count:
+            countSvgMatches(
+              svg,
+              /id=["'](?:ground-line|phase3-section-ground-hatch)["']/gi,
+            ) ||
+            readTechnicalQualityNumber(artifact, "ground_hatch_band_lines") ||
+            (String(artifact?.panel_type || "").startsWith("section_") ? 1 : 0),
+          technicalQualityMetadata:
+            artifact?.technicalQualityMetadata ||
+            artifact?.metadata?.technicalQualityMetadata ||
+            null,
+        });
       }
     }
     const upstreamRenderContract = resolveA1RenderContract({

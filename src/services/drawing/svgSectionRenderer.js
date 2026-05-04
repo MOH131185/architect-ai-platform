@@ -298,7 +298,7 @@ function renderGroundHatch(
     markup: `<g id="phase3-section-ground-hatch" data-grade-band="true">
       <rect x="${formatNumber(startX)}" y="${formatNumber(startY)}" width="${formatNumber(bandWidth)}" height="${formatNumber(bandHeight)}" fill="${fill}" fill-opacity="${fillOpacity}"/>
       ${lines.join("")}
-      <line x1="${formatNumber(startX)}" y1="${formatNumber(startY)}" x2="${formatNumber(startX + bandWidth)}" y2="${formatNumber(startY)}" stroke="${SECTION_THEME.line}" stroke-width="1.1"/>
+      <line id="ground-line" x1="${formatNumber(startX)}" y1="${formatNumber(startY)}" x2="${formatNumber(startX + bandWidth)}" y2="${formatNumber(startY)}" stroke="${SECTION_THEME.line}" stroke-width="1.1"/>
     </g>`,
     count: lines.length,
   };

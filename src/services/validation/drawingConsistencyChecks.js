@@ -2,6 +2,93 @@ function hasSvgPayload(entry) {
   return Boolean(entry?.svg && String(entry.svg).includes("<svg"));
 }
 
+function classTokenRegex(token) {
+  return new RegExp(`class=["'][^"']*\\b${token}\\b[^"']*["']`, "i");
+}
+
+function svgHasId(svg, id) {
+  return String(svg || "").includes(`id="${id}"`);
+}
+
+function svgHasClassToken(svg, token) {
+  return classTokenRegex(token).test(String(svg || ""));
+}
+
+function numberFromEntry(entry, keys = []) {
+  for (const key of keys) {
+    const value =
+      entry?.[key] ??
+      entry?.metadata?.[key] ??
+      entry?.technicalQualityMetadata?.[key] ??
+      entry?.technical_quality_metadata?.[key] ??
+      entry?.metadata?.technicalQualityMetadata?.[key] ??
+      entry?.metadata?.technical_quality_metadata?.[key];
+    const number = Number(value);
+    if (Number.isFinite(number) && number > 0) {
+      return number;
+    }
+  }
+  return 0;
+}
+
+function hasPlanScaleBar(entry, svg) {
+  return (
+    svgHasId(svg, "scale-bar") ||
+    svgHasId(svg, "blueprint-scale-bar") ||
+    numberFromEntry(entry, ["scale_bar_count"]) > 0 ||
+    entry?.technicalQualityMetadata?.has_scale_bar === true ||
+    entry?.technical_quality_metadata?.has_scale_bar === true ||
+    entry?.metadata?.technicalQualityMetadata?.has_scale_bar === true ||
+    entry?.metadata?.technical_quality_metadata?.has_scale_bar === true
+  );
+}
+
+function hasPlanRoomLabels(entry, svg) {
+  return (
+    svgHasId(svg, "room-label") ||
+    svgHasId(svg, "plan-room-labels") ||
+    svgHasClassToken(svg, "room-label") ||
+    svgHasClassToken(svg, "room-labels") ||
+    svgHasClassToken(svg, "plan-room-label") ||
+    numberFromEntry(entry, ["room_label_count"]) > 0
+  );
+}
+
+function hasDimensionChain(entry, svg) {
+  return (
+    svgHasClassToken(svg, "dimension-chain") ||
+    numberFromEntry(entry, ["dimension_chain_count"]) > 0 ||
+    entry?.technicalQualityMetadata?.has_overall_dimensions === true ||
+    entry?.technical_quality_metadata?.has_overall_dimensions === true ||
+    entry?.metadata?.technicalQualityMetadata?.has_overall_dimensions ===
+      true ||
+    entry?.metadata?.technical_quality_metadata?.has_overall_dimensions === true
+  );
+}
+
+function hasGroundLine(entry, svg) {
+  return (
+    svgHasId(svg, "ground-line") ||
+    svgHasId(svg, "phase8-ground-line") ||
+    svgHasId(svg, "phase3-section-ground-hatch") ||
+    numberFromEntry(entry, ["ground_line_count", "ground_hatch_band_lines"]) >
+      0 ||
+    entry?.technicalQualityMetadata?.ground_hatch_visible === true ||
+    entry?.technical_quality_metadata?.ground_hatch_visible === true ||
+    entry?.metadata?.technicalQualityMetadata?.ground_hatch_visible === true ||
+    entry?.metadata?.technical_quality_metadata?.ground_hatch_visible === true
+  );
+}
+
+function hasSectionIdentifier(entry, svg) {
+  return (
+    /section[- ]?[A-Z]-[A-Z]/i.test(String(svg || "")) ||
+    /section[- ]?[A-Z]-[A-Z]/i.test(String(entry?.section_id || "")) ||
+    /section[-_ ]?[A-Z]{2}/i.test(String(entry?.section_id || "")) ||
+    /section[-_ ]?[A-Z]{2}/i.test(String(entry?.panel_type || ""))
+  );
+}
+
 // A plan SVG is "sheet-mode" when it is being composed inside the global A1
 // sheet (which renders ONE north arrow and ONE title block at the sheet
 // chrome level, not per panel). The plan renderer intentionally omits the
@@ -88,17 +175,17 @@ function validatePlanCollection(entries = [], levelCount = 1) {
     // Reliability checks added 2026-05-02 to surface common A1 floor-plan
     // regressions (missing scale bar, no room labels, no dimension chains)
     // as warnings rather than letting them slip through silently.
-    if (svg && !svg.includes('id="scale-bar"')) {
+    if (svg && !hasPlanScaleBar(entry, svg)) {
       warnings.push(
         `drawings.plan[${index}] has no scale-bar marker — A1 plans should include a scale bar.`,
       );
     }
-    if (svg && !svg.match(/<text[^>]*class="room-label"|id="room-label"/)) {
+    if (svg && !hasPlanRoomLabels(entry, svg)) {
       warnings.push(
         `drawings.plan[${index}] has no room-label text elements — rooms may render unlabelled.`,
       );
     }
-    if (svg && !svg.includes('class="dimension-chain"')) {
+    if (svg && !hasDimensionChain(entry, svg)) {
       warnings.push(
         `drawings.plan[${index}] has no dimension-chain — outer dimensions may be missing.`,
       );
@@ -135,7 +222,7 @@ function validateElevationCollection(entries = [], projectGeometry = {}) {
   // user can't read floor heights off the elevation.
   entries.forEach((entry, index) => {
     const svg = String(entry?.svg || "");
-    if (svg && !svg.includes('id="ground-line"')) {
+    if (svg && !hasGroundLine(entry, svg)) {
       warnings.push(
         `drawings.elevation[${index}] is missing the ground-line marker.`,
       );
@@ -171,12 +258,12 @@ function validateSectionCollection(entries = [], projectGeometry = {}) {
   // their cut-line on the plan.
   entries.forEach((entry, index) => {
     const svg = String(entry?.svg || "");
-    if (svg && !svg.includes('id="ground-line"')) {
+    if (svg && !hasGroundLine(entry, svg)) {
       warnings.push(
         `drawings.section[${index}] is missing the ground-line marker.`,
       );
     }
-    if (svg && !svg.match(/section[- ]?[A-Z]-[A-Z]/i)) {
+    if (svg && !hasSectionIdentifier(entry, svg)) {
       warnings.push(
         `drawings.section[${index}] has no section identifier (A-A, B-B) — cannot cross-reference with plan.`,
       );
