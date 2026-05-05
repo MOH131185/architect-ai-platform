@@ -798,6 +798,131 @@ function resolveSectionProfile(
   return typedMatch ? cloneData(typedMatch) : { sectionType };
 }
 
+function isFiniteNumber(value) {
+  return Number.isFinite(Number(value));
+}
+
+function cutLineSpansFootprint(cutLine, bbox) {
+  if (
+    !cutLine?.from ||
+    !cutLine?.to ||
+    !bbox ||
+    !isFiniteNumber(cutLine.from.x) ||
+    !isFiniteNumber(cutLine.from.y) ||
+    !isFiniteNumber(cutLine.to.x) ||
+    !isFiniteNumber(cutLine.to.y)
+  ) {
+    return false;
+  }
+  const cutMinX = Math.min(Number(cutLine.from.x), Number(cutLine.to.x));
+  const cutMaxX = Math.max(Number(cutLine.from.x), Number(cutLine.to.x));
+  const cutMinY = Math.min(Number(cutLine.from.y), Number(cutLine.to.y));
+  const cutMaxY = Math.max(Number(cutLine.from.y), Number(cutLine.to.y));
+  // Sanity: the cut line's axis-aligned bounding box should overlap the
+  // building footprint bbox so the marker is drawn on the plan rather than
+  // floating off-canvas. Half-overlap counts as overlap (a horizontal cut at
+  // y=max_y is at the building's edge but still adjacent).
+  const xOverlap = cutMaxX >= bbox.min_x && cutMinX <= bbox.max_x;
+  const yOverlap = cutMaxY >= bbox.min_y && cutMinY <= bbox.max_y;
+  return xOverlap && yOverlap;
+}
+
+function buildFallbackCutLine(sectionType, bbox) {
+  if (!bbox || !isFiniteNumber(bbox.min_x) || !isFiniteNumber(bbox.min_y)) {
+    return null;
+  }
+  const minX = Number(bbox.min_x);
+  const maxX = Number(bbox.max_x);
+  const minY = Number(bbox.min_y);
+  const maxY = Number(bbox.max_y);
+  const centreX = (minX + maxX) / 2;
+  const centreY = (minY + maxY) / 2;
+  // Convention: longitudinal section (A-A) cuts ALONG the building's long
+  // axis. For an x-major bbox the cut runs along x at y=centre; for a y-major
+  // bbox the cut runs along y at x=centre. Transverse (B-B) is the opposite.
+  const isYMajor = maxY - minY >= maxX - minX;
+  if (sectionType === "longitudinal") {
+    return isYMajor
+      ? { from: { x: centreX, y: minY }, to: { x: centreX, y: maxY } }
+      : { from: { x: minX, y: centreY }, to: { x: maxX, y: centreY } };
+  }
+  // transverse (or unknown → treat as transverse)
+  return isYMajor
+    ? { from: { x: minX, y: centreY }, to: { x: maxX, y: centreY } }
+    : { from: { x: centreX, y: minY }, to: { x: centreX, y: maxY } };
+}
+
+/**
+ * Adapt `compiledProject.sectionCuts` (planner output) into the shape
+ * `renderPlanSvg` expects on `geometry.sections` / `options.sections`:
+ *   { id, sectionType: "longitudinal" | "transverse", cutLine: {from,to}, level_id }
+ *
+ * Picks the chosen primary cut per type from `sectionCuts.byType` and falls
+ * back to a deterministic centroid cut derived from the building footprint
+ * bbox when:
+ *   - no candidate exists for the type, OR
+ *   - the candidate's cutLine fails a basic footprint-overlap sanity check
+ *     (the planner stores cuts in pre-section coordinates that may sit off
+ *     the plan's drawing bbox; falling back keeps the marker visible).
+ *
+ * Section markers should appear on every level of the plan series, so we
+ * leave `level_id` undefined; renderPlanSvg already treats an unset level_id
+ * as "show on all levels".
+ */
+export function buildPlanSectionsFromCompiledProject(
+  compiledProjectSource = {},
+) {
+  const sectionCuts = compiledProjectSource?.sectionCuts || {};
+  const candidates = Array.isArray(sectionCuts.candidates)
+    ? sectionCuts.candidates
+    : [];
+  const byType = sectionCuts.byType || {};
+  const footprintBbox =
+    compiledProjectSource?.footprint?.bbox ||
+    compiledProjectSource?.envelope?.bbox ||
+    null;
+
+  const sections = [];
+  for (const sectionType of ["longitudinal", "transverse"]) {
+    const preferredId = byType[sectionType] || null;
+    const candidate = preferredId
+      ? candidates.find((entry) => entry?.id === preferredId)
+      : candidates.find((entry) => entry?.sectionType === sectionType);
+
+    const candidateCutLine = candidate?.cutLine || null;
+    if (cutLineSpansFootprint(candidateCutLine, footprintBbox)) {
+      sections.push({
+        id: candidate.id,
+        sectionType,
+        cutLine: {
+          from: {
+            x: Number(candidateCutLine.from.x),
+            y: Number(candidateCutLine.from.y),
+          },
+          to: {
+            x: Number(candidateCutLine.to.x),
+            y: Number(candidateCutLine.to.y),
+          },
+        },
+        source: "compiled_project_section_cuts",
+      });
+      continue;
+    }
+
+    const fallback = buildFallbackCutLine(sectionType, footprintBbox);
+    if (!fallback) continue;
+    sections.push({
+      id: candidate?.id || `plan-marker-${sectionType}-fallback`,
+      sectionType,
+      cutLine: fallback,
+      source: candidate?.cutLine
+        ? "compiled_project_section_cuts_fallback_centroid"
+        : "footprint_centroid_fallback",
+    });
+  }
+  return sections;
+}
+
 export function buildCompiledProjectTechnicalPanels(source = {}, options = {}) {
   const compiledProjectSource = resolveCompiledProjectSource(source);
   if (!compiledProjectSource) {
@@ -842,6 +967,17 @@ export function buildCompiledProjectTechnicalPanels(source = {}, options = {}) {
     : [];
   const floorCount = Math.max(1, levels.length || 1);
 
+  // Plan section markers (A-A, B-B): the canonical projectGeometry produced
+  // by the slice service does not carry `sections`, so renderPlanSvg's
+  // `geometry.sections` was always empty even though `compiledProjectSource`
+  // had `sectionCuts.candidates` populated by the section-cut planner. Adapt
+  // the planner output to the renderer's expected shape, with a deterministic
+  // footprint-centroid fallback so the markers appear even when the planner
+  // produces no usable cutLine for a given sectionType.
+  const planSections = buildPlanSectionsFromCompiledProject(
+    compiledProjectSource,
+  );
+
   levels.forEach((level, index) => {
     const panelType = technicalFloorPanelType(index);
     const slotRenderSize = getTechnicalPanelRenderSize(
@@ -866,6 +1002,7 @@ export function buildCompiledProjectTechnicalPanels(source = {}, options = {}) {
       showDimensions: true,
       showRoomLabels: true,
       sheetMode: true,
+      sections: planSections,
     });
     const normalized = buildPanelRecord(
       panelType,

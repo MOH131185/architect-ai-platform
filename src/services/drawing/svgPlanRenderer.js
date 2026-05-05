@@ -1402,7 +1402,15 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
   // runs through the full building, not per-storey). When a section is
   // explicitly scoped to a single level via `level_id`, we honour that.
   // Sorting + letter assignment is deterministic inside renderSectionMarkers.
-  const levelSections = (geometry.sections || []).filter((section) => {
+  // Caller-provided `options.sections` takes precedence over `geometry.sections`
+  // — the canonical projectGeometry coercer drops the planner's `sectionCuts`
+  // (different shape/key), so callers (e.g. compiledProjectTechnicalPackBuilder)
+  // pass an adapted sections array directly.
+  const callerSections = Array.isArray(options.sections)
+    ? options.sections
+    : null;
+  const candidateSections = callerSections || geometry.sections || [];
+  const levelSections = candidateSections.filter((section) => {
     if (!section?.cutLine) return false;
     if (section.level_id && section.level_id !== level.id) return false;
     return true;

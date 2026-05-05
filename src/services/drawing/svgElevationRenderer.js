@@ -1740,11 +1740,22 @@ export function renderElevationSvg(
   const packDataAttrs = vernacularPack
     ? ` data-vernacular-pack="${escapeXml(packId || "")}" data-pack-parapet="${packParapet}" data-pack-semi-basement="${packSemiBasement}" data-pack-window-language="${escapeXml(packWindowLanguageRaw)}" data-pack-facade-stucco="${packHasStucco}"`
     : "";
+  // Sheet composition unwraps the panel SVG into a <g data-panel-id="…">, so
+  // attributes living on the OUTER <svg> element are dropped from the composed
+  // sheet (the W2 ProjectGraph validation observed exactly this — pack hits
+  // existed in technicalQualityMetadata but data-pack-* never reached the A1
+  // SVG). Mirror the pack attributes onto a self-closing <g> inside the body
+  // so they survive composition. Existing tests that read the panel SVG root
+  // (data-vernacular-pack on <svg>) continue to pass.
+  const packAttrsGroup = vernacularPack
+    ? `<g class="cad-vernacular-pack-attrs" data-vernacular-pack="${escapeXml(packId || "")}" data-pack-parapet="${packParapet}" data-pack-semi-basement="${packSemiBasement}" data-pack-window-language="${escapeXml(packWindowLanguageRaw)}" data-pack-facade-stucco="${packHasStucco}"/>`
+    : "";
 
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-theme="${theme.name}" data-bounds-source="${envelope.source}" data-blueprint-grade="${blueprintGrade ? "true" : "false"}"${packDataAttrs}>
   ${buildMaterialPatternDefs(theme)}
   <rect width="${width}" height="${height}" fill="${theme.paper}" />
+  ${packAttrsGroup}
   ${blueprintGrade ? '<g class="cad-lineweight-registry cad-lineweight-outline cad-lineweight-projection cad-lineweight-detail" data-cad-layer="lineweight-registry"/>' : ""}
   ${
     sheetMode
