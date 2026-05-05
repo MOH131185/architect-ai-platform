@@ -636,6 +636,16 @@ function renderLevelDatums(
     <text x="${baseX - 134}" y="${baseY + 1}" font-size="${primaryLabelFont}" font-family="Arial, sans-serif" font-weight="700" text-anchor="start" class="sheet-critical-label" data-text-role="critical" data-datum-role="ffl">FFL +0.00m</text>
   `);
 
+  const foundationDepthM = Number.isFinite(Number(options.foundationDepthM))
+    ? Number(options.foundationDepthM)
+    : 1;
+  const foundationY = baseY + Math.max(0.35, foundationDepthM) * scale;
+  labels.push(`
+    <line class="cad-section-foundation-datum cad-lineweight-detail" x1="${baseX - 52}" y1="${foundationY}" x2="${baseX + widthPx}" y2="${foundationY}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${secondaryStroke}" stroke-dasharray="8 5" data-datum-role="foundation" />
+    <rect x="${baseX - 158}" y="${foundationY - 11}" width="100" height="16" rx="3" ry="3" fill="${SECTION_THEME.paper}" fill-opacity="0.94" stroke="${SECTION_THEME.guide}" stroke-width="${labelStroke}" />
+    <text x="${baseX - 148}" y="${foundationY + 1}" font-size="${primaryLabelFont}" font-family="Arial, sans-serif" font-weight="700" text-anchor="start" class="sheet-critical-label" data-text-role="critical" data-datum-role="foundation">FOUND -1.000m</text>
+  `);
+
   let eavesDatumCount = 0;
   const eavesHeightM = Number(options.eavesHeightM);
   if (Number.isFinite(eavesHeightM) && eavesHeightM > 0) {
@@ -940,8 +950,17 @@ function renderRoof(
     <path d="M ${roofX - 4} ${topY} L ${roofX + roofWidth / 2} ${ridgeY} L ${roofX + roofWidth + 4} ${topY} L ${roofX + roofWidth - 12} ${topY} L ${roofX + roofWidth / 2} ${undersideY} L ${roofX + 12} ${topY} Z" fill="${SECTION_THEME.fillSoft}" fill-opacity="${quality === "blocked" ? 0.42 : quality === "weak" ? 0.66 : 0.92}" stroke="${SECTION_THEME.lineMuted}" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.primary || 1.4}"${dasharray} />
     <path d="M ${roofX} ${topY} L ${roofX + roofWidth / 2} ${ridgeY} L ${roofX + roofWidth} ${topY}" fill="none" stroke="${SECTION_THEME.line}" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.cutOutline || 2}"${dasharray} />
     <path d="M ${roofX + 12} ${topY} L ${roofX + roofWidth / 2} ${undersideY} L ${roofX + roofWidth - 12} ${topY}" fill="none" stroke="${SECTION_THEME.lineMuted}" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.primary || 1.2}"${dasharray} />
-    <line x1="${roofX + roofWidth / 2}" y1="${ridgeY}" x2="${roofX + roofWidth / 2}" y2="${ridgeY + 10}" stroke="${SECTION_THEME.line}" stroke-width="${lineweights.secondary || 1}" />
+    <line class="cad-roof-ridge-beam" x1="${roofX + roofWidth / 2}" y1="${ridgeY}" x2="${roofX + roofWidth / 2}" y2="${ridgeY + 14}" stroke="${SECTION_THEME.line}" stroke-width="${lineweights.secondary || 1}" data-roof-framing="ridge-beam" />
     <line x1="${roofX + 10}" y1="${topY - 8}" x2="${roofX + roofWidth - 10}" y2="${topY - 8}" stroke="${SECTION_THEME.lineLight}" stroke-width="${lineweights.tertiary || 0.8}" stroke-dasharray="4 4" />
+    <g class="cad-roof-rafter-lines" data-roof-framing="rafters">
+      ${[0.18, 0.34, 0.66, 0.82]
+        .map((ratio) => {
+          const eavesX = roofX + roofWidth * ratio;
+          const ridgeX = roofX + roofWidth / 2;
+          return `<line x1="${formatNumber(ridgeX)}" y1="${formatNumber(ridgeY + 10)}" x2="${formatNumber(eavesX)}" y2="${formatNumber(topY - 3)}" stroke="${SECTION_THEME.lineLight}" stroke-width="${lineweights.tertiary || 0.8}" />`;
+        })
+        .join("")}
+    </g>
     ${cutPlaneMarkup}
     ${roofBreakMarkup}
     ${hipMarkup}
@@ -1378,7 +1397,7 @@ export function renderSectionSvg(
     sheetMode ? 0.82 : 1.4,
     Number(roofPitchInfoBase.riseM || 0),
   );
-  const groundAllowanceM = sheetMode ? 0.42 : 0;
+  const groundAllowanceM = sheetMode ? 1.12 : 0;
   const scale = Math.min(
     (width - padding * 2) / Math.max(horizontalExtent, 1),
     (height - padding * 2) /
@@ -1552,6 +1571,7 @@ export function renderSectionSvg(
     {
       eavesHeightM: sectionEavesHeightM,
       ridgeHeightM: sectionRidgeHeightM,
+      foundationDepthM: 1,
     },
   );
   const foundation = renderFoundation(
@@ -1843,6 +1863,7 @@ export function renderSectionSvg(
       cut_opening_count: cutOpenings.length,
       section_opening_cut_count: openingMarkup.count,
       foundation_marker_count: 1,
+      foundation_datum_count: 1,
       ground_hatch_band_lines: groundHatch.count,
       ground_hatch_visible: groundHatch.count > 0,
       vertical_dimension_chain_count: 1,

@@ -22,6 +22,7 @@ import {
 } from "../openaiReasoningExecutor.js";
 import { computeCDSHashSync } from "../validation/cdsHash.js";
 import {
+  runDrawingConsistencyChecks,
   validateTechnicalPanelAuthority,
   validateTechnicalPanelContract,
   validateVisualPanelLocks,
@@ -5515,6 +5516,21 @@ function extractSvgBody(svgString = "") {
   return bodyMatch ? bodyMatch[1] : sanitized;
 }
 
+function extractSvgRootDataAttributes(svgString = "") {
+  const rootMatch = String(svgString || "").match(/<svg\b([^>]*)>/i);
+  if (!rootMatch?.[1]) return "";
+  const attrs = [];
+  const attrPattern = /\s(data-[a-zA-Z0-9:_-]+)=("([^"]*)"|'([^']*)')/g;
+  let match;
+  while ((match = attrPattern.exec(rootMatch[1])) !== null) {
+    const name = match[1];
+    if (name === "data-inlined-panel") continue;
+    const value = match[3] ?? match[4] ?? "";
+    attrs.push(`${name}="${escapeXml(value)}"`);
+  }
+  return [...new Set(attrs)].join(" ");
+}
+
 function extractSvgViewBox(
   svgString = "",
   fallbackWidth = 1000,
@@ -5795,6 +5811,179 @@ function buildMainEntryArrowSvg(site, bbox) {
   </g>`;
 }
 
+function normalizeSiteZonePolygon(zone = {}) {
+  if (Array.isArray(zone?.polygon) && zone.polygon.length >= 3) {
+    return zone.polygon;
+  }
+  if (Array.isArray(zone?.points) && zone.points.length >= 3) {
+    return zone.points;
+  }
+  const rect =
+    zone?.bbox ||
+    zone?.bounds ||
+    (Number.isFinite(Number(zone?.x)) &&
+    Number.isFinite(Number(zone?.y)) &&
+    Number.isFinite(Number(zone?.width)) &&
+    Number.isFinite(Number(zone?.height))
+      ? zone
+      : null);
+  if (rect) {
+    const x = Number(rect.x ?? rect.min_x ?? rect.minX ?? 0);
+    const y = Number(rect.y ?? rect.min_y ?? rect.minY ?? 0);
+    const width = Number(rect.width ?? Number(rect.max_x ?? rect.maxX) - x);
+    const height = Number(rect.height ?? Number(rect.max_y ?? rect.maxY) - y);
+    if (width > 0 && height > 0) {
+      return rectangleToPolygon(x, y, width, height);
+    }
+  }
+  return [];
+}
+
+function deriveSiteZones(site = {}, bbox = {}) {
+  const explicit = Array.isArray(site?.zones)
+    ? site.zones
+    : Array.isArray(site?.site_zones)
+      ? site.site_zones
+      : [];
+  const normalizedExplicit = explicit
+    .map((zone) => ({
+      type: String(zone.type || zone.name || zone.role || "zone")
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, "_"),
+      label: String(zone.label || zone.name || zone.type || "Zone").trim(),
+      polygon: normalizeSiteZonePolygon(zone),
+    }))
+    .filter((zone) => zone.type && zone.polygon.length >= 3);
+  if (normalizedExplicit.length) return normalizedExplicit;
+
+  const minX = Number(bbox.min_x || 0);
+  const minY = Number(bbox.min_y || 0);
+  const width = Math.max(1, Number(bbox.width || 24));
+  const height = Math.max(1, Number(bbox.height || 16));
+  return [
+    {
+      type: "lawn",
+      label: "Lawn",
+      polygon: rectangleToPolygon(
+        minX + width * 0.1,
+        minY + height * 0.08,
+        width * 0.8,
+        height * 0.38,
+      ),
+    },
+    {
+      type: "patio",
+      label: "Patio",
+      polygon: rectangleToPolygon(
+        minX + width * 0.24,
+        minY + height * 0.5,
+        width * 0.52,
+        height * 0.16,
+      ),
+    },
+    {
+      type: "drive",
+      label: "Drive",
+      polygon: rectangleToPolygon(
+        minX + width * 0.08,
+        minY + height * 0.68,
+        width * 0.28,
+        height * 0.24,
+      ),
+    },
+    {
+      type: "planting",
+      label: "Planting",
+      polygon: rectangleToPolygon(
+        minX + width * 0.78,
+        minY + height * 0.18,
+        width * 0.12,
+        height * 0.64,
+      ),
+    },
+  ];
+}
+
+function renderSiteZoneHatches(site = {}, bbox = {}) {
+  const zones = deriveSiteZones(site, bbox);
+  const palette = {
+    lawn: { fill: "#8fbf7a", stroke: "#3f7d37", pattern: "site-zone-lawn" },
+    patio: { fill: "#d8d1c3", stroke: "#786f62", pattern: "site-zone-patio" },
+    drive: { fill: "#c8c8c8", stroke: "#616161", pattern: "site-zone-drive" },
+    planting: {
+      fill: "#b8d49c",
+      stroke: "#5f7f43",
+      pattern: "site-zone-planting",
+    },
+  };
+  const zoneSvg = zones
+    .map((zone) => {
+      const style = palette[zone.type] || palette.lawn;
+      const path = polygonPath(zone.polygon, bbox, 812, 646);
+      if (!path) return "";
+      return `<path d="${path}" data-site-zone-fill="${escapeXml(zone.type)}" fill="url(#${style.pattern})" fill-opacity="0.68" stroke="${style.stroke}" stroke-width="1.8"/>`;
+    })
+    .join("\n    ");
+  const legendRows = zones.slice(0, 6).map((zone, index) => {
+    const style = palette[zone.type] || palette.lawn;
+    const y = 36 + index * 24;
+    return `<g data-site-zone-legend-item="${escapeXml(zone.type)}">
+      <rect x="18" y="${y - 12}" width="18" height="12" fill="url(#${style.pattern})" stroke="${style.stroke}" stroke-width="1"/>
+      <text x="44" y="${y - 2}" font-family="Arial, sans-serif" font-size="13" fill="#222222">${escapeXml(zone.label.toUpperCase())}</text>
+    </g>`;
+  });
+  return {
+    markup: zoneSvg ? `<g data-site-zones="true">${zoneSvg}</g>` : "",
+    legend: `<g data-site-plan-legend="true" transform="translate(642 564)">
+      <rect x="0" y="0" width="202" height="${Math.max(44, 24 + legendRows.length * 24)}" fill="#ffffff" fill-opacity="0.92" stroke="#111111" stroke-width="1.4"/>
+      <text x="18" y="20" font-family="Arial, sans-serif" font-size="14" font-weight="700" fill="#111111">KEY</text>
+      ${legendRows.join("\n      ")}
+    </g>`,
+    zones,
+  };
+}
+
+function resolveStreetLabel(site = {}) {
+  const explicit = site?.streetName || site?.street_name || site?.street;
+  if (explicit) return String(explicit).trim();
+  const address = String(
+    site?.address_normalised || site?.address || site?.site_address || "",
+  );
+  const firstLine = address.split(",")[0] || "";
+  const roadMatch = firstLine.match(
+    /(?:\d+\s*)?([A-Za-z0-9 .'/-]+(?:Street|St|Road|Rd|Avenue|Ave|Lane|Ln|Drive|Dr|Close|Way|Terrace|Place|Court))/i,
+  );
+  return String(roadMatch?.[1] || firstLine || "Street frontage")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function hasValidLocalPolygon(points = []) {
+  return (
+    Array.isArray(points) &&
+    points.length >= 3 &&
+    computePolygonArea(points) > 0
+  );
+}
+
+function hasExplicitManualBoundaryPolygon(site = {}) {
+  const candidates = [
+    site?.manualVerifiedBoundary,
+    site?.manual_verified_boundary,
+    site?.userEditedBoundary,
+    site?.user_edited_boundary,
+  ];
+  return candidates.some((candidate) => {
+    const polygon =
+      candidate?.polygon ||
+      candidate?.sitePolygon ||
+      candidate?.siteBoundary ||
+      (Array.isArray(candidate) ? candidate : null);
+    return Array.isArray(polygon) && polygon.length >= 3;
+  });
+}
+
 function buildSiteContextPanelArtifact({
   projectGraphId,
   site,
@@ -5816,13 +6005,14 @@ function buildSiteContextPanelArtifact({
     Math.max(8, Number(buildableBbox.height || 0) * 0.36),
   );
   const proposedFootprintPath = polygonPath(proposedFootprint, bbox, 812, 646);
+  const hasValidBoundaryPolygon = hasValidLocalPolygon(
+    site.local_boundary_polygon || [],
+  );
   const manualVerifiedBoundary =
-    site?.boundary_source === "manual_verified" ||
-    site?.boundarySource === "manual_verified" ||
-    Boolean(site?.manualVerifiedBoundary) ||
-    Boolean(site?.manual_verified_boundary) ||
-    Boolean(site?.userEditedBoundary) ||
-    Boolean(site?.user_edited_boundary);
+    hasValidBoundaryPolygon &&
+    (hasExplicitManualBoundaryPolygon(site) ||
+      site?.boundary_source === "manual_verified" ||
+      site?.boundarySource === "manual_verified");
   const boundaryEstimated =
     !manualVerifiedBoundary &&
     (site?.boundary_authoritative === false ||
@@ -5871,17 +6061,26 @@ function buildSiteContextPanelArtifact({
     .join("\n  ")}
 </g>`
     : "";
+  const siteZones = renderSiteZoneHatches(site, bbox);
+  const streetLabel = resolveStreetLabel({
+    ...site,
+    address: siteAddress,
+  });
+  const streetLabelSvg = `<g data-site-street-label="true">
+  <rect x="46" y="650" width="${Math.min(330, Math.max(138, streetLabel.length * 11 + 28))}" height="30" fill="#ffffff" fill-opacity="0.9" stroke="#b8b8b8" stroke-width="1"/>
+  <text x="62" y="671" font-family="Arial, sans-serif" font-size="17" font-weight="700" fill="#333333">${escapeXml(streetLabel.toUpperCase())}</text>
+</g>`;
+  const boundaryCaption = `<text x="48" y="856" font-family="Arial, sans-serif" font-size="11" fill="${boundaryEstimated ? "#8a4b00" : "#555555"}">${escapeXml(boundaryLabel)}${boundaryEstimated ? " - Boundary estimated; verify with measured survey." : ""}</text>`;
   const mapLayer = boundaryEstimated
     ? hasMapImage
       ? `<image x="28" y="52" width="844" height="676" href="${escapeXml(siteSnapshot.dataUrl)}" preserveAspectRatio="xMidYMid slice"/>
   <rect x="28" y="52" width="844" height="676" fill="none" stroke="#111111" stroke-width="3"/>
   <g transform="translate(44 66)">
+    ${siteZones.markup}
     <path d="${sitePath}" fill="#b7d7a833" stroke="#e87524" stroke-width="4" stroke-dasharray="16 10"/>
     <path d="${buildablePath}" fill="none" stroke="#111111" stroke-width="3" stroke-dasharray="8 8"/>
     <path d="${proposedFootprintPath}" fill="#11111133" stroke="#111111" stroke-width="4"/>
-  </g>
-  <text x="450" y="104" font-family="Arial, sans-serif" font-size="26" font-weight="700" text-anchor="middle" fill="#111111">${boundaryLabel}</text>
-  <text x="450" y="136" font-family="Arial, sans-serif" font-size="16" text-anchor="middle" fill="#555555">Boundary estimated - verify with measured survey before planning submission</text>`
+  </g>`
       : `<rect x="28" y="52" width="844" height="676" fill="#f7f6f0"/>
   <rect x="28" y="52" width="844" height="676" fill="none" stroke="#111111" stroke-width="3"/>
   <path d="M 78 636 C 186 586 272 612 354 562 C 456 500 584 520 824 462" fill="none" stroke="#d7d7d7" stroke-width="34" opacity="0.8"/>
@@ -5889,16 +6088,16 @@ function buildSiteContextPanelArtifact({
   <path d="M 112 142 L 196 186 L 282 152 L 372 206 L 470 166 L 590 222 L 770 190" fill="none" stroke="#c7cfbf" stroke-width="14" opacity="0.7"/>
   <path d="M 130 506 L 246 452 L 372 474 L 520 424 L 712 444" fill="none" stroke="#c7cfbf" stroke-width="12" opacity="0.6"/>
   <g transform="translate(44 66)">
+    ${siteZones.markup}
     <path d="${sitePath}" fill="#fff7ed" stroke="#e87524" stroke-width="4" stroke-dasharray="16 10"/>
     <path d="${buildablePath}" fill="none" stroke="#29332a" stroke-width="3" stroke-dasharray="8 8"/>
     <path d="${proposedFootprintPath}" fill="#11111122" stroke="#111111" stroke-width="4"/>
-  </g>
-  <text x="450" y="104" font-family="Arial, sans-serif" font-size="26" font-weight="700" text-anchor="middle" fill="#111111">${boundaryLabel}</text>
-  <text x="450" y="136" font-family="Arial, sans-serif" font-size="16" text-anchor="middle" fill="#555555">Boundary estimated - verify with measured survey before planning submission</text>`
+  </g>`
     : hasMapImage
       ? `<image x="28" y="52" width="844" height="676" href="${escapeXml(siteSnapshot.dataUrl)}" preserveAspectRatio="xMidYMid slice"/>
   <rect x="28" y="52" width="844" height="676" fill="none" stroke="#111111" stroke-width="3"/>
   <g transform="translate(44 66)" opacity="0.88">
+    ${siteZones.markup}
     <path d="${sitePath}" fill="#1976D222" stroke="#1976D2" stroke-width="5"/>
     <path d="${buildablePath}" fill="none" stroke="#111111" stroke-width="3"/>
     <path d="${proposedFootprintPath}" fill="#11111133" stroke="#111111" stroke-width="4"/>
@@ -5906,6 +6105,7 @@ function buildSiteContextPanelArtifact({
   <text x="450" y="104" font-family="Arial, sans-serif" font-size="26" font-weight="700" text-anchor="middle" fill="#111111">${boundaryLabel}</text>`
       : `<rect x="28" y="52" width="844" height="676" fill="#f3efe4" stroke="#111111" stroke-width="3"/>
   <g transform="translate(44 66)">
+    ${siteZones.markup}
     <path d="${sitePath}" fill="#1976D222" stroke="#1976D2" stroke-width="5"/>
     <path d="${buildablePath}" fill="none" stroke="#111111" stroke-width="3"/>
     <path d="${proposedFootprintPath}" fill="#11111133" stroke="#111111" stroke-width="4"/>
@@ -5921,6 +6121,23 @@ function buildSiteContextPanelArtifact({
     <marker id="main-entry-arrowhead" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
       <path d="M 0 0 L 12 6 L 0 12 z" fill="#1976D2"/>
     </marker>
+    <pattern id="site-zone-lawn" width="12" height="12" patternUnits="userSpaceOnUse">
+      <rect width="12" height="12" fill="#8fbf7a"/>
+      <path d="M 0 10 Q 3 5 6 10 T 12 10" fill="none" stroke="#3f7d37" stroke-width="0.9"/>
+    </pattern>
+    <pattern id="site-zone-patio" width="16" height="16" patternUnits="userSpaceOnUse">
+      <rect width="16" height="16" fill="#d8d1c3"/>
+      <path d="M 0 0 H 16 M 0 8 H 16 M 8 0 V 8 M 0 8 V 16 M 16 8 V 16" stroke="#786f62" stroke-width="0.8"/>
+    </pattern>
+    <pattern id="site-zone-drive" width="10" height="10" patternUnits="userSpaceOnUse">
+      <rect width="10" height="10" fill="#c8c8c8"/>
+      <path d="M 0 10 L 10 0" stroke="#616161" stroke-width="0.7"/>
+    </pattern>
+    <pattern id="site-zone-planting" width="12" height="12" patternUnits="userSpaceOnUse">
+      <rect width="12" height="12" fill="#b8d49c"/>
+      <circle cx="3" cy="3" r="1.4" fill="#5f7f43"/>
+      <circle cx="9" cy="7" r="1.4" fill="#5f7f43"/>
+    </pattern>
   </defs>
   <rect width="${width}" height="${height}" fill="#ffffff"/>
   ${mapLayer}
@@ -5930,8 +6147,9 @@ function buildSiteContextPanelArtifact({
   <text x="806" y="58" font-family="Arial, sans-serif" font-size="32" font-weight="700" text-anchor="middle" fill="#111111">N</text>
   <text x="450" y="342" font-family="Arial, sans-serif" font-size="24" text-anchor="middle" fill="#333333">${boundaryEstimated ? "Proposed Footprint" : "Rear Garden"}</text>
   <text x="450" y="682" font-family="Arial, sans-serif" font-size="24" text-anchor="middle" fill="#333333">${boundaryEstimated ? "Estimated Boundary" : "Front Garden"}</text>
-  <text x="82" y="690" font-family="Arial, sans-serif" font-size="20" fill="#333333">${boundaryEstimated ? "Context Street" : "Driveway"}</text>
+  ${streetLabelSvg}
   ${siteAddressSvg}
+  ${siteZones.legend}
   <line x1="48" y1="790" x2="348" y2="790" stroke="#111111" stroke-width="5"/>
   <line x1="48" y1="780" x2="48" y2="800" stroke="#111111" stroke-width="3"/>
   <line x1="168" y1="780" x2="168" y2="800" stroke="#111111" stroke-width="3"/>
@@ -5940,6 +6158,7 @@ function buildSiteContextPanelArtifact({
   <text x="158" y="824" font-family="Arial, sans-serif" font-size="18" fill="#111111">10</text>
   <text x="278" y="824" font-family="Arial, sans-serif" font-size="18" fill="#111111">20m</text>
   <text x="48" y="860" font-family="Arial, sans-serif" font-size="17" fill="#333333">Scale 1:500</text>
+  ${boundaryCaption}
   <text x="852" y="824" font-family="Arial, sans-serif" font-size="15" text-anchor="end" fill="#555555">${escapeXml(mapLabel)}</text>
   <text x="852" y="852" font-family="Arial, sans-serif" font-size="13" text-anchor="end" fill="#777777">${escapeXml(attribution)}</text>
   <text x="852" y="878" font-family="Arial, sans-serif" font-size="13" text-anchor="end" fill="#777777">${escapeXml(areaLabel)} | ${escapeXml(geometryHash.slice(0, 12))}</text>
@@ -5980,6 +6199,8 @@ function buildSiteContextPanelArtifact({
         : site.boundary_source || null,
       siteAddress: siteAddress || null,
       boundaryLabel,
+      siteZones: siteZones.zones.map((zone) => zone.type),
+      streetLabel,
       boundaryWarningCode: boundaryEstimated
         ? site.boundary_warning_code || null
         : null,
@@ -6880,13 +7101,66 @@ function resolveProgrammeDisplayLabel(brief = {}) {
   return String(
     brief?.project_type_support?.label ||
       brief?.projectTypeSupport?.label ||
+      brief?.programme ||
       brief?.programme_label ||
       brief?.programmeLabel ||
+      brief?.property_type ||
+      brief?.propertyType ||
       brief?.building_type ||
+      brief?.buildingType ||
       "architecture",
   )
     .replace(/[_-]+/g, " ")
     .trim();
+}
+
+function resolveBriefAddress(brief = {}) {
+  return String(
+    brief?.site_input?.address ||
+      brief?.siteInput?.address ||
+      brief?.address ||
+      brief?.siteAddress ||
+      "",
+  )
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function resolveProjectTitle(brief = {}) {
+  const address = resolveBriefAddress(brief);
+  const title = String(
+    brief?.project_name ||
+      brief?.projectName ||
+      brief?.programme ||
+      brief?.programme_label ||
+      brief?.programmeLabel ||
+      address ||
+      "Untitled",
+  )
+    .replace(/\s+/g, " ")
+    .trim();
+  return title || "Untitled";
+}
+
+function resolveSheetSubtitle(brief = {}) {
+  const parts = [
+    brief?.programme ||
+      brief?.programme_label ||
+      brief?.programmeLabel ||
+      brief?.property_type ||
+      brief?.propertyType ||
+      brief?.building_type ||
+      brief?.buildingType,
+    resolveBriefAddress(brief),
+  ]
+    .map((entry) =>
+      String(entry || "")
+        .replace(/[_-]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim(),
+    )
+    .filter(Boolean);
+  return [...new Set(parts)].join(" / ");
 }
 
 export function buildTitleBlockPanelArtifact({
@@ -6900,13 +7174,13 @@ export function buildTitleBlockPanelArtifact({
   const width = 620;
   const height = 900;
   const location =
-    brief?.site_input?.address ||
+    resolveBriefAddress(brief) ||
     brief?.site_input?.postcode ||
     sheetDesignContext?.region ||
     "Project site";
   const drawingNumber = sheetPlan?.sheet_number || "A1-00";
   const sheetLabel = sheetPlan?.label || "RIBA Stage 2 Master";
-  const projectTitle = String(brief?.project_name || "ArchiAI Project")
+  const projectTitle = resolveProjectTitle(brief)
     .replace(/\s+/g, " ")
     .trim()
     .toUpperCase();
@@ -6945,16 +7219,17 @@ export function buildTitleBlockPanelArtifact({
   // working). The new rows surface RIBA Stage / Status / Revision / Date /
   // Drawing No. so reviewers get the full set on the sheet.
   const rows = [
-    ["Project", brief?.project_name || "ArchiAI Project"],
+    ["Project", resolveProjectTitle(brief)],
+    ["Scale", sheetPlan?.scale || "As noted"],
+    ["Status", status],
+    ["Date", dateLabel],
+    ["Drawing No.", drawingNumber],
+    ["Rev", revision],
     ["Location", location],
     ["Programme", programmeLabel],
     ["Target GIA", `${round(brief?.target_gia_m2 || 0, 1)} m²`],
     ["Storeys", `${brief?.target_storeys || 1}`],
     ["RIBA Stage", ribaStageLabel],
-    ["Status", status],
-    ["Revision", revision],
-    ["Date", dateLabel],
-    ["Drawing No.", drawingNumber],
   ];
   const rowStartY = 232;
   const rowGap = 50;
@@ -6990,7 +7265,7 @@ export function buildTitleBlockPanelArtifact({
         `<text x="34" y="${724 + index * 18}" font-family="Arial, sans-serif" font-size="12" fill="#555555">${escapeXml(line)}</text>`,
     )
     .join("\n  ");
-  const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="title_block" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-brief-input-hash="${escapeXml(brief?.brief_input_hash || "")}">
+  const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="title_block" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-brief-input-hash="${escapeXml(brief?.brief_input_hash || "")}" data-title-block-grid="project-scale-status-date-drawing-rev">
   <rect width="${width}" height="${height}" fill="#ffffff"/>
   <rect x="18" y="18" width="584" height="864" fill="none" stroke="#111111" stroke-width="3"/>
   ${titleSvg}
@@ -8110,6 +8385,9 @@ export function resolvePresentationLayoutTemplate(brief = {}) {
     brief?.buildingType ||
     brief?.building_category ||
     brief?.buildingCategory ||
+    brief?.programme ||
+    brief?.property_type ||
+    brief?.propertyType ||
     null;
   return isResidentialBuildingType(buildingType)
     ? "presentation-v3"
@@ -8879,8 +9157,8 @@ function applyUpstreamGateTechnicalBlockersToQa(qa, exportGate) {
 // padded normalizedViewBox so legends and decorative space stay visible.
 // board-v2 is unaffected — it always returns the existing viewBox chain.
 // Phase B closeout v2: shrink the safety padding so technical drawings
-// fill more of the slot. Bumped from 4-6% to 1.5-2.5%; elevations now use
-// the same 1.5% tight bounds policy as plans so right-column elevations
+// fill more of the slot. Bumped from 4-6% to 1.5-2.5%; elevations use
+// 2.5% tight bounds in sheet mode so right-column elevations
 // do not sit as small drawings inside oversized source viewBoxes. contentBounds
 // already excludes the ink-free background rect, and the slot inner is
 // further padded by CAPTION_HORIZONTAL_PADDING_MM, so room labels and
@@ -8896,10 +9174,10 @@ const PRESENTATION_V3_PANEL_PADDING = {
   floor_plan_level7: 0.015,
   section_AA: 0.02,
   section_BB: 0.02,
-  elevation_north: 0.015,
-  elevation_south: 0.015,
-  elevation_east: 0.015,
-  elevation_west: 0.015,
+  elevation_north: 0.025,
+  elevation_south: 0.025,
+  elevation_east: 0.025,
+  elevation_west: 0.025,
 };
 
 function clampNumber(value, minimum, maximum) {
@@ -9125,6 +9403,17 @@ function artifactMetadataValue(artifact = null, key) {
   return null;
 }
 
+function isA1ProvenanceFooterEnabled() {
+  const raw =
+    typeof process !== "undefined"
+      ? process.env?.A1_SHOW_PROVENANCE_FOOTER
+      : null;
+  const normalized = String(raw || "")
+    .trim()
+    .toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes";
+}
+
 function panelKindForSheet(panelType = "") {
   if (REQUIRED_3D_A1_PANEL_TYPES.includes(panelType)) return "visual";
   if (
@@ -9180,6 +9469,9 @@ function renderSheetPanel({
   const contentHeight =
     placement.height - caption.contentTopOffset - caption.contentBottomPadding;
   const svgBody = extractSvgBody(artifact?.svgString || "");
+  const rootDataAttributes = extractSvgRootDataAttributes(
+    artifact?.svgString || "",
+  );
   const viewBox = selectPanelContentViewBox({
     panelType: placement.panelType,
     artifact,
@@ -9187,7 +9479,7 @@ function renderSheetPanel({
   });
   const content =
     placement.status === "ready"
-      ? `<svg x="${contentX}" y="${contentY}" width="${contentWidth}" height="${contentHeight}" viewBox="${escapeXml(viewBox)}" preserveAspectRatio="xMidYMid meet" overflow="hidden" data-inlined-panel="true" data-fit-mode="object-contain">${svgBody}</svg>`
+      ? `<svg x="${contentX}" y="${contentY}" width="${contentWidth}" height="${contentHeight}" viewBox="${escapeXml(viewBox)}" preserveAspectRatio="xMidYMid meet" overflow="hidden" data-inlined-panel="true" data-fit-mode="object-contain"${rootDataAttributes ? ` ${rootDataAttributes}` : ""}>${svgBody}</svg>`
       : `<g data-panel-missing="true"><rect x="${contentX}" y="${contentY}" width="${contentWidth}" height="${contentHeight}" fill="#fff3f0" stroke="#a43f2a" stroke-dasharray="4 3"/><text x="${contentX + 8}" y="${contentY + 22}" font-size="7" fill="#a43f2a">Missing source panel</text></g>`;
   const panelKind = panelKindForSheet(placement.panelType);
   const visualBadge = buildVisualPanelStatusBadge(artifact);
@@ -9224,6 +9516,7 @@ function renderSheetPanel({
   <defs><clipPath id="${panelClipId}"><rect x="${placement.x}" y="${placement.y}" width="${placement.width}" height="${placement.height}"/></clipPath></defs>
   <rect x="${placement.x}" y="${placement.y}" width="${placement.width}" height="${placement.height}" rx="0.4" fill="#ffffff" stroke="#111111" stroke-width="0.45"/>
   <text x="${placement.x + caption.titleX}" y="${placement.y + caption.titleY}" font-size="${CAPTION_TITLE_FONT_SIZE}" font-family="${EMBEDDED_FONT_STACK}" font-weight="700" fill="#111111">${titleText}</text>
+  <line data-panel-header-rule="true" x1="${placement.x + CAPTION_HORIZONTAL_PADDING_MM}" y1="${placement.y + (caption.layout === "stacked" ? 12.3 : 8.2)}" x2="${placement.x + placement.width - CAPTION_HORIZONTAL_PADDING_MM}" y2="${placement.y + (caption.layout === "stacked" ? 12.3 : 8.2)}" stroke="#111111" stroke-width="0.18"/>
   ${
     scaleText
       ? `<text x="${placement.x + caption.scaleX}" y="${placement.y + caption.scaleY}" font-size="${caption.scaleFontSize}" font-family="${EMBEDDED_FONT_STACK}" text-anchor="end" fill="#444444">${scaleText}</text>`
@@ -9272,6 +9565,74 @@ function buildSheetProvenanceFooter({
 </g>`;
 }
 
+function buildSheetTitleBar({ brief, sheetNumber, sheetLabel } = {}) {
+  const title = resolveProjectTitle(brief).toUpperCase();
+  const subtitle = resolveSheetSubtitle(brief) || sheetLabel || "";
+  const logoDataUrl = brief?.brand?.logoDataUrl || brief?.brand?.logo_data_url;
+  const logo = logoDataUrl
+    ? `<image x="682" y="6.05" width="148" height="3.35" href="${escapeXml(logoDataUrl)}" preserveAspectRatio="xMaxYMid meet"/>`
+    : `<text x="830" y="8.9" font-size="2.65" font-family="${EMBEDDED_FONT_STACK}" font-weight="700" text-anchor="end" fill="#ffffff">ARCHITECTURE AI PLATFORM</text>`;
+  return `<g data-sheet-title-bar="true" data-sheet-project-title="${escapeXml(title)}" data-sheet-subtitle="${escapeXml(subtitle)}">
+  <rect x="5" y="0" width="831" height="10" fill="#111111"/>
+  <text x="10" y="8.85" font-size="3.25" font-family="${EMBEDDED_FONT_STACK}" font-weight="700" fill="#ffffff">${escapeXml(title)}</text>
+  <text x="300" y="8.72" font-size="2.35" font-family="${EMBEDDED_FONT_STACK}" fill="#e7e7e7">${escapeXml(subtitle)}</text>
+  <text x="648" y="8.72" font-size="2.35" font-family="${EMBEDDED_FONT_STACK}" text-anchor="end" fill="#e7e7e7">${escapeXml(sheetNumber || "")}</text>
+  ${logo}
+</g>`;
+}
+
+function mapTechnicalPanelToDrawingEntry(artifact = {}) {
+  const panelType = artifact.panel_type || artifact.panelType || "";
+  return {
+    ...artifact,
+    panel_type: panelType,
+    panelType,
+    svg: artifact.svgString || artifact.svg || "",
+    technicalQualityMetadata:
+      artifact.technicalQualityMetadata ||
+      artifact.metadata?.technicalQualityMetadata ||
+      artifact.metadata?.technical_quality_metadata ||
+      {},
+  };
+}
+
+function collectSheetQaWarnings({ panelArtifacts, compiledProject } = {}) {
+  const panels = normalizeArtifactCollection(panelArtifacts);
+  const drawings = {
+    plan: panels
+      .filter((artifact) =>
+        String(artifact.panel_type || artifact.panelType || "").startsWith(
+          "floor_plan_",
+        ),
+      )
+      .map(mapTechnicalPanelToDrawingEntry),
+    elevation: panels
+      .filter((artifact) =>
+        String(artifact.panel_type || artifact.panelType || "").startsWith(
+          "elevation_",
+        ),
+      )
+      .map(mapTechnicalPanelToDrawingEntry),
+    section: panels
+      .filter((artifact) =>
+        String(artifact.panel_type || artifact.panelType || "").startsWith(
+          "section_",
+        ),
+      )
+      .map(mapTechnicalPanelToDrawingEntry),
+  };
+  try {
+    const result = runDrawingConsistencyChecks({
+      projectGeometry: compiledProject || {},
+      drawings,
+      enableCrossViewChecks: true,
+    });
+    return [...new Set((result.warnings || []).filter(Boolean))];
+  } catch {
+    return [];
+  }
+}
+
 function buildSheetSvg({
   projectGraphId,
   brief,
@@ -9297,16 +9658,20 @@ function buildSheetSvg({
   const sourcePanelAssetIds = panelPlacements
     .map((placement) => placement.sourcePanelAssetId)
     .filter(Boolean);
-  const provenanceFooter = buildSheetProvenanceFooter({
-    geometryHash,
-    visualManifest,
-    panelArtifacts,
-  });
+  const provenanceFooter = isA1ProvenanceFooterEnabled()
+    ? buildSheetProvenanceFooter({
+        geometryHash,
+        visualManifest,
+        panelArtifacts,
+      })
+    : "";
+  const titleBar = buildSheetTitleBar({ brief, sheetNumber, sheetLabel });
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${A1_SHEET_SIZE_MM.width}mm" height="${A1_SHEET_SIZE_MM.height}mm" viewBox="0 0 ${A1_SHEET_SIZE_MM.width} ${A1_SHEET_SIZE_MM.height}" data-layout-version="${A1_SHEET_LAYOUT_VERSION}" data-layout-template="${escapeXml(layoutTemplate)}" data-placeholder-only="false" data-reference-match="${brief?.reference_match === true ? "true" : "false"}" data-brief-input-hash="${escapeXml(brief?.brief_input_hash || "")}" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-visual-manifest-hash="${escapeXml(visualManifest?.manifestHash || "")}" data-sheet-number="${escapeXml(sheetNumber)}" data-sheet-label="${escapeXml(sheetLabel)}" data-qa-status="${escapeXml(qaStatus || "pending")}" data-export-source="sheetArtifact.svgString">
   <rect width="${A1_SHEET_SIZE_MM.width}" height="${A1_SHEET_SIZE_MM.height}" fill="#ffffff"/>
   <rect x="5" y="5" width="831" height="584" fill="none" stroke="#111111" stroke-width="0.7"/>
   <desc>Reference board A1 package for ${escapeXml(brief.project_name)}. Panels ${sourcePanelAssetIds.length}. Geometry hash ${escapeXml(geometryHash)}.</desc>
+  ${titleBar}
   ${panelGroups}
   ${provenanceFooter}
 </svg>`;
@@ -9511,6 +9876,10 @@ async function buildA1Sheet({
     );
   }
   const presentationSummary = summarizePresentationMode(panelArtifacts);
+  const qaWarnings = collectSheetQaWarnings({
+    panelArtifacts,
+    compiledProject,
+  });
   const svgHash = computeCDSHashSync({ svg: svgString });
   const sheetAssetId = createStableId("asset-a1-svg", sheetId, svgHash);
   const requiredPlacementTypes = buildRequiredA1PanelTypes(
@@ -9599,6 +9968,7 @@ async function buildA1Sheet({
       visualPanelsRenderMode: presentationSummary.visualPanelsRenderMode,
       visualPanelsFallbackReasons:
         presentationSummary.visualPanelsFallbackReasons,
+      qa_warnings: qaWarnings,
       metadata: {
         textRenderStatus,
         referenceMatch: brief?.reference_match === true,
@@ -9611,6 +9981,7 @@ async function buildA1Sheet({
           presentationSummary.visualPanelsFallbackReasons,
         presentationFallbackPanels: presentationSummary.fallbackPanels,
         presentationRenderedPanels: presentationSummary.renderedPanels,
+        qa_warnings: qaWarnings,
       },
     },
     sheetPanelArtifacts: supplementalPanelArtifacts,
