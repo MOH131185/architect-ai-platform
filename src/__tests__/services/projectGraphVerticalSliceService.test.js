@@ -753,6 +753,34 @@ describe("projectGraphVerticalSliceService", () => {
       warnings: [],
       blockers: [],
     });
+    expect(
+      result.artifacts.a1Sheet.quality.exportGate.evidence.technicalPanelStatus,
+    ).toMatchObject({
+      status: "pass",
+      blank: [],
+      missing: [],
+    });
+    expect(
+      result.artifacts.a1Sheet.quality.exportGate.evidence
+        .projectPanelAuthorityStatus.codes,
+    ).not.toContain("PROJECT_PANEL_GEOMETRY_HASH_MISSING");
+    expect(
+      result.artifacts.a1Sheet.quality.exportGate.evidence
+        .projectPanelAuthorityStatus.missingGeometryHashPanels,
+    ).toEqual([]);
+    const geometryHashByPanel =
+      result.artifacts.a1Sheet.quality.exportGate.evidence
+        .projectPanelAuthorityStatus.geometryHashByPanel;
+    for (const panelType of [
+      "floor_plan_ground",
+      "floor_plan_first",
+      "elevation_north",
+      "elevation_south",
+      "section_AA",
+      "section_BB",
+    ]) {
+      expect(geometryHashByPanel[panelType]).toBe(result.geometryHash);
+    }
     expect(Object.keys(result.artifacts.visuals3d).sort()).toEqual([
       "axonometric",
       "exterior_render",
@@ -1802,7 +1830,8 @@ describe("projectGraphVerticalSliceService", () => {
 
   test("buildDrawingSet stamps deterministic technical SVG provenance", () => {
     const briefInput = createReadingRoomBrief();
-    const brief = __projectGraphVerticalSliceInternals.normalizeBrief(briefInput);
+    const brief =
+      __projectGraphVerticalSliceInternals.normalizeBrief(briefInput);
     const programme = __projectGraphVerticalSliceInternals.buildProgramme({
       brief,
     });
@@ -1833,21 +1862,23 @@ describe("projectGraphVerticalSliceService", () => {
         programme,
         projectGeometry,
       );
-    const compiledProject = __projectGraphVerticalSliceInternals.compileProject({
-      projectGeometry,
-      masterDNA: {
-        projectName: brief.project_name,
-        projectID: projectGeometry.project_id,
-        styleDNA: projectGeometry.metadata.style_dna,
-        rooms: placedProgramme.spaces,
+    const compiledProject = __projectGraphVerticalSliceInternals.compileProject(
+      {
+        projectGeometry,
+        masterDNA: {
+          projectName: brief.project_name,
+          projectID: projectGeometry.project_id,
+          styleDNA: projectGeometry.metadata.style_dna,
+          rooms: placedProgramme.spaces,
+        },
+        locationData: {
+          address: brief.site_input.address,
+          coordinates: { lat: site.lat, lng: site.lon },
+          climate: { type: climate.weather_source },
+          localMaterials: localStyle.material_palette,
+        },
       },
-      locationData: {
-        address: brief.site_input.address,
-        coordinates: { lat: site.lat, lng: site.lon },
-        climate: { type: climate.weather_source },
-        localMaterials: localStyle.material_palette,
-      },
-    });
+    );
 
     const { drawingArtifacts } =
       __projectGraphVerticalSliceInternals.buildDrawingSet(compiledProject, {
@@ -2493,12 +2524,14 @@ describe("projectGraphVerticalSliceService", () => {
   });
 
   test("ProjectGraph export hashes are deterministic for identical inputs", async () => {
-    const first = await buildArchitectureProjectVerticalSlice(
-      { ...createReadingRoomBrief(), seed: 246810 },
-    );
-    const second = await buildArchitectureProjectVerticalSlice(
-      { ...createReadingRoomBrief(), seed: 246810 },
-    );
+    const first = await buildArchitectureProjectVerticalSlice({
+      ...createReadingRoomBrief(),
+      seed: 246810,
+    });
+    const second = await buildArchitectureProjectVerticalSlice({
+      ...createReadingRoomBrief(),
+      seed: 246810,
+    });
 
     expect(second.generationSeed).toBe(first.generationSeed);
     expect(second.geometryHash).toBe(first.geometryHash);

@@ -349,7 +349,9 @@ function normalizeVariationMode(value) {
 }
 
 function normalizeSeedSource(value) {
-  const normalized = String(value || "").trim().toLowerCase();
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
   return ["user", "auto_new_project", "reused_existing_project"].includes(
     normalized,
   )
@@ -360,19 +362,19 @@ function normalizeSeedSource(value) {
 function hasExistingProjectIdentity(input = {}) {
   return Boolean(
     input.projectId ||
-      input.project_id ||
-      input.designId ||
-      input.design_id ||
-      input.designHistoryId ||
-      input.design_history_id ||
-      input.compiledProject ||
-      input.artifacts?.compiledProject ||
-      input.projectDetails?.compiledProject ||
-      input.geometryHash ||
-      input.geometry_hash ||
-      input.existingGeometryHash ||
-      input.projectDetails?.geometryHash ||
-      input.projectDetails?.existingGeometryHash,
+    input.project_id ||
+    input.designId ||
+    input.design_id ||
+    input.designHistoryId ||
+    input.design_history_id ||
+    input.compiledProject ||
+    input.artifacts?.compiledProject ||
+    input.projectDetails?.compiledProject ||
+    input.geometryHash ||
+    input.geometry_hash ||
+    input.existingGeometryHash ||
+    input.projectDetails?.geometryHash ||
+    input.projectDetails?.existingGeometryHash,
   );
 }
 
@@ -399,9 +401,9 @@ function requestLooksLayoutAffecting(input = {}) {
     ) ||
     Boolean(
       input.programSpaces ||
-        input.programme?.spaces ||
-        input.program?.spaces ||
-        input.projectDetails?.programSpaces,
+      input.programme?.spaces ||
+      input.program?.spaces ||
+      input.projectDetails?.programSpaces,
     )
   );
 }
@@ -8630,7 +8632,8 @@ export function computePanelSlotFitMetrics({
 
 function artifactMetadataValue(artifact = null, key) {
   if (!artifact) return null;
-  if (artifact[key] !== undefined && artifact[key] !== null) return artifact[key];
+  if (artifact[key] !== undefined && artifact[key] !== null)
+    return artifact[key];
   if (
     artifact.metadata &&
     artifact.metadata[key] !== undefined &&
@@ -8656,7 +8659,8 @@ function panelKindForSheet(panelType = "") {
 function buildVisualPanelStatusBadge(artifact = null) {
   const panelType = artifact?.panel_type || artifact?.panelType || "";
   if (!REQUIRED_3D_A1_PANEL_TYPES.includes(panelType)) return null;
-  const fallback = artifactMetadataValue(artifact, "imageRenderFallback") !== false;
+  const fallback =
+    artifactMetadataValue(artifact, "imageRenderFallback") !== false;
   if (fallback) {
     return {
       label: "DETERMINISTIC FALLBACK",
@@ -8669,7 +8673,8 @@ function buildVisualPanelStatusBadge(artifact = null) {
   }
   return {
     label: "IMAGE2 / OPENAI EDIT",
-    providerUsed: artifactMetadataValue(artifact, "imageProviderUsed") || "openai",
+    providerUsed:
+      artifactMetadataValue(artifact, "imageProviderUsed") || "openai",
     fallback: false,
     fallbackReason: null,
   };
@@ -8745,7 +8750,10 @@ function buildSheetProvenanceFooter({
     ),
   ];
   const fallbackPanels = visualArtifacts
-    .filter((artifact) => artifactMetadataValue(artifact, "imageRenderFallback") !== false)
+    .filter(
+      (artifact) =>
+        artifactMetadataValue(artifact, "imageRenderFallback") !== false,
+    )
     .map((artifact) => artifact.panel_type);
   const providerSummary =
     providerValues.length > 0 ? providerValues.join("+") : "deterministic";
@@ -11978,14 +11986,20 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
   const primary = renderedSheets[0];
   const sheetArtifact = primary.sheetArtifact;
   const pdfArtifact = primary.pdf;
-  const primaryPanelArtifacts = primary.sheetPanelArtifacts || {};
+  // Export-gate evidence needs the full artifact set, not only supplemental
+  // sheet panels. Technical SVG artifacts live in primary.panelArtifacts.
+  const primaryPanelArtifacts =
+    primary.panelArtifacts || primary.sheetPanelArtifacts || {};
   const generationLifecycle = {
     generationSeed: brief.generation_seed,
     seedSource: brief.seedSource || null,
     variationMode: brief.variationMode || null,
   };
   stampGenerationLifecycleOnArtifacts(drawingArtifacts, generationLifecycle);
-  stampGenerationLifecycleOnArtifacts(primary.panelArtifacts, generationLifecycle);
+  stampGenerationLifecycleOnArtifacts(
+    primary.panelArtifacts,
+    generationLifecycle,
+  );
   stampGenerationLifecycleOnArtifacts(
     primary.sheetPanelArtifacts,
     generationLifecycle,
