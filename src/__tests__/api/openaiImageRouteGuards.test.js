@@ -65,6 +65,27 @@ describe("OpenAI image route project panel guards", () => {
     },
   );
 
+  test("openai-image-stylize rejects prompt-only requests without panelType", async () => {
+    const req = {
+      method: "POST",
+      body: {
+        prompt: "Render a presentation image without geometry",
+      },
+    };
+    const res = createMockResponse();
+
+    await openaiImageStylizeHandler(req, res);
+
+    expect(res.statusCode).toBe(422);
+    expect(res.body).toMatchObject({
+      error: "MISSING_GEOMETRY_CONTROL_IMAGE",
+      panelType: null,
+    });
+    expect(res.body.message).toMatch(/geometry control image/i);
+    expect(res.body.message).toMatch(/text-only image generation is not allowed/i);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
   test("openai-image-stylize rejects unsupported panel types", async () => {
     const req = {
       method: "POST",
@@ -82,6 +103,45 @@ describe("OpenAI image route project panel guards", () => {
     expect(res.body.error).toBe("INVALID_PANEL_TYPE");
     expect(res.body.message).toContain("exterior_render");
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test("openai-image-stylize sends valid control-image requests to image edits only", async () => {
+    process.env.OPENAI_IMAGES_API_KEY = "sk-test-images";
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: {
+        get: (name) => (name === "x-request-id" ? "req_edit_123" : null),
+      },
+      json: async () => ({
+        data: [{ b64_json: "ZWRpdGVkLWltYWdl" }],
+        usage: { total_tokens: 1 },
+      }),
+    });
+    const req = {
+      method: "POST",
+      body: {
+        prompt: "Stylize this geometry-locked panel",
+        panelType: "hero_3d",
+        image: "data:image/png;base64,ZmFrZQ==",
+      },
+    };
+    const res = createMockResponse();
+
+    await openaiImageStylizeHandler(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({
+      mode: "edit",
+      geometryPreserved: true,
+      panelType: "hero_3d",
+      requestId: "req_edit_123",
+    });
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(global.fetch.mock.calls[0][0]).toBe(
+      "https://api.openai.com/v1/images/edits",
+    );
+    expect(global.fetch.mock.calls[0][0]).not.toContain("generations");
   });
 
   test.each(["floor_plan_ground", "section_AA", "hero_3d"])(

@@ -97,12 +97,12 @@ export default async function handler(req, res) {
     });
   }
 
-  if (isGeometryLockedImagePanelType(normalizedPanelType) && !image) {
+  if (!image) {
     return res.status(422).json({
       error: MISSING_GEOMETRY_CONTROL_IMAGE_CODE,
       message:
-        "Geometry-locked architectural panels require a control image. Refusing text-to-image generation.",
-      panelType: normalizedPanelType,
+        "Image stylization requires a geometry control image. Text-only image generation is not allowed from this endpoint.",
+      panelType: normalizedPanelType || null,
     });
   }
 
@@ -118,36 +118,21 @@ export default async function handler(req, res) {
 
   const resolvedModel = getOpenAIImageModel(model);
   const resolvedSize = normalizeSize(size);
-  const useEdit = Boolean(image);
-
   try {
     console.log(
-      `[OpenAI] START image ${useEdit ? "edit" : "generation"} route=/api/openai-image-stylize panel=${normalizedPanelType || "unknown"} model=${resolvedModel} keySource=${keyInfo.keySource}`,
+      `[OpenAI] START image edit route=/api/openai-image-stylize panel=${normalizedPanelType || "unknown"} model=${resolvedModel} keySource=${keyInfo.keySource}`,
     );
-    const response = useEdit
-      ? await fetch("https://api.openai.com/v1/images/edits", {
-          method: "POST",
-          headers: buildOpenAIRequestHeaders(keyInfo, process.env),
-          body: createEditFormData({
-            image,
-            mask,
-            prompt,
-            size: resolvedSize,
-            model: resolvedModel,
-          }),
-        })
-      : await fetch("https://api.openai.com/v1/images/generations", {
-          method: "POST",
-          headers: buildOpenAIRequestHeaders(keyInfo, process.env, {
-            json: true,
-          }),
-          body: JSON.stringify({
-            model: resolvedModel,
-            prompt,
-            n: 1,
-            size: resolvedSize,
-          }),
-        });
+    const response = await fetch("https://api.openai.com/v1/images/edits", {
+      method: "POST",
+      headers: buildOpenAIRequestHeaders(keyInfo, process.env),
+      body: createEditFormData({
+        image,
+        mask,
+        prompt,
+        size: resolvedSize,
+        model: resolvedModel,
+      }),
+    });
 
     const requestId =
       response.headers?.get?.("x-request-id") ||
@@ -156,7 +141,7 @@ export default async function handler(req, res) {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       console.warn(
-        `[OpenAI] FAIL image ${useEdit ? "edit" : "generation"} route=/api/openai-image-stylize status=${response.status} requestId=${requestId || "none"}`,
+        `[OpenAI] FAIL image edit route=/api/openai-image-stylize status=${response.status} requestId=${requestId || "none"}`,
       );
       return res.status(response.status).json({
         error: "OPENAI_IMAGE_API_ERROR",
@@ -176,7 +161,7 @@ export default async function handler(req, res) {
     }
 
     console.log(
-      `[OpenAI] OK image ${useEdit ? "edit" : "generation"} route=/api/openai-image-stylize requestId=${requestId || "none"} usage=${JSON.stringify(data.usage || {})}`,
+      `[OpenAI] OK image edit route=/api/openai-image-stylize requestId=${requestId || "none"} usage=${JSON.stringify(data.usage || {})}`,
     );
     return res.status(200).json({
       images: [
@@ -189,8 +174,8 @@ export default async function handler(req, res) {
       provider: "openai",
       model: resolvedModel,
       size: resolvedSize,
-      mode: useEdit ? "edit" : "generation",
-      geometryPreserved: useEdit,
+      mode: "edit",
+      geometryPreserved: true,
       panelType: normalizedPanelType || null,
       requestId,
       usage: data.usage || null,

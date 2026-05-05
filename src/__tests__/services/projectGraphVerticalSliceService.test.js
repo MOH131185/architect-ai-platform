@@ -781,6 +781,22 @@ describe("projectGraphVerticalSliceService", () => {
       "PRESENTATION_RENDER_FALLBACK_USED",
     );
     for (const artifact of Object.values(result.artifacts.drawings)) {
+      expect(artifact.geometryHash).toBe(result.geometryHash);
+      expect(artifact.sourceGeometryHash).toBe(result.geometryHash);
+      expect(artifact.renderer).toBe("deterministic_svg");
+      expect(artifact.providerUsed).toBe("deterministic_svg");
+      expect(artifact.imageProviderUsed).toBe("none");
+      expect(artifact.technicalDrawing).toBe(true);
+      expect(artifact.metadata).toEqual(
+        expect.objectContaining({
+          geometryHash: result.geometryHash,
+          sourceGeometryHash: result.geometryHash,
+          renderer: "deterministic_svg",
+          providerUsed: "deterministic_svg",
+          imageProviderUsed: "none",
+          technicalDrawing: true,
+        }),
+      );
       expect(artifact.contentBounds).toEqual(
         expect.objectContaining({
           occupancyRatio: expect.any(Number),
@@ -1783,6 +1799,86 @@ describe("projectGraphVerticalSliceService", () => {
       expect(keyNotes.svgString).toContain(`Programme: ${programmeLabel}.`);
     },
   );
+
+  test("buildDrawingSet stamps deterministic technical SVG provenance", () => {
+    const briefInput = createReadingRoomBrief();
+    const brief = __projectGraphVerticalSliceInternals.normalizeBrief(briefInput);
+    const programme = __projectGraphVerticalSliceInternals.buildProgramme({
+      brief,
+    });
+    const site = __projectGraphVerticalSliceInternals.buildSiteContext({
+      brief,
+      sitePolygon: briefInput.sitePolygon,
+      siteMetrics: briefInput.siteMetrics,
+    });
+    const climate = __projectGraphVerticalSliceInternals.buildClimatePack(
+      brief,
+      site,
+    );
+    const localStyle = __projectGraphVerticalSliceInternals.buildLocalStylePack(
+      brief,
+      site,
+      climate,
+    );
+    const projectGeometry =
+      __projectGraphVerticalSliceInternals.buildProjectGeometryFromProgramme({
+        brief,
+        site,
+        programme,
+        localStyle,
+        climate,
+      });
+    const placedProgramme =
+      __projectGraphVerticalSliceInternals.syncProgrammeActuals(
+        programme,
+        projectGeometry,
+      );
+    const compiledProject = __projectGraphVerticalSliceInternals.compileProject({
+      projectGeometry,
+      masterDNA: {
+        projectName: brief.project_name,
+        projectID: projectGeometry.project_id,
+        styleDNA: projectGeometry.metadata.style_dna,
+        rooms: placedProgramme.spaces,
+      },
+      locationData: {
+        address: brief.site_input.address,
+        coordinates: { lat: site.lat, lng: site.lon },
+        climate: { type: climate.weather_source },
+        localMaterials: localStyle.material_palette,
+      },
+    });
+
+    const { drawingArtifacts } =
+      __projectGraphVerticalSliceInternals.buildDrawingSet(compiledProject, {
+        layoutTemplate: "presentation-v3",
+        vernacularPack: localStyle?.style_provenance || null,
+      });
+    const groundPlan = Object.values(drawingArtifacts).find(
+      (artifact) => artifact.panel_type === "floor_plan_ground",
+    );
+
+    expect(groundPlan).toEqual(
+      expect.objectContaining({
+        geometryHash: compiledProject.geometryHash,
+        sourceGeometryHash: compiledProject.geometryHash,
+        renderer: "deterministic_svg",
+        providerUsed: "deterministic_svg",
+        imageProviderUsed: "none",
+        technicalDrawing: true,
+      }),
+    );
+    expect(groundPlan.metadata).toEqual(
+      expect.objectContaining({
+        geometryHash: compiledProject.geometryHash,
+        sourceGeometryHash: compiledProject.geometryHash,
+        renderer: "deterministic_svg",
+        providerUsed: "deterministic_svg",
+        imageProviderUsed: "none",
+        technicalDrawing: true,
+      }),
+    );
+  });
 
   test("respects manual target_storeys=4 and emits one floor plan panel per level", async () => {
     const briefInput = createReadingRoomBrief();

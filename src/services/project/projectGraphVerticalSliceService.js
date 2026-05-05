@@ -5286,13 +5286,20 @@ function buildDrawingSet(compiledProject, options = {}) {
     drawingArtifacts: Object.fromEntries(
       Object.entries(technicalPanels).map(([panelType, panel]) => {
         const assetId = createStableId("asset-svg", panelType, panel.svgHash);
+        const geometryHash = compiledProject.geometryHash;
         return [
           assetId,
           {
             asset_id: assetId,
             asset_type: "drawing_svg",
             panel_type: panelType,
-            source_model_hash: compiledProject.geometryHash,
+            source_model_hash: geometryHash,
+            geometryHash,
+            sourceGeometryHash: geometryHash,
+            renderer: "deterministic_svg",
+            providerUsed: "deterministic_svg",
+            imageProviderUsed: "none",
+            technicalDrawing: true,
             svgHash: panel.svgHash,
             width: panel.width,
             height: panel.height,
@@ -5304,6 +5311,12 @@ function buildDrawingSet(compiledProject, options = {}) {
             technicalQualityMetadata: panel.technicalQualityMetadata || null,
             metadata: {
               source: "compiled_project_technical_panel",
+              renderer: "deterministic_svg",
+              providerUsed: "deterministic_svg",
+              imageProviderUsed: "none",
+              technicalDrawing: true,
+              geometryHash,
+              sourceGeometryHash: geometryHash,
               panelType,
               expectedPanelType: panelType,
               drawingType: panel.drawingType || drawingTypeForPanel(panelType),
@@ -12706,6 +12719,7 @@ export const __projectGraphVerticalSliceInternals = Object.freeze({
   compileProject,
   buildArchitectReasoningManifest,
   buildPanelPlacements,
+  buildDrawingSet,
   buildSheetSvg,
   buildSheetProvenanceFooter,
   buildA1PdfSourceMetadata,

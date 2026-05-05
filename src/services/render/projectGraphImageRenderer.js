@@ -325,7 +325,7 @@ export async function renderProjectGraphPanelImage({
         keySource: config.keySource,
       },
     );
-    return createFallbackResult({
+    return handleFallback({
       panelType,
       geometryHash,
       reason: "gate_disabled",
