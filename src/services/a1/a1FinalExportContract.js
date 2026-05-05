@@ -591,8 +591,15 @@ const PHASE_F_GATE_SCOPES = Object.freeze({
   UPSTREAM_PARTIAL: "upstream_partial",
 });
 
+const VISUAL_PROJECT_PANEL_TYPES_FOR_GATE = Object.freeze([
+  "hero_3d",
+  "exterior_render",
+  "axonometric",
+  "interior_3d",
+]);
+
 function panelTypeOf(panel) {
-  return panel?.type || panel?.panelType || null;
+  return panel?.type || panel?.panelType || panel?.panel_type || null;
 }
 
 function panelIsBlank(panel) {
@@ -602,6 +609,134 @@ function panelIsBlank(panel) {
   }
   if (panel.hasSvg === false) return true;
   return false;
+}
+
+function panelMetadataOf(panel) {
+  return panel?.metadata && typeof panel.metadata === "object"
+    ? panel.metadata
+    : {};
+}
+
+function readPanelField(panel, field) {
+  const metadata = panelMetadataOf(panel);
+  if (panel && Object.prototype.hasOwnProperty.call(panel, field)) {
+    return panel[field];
+  }
+  if (metadata && Object.prototype.hasOwnProperty.call(metadata, field)) {
+    return metadata[field];
+  }
+  if (panel?.meta && Object.prototype.hasOwnProperty.call(panel.meta, field)) {
+    return panel.meta[field];
+  }
+  return null;
+}
+
+function readAnyPanelField(panel, fields = []) {
+  for (const field of fields) {
+    const value = readPanelField(panel, field);
+    if (value !== null && value !== undefined && value !== "") return value;
+  }
+  return null;
+}
+
+function readPanelGeometryHash(panel) {
+  return readAnyPanelField(panel, [
+    "geometryHash",
+    "sourceGeometryHash",
+    "source_model_hash",
+    "sourceModelHash",
+    "geometry_hash",
+  ]);
+}
+
+function readPanelVisualManifestHash(panel) {
+  return readAnyPanelField(panel, [
+    "visualManifestHash",
+    "visual_manifest_hash",
+  ]);
+}
+
+function normalizeAuthorityToken(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase();
+}
+
+function panelHasTruthyField(panel, field) {
+  return readPanelField(panel, field) === true;
+}
+
+function isVisualProjectPanelType(type) {
+  return VISUAL_PROJECT_PANEL_TYPES_FOR_GATE.includes(type);
+}
+
+function isImageModelToken(value) {
+  const token = normalizeAuthorityToken(value);
+  if (!token || token === "deterministic" || token === "none") return false;
+  return (
+    token.includes("openai") ||
+    token.includes("gpt-image") ||
+    token.includes("dall-e") ||
+    token.includes("dalle") ||
+    token.includes("flux") ||
+    token.includes("stability") ||
+    token.includes("midjourney") ||
+    token === "image_model" ||
+    token === "text_to_image"
+  );
+}
+
+function panelUsesImageModel(panel) {
+  return [
+    readPanelField(panel, "provider"),
+    readPanelField(panel, "providerUsed"),
+    readPanelField(panel, "imageProviderUsed"),
+    readPanelField(panel, "model"),
+    readPanelField(panel, "imageRenderModel"),
+    readPanelField(panel, "generationProvider"),
+  ].some(isImageModelToken);
+}
+
+function technicalPanelUsesImageModel(panel) {
+  if (panelHasTruthyField(panel, "technicalDrawingFromImageModel")) {
+    return true;
+  }
+  if (panelHasTruthyField(panel, "imageModelGenerated")) {
+    return true;
+  }
+  if (panelHasTruthyField(panel, "openaiImageUsed")) {
+    return true;
+  }
+  return panelUsesImageModel(panel);
+}
+
+function visualPanelUsesTextOnlyGeneration(panel) {
+  if (!panelUsesImageModel(panel)) return false;
+  const referenceSource = normalizeAuthorityToken(
+    readPanelField(panel, "referenceSource"),
+  );
+  const generationMode = normalizeAuthorityToken(
+    readAnyPanelField(panel, [
+      "generationMode",
+      "imageGenerationMode",
+      "renderMode",
+      "visualRenderMode",
+      "source",
+    ]),
+  );
+  if (
+    referenceSource === "compiled_3d_control_svg" ||
+    generationMode === "geometry_locked_image_render"
+  ) {
+    return false;
+  }
+  return (
+    !referenceSource ||
+    referenceSource.includes("text") ||
+    referenceSource.includes("prompt") ||
+    generationMode.includes("text_to_image") ||
+    generationMode.includes("prompt")
+  );
 }
 
 function evaluatePdfMetadataEvidence({
@@ -824,14 +959,10 @@ function evaluateRequiredPanelEvidence({
   };
 }
 
-// Phase 4: technical panel set is the deterministic-SVG drawings the A1
-// export depends on for geometry communication. Floor plans were missing
-// from the prior set — that's the gap the failing PDF exposed. axonometric
-// and site_diagram are listed here so that *once* later phases re-classify
-// them as compiled-technical-svg renderers, the content-empty gate covers
-// them automatically. Today they still route through the visual fallback,
-// so panelIsBlank only fires if the placement status is non-ready (i.e.
-// even the deterministic_fallback SVG is missing).
+// Phase 4/3: technical panel set is the deterministic-SVG drawing group the
+// A1 export depends on for geometry communication. Visual 3D panels are
+// validated separately because they must route through geometry-locked image
+// edits, not through the deterministic technical drawing contract.
 const TECHNICAL_PANEL_TYPES_FOR_GATE = Object.freeze([
   "floor_plan_ground",
   "floor_plan_first",
@@ -847,9 +978,6 @@ const TECHNICAL_PANEL_TYPES_FOR_GATE = Object.freeze([
   "elevation_west",
   "section_AA",
   "section_BB",
-  // Effective once later phases re-classify these as technical:
-  "axonometric",
-  "site_diagram",
 ]);
 
 function isTechnicalPanelType(type) {
@@ -865,18 +993,45 @@ function isTechnicalPanelType(type) {
   return false;
 }
 
-function evaluateTechnicalPanelEvidence({ panels } = {}) {
+function isProjectAuthorityPanelType(type) {
+  return isTechnicalPanelType(type) || isVisualProjectPanelType(type);
+}
+
+function evaluateTechnicalPanelEvidence({ panels, panelRegistry } = {}) {
   const blockers = [];
   const warnings = [];
   const blank = [];
+  const missing = [];
+  const imageModelPanels = [];
   const blockedPanels = [];
+  const requiredTechnicalTypes = Array.isArray(panelRegistry)
+    ? panelRegistry.filter(isTechnicalPanelType)
+    : [];
 
   if (!Array.isArray(panels) || panels.length === 0) {
-    // Stable gate contract: absent evidence degrades to warning, not block.
-    // Real content-empty enforcement fires via panelIsBlank when panels ARE
-    // provided. This keeps legacy compose flows that don't pass per-panel
-    // data passing the gate (their hard failures come from PDF/OCR/glyph
-    // evidence, not technical panel presence).
+    if (requiredTechnicalTypes.length) {
+      blockers.push(
+        `TECHNICAL_SVG_PANEL_MISSING: Required technical SVG panel evidence missing for: ${requiredTechnicalTypes.join(", ")}.`,
+      );
+      for (const type of requiredTechnicalTypes) {
+        blockedPanels.push({
+          type,
+          code: "TECHNICAL_SVG_PANEL_MISSING",
+          status: null,
+          hasSvg: false,
+        });
+      }
+      return {
+        status: "blocked",
+        blockers: unique(blockers),
+        warnings,
+        blank: [],
+        missing: requiredTechnicalTypes,
+        imageModelPanels,
+        blockedPanels,
+        codes: ["TECHNICAL_SVG_PANEL_MISSING"],
+      };
+    }
     return {
       status: "warning",
       blockers,
@@ -884,9 +1039,26 @@ function evaluateTechnicalPanelEvidence({ panels } = {}) {
         "Technical panel evidence not provided to gate; per-panel render status unknown.",
       ],
       blank: [],
+      missing: [],
+      imageModelPanels,
       blockedPanels: [],
       codes: [],
     };
+  }
+
+  const providedTypes = new Set(
+    panels.map((panel) => panelTypeOf(panel)).filter(Boolean),
+  );
+  for (const type of requiredTechnicalTypes) {
+    if (!providedTypes.has(type)) {
+      missing.push(type);
+      blockedPanels.push({
+        type,
+        code: "TECHNICAL_SVG_PANEL_MISSING",
+        status: null,
+        hasSvg: false,
+      });
+    }
   }
 
   for (const panel of panels) {
@@ -901,13 +1073,38 @@ function evaluateTechnicalPanelEvidence({ panels } = {}) {
         hasSvg: panel?.hasSvg === true,
       });
     }
+    if (technicalPanelUsesImageModel(panel)) {
+      imageModelPanels.push(type);
+      blockedPanels.push({
+        type,
+        code: "TECHNICAL_PANEL_IMAGE_MODEL_USED",
+        provider: readPanelField(panel, "provider"),
+        providerUsed: readPanelField(panel, "providerUsed"),
+        imageProviderUsed: readPanelField(panel, "imageProviderUsed"),
+      });
+    }
   }
 
-  const codes = blockedPanels.length ? ["PANEL_CONTENT_EMPTY"] : [];
+  const codes = unique([
+    missing.length ? "TECHNICAL_SVG_PANEL_MISSING" : null,
+    blank.length ? "PANEL_CONTENT_EMPTY" : null,
+    imageModelPanels.length ? "TECHNICAL_PANEL_IMAGE_MODEL_USED" : null,
+  ]);
+
+  if (missing.length) {
+    blockers.push(
+      `TECHNICAL_SVG_PANEL_MISSING: Required technical SVG panel(s) missing: ${missing.join(", ")}.`,
+    );
+  }
 
   if (blank.length) {
     blockers.push(
       `PANEL_CONTENT_EMPTY: Required technical panel(s) missing or blank: ${blank.join(", ")}.`,
+    );
+  }
+  if (imageModelPanels.length) {
+    blockers.push(
+      `TECHNICAL_PANEL_IMAGE_MODEL_USED: Technical SVG panel(s) were generated by an image model: ${imageModelPanels.join(", ")}.`,
     );
   }
 
@@ -920,6 +1117,8 @@ function evaluateTechnicalPanelEvidence({ panels } = {}) {
     blockers: unique(blockers),
     warnings: unique(warnings),
     blank,
+    missing,
+    imageModelPanels,
     blockedPanels,
     codes,
   };
@@ -1031,7 +1230,7 @@ function evaluateVisualManifestEvidence({
         panel?.metadata?.visualManifestHash ||
         null;
       if (!panelHash) {
-        warnings.push(
+        blockers.push(
           `Visual panel "${type}" has no visualManifestHash; identity lock evidence is incomplete.`,
         );
         continue;
@@ -1052,7 +1251,7 @@ function evaluateVisualManifestEvidence({
       );
     }
     if (unlocked.length) {
-      warnings.push(
+      blockers.push(
         `Visual panel(s) ${unlocked.join(", ")} are missing visualIdentityLocked=true.`,
       );
     }
@@ -1070,6 +1269,259 @@ function evaluateVisualManifestEvidence({
     manifestHash: expectedHash,
     mismatched,
     unlocked,
+  };
+}
+
+function buildProjectAuthorityPanelMap({ panels, visualPanels }) {
+  const byType = new Map();
+  for (const panel of Array.isArray(panels) ? panels : []) {
+    const type = panelTypeOf(panel);
+    if (!type || !isProjectAuthorityPanelType(type)) continue;
+    byType.set(type, panel);
+  }
+  // Prefer the richer visual artifact list when provided. Sheet placements can
+  // be reduced to layout/status fields, while visualPanels carries image2
+  // provenance and manifest-lock metadata.
+  for (const panel of Array.isArray(visualPanels) ? visualPanels : []) {
+    const type = panelTypeOf(panel);
+    if (!type || !isVisualProjectPanelType(type)) continue;
+    byType.set(type, panel);
+  }
+  return byType;
+}
+
+function evaluateProjectPanelAuthorityEvidence({
+  panels,
+  visualPanels,
+  visualManifest,
+  strictPhotoreal,
+  imageGenEnabled,
+  expectedGeometryHash,
+} = {}) {
+  const blockers = [];
+  const warnings = [];
+  const codes = [];
+  const panelMap = buildProjectAuthorityPanelMap({ panels, visualPanels });
+  const missingVisualPanels = [];
+  const missingGeometryHashPanels = [];
+  const geometryHashByPanel = {};
+  const visualManifestHashByPanel = {};
+  const missingVisualManifestHashPanels = [];
+  const mismatchedVisualManifestHashPanels = [];
+  const unlockedVisualPanels = [];
+  const textOnlyVisualPanels = [];
+  const strictFallbackPanels = [];
+  const visualEvidenceTypes = new Set(
+    (Array.isArray(visualPanels) ? visualPanels : [])
+      .map((panel) => panelTypeOf(panel))
+      .filter(isVisualProjectPanelType),
+  );
+
+  for (const type of VISUAL_PROJECT_PANEL_TYPES_FOR_GATE) {
+    if (!visualEvidenceTypes.has(type)) {
+      missingVisualPanels.push(type);
+    }
+  }
+
+  const expectedManifestHash = visualManifest?.manifestHash || null;
+  const expectedPanelGeometryHash =
+    expectedGeometryHash || visualManifest?.geometryHash || null;
+
+  for (const [type, panel] of panelMap.entries()) {
+    const geometryHash = readPanelGeometryHash(panel);
+    if (!geometryHash) {
+      missingGeometryHashPanels.push(type);
+    } else {
+      geometryHashByPanel[type] = geometryHash;
+    }
+
+    if (!isVisualProjectPanelType(type)) continue;
+
+    const manifestHash = readPanelVisualManifestHash(panel);
+    if (!manifestHash) {
+      missingVisualManifestHashPanels.push(type);
+    } else {
+      visualManifestHashByPanel[type] = manifestHash;
+      if (expectedManifestHash && manifestHash !== expectedManifestHash) {
+        mismatchedVisualManifestHashPanels.push(type);
+      }
+    }
+
+    if (readPanelField(panel, "visualIdentityLocked") !== true) {
+      unlockedVisualPanels.push(type);
+    }
+
+    if (visualPanelUsesTextOnlyGeneration(panel)) {
+      textOnlyVisualPanels.push(type);
+    }
+
+    if (
+      imageGenEnabled === true &&
+      strictPhotoreal === true &&
+      readPanelField(panel, "imageRenderFallback") === true
+    ) {
+      strictFallbackPanels.push(type);
+    }
+  }
+
+  const geometryHashes = unique(Object.values(geometryHashByPanel));
+  const visualManifestHashes = unique(Object.values(visualManifestHashByPanel));
+  const geometryMismatchPanels = [];
+  if (expectedPanelGeometryHash) {
+    for (const [type, hash] of Object.entries(geometryHashByPanel)) {
+      if (hash !== expectedPanelGeometryHash) geometryMismatchPanels.push(type);
+    }
+  }
+
+  if (missingVisualPanels.length) {
+    codes.push("VISUAL_PANEL_MISSING");
+    blockers.push(
+      `VISUAL_PANEL_MISSING: Required visual project panel(s) missing: ${missingVisualPanels.join(", ")}.`,
+    );
+  }
+  if (missingGeometryHashPanels.length) {
+    codes.push("PROJECT_PANEL_GEOMETRY_HASH_MISSING");
+    blockers.push(
+      `PROJECT_PANEL_GEOMETRY_HASH_MISSING: Project panel(s) missing geometryHash: ${missingGeometryHashPanels.join(", ")}.`,
+    );
+  }
+  if (geometryHashes.length > 1 || geometryMismatchPanels.length) {
+    codes.push("PROJECT_PANEL_GEOMETRY_HASH_MISMATCH");
+    blockers.push(
+      `PROJECT_PANEL_GEOMETRY_HASH_MISMATCH: Technical and visual project panels do not share one geometryHash (${geometryHashes.join(", ")}).`,
+    );
+  }
+  if (missingVisualManifestHashPanels.length) {
+    codes.push("VISUAL_MANIFEST_HASH_MISSING");
+    blockers.push(
+      `VISUAL_MANIFEST_HASH_MISSING: Visual panel(s) missing visualManifestHash: ${missingVisualManifestHashPanels.join(", ")}.`,
+    );
+  }
+  if (
+    visualManifestHashes.length > 1 ||
+    mismatchedVisualManifestHashPanels.length
+  ) {
+    codes.push("VISUAL_MANIFEST_HASH_MISMATCH");
+    blockers.push(
+      `VISUAL_MANIFEST_HASH_MISMATCH: Visual panels do not share one visualManifestHash (${visualManifestHashes.join(", ")}).`,
+    );
+  }
+  if (unlockedVisualPanels.length) {
+    codes.push("VISUAL_IDENTITY_UNLOCKED");
+    blockers.push(
+      `VISUAL_IDENTITY_UNLOCKED: Visual panel(s) are missing visualIdentityLocked=true: ${unlockedVisualPanels.join(", ")}.`,
+    );
+  }
+  if (textOnlyVisualPanels.length) {
+    codes.push("VISUAL_PANEL_TEXT_ONLY_IMAGE_GENERATION");
+    blockers.push(
+      `VISUAL_PANEL_TEXT_ONLY_IMAGE_GENERATION: Visual project panel(s) used text-only image generation instead of compiled_3d_control_svg references: ${textOnlyVisualPanels.join(", ")}.`,
+    );
+  }
+  if (strictFallbackPanels.length) {
+    codes.push("STRICT_IMAGE_RENDER_FALLBACK");
+    blockers.push(
+      `STRICT_IMAGE_RENDER_FALLBACK: imageRenderFallback=true under strict OpenAI image generation for panel(s): ${strictFallbackPanels.join(", ")}.`,
+    );
+  }
+
+  let status = "pass";
+  if (blockers.length) status = "blocked";
+  else if (warnings.length) status = "warning";
+
+  return {
+    status,
+    blockers: unique(blockers),
+    warnings: unique(warnings),
+    codes: unique(codes),
+    evaluatedPanelCount: panelMap.size,
+    requiredVisualPanelTypes: VISUAL_PROJECT_PANEL_TYPES_FOR_GATE.slice(),
+    missingVisualPanels,
+    missingGeometryHashPanels,
+    geometryHashes,
+    geometryHashByPanel,
+    geometryMismatchPanels,
+    expectedGeometryHash: expectedPanelGeometryHash,
+    visualManifestHashes,
+    visualManifestHashByPanel,
+    expectedVisualManifestHash: expectedManifestHash,
+    missingVisualManifestHashPanels,
+    mismatchedVisualManifestHashPanels,
+    unlockedVisualPanels,
+    textOnlyVisualPanels,
+    strictFallbackPanels,
+  };
+}
+
+function evaluateSheetArtifactEvidence({ sheetArtifact, pdfMetadata } = {}) {
+  const blockers = [];
+  const warnings = [];
+  const codes = [];
+
+  if (!sheetArtifact) {
+    return {
+      status: "pass",
+      blockers,
+      warnings,
+      codes,
+      evaluated: false,
+      sourceSvgHash: null,
+      sheetSvgHash: null,
+    };
+  }
+
+  const svgString =
+    sheetArtifact.svgString || sheetArtifact.metadata?.svgString;
+  const sheetSvgHash =
+    sheetArtifact.svgHash ||
+    sheetArtifact.source_svg_hash ||
+    sheetArtifact.metadata?.svgHash ||
+    null;
+  const sourceSvgHash =
+    pdfMetadata?.sourceSvgHash ||
+    pdfMetadata?.source_svg_hash ||
+    pdfMetadata?.sourceSheetSvgHash ||
+    null;
+
+  if (typeof svgString !== "string" || !/<svg[\s>]/i.test(svgString)) {
+    codes.push("A1_SHEET_SOURCE_SVG_MISSING");
+    blockers.push(
+      "A1_SHEET_SOURCE_SVG_MISSING: Final A1 export requires sheetArtifact.svgString as the source SVG.",
+    );
+  }
+
+  if (
+    pdfMetadata?.emptyFrameFallbackUsed === true ||
+    pdfMetadata?.usesEmptyFrames === true ||
+    normalizeAuthorityToken(pdfMetadata?.source) === "empty_frames"
+  ) {
+    codes.push("A1_PDF_EMPTY_FRAMES_USED");
+    blockers.push(
+      "A1_PDF_EMPTY_FRAMES_USED: PDF/A1 export used empty frames instead of sheetArtifact.svgString.",
+    );
+  }
+
+  if (sourceSvgHash && sheetSvgHash && sourceSvgHash !== sheetSvgHash) {
+    codes.push("A1_PDF_SOURCE_SVG_HASH_MISMATCH");
+    blockers.push(
+      `A1_PDF_SOURCE_SVG_HASH_MISMATCH: PDF source SVG hash ${sourceSvgHash} does not match sheetArtifact.svgHash ${sheetSvgHash}.`,
+    );
+  }
+
+  let status = "pass";
+  if (blockers.length) status = "blocked";
+  else if (warnings.length) status = "warning";
+
+  return {
+    status,
+    blockers: unique(blockers),
+    warnings: unique(warnings),
+    codes: unique(codes),
+    evaluated: true,
+    sourceSvgHash,
+    sheetSvgHash,
+    hasSheetSvgString:
+      typeof svgString === "string" && /<svg[\s>]/i.test(svgString),
   };
 }
 
@@ -1297,6 +1749,8 @@ export function evaluateFinalA1ExportGate({
   materialPalette = null,
   openaiProvider = null,
   presentationSummary = null,
+  sheetArtifact = null,
+  expectedGeometryHash = null,
   strictPhotoreal = false,
   imageGenEnabled = false,
   scope = PHASE_F_GATE_SCOPES.COMPOSE_FINAL,
@@ -1393,7 +1847,10 @@ export function evaluateFinalA1ExportGate({
     panelRegistry,
     targetStoreys,
   });
-  const technicalPanelStatus = evaluateTechnicalPanelEvidence({ panels });
+  const technicalPanelStatus = evaluateTechnicalPanelEvidence({
+    panels,
+    panelRegistry,
+  });
   const crossViewConsistencyStatus = evaluateCrossViewConsistencyEvidence({
     drawings,
     projectGeometry,
@@ -1403,24 +1860,40 @@ export function evaluateFinalA1ExportGate({
     visualPanels,
     scope,
   });
+  const projectPanelAuthorityStatus = evaluateProjectPanelAuthorityEvidence({
+    panels,
+    visualPanels,
+    visualManifest,
+    strictPhotoreal,
+    imageGenEnabled,
+    expectedGeometryHash,
+  });
+  const projectAuthorityVisualBlockers =
+    projectPanelAuthorityStatus.blockers.filter((blocker) =>
+      /VISUAL_|STRICT_IMAGE_RENDER_FALLBACK/.test(blocker),
+    );
   const visualPanelStatus = {
-    status: visualManifestStatus.mismatched.length
+    status: projectAuthorityVisualBlockers.length
       ? "blocked"
-      : visualManifestStatus.unlocked.length
-        ? "warning"
+      : visualManifestStatus.status === "blocked"
+        ? "blocked"
         : "pass",
-    blockers: visualManifestStatus.mismatched.length
-      ? [
-          `Visual panel(s) ${visualManifestStatus.mismatched.join(", ")} did not match the sheet visual manifest hash.`,
-        ]
-      : [],
-    warnings: visualManifestStatus.unlocked.length
-      ? [
-          `Visual panel(s) ${visualManifestStatus.unlocked.join(", ")} are not visualIdentityLocked.`,
-        ]
-      : [],
-    mismatched: visualManifestStatus.mismatched,
-    unlocked: visualManifestStatus.unlocked,
+    blockers: unique([
+      ...projectAuthorityVisualBlockers,
+      ...(visualManifestStatus.blockers || []),
+    ]),
+    warnings: [],
+    mismatched: unique([
+      ...visualManifestStatus.mismatched,
+      ...projectPanelAuthorityStatus.mismatchedVisualManifestHashPanels,
+    ]),
+    unlocked: unique([
+      ...visualManifestStatus.unlocked,
+      ...projectPanelAuthorityStatus.unlockedVisualPanels,
+    ]),
+    missing: projectPanelAuthorityStatus.missingVisualPanels,
+    textOnly: projectPanelAuthorityStatus.textOnlyVisualPanels,
+    strictFallback: projectPanelAuthorityStatus.strictFallbackPanels,
   };
   const materialPaletteStatus = evaluateMaterialPaletteEvidence({
     materialPalette,
@@ -1433,6 +1906,10 @@ export function evaluateFinalA1ExportGate({
     imageGenEnabled,
     scope,
   });
+  const sheetArtifactStatus = evaluateSheetArtifactEvidence({
+    sheetArtifact,
+    pdfMetadata,
+  });
   const layoutStatus = evaluateLayoutEvidence({ presentationSummary });
   const sheetSplitStatus = evaluateSheetSplitEvidence({ sheetSetPlan });
 
@@ -1443,8 +1920,10 @@ export function evaluateFinalA1ExportGate({
     technicalPanelStatus,
     crossViewConsistencyStatus,
     visualManifestStatus,
+    projectPanelAuthorityStatus,
     materialPaletteStatus,
     openaiProviderStatus,
+    sheetArtifactStatus,
     layoutStatus,
     sheetSplitStatus,
   ]) {
@@ -1475,32 +1954,31 @@ export function evaluateFinalA1ExportGate({
       requiredPanelStatus,
       technicalPanelStatus,
       crossViewConsistencyStatus,
+      projectPanelAuthorityStatus,
       visualPanelStatus,
       visualManifestStatus,
       materialPaletteStatus,
       openaiProviderStatus,
+      sheetArtifactStatus,
       layoutStatus,
       sheetSplitStatus,
     },
   };
 }
 
-// Phase 4: technical-group blocker extraction. The gate aggregates evidence
-// from both technical-drawing concerns and visual/photoreal concerns. The
-// slice service must fail-closed only on the *technical* group — visual
-// failures stay warning-only per Phase 4 scope. This helper isolates that
-// subset so callers don't have to know which evidence keys are technical.
+// Phase 4/3: upstream blocker extraction. The slice service must fail closed
+// when the A1 export gate proves that deterministic technical SVGs, visual
+// image2 panels, or the final sheet source SVG no longer share one
+// ProjectGraph authority.
 //
 // Technical sources:
 //   - technicalPanelStatus      → PANEL_CONTENT_EMPTY
 //   - crossViewConsistencyStatus → CROSS_VIEW_INCONSISTENT
 //   - requiredPanelStatus       → A1_REQUIRED_PANEL_MISSING (panel registry)
+//   - projectPanelAuthorityStatus → geometry/manifest/image2 authority
+//   - sheetArtifactStatus       → sheetArtifact.svgString/PDF source evidence
 //   - layoutStatus              → A1_LAYOUT_BROKEN
 //   - sheetSplitStatus          → A1_SHEET_SPLIT_REQUIRED
-//
-// Visual sources (intentionally excluded):
-//   - visualPanelStatus, visualManifestStatus, materialPaletteStatus,
-//     openaiProviderStatus, pdfMetadata, rasterGlyphIntegrity
 export function extractTechnicalGroupBlockers(gateResult) {
   const empty = {
     blocked: false,
@@ -1519,6 +1997,11 @@ export function extractTechnicalGroupBlockers(gateResult) {
       ev: evidence.crossViewConsistencyStatus,
     },
     { key: "requiredPanelStatus", ev: evidence.requiredPanelStatus },
+    {
+      key: "projectPanelAuthorityStatus",
+      ev: evidence.projectPanelAuthorityStatus,
+    },
+    { key: "sheetArtifactStatus", ev: evidence.sheetArtifactStatus },
     { key: "layoutStatus", ev: evidence.layoutStatus },
     { key: "sheetSplitStatus", ev: evidence.sheetSplitStatus },
   ];

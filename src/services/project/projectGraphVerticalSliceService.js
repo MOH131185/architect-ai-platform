@@ -121,6 +121,7 @@ const PROFESSIONAL_REVIEW_DISCLAIMER =
   "AI-generated early-stage architecture package. Regulation checks are preliminary design flags and require professional review.";
 const A1_SHEET_LAYOUT_VERSION = "projectgraph-a1-reference-board-v1";
 const A1_SHEET_SIZE_MM = { width: 841, height: 594 };
+const PROJECT_GRAPH_GENERATION_SEED_MAX = 2_147_483_647;
 const MAX_TARGET_STOREYS = Math.max(
   1,
   Number.parseInt(process.env.MAX_TARGET_STOREYS, 10) || 8,
@@ -164,6 +165,7 @@ const TECHNICAL_A1_PANEL_TYPES_BASE = [
   "section_AA",
   "section_BB",
 ];
+let projectGraphAutoSeedCounter = 0;
 
 export function buildRequiredA1PanelTypes(
   targetStoreys = 1,
@@ -228,6 +230,17 @@ function isTruthyFlag(value) {
   ].includes(String(value).trim().toLowerCase());
 }
 
+function createStrictVisualImageError({ panelType, reason, message }) {
+  const error = new Error(
+    `[OpenAI] strict image generation failed panel=${panelType} reason=${reason}: ${message || reason}`,
+  );
+  error.code = "OPENAI_STRICT_IMAGE_GEN_FAILED";
+  error.panelType = panelType;
+  error.fallbackReason = reason;
+  error.strictImageGeneration = true;
+  return error;
+}
+
 function isReferenceMatchRequested(input = {}, sourceBrief = {}) {
   return (
     isTruthyFlag(input.referenceMatch) ||
@@ -272,7 +285,7 @@ function round(value, precision = 3) {
 function normalizeGenerationSeed(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return null;
-  return Math.abs(Math.trunc(numeric)) % 2147483647;
+  return Math.abs(Math.trunc(numeric)) % PROJECT_GRAPH_GENERATION_SEED_MAX;
 }
 
 function resolveGenerationSeed(input = {}, sourceBrief = {}) {
@@ -287,6 +300,228 @@ function resolveGenerationSeed(input = {}, sourceBrief = {}) {
       sourceBrief.generationSeed ??
       sourceBrief.seed,
   );
+}
+
+function createAutoGenerationSeed() {
+  projectGraphAutoSeedCounter =
+    (projectGraphAutoSeedCounter + 1) % PROJECT_GRAPH_GENERATION_SEED_MAX;
+  const seed = normalizeGenerationSeed(
+    Date.now() +
+      Math.floor(Math.random() * PROJECT_GRAPH_GENERATION_SEED_MAX) +
+      projectGraphAutoSeedCounter,
+  );
+  return seed === null || seed === 0 ? 1 : seed;
+}
+
+function firstGenerationSeedCandidate(candidates = []) {
+  for (const candidate of candidates) {
+    const normalized = normalizeGenerationSeed(candidate);
+    if (normalized !== null) return normalized;
+  }
+  return null;
+}
+
+function normalizeVariationMode(value) {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  if (
+    [
+      "new_design",
+      "same_geometry_regen",
+      "style_modify",
+      "layout_modify",
+    ].includes(normalized)
+  ) {
+    return normalized;
+  }
+  if (["regenerate", "panel_regen", "same_geometry"].includes(normalized)) {
+    return "same_geometry_regen";
+  }
+  if (["style", "materials", "material_modify"].includes(normalized)) {
+    return "style_modify";
+  }
+  if (["layout", "programme", "program", "geometry"].includes(normalized)) {
+    return "layout_modify";
+  }
+  return null;
+}
+
+function normalizeSeedSource(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["user", "auto_new_project", "reused_existing_project"].includes(
+    normalized,
+  )
+    ? normalized
+    : null;
+}
+
+function hasExistingProjectIdentity(input = {}) {
+  return Boolean(
+    input.projectId ||
+      input.project_id ||
+      input.designId ||
+      input.design_id ||
+      input.designHistoryId ||
+      input.design_history_id ||
+      input.compiledProject ||
+      input.artifacts?.compiledProject ||
+      input.projectDetails?.compiledProject ||
+      input.geometryHash ||
+      input.geometry_hash ||
+      input.existingGeometryHash ||
+      input.projectDetails?.geometryHash ||
+      input.projectDetails?.existingGeometryHash,
+  );
+}
+
+function requestLooksLayoutAffecting(input = {}) {
+  const modifyRequest = input.modifyRequest || {};
+  const changeText = [
+    input.changeType,
+    input.modifyType,
+    modifyRequest.changeType,
+    modifyRequest.scope,
+    modifyRequest.mode,
+    modifyRequest.customPrompt,
+    ...(Array.isArray(modifyRequest.quickToggles)
+      ? modifyRequest.quickToggles
+      : []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    /\b(layout|programme|program|room|space|area|floor|storey|story|massing|footprint|opening|window|door|stair)\b/.test(
+      changeText,
+    ) ||
+    Boolean(
+      input.programSpaces ||
+        input.programme?.spaces ||
+        input.program?.spaces ||
+        input.projectDetails?.programSpaces,
+    )
+  );
+}
+
+function requestLooksStyleOnly(input = {}) {
+  const modifyRequest = input.modifyRequest || {};
+  const changeText = [
+    input.changeType,
+    input.modifyType,
+    modifyRequest.changeType,
+    modifyRequest.scope,
+    modifyRequest.mode,
+    modifyRequest.customPrompt,
+    ...(Array.isArray(modifyRequest.quickToggles)
+      ? modifyRequest.quickToggles
+      : []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    /\b(style|material|materials|palette|facade|colour|color|finish|tone)\b/.test(
+      changeText,
+    ) && !requestLooksLayoutAffecting(input)
+  );
+}
+
+function resolveVariationMode(input = {}) {
+  const hasExistingProject = hasExistingProjectIdentity(input);
+  const explicit = normalizeVariationMode(
+    input.variationMode ||
+      input.projectVariationMode ||
+      input.modifyRequest?.variationMode ||
+      input.brief?.variationMode ||
+      input.projectBrief?.variationMode,
+  );
+  if (explicit) return explicit;
+  if (hasExistingProject && requestLooksLayoutAffecting(input)) {
+    return "layout_modify";
+  }
+  if (hasExistingProject && requestLooksStyleOnly(input)) {
+    return "style_modify";
+  }
+  if (hasExistingProject) return "same_geometry_regen";
+  return "new_design";
+}
+
+function resolveExistingProjectSeed(input = {}, sourceBrief = {}) {
+  return firstGenerationSeedCandidate([
+    input.existingGenerationSeed,
+    input.previousGenerationSeed,
+    input.projectDetails?.existingGenerationSeed,
+    input.projectDetails?.generationSeed,
+    input.designHistory?.generationSeed,
+    input.designHistory?.seed,
+    input.designHistoryEntry?.generationSeed,
+    input.designHistoryEntry?.seed,
+    input.metadata?.generationSeed,
+    input.generationLifecycle?.generationSeed,
+    input.seedLifecycle?.generationSeed,
+    input.artifacts?.generationSeed,
+    input.artifacts?.compiledProject?.metadata?.generationSeed,
+    input.compiledProject?.metadata?.generationSeed,
+    input.compiledProject?.generationSeed,
+    sourceBrief.generation_lifecycle?.generationSeed,
+    sourceBrief.seedLifecycle?.generationSeed,
+  ]);
+}
+
+function resolveGenerationSeedLifecycle(input = {}, sourceBrief = {}) {
+  const variationMode = resolveVariationMode(input);
+  const explicitSeed = firstGenerationSeedCandidate([
+    input.seed,
+    input.baseSeed,
+    input.generationSeed,
+    input.projectDetails?.seed,
+    input.projectDetails?.baseSeed,
+  ]);
+  if (explicitSeed !== null) {
+    return {
+      generationSeed: explicitSeed,
+      seedSource: normalizeSeedSource(input.seedSource) || "user",
+      variationMode,
+    };
+  }
+
+  const briefSeed = firstGenerationSeedCandidate([
+    sourceBrief.baseSeed,
+    sourceBrief.generation_seed,
+    sourceBrief.generationSeed,
+    sourceBrief.seed,
+  ]);
+  const existingSeed =
+    resolveExistingProjectSeed(input, sourceBrief) ?? briefSeed;
+  if (
+    existingSeed !== null &&
+    hasExistingProjectIdentity(input) &&
+    variationMode !== "layout_modify"
+  ) {
+    return {
+      generationSeed: existingSeed,
+      seedSource: "reused_existing_project",
+      variationMode,
+    };
+  }
+
+  if (briefSeed !== null) {
+    return {
+      generationSeed: briefSeed,
+      seedSource: "user",
+      variationMode,
+    };
+  }
+
+  return {
+    generationSeed: createAutoGenerationSeed(),
+    seedSource: "auto_new_project",
+    variationMode,
+  };
 }
 
 function seededIndex(seed, length, salt = "design-option") {
@@ -799,7 +1034,11 @@ function detectProgrammeGroundCollapse({
 
 function normalizeBrief(input = {}) {
   const sourceBrief = input.brief || input.projectBrief || input;
-  const generationSeed = resolveGenerationSeed(input, sourceBrief);
+  const generationLifecycle = resolveGenerationSeedLifecycle(
+    input,
+    sourceBrief,
+  );
+  const { generationSeed, seedSource, variationMode } = generationLifecycle;
   const projectDetails = input.projectDetails || {};
   const locationData = input.locationData || {};
   const referenceMatch = isReferenceMatchRequested(input, sourceBrief);
@@ -1036,6 +1275,10 @@ function normalizeBrief(input = {}) {
     generation_seed: generationSeed,
     design_variant_seed: generationSeed,
     generation_variation_enabled: generationSeed !== null,
+    generationSeed,
+    seedSource,
+    variationMode,
+    generation_lifecycle: generationLifecycle,
     referenceMatch,
     reference_match: referenceMatch,
     brief_input_hash: briefInputHash,
@@ -5043,13 +5286,20 @@ function buildDrawingSet(compiledProject, options = {}) {
     drawingArtifacts: Object.fromEntries(
       Object.entries(technicalPanels).map(([panelType, panel]) => {
         const assetId = createStableId("asset-svg", panelType, panel.svgHash);
+        const geometryHash = compiledProject.geometryHash;
         return [
           assetId,
           {
             asset_id: assetId,
             asset_type: "drawing_svg",
             panel_type: panelType,
-            source_model_hash: compiledProject.geometryHash,
+            source_model_hash: geometryHash,
+            geometryHash,
+            sourceGeometryHash: geometryHash,
+            renderer: "deterministic_svg",
+            providerUsed: "deterministic_svg",
+            imageProviderUsed: "none",
+            technicalDrawing: true,
             svgHash: panel.svgHash,
             width: panel.width,
             height: panel.height,
@@ -5061,6 +5311,12 @@ function buildDrawingSet(compiledProject, options = {}) {
             technicalQualityMetadata: panel.technicalQualityMetadata || null,
             metadata: {
               source: "compiled_project_technical_panel",
+              renderer: "deterministic_svg",
+              providerUsed: "deterministic_svg",
+              imageProviderUsed: "none",
+              technicalDrawing: true,
+              geometryHash,
+              sourceGeometryHash: geometryHash,
               panelType,
               expectedPanelType: panelType,
               drawingType: panel.drawingType || drawingTypeForPanel(panelType),
@@ -5154,13 +5410,17 @@ function formatPanelTitle(panelType) {
   return raw
     .replace(/^floor_plan_ground$/, "Ground floor plan")
     .replace(/^floor_plan_first$/, "First floor plan")
+    .replace(/^elevation_north$/, "North elevation")
+    .replace(/^elevation_south$/, "South elevation")
+    .replace(/^elevation_east$/, "East elevation")
+    .replace(/^elevation_west$/, "West elevation")
     .replace(/^section_AA$/, "Section A-A")
     .replace(/^section_BB$/, "Section B-B")
-    .replace(/^site_context$/, "Site plan")
+    .replace(/^site_context$/, "Site / Context")
     .replace(/^hero_3d$/, "Exterior perspective")
-    .replace(/^exterior_render$/, "Exterior render")
-    .replace(/^axonometric$/, "Axonometric view")
-    .replace(/^interior_3d$/, "Interior perspective")
+    .replace(/^exterior_render$/, "Exterior perspective")
+    .replace(/^axonometric$/, "Axonometric")
+    .replace(/^interior_3d$/, "Interior view")
     .replace(/^material_palette$/, "Material palette")
     .replace(/^key_notes$/, "Key notes")
     .replace(/^title_block$/, "Title block")
@@ -6523,6 +6783,7 @@ export function buildTitleBlockPanelArtifact({
   geometryHash,
   sheetPlan,
   sheetDesignContext = null,
+  visualManifest = null,
 }) {
   const width = 620;
   const height = 900;
@@ -6564,6 +6825,10 @@ export function buildTitleBlockPanelArtifact({
       sheetDesignContext?.studio_footer ||
       "Architecture | Design | Planning",
   ).trim();
+  const visualManifestHash =
+    visualManifest?.manifestHash ||
+    sheetDesignContext?.visualManifestHash ||
+    null;
   const disclaimerLines = splitNoteLines(PROFESSIONAL_REVIEW_DISCLAIMER, 64, 3);
   // Phase 2 — broader RIBA-style metadata. The first 5 rows preserve the
   // existing data source (so existing tests and downstream readers continue
@@ -6627,7 +6892,8 @@ export function buildTitleBlockPanelArtifact({
   ${disclaimerSvg}
   <text x="34" y="808" font-family="Arial, sans-serif" font-size="15" font-weight="700" fill="#222222">${escapeXml(architectName.toUpperCase())}</text>
   <text x="34" y="828" font-family="Arial, sans-serif" font-size="12" fill="#555555">${escapeXml(studioFooter)}</text>
-  <text x="34" y="862" font-family="Arial, sans-serif" font-size="11" fill="#888888">source_model_hash ${escapeXml(String(geometryHash || "").slice(0, 16))}</text>
+  <text x="34" y="846" font-family="Arial, sans-serif" font-size="10" fill="#666666">geometryHash ${escapeXml(String(geometryHash || "").slice(0, 18))}</text>
+  <text x="34" y="862" font-family="Arial, sans-serif" font-size="10" fill="#666666">visualManifestHash ${escapeXml(String(visualManifestHash || "n/a").slice(0, 18))}</text>
   <text x="586" y="862" font-family="Arial, sans-serif" font-size="11" text-anchor="end" fill="#888888">${escapeXml(`${ribaStageLabel} • Rev ${revision}`)}</text>
 </svg>`;
   const svgHash = computeCDSHashSync({
@@ -6679,6 +6945,7 @@ export function buildTitleBlockPanelArtifact({
       date: dateLabel,
       architect: architectName,
       studioFooter,
+      visualManifestHash,
       rowKeys: rows.map((r) => r[0]),
       sheetDesignContextHash: sheetDesignContext?.contextHash || null,
       sourceContext: sheetDesignContext
@@ -6790,13 +7057,13 @@ export function buildProjectGraphRenderPrompt({
   const baseIntent =
     {
       hero_3d:
-        "Photoreal hero exterior 3D perspective — magazine-cover quality. Match the silhouette of the reference image exactly (same massing, same roof shape, same opening positions, same storey count). Apply the materials, lighting, and detailing from the reasoning chain below.",
+        "Realistic front-left architectural exterior perspective for the hero_3d panel — magazine-cover quality. Match the silhouette of the control image exactly (same massing, same roof shape, same opening positions, same storey count). Apply the materials, lighting, and detailing from the reasoning chain below.",
       exterior_render:
-        "Photoreal front-elevation hero render — slight 12° angle, head-on composition. Match the reference silhouette exactly. Render with golden-hour lighting and physically-based materials.",
+        "Realistic front-left architectural exterior perspective for the exterior_render panel — slight 12° angle, composed from the main approach. Match the control silhouette exactly. Render with golden-hour lighting and physically-based materials.",
       axonometric:
-        "Photoreal axonometric 3D projection (30° isometric) showing roof form and four facades. Match the reference massing, roof, and opening layout exactly. Material textures legible.",
+        "Technical axonometric/isometric view matching the same massing, roof, storeys, openings, and facade rhythm as the control geometry. Material textures legible without changing the building logic.",
       interior_3d:
-        "Photoreal interior perspective — main living/kitchen space. Use the SAME materials and palette as the exterior. Match the reference interior volume.",
+        "Interior view derived from the same project programme — main living/kitchen or primary public space. Use the SAME materials and palette as the exterior, and do not alter shell, opening, stair, or room-adjacency logic.",
     }[panelType] || "Photoreal architectural render.";
   const intent = cutawayActive
     ? buildAxonometricCutawayIntent({ sheetDesignContext, brief })
@@ -6808,6 +7075,18 @@ export function buildProjectGraphRenderPrompt({
   // interior_3d) describe the same building. The block is identical across
   // panels for the same manifest, so OpenAI image generation cannot drift.
   const identityLock = buildVisualIdentityLockBlock(visualManifest);
+  const geometryHash =
+    compiledProject?.geometryHash ||
+    compiledProject?.geometry_hash ||
+    visualManifest?.geometryHash ||
+    "n/a";
+  const visualManifestHash = visualManifest?.manifestHash || "n/a";
+  const authorityLine = [
+    "GEOMETRY AND VISUAL AUTHORITY:",
+    `geometryHash: ${geometryHash}`,
+    `visualManifestHash: ${visualManifestHash}`,
+    "Use the supplied control image as the geometry reference; do not use text-only generation and do not invent project geometry.",
+  ].join("\n");
   const visualContinuity =
     buildProjectGraphVisualContinuityBlock(visualManifest);
   // Regional vernacular block — when the slice resolved a UK pack
@@ -6933,6 +7212,7 @@ export function buildProjectGraphRenderPrompt({
     : null;
   return [
     identityLock,
+    authorityLine,
     visualContinuity,
     `Project: ${projectName} — ${buildingType}.`,
     intent,
@@ -6947,11 +7227,11 @@ export function buildProjectGraphRenderPrompt({
 function wrapPngAsSvgPanel(pngBuffer, viewBox, width, height) {
   const dataUrl = `data:image/png;base64,${pngBuffer.toString("base64")}`;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="${viewBox}" preserveAspectRatio="xMidYMid meet">
-  <image href="${dataUrl}" x="0" y="0" width="${width}" height="${height}" preserveAspectRatio="xMidYMid slice"/>
+  <image href="${dataUrl}" x="0" y="0" width="${width}" height="${height}" preserveAspectRatio="xMidYMid meet" data-fit-mode="object-contain"/>
 </svg>`;
 }
 
-async function buildVisual3DPanelArtifacts({
+export async function buildVisual3DPanelArtifacts({
   compiledProject,
   geometryHash,
   brief = null,
@@ -6978,6 +7258,12 @@ async function buildVisual3DPanelArtifacts({
     cutawayEnvOverride === "true" ||
     cutawayEnvOverride === "1" ||
     isFeatureEnabled("axonometricCutawayEnabled");
+  const strictImageGeneration =
+    isTruthyFlag(
+      typeof process !== "undefined"
+        ? process.env?.OPENAI_STRICT_IMAGE_GEN
+        : false,
+    ) === true;
   const renderInputs = ensureCompiledProjectRenderInputs(compiledProject, {
     geometryHash,
     views: REQUIRED_3D_A1_PANEL_TYPES,
@@ -6990,6 +7276,17 @@ async function buildVisual3DPanelArtifacts({
       const height = renderInput.height || renderInput.metadata?.height || 1050;
       const viewBox =
         renderInput.metadata?.normalizedViewBox || `0 0 ${width} ${height}`;
+      const controlSvgHash = deterministicSvgString
+        ? renderInput.svgHash ||
+          computeCDSHashSync({
+            panelType,
+            geometryHash,
+            referenceSource: "compiled_3d_control_svg",
+            svgString: deterministicSvgString,
+          })
+        : null;
+      let prompt = "";
+      let promptHash = null;
 
       // Phase 4: when PROJECT_GRAPH_IMAGE_GEN_ENABLED=true, anchor a
       // gpt-image call on the deterministic SVG silhouette and replace
@@ -7002,7 +7299,7 @@ async function buildVisual3DPanelArtifacts({
       let imageRenderFallbackReason = "gate_disabled";
       let renderResult = null;
       if (deterministicSvgString) {
-        const prompt = buildProjectGraphRenderPrompt({
+        prompt = buildProjectGraphRenderPrompt({
           panelType,
           brief,
           compiledProject,
@@ -7014,6 +7311,12 @@ async function buildVisual3DPanelArtifacts({
           visualManifest,
           sheetDesignContext,
           axonometricCutawayEnabled,
+        });
+        promptHash = computeCDSHashSync({
+          panelType,
+          geometryHash,
+          visualManifestHash: visualManifest?.manifestHash || null,
+          prompt,
         });
         try {
           renderResult = await renderProjectGraphPanelImage({
@@ -7047,10 +7350,27 @@ async function buildVisual3DPanelArtifacts({
           renderProvenance = renderResult.provenance;
           imageRenderFallbackReason = null;
         } else if (renderResult?.imageRenderFallbackReason) {
+          if (strictImageGeneration) {
+            throw createStrictVisualImageError({
+              panelType,
+              reason: renderResult.imageRenderFallbackReason,
+              message:
+                renderResult.error ||
+                "OpenAI image generation returned fallback metadata under strict image generation.",
+            });
+          }
           imageRenderFallbackReason = renderResult.imageRenderFallbackReason;
         }
       } else {
-        imageRenderFallbackReason = "empty_response";
+        imageRenderFallbackReason = "missing_control_svg";
+        if (strictImageGeneration) {
+          throw createStrictVisualImageError({
+            panelType,
+            reason: "missing_control_svg",
+            message:
+              "ProjectGraph visual panels require a deterministic compiled-geometry control SVG before image editing.",
+          });
+        }
       }
       const presentationMode = renderProvenance
         ? "geometry_locked_image_render"
@@ -7061,6 +7381,18 @@ async function buildVisual3DPanelArtifacts({
       const visualRenderMode = renderProvenance
         ? "photoreal_image_gen"
         : "deterministic_fallback";
+      const provider = renderProvenance ? "openai" : "deterministic";
+      const providerUsed = renderProvenance ? "openai" : "deterministic";
+      const imageProviderUsed = renderProvenance ? "openai" : "deterministic";
+      const imageRenderFallback = renderProvenance === null;
+      const renderModel =
+        renderProvenance?.model || renderResult?.model || null;
+      const requestId =
+        renderProvenance?.requestId || renderResult?.requestId || null;
+      const usage = renderProvenance?.usage || renderResult?.usage || null;
+      const generationSeed = normalizeGenerationSeed(brief?.generation_seed);
+      const seedSource = brief?.seedSource || null;
+      const variationMode = brief?.variationMode || null;
 
       const svgHash =
         renderInput.svgHash ||
@@ -7082,6 +7414,24 @@ async function buildVisual3DPanelArtifacts({
           panelType,
           source_model_hash: geometryHash,
           geometryHash,
+          sourceGeometryHash: geometryHash,
+          generationSeed,
+          seedSource,
+          variationMode,
+          visualManifestId: visualManifest?.manifestId || null,
+          visualManifestHash: visualManifest?.manifestHash || null,
+          visualIdentityLocked: Boolean(visualManifest?.manifestHash),
+          referenceSource: "compiled_3d_control_svg",
+          provider,
+          providerUsed,
+          imageProviderUsed,
+          imageRenderFallback,
+          imageRenderFallbackReason,
+          model: renderModel,
+          requestId,
+          usage,
+          controlSvgHash,
+          promptHash,
           authoritySource: "project_graph_compiled_geometry",
           svgHash,
           width,
@@ -7098,20 +7448,31 @@ async function buildVisual3DPanelArtifacts({
             geometryHash,
             svgHash,
             sourceGeometryHash: geometryHash,
+            generationSeed,
+            seedSource,
+            variationMode,
+            generationLifecycle: brief?.generation_lifecycle || null,
             referenceSource: "compiled_3d_control_svg",
-            imageRenderFallback: renderProvenance === null,
+            controlSvgHash,
+            promptHash,
+            provider,
+            providerUsed,
+            imageRenderFallback,
             imageRenderFallbackReason,
-            imageRenderModel: renderProvenance?.model || null,
+            imageRenderModel: renderModel,
+            model: renderModel,
             imageRenderSize: renderProvenance?.size || null,
             imageRenderByteLength,
-            imageProviderUsed: renderProvenance ? "openai" : "deterministic",
+            imageProviderUsed,
             openaiConfigured:
               renderResult?.openaiConfigured ??
               renderResult?.provenance?.openaiConfigured ??
               false,
             openaiImageUsed: Boolean(renderProvenance),
-            openaiRequestId: renderProvenance?.requestId || null,
-            openaiUsage: renderProvenance?.usage || null,
+            openaiRequestId: requestId,
+            requestId,
+            openaiUsage: usage,
+            usage,
             openaiKeySource:
               renderProvenance?.keySource ||
               renderResult?.keySource ||
@@ -7215,6 +7576,7 @@ async function buildSheetPanelArtifacts({
     geometryHash,
     sheetPlan,
     sheetDesignContext,
+    visualManifest,
   });
   const visual3d = await buildVisual3DPanelArtifacts({
     compiledProject,
@@ -8266,6 +8628,53 @@ export function computePanelSlotFitMetrics({
   };
 }
 
+function artifactMetadataValue(artifact = null, key) {
+  if (!artifact) return null;
+  if (artifact[key] !== undefined && artifact[key] !== null) return artifact[key];
+  if (
+    artifact.metadata &&
+    artifact.metadata[key] !== undefined &&
+    artifact.metadata[key] !== null
+  ) {
+    return artifact.metadata[key];
+  }
+  return null;
+}
+
+function panelKindForSheet(panelType = "") {
+  if (REQUIRED_3D_A1_PANEL_TYPES.includes(panelType)) return "visual";
+  if (
+    String(panelType).startsWith("floor_plan_") ||
+    String(panelType).startsWith("elevation_") ||
+    String(panelType).startsWith("section_")
+  ) {
+    return "technical";
+  }
+  return "data";
+}
+
+function buildVisualPanelStatusBadge(artifact = null) {
+  const panelType = artifact?.panel_type || artifact?.panelType || "";
+  if (!REQUIRED_3D_A1_PANEL_TYPES.includes(panelType)) return null;
+  const fallback = artifactMetadataValue(artifact, "imageRenderFallback") !== false;
+  if (fallback) {
+    return {
+      label: "DETERMINISTIC FALLBACK",
+      providerUsed: "deterministic",
+      fallback: true,
+      fallbackReason:
+        artifactMetadataValue(artifact, "imageRenderFallbackReason") ||
+        "image_generation_disabled_or_unavailable",
+    };
+  }
+  return {
+    label: "IMAGE2 / OPENAI EDIT",
+    providerUsed: artifactMetadataValue(artifact, "imageProviderUsed") || "openai",
+    fallback: false,
+    fallbackReason: null,
+  };
+}
+
 function renderSheetPanel({
   placement,
   artifact,
@@ -8292,14 +8701,22 @@ function renderSheetPanel({
   });
   const content =
     placement.status === "ready"
-      ? `<svg x="${contentX}" y="${contentY}" width="${contentWidth}" height="${contentHeight}" viewBox="${escapeXml(viewBox)}" preserveAspectRatio="xMidYMid meet" overflow="hidden" data-inlined-panel="true">${svgBody}</svg>`
+      ? `<svg x="${contentX}" y="${contentY}" width="${contentWidth}" height="${contentHeight}" viewBox="${escapeXml(viewBox)}" preserveAspectRatio="xMidYMid meet" overflow="hidden" data-inlined-panel="true" data-fit-mode="object-contain">${svgBody}</svg>`
       : `<g data-panel-missing="true"><rect x="${contentX}" y="${contentY}" width="${contentWidth}" height="${contentHeight}" fill="#fff3f0" stroke="#a43f2a" stroke-dasharray="4 3"/><text x="${contentX + 8}" y="${contentY + 22}" font-size="7" fill="#a43f2a">Missing source panel</text></g>`;
+  const panelKind = panelKindForSheet(placement.panelType);
+  const visualBadge = buildVisualPanelStatusBadge(artifact);
+  const badgeSvg = visualBadge
+    ? `<g data-visual-provider-badge="true">
+  <rect x="${placement.x + placement.width - 70}" y="${placement.y + 2.2}" width="66" height="6.8" fill="${visualBadge.fallback ? "#fff4df" : "#eef8ff"}" stroke="${visualBadge.fallback ? "#b26b00" : "#0b5d7d"}" stroke-width="0.35"/>
+  <text x="${placement.x + placement.width - 37}" y="${placement.y + 7.4}" font-size="3.2" font-family="${EMBEDDED_FONT_STACK}" text-anchor="middle" fill="${visualBadge.fallback ? "#8a4b00" : "#0b5d7d"}">${escapeXml(visualBadge.label)}</text>
+</g>`
+    : "";
 
   // Phase B caption cleanup: show only title (left) + scale (right). The
   // geometry hash and source-model-hash were colliding with the title and
   // adding visual clutter; they remain available on the wrapping <g>
   // (data-source-model-hash) and on sheet metadata for downstream QA.
-  return `<g data-panel-id="${escapeXml(placement.panelType)}" data-source-panel-asset-id="${escapeXml(placement.sourcePanelAssetId || "")}" data-source-model-hash="${escapeXml(placement.source_model_hash || "")}" data-caption-layout="${caption.layout}">
+  return `<g data-panel-id="${escapeXml(placement.panelType)}" data-panel-kind="${panelKind}" data-source-panel-asset-id="${escapeXml(placement.sourcePanelAssetId || "")}" data-source-model-hash="${escapeXml(placement.source_model_hash || "")}" data-caption-layout="${caption.layout}" data-preserve-aspect-ratio="xMidYMid meet" data-fit-mode="object-contain" data-provider-used="${escapeXml(visualBadge?.providerUsed || artifactMetadataValue(artifact, "providerUsed") || "")}" data-image-render-fallback="${visualBadge ? String(visualBadge.fallback) : ""}" data-image-render-fallback-reason="${escapeXml(visualBadge?.fallbackReason || "")}">
   <rect x="${placement.x}" y="${placement.y}" width="${placement.width}" height="${placement.height}" rx="0.4" fill="#ffffff" stroke="#111111" stroke-width="0.45"/>
   <text x="${placement.x + caption.titleX}" y="${placement.y + caption.titleY}" font-size="${CAPTION_TITLE_FONT_SIZE}" font-family="${EMBEDDED_FONT_STACK}" font-weight="700" fill="#111111">${titleText}</text>
   ${
@@ -8307,7 +8724,43 @@ function renderSheetPanel({
       ? `<text x="${placement.x + caption.scaleX}" y="${placement.y + caption.scaleY}" font-size="${caption.scaleFontSize}" font-family="${EMBEDDED_FONT_STACK}" text-anchor="end" fill="#444444">${scaleText}</text>`
       : ""
   }
+  ${badgeSvg}
   ${content}
+</g>`;
+}
+
+function buildSheetProvenanceFooter({
+  geometryHash,
+  visualManifest,
+  panelArtifacts,
+} = {}) {
+  const visualArtifacts = normalizeArtifactCollection(panelArtifacts).filter(
+    (artifact) => REQUIRED_3D_A1_PANEL_TYPES.includes(artifact?.panel_type),
+  );
+  const providerValues = [
+    ...new Set(
+      visualArtifacts
+        .map((artifact) => artifactMetadataValue(artifact, "imageProviderUsed"))
+        .filter(Boolean),
+    ),
+  ];
+  const fallbackPanels = visualArtifacts
+    .filter((artifact) => artifactMetadataValue(artifact, "imageRenderFallback") !== false)
+    .map((artifact) => artifact.panel_type);
+  const providerSummary =
+    providerValues.length > 0 ? providerValues.join("+") : "deterministic";
+  const fallbackStatus = fallbackPanels.length
+    ? `fallback ${fallbackPanels.join(",")}`
+    : "fallback none";
+  const visualManifestHash = visualManifest?.manifestHash || null;
+  return `<g data-provenance-footer="true" data-geometry-hash="${escapeXml(geometryHash || "")}" data-visual-manifest-hash="${escapeXml(visualManifestHash || "")}" data-provider-summary="${escapeXml(providerSummary)}" data-image-render-fallback-status="${escapeXml(fallbackStatus)}" data-authority-source="ProjectGraph compiled geometry" data-export-source="sheetArtifact.svgString">
+  <rect x="6" y="582" width="829" height="7" fill="#ffffff" opacity="0.96"/>
+  <line x1="6" y1="582" x2="835" y2="582" stroke="#111111" stroke-width="0.25"/>
+  <text x="10" y="587" font-size="3.4" font-family="${EMBEDDED_FONT_STACK}" fill="#222222">ProjectGraph authority: compiled geometry / deterministic technical SVGs / geometry-locked visual edits</text>
+  <text x="382" y="587" font-size="3.4" font-family="${EMBEDDED_FONT_STACK}" fill="#444444">geometryHash ${escapeXml(String(geometryHash || "").slice(0, 16))}</text>
+  <text x="535" y="587" font-size="3.4" font-family="${EMBEDDED_FONT_STACK}" fill="#444444">visualManifestHash ${escapeXml(String(visualManifestHash || "n/a").slice(0, 16))}</text>
+  <text x="735" y="587" font-size="3.4" font-family="${EMBEDDED_FONT_STACK}" text-anchor="end" fill="#444444">providers ${escapeXml(providerSummary)}</text>
+  <text x="831" y="587" font-size="3.4" font-family="${EMBEDDED_FONT_STACK}" text-anchor="end" fill="${fallbackPanels.length ? "#8a4b00" : "#444444"}">${escapeXml(fallbackStatus)}</text>
 </g>`;
 }
 
@@ -8321,6 +8774,7 @@ function buildSheetSvg({
   sheetNumber = "A1-00",
   sheetLabel = "RIBA Stage 2 Master",
   layoutTemplate = "board-v2",
+  visualManifest = null,
 }) {
   const artifactIndex = buildPanelArtifactIndex(panelArtifacts);
   const panelGroups = panelPlacements
@@ -8335,12 +8789,18 @@ function buildSheetSvg({
   const sourcePanelAssetIds = panelPlacements
     .map((placement) => placement.sourcePanelAssetId)
     .filter(Boolean);
+  const provenanceFooter = buildSheetProvenanceFooter({
+    geometryHash,
+    visualManifest,
+    panelArtifacts,
+  });
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${A1_SHEET_SIZE_MM.width}mm" height="${A1_SHEET_SIZE_MM.height}mm" viewBox="0 0 ${A1_SHEET_SIZE_MM.width} ${A1_SHEET_SIZE_MM.height}" data-layout-version="${A1_SHEET_LAYOUT_VERSION}" data-layout-template="${escapeXml(layoutTemplate)}" data-placeholder-only="false" data-reference-match="${brief?.reference_match === true ? "true" : "false"}" data-brief-input-hash="${escapeXml(brief?.brief_input_hash || "")}" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-sheet-number="${escapeXml(sheetNumber)}" data-sheet-label="${escapeXml(sheetLabel)}" data-qa-status="${escapeXml(qaStatus || "pending")}">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${A1_SHEET_SIZE_MM.width}mm" height="${A1_SHEET_SIZE_MM.height}mm" viewBox="0 0 ${A1_SHEET_SIZE_MM.width} ${A1_SHEET_SIZE_MM.height}" data-layout-version="${A1_SHEET_LAYOUT_VERSION}" data-layout-template="${escapeXml(layoutTemplate)}" data-placeholder-only="false" data-reference-match="${brief?.reference_match === true ? "true" : "false"}" data-brief-input-hash="${escapeXml(brief?.brief_input_hash || "")}" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-visual-manifest-hash="${escapeXml(visualManifest?.manifestHash || "")}" data-sheet-number="${escapeXml(sheetNumber)}" data-sheet-label="${escapeXml(sheetLabel)}" data-qa-status="${escapeXml(qaStatus || "pending")}" data-export-source="sheetArtifact.svgString">
   <rect width="${A1_SHEET_SIZE_MM.width}" height="${A1_SHEET_SIZE_MM.height}" fill="#ffffff"/>
   <rect x="5" y="5" width="831" height="584" fill="none" stroke="#111111" stroke-width="0.7"/>
   <desc>Reference board A1 package for ${escapeXml(brief.project_name)}. Panels ${sourcePanelAssetIds.length}. Geometry hash ${escapeXml(geometryHash)}.</desc>
   ${panelGroups}
+  ${provenanceFooter}
 </svg>`;
 }
 
@@ -8504,6 +8964,7 @@ async function buildA1Sheet({
     sheetNumber: drawingNumber,
     sheetLabel,
     layoutTemplate,
+    visualManifest,
   });
   __a1mark = __a1sheetLog(
     "build_sheet_svg",
@@ -8803,6 +9264,9 @@ function buildResultPanelMap(panelArtifacts = {}) {
             authoritySource:
               artifact.authoritySource || "project_graph_compiled_geometry",
             geometryHash: artifact.geometryHash || artifact.source_model_hash,
+            generationSeed: artifact.generationSeed || null,
+            seedSource: artifact.seedSource || null,
+            variationMode: artifact.variationMode || null,
             source_model_hash: artifact.source_model_hash || null,
             svgHash: artifact.svgHash || null,
             metadata: cloneData(artifact.metadata || {}),
@@ -8819,6 +9283,18 @@ function buildResultPanelMap(panelArtifacts = {}) {
 const FINAL_A1_RASTER_DPI = 300;
 const PREVIEW_A1_RASTER_DPI = 144;
 const FINAL_A1_RASTER_MIN_RATIO = 0.95; // tolerance vs expected pixel size
+
+function buildA1PdfSourceMetadata(sheetArtifact = {}) {
+  return {
+    sourceSvgHash: sheetArtifact?.svgHash || null,
+    sourceSvgAssetId: sheetArtifact?.asset_id || null,
+    sheetArtifactSvgStringUsed:
+      typeof sheetArtifact?.svgString === "string" &&
+      sheetArtifact.svgString.length > 0,
+    sourceSvgRole: "sheetArtifact.svgString",
+    emptyFrameFallbackUsed: false,
+  };
+}
 
 async function buildA1PdfArtifact({
   projectGraphId,
@@ -9103,6 +9579,7 @@ async function buildA1PdfArtifact({
     textRenderMode: "font_paths",
     rasterIntegrityStatus: rasterGlyphIntegrity?.status || "not_run",
     hybridVectorPdfFollowUp: true,
+    ...buildA1PdfSourceMetadata(sheetArtifact),
   };
 
   // Phase 5D: optional vector PDF as an *additional* artifact behind a
@@ -9230,6 +9707,33 @@ function artifactArray(artifacts = {}) {
   if (Array.isArray(artifacts)) return artifacts.filter(Boolean);
   if (!artifacts || typeof artifacts !== "object") return [];
   return Object.values(artifacts).filter(Boolean);
+}
+
+export function stampGenerationLifecycleOnArtifacts(
+  artifacts = {},
+  lifecycle = {},
+) {
+  const generationSeed = normalizeGenerationSeed(lifecycle.generationSeed);
+  const seedSource = lifecycle.seedSource || null;
+  const variationMode = lifecycle.variationMode || null;
+  for (const artifact of artifactArray(artifacts)) {
+    if (!artifact || typeof artifact !== "object") continue;
+    artifact.generationSeed = generationSeed;
+    artifact.seedSource = seedSource;
+    artifact.variationMode = variationMode;
+    artifact.metadata = {
+      ...(artifact.metadata || {}),
+      generationSeed,
+      seedSource,
+      variationMode,
+      generationLifecycle: {
+        generationSeed,
+        seedSource,
+        variationMode,
+      },
+    };
+  }
+  return artifacts;
 }
 
 function findPanelArtifact(artifacts = {}, panelType) {
@@ -11233,6 +11737,16 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       localMaterials: localStyle.material_palette,
     },
   });
+  compiledProject.generationSeed = brief.generation_seed;
+  compiledProject.seedSource = brief.seedSource || null;
+  compiledProject.variationMode = brief.variationMode || null;
+  compiledProject.metadata = {
+    ...(compiledProject.metadata || {}),
+    generationSeed: brief.generation_seed,
+    seedSource: brief.seedSource || null,
+    variationMode: brief.variationMode || null,
+    generationLifecycle: brief.generation_lifecycle || null,
+  };
   __vsMark = __vsLog("compile_project", __vsMark);
   // Compiled-project QA. Catches geometry layers losing a level (e.g. the
   // 3-level brief silently producing a 2-level model). The level-count
@@ -11465,6 +11979,27 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
   const sheetArtifact = primary.sheetArtifact;
   const pdfArtifact = primary.pdf;
   const primaryPanelArtifacts = primary.sheetPanelArtifacts || {};
+  const generationLifecycle = {
+    generationSeed: brief.generation_seed,
+    seedSource: brief.seedSource || null,
+    variationMode: brief.variationMode || null,
+  };
+  stampGenerationLifecycleOnArtifacts(drawingArtifacts, generationLifecycle);
+  stampGenerationLifecycleOnArtifacts(primary.panelArtifacts, generationLifecycle);
+  stampGenerationLifecycleOnArtifacts(
+    primary.sheetPanelArtifacts,
+    generationLifecycle,
+  );
+  sheetArtifact.generationSeed = generationLifecycle.generationSeed;
+  sheetArtifact.seedSource = generationLifecycle.seedSource;
+  sheetArtifact.variationMode = generationLifecycle.variationMode;
+  sheetArtifact.metadata = {
+    ...(sheetArtifact.metadata || {}),
+    generationSeed: generationLifecycle.generationSeed,
+    seedSource: generationLifecycle.seedSource,
+    variationMode: generationLifecycle.variationMode,
+    generationLifecycle,
+  };
   const siteMapArtifact =
     Object.values(primaryPanelArtifacts).find(
       (artifact) => artifact.panel_type === "site_context",
@@ -11590,21 +12125,73 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       targetStoreysForGate,
       sheetArtifact.layoutTemplate || resolvePresentationLayoutTemplate(brief),
     );
-    const visualPanelArtifacts = Object.values(primaryPanelArtifacts).filter(
-      (artifact) =>
-        REQUIRED_3D_A1_PANEL_TYPES.includes(artifact?.panel_type) ||
-        artifact?.metadata?.visualManifestHash,
+    const artifactByPanelType = new Map(
+      Object.values(primaryPanelArtifacts)
+        .filter((artifact) => artifact?.panel_type)
+        .map((artifact) => [artifact.panel_type, artifact]),
     );
-    const visualPanelsForGate = visualPanelArtifacts.map((artifact) => ({
-      type: artifact.panel_type,
-      visualManifestHash:
-        artifact.metadata?.visualManifestHash ||
-        artifact.visualManifestHash ||
-        null,
-      visualIdentityLocked:
-        artifact.metadata?.visualIdentityLocked === true ||
-        artifact.visualIdentityLocked === true,
-    }));
+    const buildGatePanelEvidence = (panelType, placement = null) => {
+      const artifact = artifactByPanelType.get(panelType) || {};
+      const metadata = artifact.metadata || {};
+      return {
+        type: panelType,
+        panelType,
+        status:
+          placement?.status ||
+          artifact.status ||
+          (artifact.svgString ? "ready" : null),
+        hasSvg: Boolean(
+          artifact.svgString || placement?.svgString || placement?.hasSvg,
+        ),
+        geometryHash:
+          artifact.geometryHash ||
+          metadata.geometryHash ||
+          artifact.sourceGeometryHash ||
+          metadata.sourceGeometryHash ||
+          artifact.source_model_hash ||
+          null,
+        sourceGeometryHash:
+          artifact.sourceGeometryHash ||
+          metadata.sourceGeometryHash ||
+          artifact.geometryHash ||
+          metadata.geometryHash ||
+          artifact.source_model_hash ||
+          null,
+        visualManifestId:
+          artifact.visualManifestId || metadata.visualManifestId || null,
+        visualManifestHash:
+          artifact.visualManifestHash || metadata.visualManifestHash || null,
+        visualIdentityLocked:
+          artifact.visualIdentityLocked === true ||
+          metadata.visualIdentityLocked === true,
+        referenceSource:
+          artifact.referenceSource || metadata.referenceSource || null,
+        provider: artifact.provider || metadata.provider || null,
+        providerUsed: artifact.providerUsed || metadata.providerUsed || null,
+        imageProviderUsed:
+          artifact.imageProviderUsed || metadata.imageProviderUsed || null,
+        imageRenderFallback:
+          artifact.imageRenderFallback ?? metadata.imageRenderFallback ?? null,
+        imageRenderFallbackReason:
+          artifact.imageRenderFallbackReason ||
+          metadata.imageRenderFallbackReason ||
+          null,
+        model: artifact.model || metadata.model || null,
+        requestId: artifact.requestId || metadata.requestId || null,
+        usage: artifact.usage || metadata.usage || null,
+        controlSvgHash:
+          artifact.controlSvgHash || metadata.controlSvgHash || null,
+        promptHash: artifact.promptHash || metadata.promptHash || null,
+        svgHash: artifact.svgHash || metadata.svgHash || null,
+        svgString: artifact.svgString || placement?.svgString || null,
+        metadata,
+      };
+    };
+    const visualPanelsForGate = REQUIRED_3D_A1_PANEL_TYPES.map((panelType) =>
+      artifactByPanelType.has(panelType)
+        ? buildGatePanelEvidence(panelType)
+        : null,
+    ).filter(Boolean);
     const materialPaletteArtifact = Object.values(primaryPanelArtifacts).find(
       (artifact) => artifact?.panel_type === "material_palette",
     );
@@ -11617,11 +12204,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
         }
       : null;
     const panelsForGate = (sheetArtifact.panelPlacements || []).map(
-      (placement) => ({
-        type: placement.panelType,
-        status: placement.status,
-        hasSvg: placement.status === "ready",
-      }),
+      (placement) => buildGatePanelEvidence(placement.panelType, placement),
     );
     // Phase 4: bucket the deterministic drawing SVGs by drawing type so the
     // gate's cross-view evidence evaluator (drawingConsistencyChecks) can
@@ -11699,6 +12282,16 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     const upstreamGate = evaluateFinalA1ExportGate({
       renderContract: upstreamRenderContract,
       // PDF/raster/post-compose evidence is owned by the compose route.
+      pdfMetadata: pdfArtifact?.pdfMetadata
+        ? {
+            ...pdfArtifact.pdfMetadata,
+            sourceSvgHash:
+              pdfArtifact.pdfMetadata.sourceSvgHash ||
+              pdfArtifact.source_svg_hash ||
+              null,
+          }
+        : null,
+      sheetArtifact,
       panels: panelsForGate,
       panelRegistry: phaseFRequiredPanels,
       targetStoreys: targetStoreysForGate,
@@ -11710,6 +12303,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
         brief?.reference_match === true ||
         process.env.OPENAI_STRICT_IMAGE_GEN === "true",
       imageGenEnabled: process.env.PROJECT_GRAPH_IMAGE_GEN_ENABLED === "true",
+      expectedGeometryHash: compiledProject.geometryHash,
       scope: "upstream_partial",
       // Phase 4: cross-view consistency evidence inputs.
       drawings: drawingsForGate,
@@ -11826,6 +12420,10 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     visuals3d,
     renderedProof: pdfArtifact.renderedProof,
     textRenderStatus: pdfArtifact.renderedProof?.textRenderStatus,
+    generationSeed: generationLifecycle.generationSeed,
+    seedSource: generationLifecycle.seedSource,
+    variationMode: generationLifecycle.variationMode,
+    generationLifecycle,
     presentationMode: sheetArtifact.presentationMode,
     visualFidelityStatus: sheetArtifact.visualFidelityStatus,
     referenceMatch: brief?.reference_match === true,
@@ -12045,6 +12643,19 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     success: qa.status === "pass",
     pipelineVersion: PROJECT_GRAPH_VERTICAL_SLICE_VERSION,
     geometryHash: compiledProject.geometryHash,
+    seed: generationLifecycle.generationSeed,
+    generationSeed: generationLifecycle.generationSeed,
+    seedSource: generationLifecycle.seedSource,
+    variationMode: generationLifecycle.variationMode,
+    generationLifecycle,
+    metadata: {
+      generationSeed: generationLifecycle.generationSeed,
+      seedSource: generationLifecycle.seedSource,
+      variationMode: generationLifecycle.variationMode,
+      generationLifecycle,
+      geometryHash: compiledProject.geometryHash,
+      visualManifestHash: visualManifest.manifestHash,
+    },
     projectTypeSupport: brief.project_type_support || null,
     projectGraph: finalGraph,
     provenanceManifest,
@@ -12093,6 +12704,8 @@ export async function buildArchitectureProjectVerticalSliceWithRepair(
 export const __projectGraphVerticalSliceInternals = Object.freeze({
   normalizeBrief,
   normalizeGenerationSeed,
+  resolveGenerationSeedLifecycle,
+  createAutoGenerationSeed,
   selectDesignOptionForRun,
   seededFraction,
   seededRotation,
@@ -12105,6 +12718,13 @@ export const __projectGraphVerticalSliceInternals = Object.freeze({
   syncProgrammeActuals,
   compileProject,
   buildArchitectReasoningManifest,
+  buildPanelPlacements,
+  buildDrawingSet,
+  buildSheetSvg,
+  buildSheetProvenanceFooter,
+  buildA1PdfSourceMetadata,
+  renderSheetPanel,
+  wrapPngAsSvgPanel,
   // Phase 4: exposed for unit testing the upstream-gate technical-blocker fold.
   applyUpstreamGateTechnicalBlockersToQa,
 });

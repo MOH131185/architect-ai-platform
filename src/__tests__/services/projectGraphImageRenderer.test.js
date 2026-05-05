@@ -53,6 +53,27 @@ describe("projectGraphImageRenderer OpenAI provider behavior", () => {
     expect(rasteriseSvgToPng).not.toHaveBeenCalled();
   });
 
+  test("PROJECT_GRAPH_IMAGE_GEN_ENABLED=false fails closed in strict mode", async () => {
+    process.env.PROJECT_GRAPH_IMAGE_GEN_ENABLED = "false";
+    process.env.OPENAI_STRICT_IMAGE_GEN = "true";
+    process.env.OPENAI_IMAGES_API_KEY = "sk-image-1234";
+
+    await expect(
+      renderProjectGraphPanelImage({
+        panelType: "hero_3d",
+        deterministicSvg: "<svg><rect width='10' height='10'/></svg>",
+        prompt: "Render a building",
+        geometryHash: "geo-hash",
+      }),
+    ).rejects.toMatchObject({
+      code: "OPENAI_STRICT_IMAGE_GEN_FAILED",
+      fallbackReason: "gate_disabled",
+      strictImageGeneration: true,
+    });
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(rasteriseSvgToPng).not.toHaveBeenCalled();
+  });
+
   test("image generation enabled without a server-side key records missing_api_key fallback", async () => {
     process.env.PROJECT_GRAPH_IMAGE_GEN_ENABLED = "true";
     process.env.REACT_APP_OPENAI_API_KEY = "sk-browser-only";

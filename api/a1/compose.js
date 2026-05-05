@@ -2200,6 +2200,11 @@ async function handleComposeRequest(req, res, trace) {
     requestBody.materialPalette ||
     requestBody.metadata?.materialPalette ||
     null;
+  const sheetArtifactFromRequest =
+    requestBody.sheetArtifact ||
+    requestBody.a1Sheet ||
+    requestBody.metadata?.sheetArtifact ||
+    null;
   const openaiProviderFromRequest =
     requestBody.openaiProvider ||
     requestBody.metadata?.openaiProvider ||
@@ -2261,6 +2266,8 @@ async function handleComposeRequest(req, res, trace) {
     visualPanels: visualPanelsFromRequest,
     materialPalette: materialPaletteFromRequest,
     openaiProvider: openaiProviderFromRequest,
+    sheetArtifact: sheetArtifactFromRequest,
+    expectedGeometryHash: requestedHashes.geometryHash || null,
     strictPhotoreal,
     imageGenEnabled,
     scope: "compose_final",

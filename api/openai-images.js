@@ -9,8 +9,14 @@
 
 import { setCorsHeaders, handlePreflight } from "./_shared/cors.js";
 import openaiEnv from "../server/utils/openaiEnv.cjs";
+import projectGraphProductionGuard from "../server/utils/projectGraphProductionGuard.cjs";
 
 const { resolveOpenAIImageApiKeyInfo, buildOpenAIRequestHeaders } = openaiEnv;
+const {
+  PROJECT_PANEL_REQUIRES_GEOMETRY_LOCK_CODE,
+  extractPanelType,
+  isProjectPanelType,
+} = projectGraphProductionGuard;
 
 function getOpenAIImageModel(requestModel) {
   return (
@@ -42,6 +48,23 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed. Use POST." });
   }
 
+  const {
+    prompt,
+    size = "1024x1024",
+    model,
+    n = 1,
+    panelType = null,
+  } = req.body || {};
+  const normalizedPanelType = extractPanelType(req.body || {}) || panelType;
+  if (isProjectPanelType(normalizedPanelType)) {
+    return res.status(422).json({
+      error: PROJECT_PANEL_REQUIRES_GEOMETRY_LOCK_CODE,
+      message:
+        "Project panels must be generated from ProjectGraph control images, not text-only image generation.",
+      panelType: normalizedPanelType,
+    });
+  }
+
   const keyInfo = resolveOpenAIImageApiKeyInfo(process.env);
   if (!keyInfo.hasKey) {
     return res.status(500).json({
@@ -52,7 +75,6 @@ export default async function handler(req, res) {
     });
   }
 
-  const { prompt, size = "1024x1024", model, n = 1 } = req.body || {};
   if (!prompt || !String(prompt).trim()) {
     return res.status(400).json({ error: "Prompt is required" });
   }
@@ -119,6 +141,7 @@ export default async function handler(req, res) {
       model: resolvedModel,
       size: resolvedSize,
       provider: "openai",
+      panelType: normalizedPanelType || null,
       requestId,
       usage: data.usage || null,
       keySource: keyInfo.keySource,

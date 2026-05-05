@@ -2436,7 +2436,7 @@ const ArchitectAIWizardContainer = () => {
         designSpec,
         siteSnapshot,
         featureFlags: {},
-        seed: Date.now(),
+        seed: isProjectGraphMode ? undefined : Date.now(),
         sheetType: "ARCH",
         overlays: [],
       });

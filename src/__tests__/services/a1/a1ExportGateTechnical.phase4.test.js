@@ -1,18 +1,18 @@
-// Phase 4 — A1 export gate: promote technical content-empty + cross-view
-// inconsistency to blocking, keep visual-panel failures warning-only.
+// Phase 4/3 — A1 export gate: promote technical content-empty, cross-view
+// inconsistency, ProjectGraph visual authority, and sheet-source evidence to
+// blocking failures.
 //
 // Coverage:
 //   1. evaluateTechnicalPanelEvidence — floor plans now in technical set;
-//      schedules_notes excluded; per-panel blockedPanels detail; absent
-//      panels stay warning at every scope (stable gate contract).
+//      schedules_notes excluded; per-panel blockedPanels detail.
 //   2. evaluateCrossViewConsistencyEvidence — drawingConsistencyChecks errors
 //      become CROSS_VIEW_INCONSISTENT blockers; warnings stay warnings;
 //      drawings absent → silent pass.
-//   3. extractTechnicalGroupBlockers — filters to technical sources only.
+//   3. extractTechnicalGroupBlockers — extracts upstream export blockers.
 //   4. evaluateFinalA1ExportGate end-to-end — technical issues block;
-//      visual-only issues warn but never block from technical group.
+//      visual authority issues now block as Phase 3 hard gates.
 //   5. applyUpstreamGateTechnicalBlockersToQa — folds technical blockers
-//      into qa.status=fail with code A1_EXPORT_GATE_TECHNICAL_BLOCKED.
+//      and visual authority blockers into qa.status=fail.
 
 import {
   evaluateFinalA1ExportGate,
@@ -39,6 +39,7 @@ const TWO_STOREY_REQUIRED_REGISTRY = [
   "section_AA",
   "section_BB",
   "hero_3d",
+  "exterior_render",
   "interior_3d",
   "axonometric",
   "material_palette",
@@ -51,7 +52,24 @@ const TWO_STOREY_REQUIRED_REGISTRY = [
 // ---------------------------------------------------------------------------
 
 function readyPanel(type) {
-  return { type, status: "ready", hasSvg: true };
+  const isProjectPanel =
+    type.startsWith("floor_plan_") ||
+    type.startsWith("elevation_") ||
+    type.startsWith("section_") ||
+    ["hero_3d", "exterior_render", "axonometric", "interior_3d"].includes(type);
+  return {
+    type,
+    status: "ready",
+    hasSvg: true,
+    ...(isProjectPanel
+      ? {
+          geometryHash: "geometry-hash-1",
+          sourceGeometryHash: "geometry-hash-1",
+          providerUsed: "deterministic",
+          imageProviderUsed: "deterministic",
+        }
+      : {}),
+  };
 }
 
 function blankPanel(type) {
@@ -142,8 +160,26 @@ function gateInputs(overrides = {}) {
     targetStoreys: 2,
     visualManifest: {
       manifestHash: "manifest-hash-1",
+      geometryHash: "geometry-hash-1",
     },
-    visualPanels: [],
+    visualPanels: [
+      "hero_3d",
+      "exterior_render",
+      "axonometric",
+      "interior_3d",
+    ].map((type) => ({
+      type,
+      geometryHash: "geometry-hash-1",
+      sourceGeometryHash: "geometry-hash-1",
+      visualManifestHash: "manifest-hash-1",
+      visualIdentityLocked: true,
+      referenceSource: "compiled_3d_control_svg",
+      provider: "openai",
+      providerUsed: "openai",
+      imageProviderUsed: "openai",
+      imageRenderFallback: false,
+      controlSvgHash: `control-${type}`,
+    })),
     materialPalette: { cards: [{ name: "Brick" }] },
     openaiProvider: { ready: true },
     drawings: fullDrawingSet(),
@@ -188,32 +224,30 @@ describe("Phase 4 — evaluateTechnicalPanelEvidence (via gate)", () => {
     expect(gate.evidence.technicalPanelStatus.blank).toEqual([]);
   });
 
-  test("axonometric and site_diagram are listed for later phases — blank blocks today", () => {
+  test("axonometric is visual authority, not technical SVG authority", () => {
     const panels = fullPanelSet().map((panel) =>
       panel.type === "axonometric" ? blankPanel(panel.type) : panel,
     );
     const gate = evaluateFinalA1ExportGate(gateInputs({ panels }));
-    expect(gate.evidence.technicalPanelStatus.status).toBe("blocked");
-    expect(gate.evidence.technicalPanelStatus.blank).toContain("axonometric");
+    expect(gate.evidence.technicalPanelStatus.status).toBe("pass");
+    expect(gate.evidence.technicalPanelStatus.blank).not.toContain(
+      "axonometric",
+    );
   });
 
-  test("panels missing → warning at every scope (stable gate contract: absent evidence does not block)", () => {
-    // Phase 4 design rule: real content-empty enforcement fires via
-    // panelIsBlank only when panels ARE provided. Absent panels stays a
-    // warning at every scope so legacy compose callers that don't pass
-    // per-panel data continue to pass the gate (their hard failures come
-    // from PDF/OCR/glyph evidence, not technical panel presence).
+  test("panels missing blocks when required technical SVG registry is present", () => {
     const upstream = evaluateFinalA1ExportGate(
       gateInputs({ panels: [], scope: "upstream_partial" }),
     );
-    expect(upstream.evidence.technicalPanelStatus.status).toBe("warning");
-    expect(upstream.evidence.technicalPanelStatus.blockers).toEqual([]);
+    expect(upstream.evidence.technicalPanelStatus.status).toBe("blocked");
+    expect(upstream.evidence.technicalPanelStatus.codes).toContain(
+      "TECHNICAL_SVG_PANEL_MISSING",
+    );
 
     const composeFinal = evaluateFinalA1ExportGate(
       gateInputs({ panels: [], scope: "compose_final" }),
     );
-    expect(composeFinal.evidence.technicalPanelStatus.status).toBe("warning");
-    expect(composeFinal.evidence.technicalPanelStatus.blockers).toEqual([]);
+    expect(composeFinal.evidence.technicalPanelStatus.status).toBe("blocked");
   });
 
   test("all elevation panels OK → pass", () => {
@@ -267,9 +301,12 @@ describe("Phase 4 — evaluateCrossViewConsistencyEvidence (via gate)", () => {
     ).toBeGreaterThan(0);
   });
 
-  test("valid drawings → pass", () => {
+  test("valid drawings do not create cross-view blockers", () => {
     const gate = evaluateFinalA1ExportGate(gateInputs());
-    expect(gate.evidence.crossViewConsistencyStatus.status).toBe("pass");
+    expect(["pass", "warning"]).toContain(
+      gate.evidence.crossViewConsistencyStatus.status,
+    );
+    expect(gate.evidence.crossViewConsistencyStatus.blockers).toEqual([]);
   });
 
   test("drawings absent → silent pass (no opinion, no warning)", () => {
@@ -324,21 +361,18 @@ describe("Phase 4 — extractTechnicalGroupBlockers", () => {
     expect(summary.sources).toContain("crossViewConsistencyStatus");
   });
 
-  test("visual-panel manifest mismatch is NOT in technical group (warning-only)", () => {
-    const visualPanels = [
-      {
-        type: "hero_3d",
-        visualManifestHash: "different-hash",
-        visualIdentityLocked: true,
-      },
-    ];
+  test("visual-panel manifest mismatch is included in upstream authority blockers", () => {
+    const base = gateInputs();
+    const visualPanels = base.visualPanels.map((panel) =>
+      panel.type === "hero_3d"
+        ? { ...panel, visualManifestHash: "different-hash" }
+        : panel,
+    );
     const gate = evaluateFinalA1ExportGate(gateInputs({ visualPanels }));
     const summary = extractTechnicalGroupBlockers(gate);
-    // The visual manifest mismatch produces a gate-level blocker, but
-    // extractTechnicalGroupBlockers must NOT include it in the technical
-    // summary — visual concerns stay non-fatal at the slice level.
-    expect(summary.sources).not.toContain("visualPanelStatus");
-    expect(summary.sources).not.toContain("visualManifestStatus");
+    expect(summary.blocked).toBe(true);
+    expect(summary.sources).toContain("projectPanelAuthorityStatus");
+    expect(summary.codes).toContain("VISUAL_MANIFEST_HASH_MISMATCH");
   });
 
   test("not_applicable gate (preview, not final A1) → blocked=false", () => {
@@ -353,24 +387,22 @@ describe("Phase 4 — extractTechnicalGroupBlockers", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 4. evaluateFinalA1ExportGate — visual-only failures stay warning-only.
+// 4. evaluateFinalA1ExportGate — visual authority failures are hard gates.
 // ---------------------------------------------------------------------------
 
 describe("Phase 4 — gate-level visual vs technical separation", () => {
-  test("visual manifest mismatch blocks at gate level but is excluded from technical-group", () => {
-    const visualPanels = [
-      {
-        type: "hero_3d",
-        visualManifestHash: "different-hash",
-        visualIdentityLocked: true,
-      },
-    ];
+  test("visual manifest mismatch blocks at gate level and upstream summary", () => {
+    const base = gateInputs();
+    const visualPanels = base.visualPanels.map((panel) =>
+      panel.type === "hero_3d"
+        ? { ...panel, visualManifestHash: "different-hash" }
+        : panel,
+    );
     const gate = evaluateFinalA1ExportGate(gateInputs({ visualPanels }));
-    // Gate may report blocked overall (because visualPanelStatus blocks),
-    // but the technical-group filter must keep blocked=false so the slice
-    // does not 422 on visual-only issues.
     const summary = extractTechnicalGroupBlockers(gate);
-    expect(summary.blocked).toBe(false);
+    expect(gate.status).toBe("blocked");
+    expect(summary.blocked).toBe(true);
+    expect(summary.sources).toContain("projectPanelAuthorityStatus");
   });
 });
 
@@ -432,18 +464,20 @@ describe("Phase 4 — applyUpstreamGateTechnicalBlockersToQa", () => {
     expect(result.issues[0].details.codes).toContain("CROSS_VIEW_INCONSISTENT");
   });
 
-  test("visual-only failures → qa unchanged (warning-only at slice level)", () => {
-    const visualPanels = [
-      {
-        type: "hero_3d",
-        visualManifestHash: "different-hash",
-        visualIdentityLocked: true,
-      },
-    ];
+  test("visual authority failures → qa.status=fail", () => {
+    const base = gateInputs();
+    const visualPanels = base.visualPanels.map((panel) =>
+      panel.type === "hero_3d"
+        ? { ...panel, visualManifestHash: "different-hash" }
+        : panel,
+    );
     const gate = evaluateFinalA1ExportGate(gateInputs({ visualPanels }));
     const qa = passingQa();
     const result = applyUpstreamGateTechnicalBlockersToQa(qa, gate);
-    expect(result.status).toBe("pass");
-    expect(result.upstreamGateTechnicalBlocked).toBeUndefined();
+    expect(result.status).toBe("fail");
+    expect(result.upstreamGateTechnicalBlocked).toBe(true);
+    expect(result.issues[0].details.codes).toContain(
+      "VISUAL_MANIFEST_HASH_MISMATCH",
+    );
   });
 });

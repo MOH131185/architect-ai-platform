@@ -5,6 +5,7 @@ import {
   validateGenerateProjectRequest,
 } from "../../src/services/models/architectureBackendContracts.js";
 import { getRecommendedModel } from "../../src/services/models/openSourceModelRouter.js";
+import projectGraphProductionGuard from "../../server/utils/projectGraphProductionGuard.cjs";
 import {
   config,
   ensureFeatureEnabled,
@@ -16,6 +17,8 @@ import {
 } from "./_shared.js";
 
 export { config };
+
+const { rejectLegacyProjectGenerationIfDisabled } = projectGraphProductionGuard;
 
 export default async function handler(req, res) {
   if (handleOptions(req, res)) return;
@@ -30,6 +33,15 @@ export default async function handler(req, res) {
     );
   }
   if (rejectInvalidMethod(req, res)) return;
+  if (
+    rejectLegacyProjectGenerationIfDisabled(
+      req,
+      res,
+      "/api/models/generate-project",
+    )
+  ) {
+    return;
+  }
   if (
     !ensureFeatureEnabled(
       res,

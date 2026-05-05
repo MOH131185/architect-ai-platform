@@ -1,0 +1,34 @@
+{
+  "description": "Phase 6 golden acceptance fixture: UK detached house A1 SVG technical panels plus image2 ProjectGraph visual panels.",
+  "brief": {
+    "project_name": "Golden UK Detached House",
+    "building_type": "detached-house",
+    "country": "UK",
+    "storeys": 2,
+    "footprint_m": {
+      "width": 8.4,
+      "depth": 7.2
+    },
+    "roof": {
+      "type": "gable",
+      "ridge_orientation": "east-west",
+      "material": "charcoal standing seam"
+    },
+    "walls": "buff brick",
+    "windows": "white frames",
+    "entrance": "timber entrance bay",
+    "programme": {
+      "ground": ["hall", "living room", "kitchen/dining", "WC", "utility"],
+      "first": ["3 bedrooms", "bathroom", "landing"]
+    }
+  },
+  "expected": {
+    "geometryHash": "golden-uk-house-geometry-hash",
+    "visualManifestHash": "golden-uk-house-visual-manifest-hash",
+    "layout": "presentation-v3",
+    "sheet": "A1 landscape",
+    "visualReferenceSource": "compiled_3d_control_svg",
+    "imageProviderUsed": "openai",
+    "imageRenderFallback": false
+  }
+}

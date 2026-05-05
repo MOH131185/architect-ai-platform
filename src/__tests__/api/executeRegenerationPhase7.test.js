@@ -2,6 +2,16 @@ import generateProjectHandler from "../../../api/models/generate-project.js";
 import executeRegenerationHandler from "../../../api/models/execute-regeneration.js";
 import { resetFeatureFlags } from "../../config/featureFlags.js";
 
+const originalAllowLegacyGeneration = process.env.ALLOW_LEGACY_GENERATION;
+
+function restoreAllowLegacyGeneration() {
+  if (originalAllowLegacyGeneration === undefined) {
+    delete process.env.ALLOW_LEGACY_GENERATION;
+    return;
+  }
+  process.env.ALLOW_LEGACY_GENERATION = originalAllowLegacyGeneration;
+}
+
 function createMockResponse() {
   return {
     headers: {},
@@ -27,7 +37,12 @@ function createMockResponse() {
 }
 
 describe("Phase 7 execute-regeneration route", () => {
+  beforeEach(() => {
+    process.env.ALLOW_LEGACY_GENERATION = "true";
+  });
+
   afterEach(() => {
+    restoreAllowLegacyGeneration();
     resetFeatureFlags();
   });
 

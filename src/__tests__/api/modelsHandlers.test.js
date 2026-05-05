@@ -19,6 +19,16 @@ import {
   setFeatureFlag,
 } from "../../config/featureFlags.js";
 
+const originalAllowLegacyGeneration = process.env.ALLOW_LEGACY_GENERATION;
+
+function restoreAllowLegacyGeneration() {
+  if (originalAllowLegacyGeneration === undefined) {
+    delete process.env.ALLOW_LEGACY_GENERATION;
+    return;
+  }
+  process.env.ALLOW_LEGACY_GENERATION = originalAllowLegacyGeneration;
+}
+
 function createMockResponse() {
   return {
     headers: {},
@@ -44,7 +54,12 @@ function createMockResponse() {
 }
 
 describe("Phase 1 model route handlers", () => {
+  beforeEach(() => {
+    process.env.ALLOW_LEGACY_GENERATION = "true";
+  });
+
   afterEach(() => {
+    restoreAllowLegacyGeneration();
     resetFeatureFlags();
   });
 
