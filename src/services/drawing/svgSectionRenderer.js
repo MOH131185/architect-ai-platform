@@ -1350,6 +1350,21 @@ export function renderSectionSvg(
         rawVernacularPack.packId.trim().length > 0));
   const vernacularPack = hasResolvedVernacularPack ? rawVernacularPack : null;
   const packParapet = vernacularPack?.parapet_default === true;
+  // Mirror the elevation renderer's pack-derived hints so the section root
+  // attrs and the inner pack-attrs <g> carry the full set the composed sheet
+  // and downstream consumers expect (data-pack-semi-basement, -facade-stucco,
+  // -window-language). Without these the elevation/section pair was emitting
+  // an asymmetric set of pack attrs (Codex P1 review on PR #96).
+  const packSemiBasement = vernacularPack?.semi_basement_default === true;
+  const packWindowLanguageRaw = String(
+    vernacularPack?.window_language || "",
+  ).toLowerCase();
+  const packMaterialNames = Array.isArray(vernacularPack?.materials)
+    ? vernacularPack.materials.filter(
+        (m) => typeof m === "string" && m.trim().length > 0,
+      )
+    : [];
+  const packHasStucco = packMaterialNames.some((m) => /stucco|render/i.test(m));
   const baseRoofLanguage =
     resolvedStyleDNA.roof_language || geometry.roof?.type || "pitched gable";
   const roofLanguage = packParapet
@@ -1739,11 +1754,15 @@ export function renderSectionSvg(
   `
     : "";
 
-  // Phase D2 — root data attrs for vernacular pack parity with elevation.
+  // Phase D2 + Codex P1 follow-up — root data attrs for vernacular pack
+  // parity with elevation. Section now carries the full pack attr set
+  // (data-vernacular-pack, data-pack-parapet, data-pack-semi-basement,
+  // data-pack-window-language, data-pack-facade-stucco) so downstream
+  // consumers can inspect the same fields on either drawing type.
   const packDataAttrs = vernacularPack
     ? ` data-vernacular-pack="${escapeXml(
         vernacularPack.ukVernacularPackId || vernacularPack.packId || "",
-      )}" data-pack-parapet="${packParapet}"`
+      )}" data-pack-parapet="${packParapet}" data-pack-semi-basement="${packSemiBasement}" data-pack-window-language="${escapeXml(packWindowLanguageRaw)}" data-pack-facade-stucco="${packHasStucco}"`
     : "";
   // Sheet composition unwraps the panel SVG into a <g data-panel-id="…">, so
   // outer-<svg> attributes are dropped from the composed sheet. Mirror the
@@ -1751,7 +1770,7 @@ export function renderSectionSvg(
   const packAttrsGroup = vernacularPack
     ? `<g class="cad-vernacular-pack-attrs" data-vernacular-pack="${escapeXml(
         vernacularPack.ukVernacularPackId || vernacularPack.packId || "",
-      )}" data-pack-parapet="${packParapet}"/>`
+      )}" data-pack-parapet="${packParapet}" data-pack-semi-basement="${packSemiBasement}" data-pack-window-language="${escapeXml(packWindowLanguageRaw)}" data-pack-facade-stucco="${packHasStucco}"/>`
     : "";
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-theme="${SECTION_THEME.name}" data-bounds-source="${envelopeBounds.source}" data-a1-quality-polish="${sheetMode ? "section_datums_dimensions_v2" : "section_standard"}" data-section-edge-clearance-status="${sectionVisualMetrics.edgeClearanceStatus}" data-section-body-occupancy="${sectionVisualMetrics.bodyOccupancyRatio}" data-blueprint-grade="${blueprintGrade ? "true" : "false"}"${packDataAttrs}>

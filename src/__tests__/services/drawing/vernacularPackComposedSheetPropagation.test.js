@@ -237,7 +237,7 @@ describe("renderElevationSvg — pack attrs survive composition unwrap", () => {
 });
 
 describe("renderSectionSvg — pack attrs survive composition unwrap", () => {
-  test('W2 pack: inner <g class="cad-vernacular-pack-attrs"> emits parapet attr', () => {
+  test('W2 pack: inner <g class="cad-vernacular-pack-attrs"> emits the full pack attr set', () => {
     const result = renderSectionSvg(
       makeFixtureGeometry(),
       {},
@@ -249,17 +249,61 @@ describe("renderSectionSvg — pack attrs survive composition unwrap", () => {
       },
     );
     expect(result.svg).toBeTruthy();
-    // Outer <svg> attrs (existing behaviour).
+    // Outer <svg> attrs (existing behaviour, now with full parity).
     expect(result.svg).toContain(
       'data-vernacular-pack="london-stucco-terrace"',
     );
     expect(result.svg).toContain('data-pack-parapet="true"');
-    // Inner <g> mirror.
+    expect(result.svg).toContain('data-pack-semi-basement="true"');
+    expect(result.svg).toContain('data-pack-facade-stucco="true"');
+    // Inner <g> mirror — full parity with elevation, all four pack attrs.
     expect(result.svg).toMatch(
       /<g class="cad-vernacular-pack-attrs"[^>]*data-vernacular-pack="london-stucco-terrace"/,
     );
     expect(result.svg).toMatch(
       /<g class="cad-vernacular-pack-attrs"[^>]*data-pack-parapet="true"/,
+    );
+    expect(result.svg).toMatch(
+      /<g class="cad-vernacular-pack-attrs"[^>]*data-pack-semi-basement="true"/,
+    );
+    expect(result.svg).toMatch(
+      /<g class="cad-vernacular-pack-attrs"[^>]*data-pack-facade-stucco="true"/,
+    );
+    // window-language is included if the pack defines one (W2 has it).
+    expect(result.svg).toMatch(
+      /<g class="cad-vernacular-pack-attrs"[^>]*data-pack-window-language="[^"]+"/,
+    );
+  });
+
+  test("inner pack-attrs <g> survives the section sheet-composition unwrap simulation", () => {
+    const result = renderSectionSvg(
+      makeFixtureGeometry(),
+      {},
+      {
+        sectionType: "longitudinal",
+        vernacularPack: W2_PROPAGATED_PACK,
+        sheetMode: true,
+        allowWeakSectionFallback: true,
+      },
+    );
+    // Mimic the composer (renderSheetPanel) which extracts the inner body
+    // and re-wraps it in a fresh <svg>/<g>, dropping the original outer
+    // <svg ...> attributes.
+    const innerBody = result.svg
+      .replace(/^[\s\S]*?<svg[^>]*>/, "")
+      .replace(/<\/svg>\s*$/, "");
+    expect(innerBody).not.toContain("<?xml");
+    expect(innerBody).toMatch(
+      /<g class="cad-vernacular-pack-attrs"[^>]*data-vernacular-pack="london-stucco-terrace"/,
+    );
+    expect(innerBody).toMatch(
+      /<g class="cad-vernacular-pack-attrs"[^>]*data-pack-parapet="true"/,
+    );
+    expect(innerBody).toMatch(
+      /<g class="cad-vernacular-pack-attrs"[^>]*data-pack-semi-basement="true"/,
+    );
+    expect(innerBody).toMatch(
+      /<g class="cad-vernacular-pack-attrs"[^>]*data-pack-facade-stucco="true"/,
     );
   });
 
@@ -275,5 +319,36 @@ describe("renderSectionSvg — pack attrs survive composition unwrap", () => {
     );
     expect(result.svg).toBeTruthy();
     expect(result.svg).not.toContain("cad-vernacular-pack-attrs");
+    // Defensive: assert NONE of the per-attr names leak on the no-pack path.
+    expect(result.svg).not.toContain("data-vernacular-pack=");
+    expect(result.svg).not.toContain("data-pack-parapet=");
+    expect(result.svg).not.toContain("data-pack-semi-basement=");
+    expect(result.svg).not.toContain("data-pack-facade-stucco=");
+    expect(result.svg).not.toContain("data-pack-window-language=");
+  });
+
+  test("buildingTypeDefault style_provenance: section emits no pack attrs", () => {
+    const fallbackProvenance = {
+      ukVernacularPackId: null,
+      packId: null,
+      packLabel: null,
+      source: "buildingTypeDefault",
+    };
+    const result = renderSectionSvg(
+      makeFixtureGeometry(),
+      {},
+      {
+        sectionType: "longitudinal",
+        vernacularPack: fallbackProvenance,
+        sheetMode: true,
+        allowWeakSectionFallback: true,
+      },
+    );
+    expect(result.svg).toBeTruthy();
+    expect(result.svg).not.toContain("cad-vernacular-pack-attrs");
+    expect(result.svg).not.toContain("data-vernacular-pack=");
+    expect(result.svg).not.toContain("data-pack-parapet=");
+    expect(result.svg).not.toContain("data-pack-semi-basement=");
+    expect(result.svg).not.toContain("data-pack-facade-stucco=");
   });
 });
