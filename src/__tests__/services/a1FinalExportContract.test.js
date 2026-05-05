@@ -915,6 +915,81 @@ describe("a1FinalExportContract", () => {
       expect(gate.blockers.join(" ")).toMatch(blockerPattern);
     });
 
+    test("blocks final sheetArtifact.svgString when sheet svg hash is missing", () => {
+      const gate = evaluateFinalA1ExportGate(
+        buildHealthyGateInputs({
+          sheetArtifact: {
+            svgString:
+              '<svg xmlns="http://www.w3.org/2000/svg"><rect width="20" height="20"/></svg>',
+            svgHash: null,
+          },
+          pdfMetadata: {
+            ...HEALTHY_PDF_METADATA,
+            sourceSvgHash: null,
+          },
+        }),
+      );
+
+      expect(gate.status).toBe("blocked");
+      expect(gate.allowed).toBe(false);
+      expect(gate.blockers.join(" ")).toMatch(
+        /A1_SHEET_SVG_HASH_MISSING|sheetArtifact\.svgHash/,
+      );
+      expect(gate.evidence.sheetArtifactStatus).toEqual(
+        expect.objectContaining({
+          hasSheetSvgString: true,
+          sheetSvgHash: null,
+        }),
+      );
+    });
+
+    test("blocks blank final sheetArtifact.svgString", () => {
+      const gate = evaluateFinalA1ExportGate(
+        buildHealthyGateInputs({
+          sheetArtifact: {
+            svgString: "",
+            svgHash: "sheet-svg-hash-OK",
+          },
+          pdfMetadata: {
+            ...HEALTHY_PDF_METADATA,
+            sourceSvgHash: "sheet-svg-hash-OK",
+          },
+        }),
+      );
+
+      expect(gate.status).toBe("blocked");
+      expect(gate.blockers.join(" ")).toMatch(
+        /A1_SHEET_SOURCE_SVG_MISSING|sheetArtifact\.svgString/,
+      );
+    });
+
+    test("blocks PDF source hash mismatch against sheetArtifact.svgString hash", () => {
+      const gate = evaluateFinalA1ExportGate(
+        buildHealthyGateInputs({
+          sheetArtifact: {
+            svgString:
+              '<svg xmlns="http://www.w3.org/2000/svg"><rect width="20" height="20"/></svg>',
+            svgHash: "sheet-svg-hash-OK",
+          },
+          pdfMetadata: {
+            ...HEALTHY_PDF_METADATA,
+            sourceSvgHash: "reconstructed-empty-frame-hash",
+          },
+        }),
+      );
+
+      expect(gate.status).toBe("blocked");
+      expect(gate.blockers.join(" ")).toMatch(
+        /A1_PDF_SOURCE_SVG_HASH_MISMATCH/,
+      );
+      expect(gate.evidence.sheetArtifactStatus).toEqual(
+        expect.objectContaining({
+          sourceSvgHash: "reconstructed-empty-frame-hash",
+          sheetSvgHash: "sheet-svg-hash-OK",
+        }),
+      );
+    });
+
     test("missing material provenance warns", () => {
       const gate = evaluateFinalA1ExportGate({
         renderContract: baseRenderContract(),
