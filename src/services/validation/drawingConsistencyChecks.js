@@ -1,7 +1,36 @@
 import { isFeatureEnabled } from "../../config/featureFlags.js";
 
+const VISUAL_PANEL_LOCK_TYPES = Object.freeze([
+  "hero_3d",
+  "exterior_render",
+  "axonometric",
+  "interior_3d",
+]);
+
+const TECHNICAL_PANEL_AUTHORITY_TYPES = Object.freeze([
+  "floor_plan_ground",
+  "floor_plan_first",
+  "floor_plan_level2",
+  "floor_plan_level3",
+  "floor_plan_level4",
+  "floor_plan_level5",
+  "floor_plan_level6",
+  "floor_plan_level7",
+  "elevation_north",
+  "elevation_south",
+  "elevation_east",
+  "elevation_west",
+  "section_AA",
+  "section_BB",
+]);
+
+function unique(items = []) {
+  return [...new Set((items || []).filter(Boolean))];
+}
+
 function hasSvgPayload(entry) {
-  return Boolean(entry?.svg && String(entry.svg).includes("<svg"));
+  const svg = entry?.svg || entry?.svgString || entry?.metadata?.svgString;
+  return Boolean(svg && String(svg).includes("<svg"));
 }
 
 function classTokenRegex(token) {
@@ -47,6 +76,217 @@ function valueFromEntry(entry, keys = []) {
     }
   }
   return null;
+}
+
+function panelTypeOf(entry) {
+  return entry?.type || entry?.panelType || entry?.panel_type || null;
+}
+
+function normalizePanelEntries(panels = {}) {
+  if (Array.isArray(panels)) {
+    return panels
+      .filter((panel) => panel !== undefined)
+      .map((panel) => ({
+        panel,
+        type: panelTypeOf(panel),
+      }));
+  }
+  if (!panels || typeof panels !== "object") return [];
+  return Object.entries(panels).map(([type, panel]) => ({
+    panel,
+    type: panelTypeOf(panel) || type,
+  }));
+}
+
+function panelMetadataOf(panel) {
+  return panel?.metadata && typeof panel.metadata === "object"
+    ? panel.metadata
+    : {};
+}
+
+function readPanelField(panel, field) {
+  const metadata = panelMetadataOf(panel);
+  const candidates = [
+    panel,
+    metadata,
+    panel?.meta,
+    panel?.renderProvenance,
+    metadata?.renderProvenance,
+    panel?.imageRenderMetadata,
+    metadata?.imageRenderMetadata,
+    panel?.technicalQualityMetadata,
+    metadata?.technicalQualityMetadata,
+  ];
+  for (const candidate of candidates) {
+    if (candidate && Object.prototype.hasOwnProperty.call(candidate, field)) {
+      return candidate[field];
+    }
+  }
+  return null;
+}
+
+function readAnyPanelField(panel, fields = []) {
+  for (const field of fields) {
+    const value = readPanelField(panel, field);
+    if (value !== null && value !== undefined && value !== "") return value;
+  }
+  return null;
+}
+
+function readPanelGeometryHash(panel) {
+  return readAnyPanelField(panel, [
+    "geometryHash",
+    "sourceGeometryHash",
+    "source_model_hash",
+    "sourceModelHash",
+    "geometry_hash",
+  ]);
+}
+
+function readPanelVisualManifestHash(panel) {
+  return readAnyPanelField(panel, [
+    "visualManifestHash",
+    "visual_manifest_hash",
+  ]);
+}
+
+function normalizeAuthorityToken(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase();
+}
+
+function booleanPanelField(panel, field) {
+  const value = readPanelField(panel, field);
+  return value === true || value === "true";
+}
+
+function isImageModelToken(value) {
+  const token = normalizeAuthorityToken(value);
+  if (!token || token === "deterministic" || token === "none") return false;
+  return (
+    token.includes("openai") ||
+    token.includes("gpt-image") ||
+    token.includes("dall-e") ||
+    token.includes("dalle") ||
+    token.includes("flux") ||
+    token.includes("stability") ||
+    token.includes("midjourney") ||
+    token === "image_model" ||
+    token === "text_to_image"
+  );
+}
+
+function modelTokenIndicatesImageGeneration(value) {
+  const token = normalizeAuthorityToken(value);
+  if (!token) return false;
+  return (
+    token.includes("gpt-image") ||
+    token.includes("dall-e") ||
+    token.includes("dalle") ||
+    token.includes("flux") ||
+    token.includes("stability") ||
+    token.includes("midjourney") ||
+    token.includes("image")
+  );
+}
+
+function panelUsesImageModel(panel) {
+  return [
+    readPanelField(panel, "provider"),
+    readPanelField(panel, "providerUsed"),
+    readPanelField(panel, "imageProviderUsed"),
+    readPanelField(panel, "generationProvider"),
+  ].some(isImageModelToken);
+}
+
+function technicalPanelUsesImageModel(panel) {
+  if (booleanPanelField(panel, "openaiImageUsed")) return true;
+  if (booleanPanelField(panel, "imageModelGenerated")) return true;
+  if (booleanPanelField(panel, "technicalDrawingFromImageModel")) return true;
+  if (panelUsesImageModel(panel)) return true;
+  return [
+    readPanelField(panel, "model"),
+    readPanelField(panel, "imageRenderModel"),
+  ].some(modelTokenIndicatesImageGeneration);
+}
+
+function visualPanelUsesTextOnlyGeneration(panel) {
+  if (!panelUsesImageModel(panel)) return false;
+  const referenceSource = normalizeAuthorityToken(
+    readPanelField(panel, "referenceSource"),
+  );
+  const generationMode = normalizeAuthorityToken(
+    readAnyPanelField(panel, [
+      "generationMode",
+      "imageGenerationMode",
+      "renderMode",
+      "visualRenderMode",
+      "source",
+    ]),
+  );
+  if (
+    referenceSource === "compiled_3d_control_svg" ||
+    generationMode === "geometry_locked_image_render"
+  ) {
+    return false;
+  }
+  return (
+    !referenceSource ||
+    referenceSource.includes("text") ||
+    referenceSource.includes("prompt") ||
+    generationMode.includes("text_to_image") ||
+    generationMode.includes("prompt")
+  );
+}
+
+function isTechnicalPanelType(type) {
+  if (!type) return false;
+  if (TECHNICAL_PANEL_AUTHORITY_TYPES.includes(type)) return true;
+  return (
+    String(type).startsWith("floor_plan_") ||
+    String(type).startsWith("elevation_") ||
+    String(type).startsWith("section_")
+  );
+}
+
+function technicalPanelHasDeterministicSvgSource(panel) {
+  const renderer = normalizeAuthorityToken(readPanelField(panel, "renderer"));
+  const source = normalizeAuthorityToken(readPanelField(panel, "source"));
+  const sourceType = normalizeAuthorityToken(
+    readPanelField(panel, "sourceType"),
+  );
+  const providerUsed = normalizeAuthorityToken(
+    readPanelField(panel, "providerUsed"),
+  );
+  const imageProviderUsed = normalizeAuthorityToken(
+    readPanelField(panel, "imageProviderUsed"),
+  );
+  return (
+    renderer === "deterministic_svg" ||
+    providerUsed === "deterministic_svg" ||
+    sourceType === "deterministic_svg" ||
+    source === "compiled_project_technical_panel" ||
+    source === "compiled_technical_svg" ||
+    (imageProviderUsed === "none" && renderer === "deterministic_svg")
+  );
+}
+
+function authorityError(code, message, details = {}) {
+  return {
+    code,
+    message: `${code}: ${message}`,
+    details,
+  };
+}
+
+function pushAuthorityError(errors, code, panels, message) {
+  if (!panels.length) return;
+  errors.push(
+    authorityError(code, message(panels), {
+      panels,
+    }),
+  );
 }
 
 function hasAnyClassToken(svg, tokens = []) {
@@ -490,6 +730,262 @@ function validateCrossViewConsistency({ drawings = {}, projectGeometry = {} }) {
   return warnings;
 }
 
+export function validateVisualPanelLocks({
+  panels = {},
+  expectedGeometryHash = null,
+  expectedVisualManifestHash = null,
+  imageGenEnabled = false,
+  strictPhotoreal = false,
+} = {}) {
+  const warnings = [];
+  const errors = [];
+  const entries = normalizePanelEntries(panels);
+  const panelMap = new Map();
+  for (const entry of entries) {
+    if (VISUAL_PANEL_LOCK_TYPES.includes(entry.type)) {
+      panelMap.set(entry.type, entry.panel);
+    }
+  }
+
+  const missingVisualPanels = [];
+  const missingGeometryHashPanels = [];
+  const geometryMismatchPanels = [];
+  const geometryHashByPanel = {};
+  const missingVisualManifestHashPanels = [];
+  const visualManifestMismatchPanels = [];
+  const visualManifestHashByPanel = {};
+  const unlockedVisualPanels = [];
+  const textOnlyVisualPanels = [];
+  const strictFallbackPanels = [];
+
+  for (const type of VISUAL_PANEL_LOCK_TYPES) {
+    const panel = panelMap.get(type);
+    if (!panel) {
+      missingVisualPanels.push(type);
+      continue;
+    }
+
+    const geometryHash = readPanelGeometryHash(panel);
+    if (!geometryHash) {
+      missingGeometryHashPanels.push(type);
+    } else {
+      geometryHashByPanel[type] = geometryHash;
+      if (expectedGeometryHash && geometryHash !== expectedGeometryHash) {
+        geometryMismatchPanels.push(type);
+      }
+    }
+
+    const visualManifestHash = readPanelVisualManifestHash(panel);
+    if (!visualManifestHash) {
+      missingVisualManifestHashPanels.push(type);
+    } else {
+      visualManifestHashByPanel[type] = visualManifestHash;
+      if (
+        expectedVisualManifestHash &&
+        visualManifestHash !== expectedVisualManifestHash
+      ) {
+        visualManifestMismatchPanels.push(type);
+      }
+    }
+
+    if (readPanelField(panel, "visualIdentityLocked") !== true) {
+      unlockedVisualPanels.push(type);
+    }
+
+    if (visualPanelUsesTextOnlyGeneration(panel)) {
+      textOnlyVisualPanels.push(type);
+    }
+
+    if (
+      imageGenEnabled === true &&
+      strictPhotoreal === true &&
+      booleanPanelField(panel, "imageRenderFallback")
+    ) {
+      strictFallbackPanels.push(type);
+    }
+  }
+
+  pushAuthorityError(
+    errors,
+    "VISUAL_PANEL_MISSING",
+    missingVisualPanels,
+    (panelTypes) =>
+      `Required visual panel(s) missing: ${panelTypes.join(", ")}.`,
+  );
+  pushAuthorityError(
+    errors,
+    "PROJECT_PANEL_GEOMETRY_HASH_MISSING",
+    missingGeometryHashPanels,
+    (panelTypes) =>
+      `Visual panel(s) missing geometryHash/sourceGeometryHash/source_model_hash: ${panelTypes.join(", ")}.`,
+  );
+  pushAuthorityError(
+    errors,
+    "PROJECT_PANEL_GEOMETRY_HASH_MISMATCH",
+    geometryMismatchPanels,
+    (panelTypes) =>
+      `Visual panel geometry hash differs from expectedGeometryHash for: ${panelTypes.join(", ")}.`,
+  );
+  pushAuthorityError(
+    errors,
+    "VISUAL_MANIFEST_HASH_MISSING",
+    missingVisualManifestHashPanels,
+    (panelTypes) =>
+      `Visual panel(s) missing visualManifestHash: ${panelTypes.join(", ")}.`,
+  );
+  pushAuthorityError(
+    errors,
+    "VISUAL_MANIFEST_HASH_MISMATCH",
+    visualManifestMismatchPanels,
+    (panelTypes) =>
+      `Visual panel visualManifestHash differs from expectedVisualManifestHash for: ${panelTypes.join(", ")}.`,
+  );
+  pushAuthorityError(
+    errors,
+    "VISUAL_IDENTITY_UNLOCKED",
+    unlockedVisualPanels,
+    (panelTypes) =>
+      `Visual panel(s) are missing visualIdentityLocked=true: ${panelTypes.join(", ")}.`,
+  );
+  pushAuthorityError(
+    errors,
+    "VISUAL_PANEL_TEXT_ONLY_IMAGE_GENERATION",
+    textOnlyVisualPanels,
+    (panelTypes) =>
+      `Visual panel(s) used an image model without compiled_3d_control_svg referenceSource: ${panelTypes.join(", ")}.`,
+  );
+  pushAuthorityError(
+    errors,
+    "STRICT_IMAGE_RENDER_FALLBACK",
+    strictFallbackPanels,
+    (panelTypes) =>
+      `imageRenderFallback=true while image generation and strict photoreal mode are enabled: ${panelTypes.join(", ")}.`,
+  );
+
+  return {
+    warnings,
+    errors,
+    checks: {
+      requiredVisualPanelTypes: VISUAL_PANEL_LOCK_TYPES.slice(),
+      evaluatedPanelCount: panelMap.size,
+      expectedGeometryHash,
+      expectedVisualManifestHash,
+      imageGenEnabled: imageGenEnabled === true,
+      strictPhotoreal: strictPhotoreal === true,
+      missingVisualPanels,
+      missingGeometryHashPanels,
+      geometryMismatchPanels,
+      geometryHashByPanel,
+      geometryHashes: unique(Object.values(geometryHashByPanel)),
+      missingVisualManifestHashPanels,
+      visualManifestMismatchPanels,
+      visualManifestHashByPanel,
+      visualManifestHashes: unique(Object.values(visualManifestHashByPanel)),
+      unlockedVisualPanels,
+      textOnlyVisualPanels,
+      strictFallbackPanels,
+    },
+  };
+}
+
+export function validateTechnicalPanelAuthority({
+  technicalPanels = {},
+  expectedGeometryHash = null,
+} = {}) {
+  const warnings = [];
+  const errors = [];
+  const entries = normalizePanelEntries(technicalPanels).filter((entry) =>
+    isTechnicalPanelType(entry.type),
+  );
+  const missingSvgPanels = [];
+  const missingGeometryHashPanels = [];
+  const geometryMismatchPanels = [];
+  const imageModelPanels = [];
+  const nonDeterministicPanels = [];
+  const geometryHashByPanel = {};
+
+  for (const { panel, type } of entries) {
+    if (!panel || !hasSvgPayload(panel)) {
+      missingSvgPanels.push(type);
+      if (!panel) continue;
+    }
+
+    const geometryHash = readPanelGeometryHash(panel);
+    if (!geometryHash) {
+      missingGeometryHashPanels.push(type);
+    } else {
+      geometryHashByPanel[type] = geometryHash;
+      if (expectedGeometryHash && geometryHash !== expectedGeometryHash) {
+        geometryMismatchPanels.push(type);
+      }
+    }
+
+    if (technicalPanelUsesImageModel(panel)) {
+      imageModelPanels.push(type);
+    }
+
+    if (
+      readPanelField(panel, "technicalDrawing") !== true ||
+      !technicalPanelHasDeterministicSvgSource(panel)
+    ) {
+      nonDeterministicPanels.push(type);
+    }
+  }
+
+  pushAuthorityError(
+    errors,
+    "TECHNICAL_PANEL_MISSING_SVG",
+    missingSvgPanels,
+    (panelTypes) =>
+      `Technical panel(s) missing deterministic SVG payload: ${panelTypes.join(", ")}.`,
+  );
+  pushAuthorityError(
+    errors,
+    "TECHNICAL_PANEL_GEOMETRY_HASH_MISSING",
+    missingGeometryHashPanels,
+    (panelTypes) =>
+      `Technical panel(s) missing geometryHash/source_model_hash: ${panelTypes.join(", ")}.`,
+  );
+  pushAuthorityError(
+    errors,
+    "TECHNICAL_PANEL_GEOMETRY_HASH_MISMATCH",
+    geometryMismatchPanels,
+    (panelTypes) =>
+      `Technical panel geometry hash differs from expectedGeometryHash for: ${panelTypes.join(", ")}.`,
+  );
+  pushAuthorityError(
+    errors,
+    "TECHNICAL_PANEL_IMAGE_MODEL_USED",
+    imageModelPanels,
+    (panelTypes) =>
+      `Technical panel(s) used image generation instead of deterministic SVG: ${panelTypes.join(", ")}.`,
+  );
+  pushAuthorityError(
+    errors,
+    "TECHNICAL_PANEL_NOT_MARKED_DETERMINISTIC",
+    nonDeterministicPanels,
+    (panelTypes) =>
+      `Technical panel(s) are not marked as technicalDrawing=true with deterministic SVG renderer/source metadata: ${panelTypes.join(", ")}.`,
+  );
+
+  return {
+    warnings,
+    errors,
+    checks: {
+      expectedGeometryHash,
+      evaluatedPanelCount: entries.length,
+      technicalPanelTypes: entries.map((entry) => entry.type),
+      missingSvgPanels,
+      missingGeometryHashPanels,
+      geometryMismatchPanels,
+      geometryHashByPanel,
+      geometryHashes: unique(Object.values(geometryHashByPanel)),
+      imageModelPanels,
+      nonDeterministicPanels,
+    },
+  };
+}
+
 function validateCadGradeTechnicalQa({ drawings = {}, projectGeometry = {} }) {
   const warnings = [];
   const planEntries = drawings.plan || [];
@@ -696,4 +1192,6 @@ export { validateCrossViewConsistency };
 export default {
   runDrawingConsistencyChecks,
   validateCrossViewConsistency,
+  validateTechnicalPanelAuthority,
+  validateVisualPanelLocks,
 };

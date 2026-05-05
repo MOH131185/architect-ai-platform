@@ -1,6 +1,8 @@
 import {
   runDrawingConsistencyChecks,
+  validateTechnicalPanelAuthority,
   validateCrossViewConsistency,
+  validateVisualPanelLocks,
 } from "../../services/validation/drawingConsistencyChecks.js";
 
 const SVG_HEADER = '<svg xmlns="http://www.w3.org/2000/svg">';
@@ -68,6 +70,83 @@ function sectionSvg({
   ].join("");
 }
 
+const AUTHORITY_GEOMETRY_HASH = "geometry-hash-OK";
+const AUTHORITY_VISUAL_MANIFEST_HASH = "visual-manifest-hash-OK";
+const VISUAL_AUTHORITY_PANEL_TYPES = [
+  "hero_3d",
+  "exterior_render",
+  "axonometric",
+  "interior_3d",
+];
+
+function visualAuthorityPanel(type, overrides = {}) {
+  return {
+    type,
+    geometryHash: AUTHORITY_GEOMETRY_HASH,
+    sourceGeometryHash: AUTHORITY_GEOMETRY_HASH,
+    source_model_hash: AUTHORITY_GEOMETRY_HASH,
+    visualManifestHash: AUTHORITY_VISUAL_MANIFEST_HASH,
+    visualIdentityLocked: true,
+    provider: "openai",
+    providerUsed: "openai",
+    imageProviderUsed: "openai",
+    referenceSource: "compiled_3d_control_svg",
+    imageRenderFallback: false,
+    ...overrides,
+  };
+}
+
+function visualAuthorityPanels(overridesByType = {}) {
+  return VISUAL_AUTHORITY_PANEL_TYPES.map((type) =>
+    visualAuthorityPanel(type, overridesByType[type] || {}),
+  );
+}
+
+function technicalAuthorityPanel(type, overrides = {}) {
+  return {
+    panel_type: type,
+    svgString:
+      '<svg xmlns="http://www.w3.org/2000/svg"><rect width="20" height="20"/></svg>',
+    geometryHash: AUTHORITY_GEOMETRY_HASH,
+    source_model_hash: AUTHORITY_GEOMETRY_HASH,
+    renderer: "deterministic_svg",
+    providerUsed: "deterministic_svg",
+    imageProviderUsed: "none",
+    technicalDrawing: true,
+    metadata: {
+      source: "compiled_project_technical_panel",
+      renderer: "deterministic_svg",
+      providerUsed: "deterministic_svg",
+      imageProviderUsed: "none",
+      technicalDrawing: true,
+      geometryHash: AUTHORITY_GEOMETRY_HASH,
+      sourceGeometryHash: AUTHORITY_GEOMETRY_HASH,
+    },
+    ...overrides,
+  };
+}
+
+function technicalAuthorityPanels(overridesByType = {}) {
+  return {
+    floor_plan_ground: technicalAuthorityPanel(
+      "floor_plan_ground",
+      overridesByType.floor_plan_ground || {},
+    ),
+    floor_plan_first: technicalAuthorityPanel(
+      "floor_plan_first",
+      overridesByType.floor_plan_first || {},
+    ),
+    elevation_north: technicalAuthorityPanel(
+      "elevation_north",
+      overridesByType.elevation_north || {},
+    ),
+    section_AA: technicalAuthorityPanel(
+      "section_AA",
+      overridesByType.section_AA || {},
+    ),
+  };
+}
+
 function productionPlanSvg() {
   return [
     SVG_HEADER,
@@ -104,6 +183,137 @@ function productionSectionSvg() {
     SVG_FOOTER,
   ].join("");
 }
+
+describe("ProjectGraph A1 authority lock validators", () => {
+  test("visual panel with mismatched geometryHash fails", () => {
+    const result = validateVisualPanelLocks({
+      panels: visualAuthorityPanels({
+        hero_3d: { geometryHash: "wrong-geometry-hash" },
+      }),
+      expectedGeometryHash: AUTHORITY_GEOMETRY_HASH,
+      expectedVisualManifestHash: AUTHORITY_VISUAL_MANIFEST_HASH,
+      imageGenEnabled: true,
+      strictPhotoreal: true,
+    });
+
+    expect(result.errors.map((error) => error.code)).toContain(
+      "PROJECT_PANEL_GEOMETRY_HASH_MISMATCH",
+    );
+    expect(result.checks.geometryMismatchPanels).toContain("hero_3d");
+  });
+
+  test("visual panel with mismatched visualManifestHash fails", () => {
+    const result = validateVisualPanelLocks({
+      panels: visualAuthorityPanels({
+        axonometric: { visualManifestHash: "wrong-manifest-hash" },
+      }),
+      expectedGeometryHash: AUTHORITY_GEOMETRY_HASH,
+      expectedVisualManifestHash: AUTHORITY_VISUAL_MANIFEST_HASH,
+      imageGenEnabled: true,
+      strictPhotoreal: true,
+    });
+
+    expect(result.errors.map((error) => error.code)).toContain(
+      "VISUAL_MANIFEST_HASH_MISMATCH",
+    );
+    expect(result.checks.visualManifestMismatchPanels).toContain("axonometric");
+  });
+
+  test("visual panel imageRenderFallback=true fails in strict image mode", () => {
+    const result = validateVisualPanelLocks({
+      panels: visualAuthorityPanels({
+        exterior_render: { imageRenderFallback: true },
+      }),
+      expectedGeometryHash: AUTHORITY_GEOMETRY_HASH,
+      expectedVisualManifestHash: AUTHORITY_VISUAL_MANIFEST_HASH,
+      imageGenEnabled: true,
+      strictPhotoreal: true,
+    });
+
+    expect(result.errors.map((error) => error.code)).toContain(
+      "STRICT_IMAGE_RENDER_FALLBACK",
+    );
+    expect(result.checks.strictFallbackPanels).toContain("exterior_render");
+  });
+
+  test("visual panel using openai without compiled control SVG reference fails as text-only generation", () => {
+    const result = validateVisualPanelLocks({
+      panels: visualAuthorityPanels({
+        interior_3d: { referenceSource: "prompt_text_only" },
+      }),
+      expectedGeometryHash: AUTHORITY_GEOMETRY_HASH,
+      expectedVisualManifestHash: AUTHORITY_VISUAL_MANIFEST_HASH,
+      imageGenEnabled: true,
+      strictPhotoreal: true,
+    });
+
+    expect(result.errors.map((error) => error.code)).toContain(
+      "VISUAL_PANEL_TEXT_ONLY_IMAGE_GENERATION",
+    );
+    expect(result.checks.textOnlyVisualPanels).toContain("interior_3d");
+  });
+
+  test("technical panel with imageProviderUsed=openai fails", () => {
+    const result = validateTechnicalPanelAuthority({
+      technicalPanels: technicalAuthorityPanels({
+        floor_plan_ground: {
+          imageProviderUsed: "openai",
+          providerUsed: "openai",
+        },
+      }),
+      expectedGeometryHash: AUTHORITY_GEOMETRY_HASH,
+    });
+
+    expect(result.errors.map((error) => error.code)).toContain(
+      "TECHNICAL_PANEL_IMAGE_MODEL_USED",
+    );
+    expect(result.checks.imageModelPanels).toContain("floor_plan_ground");
+  });
+
+  test("technical panel missing geometryHash fails", () => {
+    const result = validateTechnicalPanelAuthority({
+      technicalPanels: technicalAuthorityPanels({
+        section_AA: {
+          geometryHash: null,
+          sourceGeometryHash: null,
+          source_model_hash: null,
+          metadata: {
+            source: "compiled_project_technical_panel",
+            renderer: "deterministic_svg",
+            technicalDrawing: true,
+            geometryHash: null,
+            sourceGeometryHash: null,
+          },
+        },
+      }),
+      expectedGeometryHash: AUTHORITY_GEOMETRY_HASH,
+    });
+
+    expect(result.errors.map((error) => error.code)).toContain(
+      "TECHNICAL_PANEL_GEOMETRY_HASH_MISSING",
+    );
+    expect(result.checks.missingGeometryHashPanels).toContain("section_AA");
+  });
+
+  test("valid deterministic SVG technical panels and geometry-locked visual panels pass", () => {
+    const visual = validateVisualPanelLocks({
+      panels: visualAuthorityPanels(),
+      expectedGeometryHash: AUTHORITY_GEOMETRY_HASH,
+      expectedVisualManifestHash: AUTHORITY_VISUAL_MANIFEST_HASH,
+      imageGenEnabled: true,
+      strictPhotoreal: true,
+    });
+    const technical = validateTechnicalPanelAuthority({
+      technicalPanels: technicalAuthorityPanels(),
+      expectedGeometryHash: AUTHORITY_GEOMETRY_HASH,
+    });
+
+    expect(visual.errors).toEqual([]);
+    expect(visual.warnings).toEqual([]);
+    expect(technical.errors).toEqual([]);
+    expect(technical.warnings).toEqual([]);
+  });
+});
 
 describe("runDrawingConsistencyChecks — per-view reliability", () => {
   test("clean drawings produce no errors and no per-view warnings", () => {

@@ -743,6 +743,18 @@ describe("projectGraphVerticalSliceService", () => {
       height: 594,
     });
     expect(result.artifacts.a1Pdf.source_model_hash).toBe(result.geometryHash);
+    expect(result.artifacts.a1Sheet.svgHash).toBeTruthy();
+    expect(result.artifacts.a1Pdf.source_svg_hash).toBe(
+      result.artifacts.a1Sheet.svgHash,
+    );
+    expect(result.artifacts.a1Pdf.pdfMetadata).toEqual(
+      expect.objectContaining({
+        sourceSvgHash: result.artifacts.a1Sheet.svgHash,
+        sheetArtifactSvgStringUsed: true,
+        sourceSvgRole: "sheetArtifact.svgString",
+        emptyFrameFallbackUsed: false,
+      }),
+    );
     expect(result.artifacts.a1Pdf.renderedPngHash).toBeTruthy();
     expect(
       result.artifacts.a1Pdf.renderedProof.occupancy.nonBackgroundPixelRatio,
@@ -2125,6 +2137,44 @@ describe("projectGraphVerticalSliceService", () => {
     );
   });
 
+  test("vertical-slice QA surfaces visual panel lock drift as blocking errors", async () => {
+    const result = await buildArchitectureProjectVerticalSlice(
+      createReadingRoomBrief(),
+    );
+    const tamperedHero = {
+      ...result.artifacts.visuals3d.hero_3d,
+      geometryHash: "wrong-visual-lock-hash",
+      metadata: {
+        ...result.artifacts.visuals3d.hero_3d.metadata,
+        geometryHash: "wrong-visual-lock-hash",
+      },
+    };
+
+    const qa = validateProjectGraphVerticalSlice({
+      projectGraph: result.projectGraph,
+      artifacts: {
+        ...result.artifacts,
+        visuals3d: {
+          ...result.artifacts.visuals3d,
+          hero_3d: tamperedHero,
+        },
+      },
+    });
+
+    expect(qa.status).toBe("fail");
+    expect(qa.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "VISUAL_PANEL_LOCKS_PASS",
+          status: "fail",
+        }),
+      ]),
+    );
+    expect(qa.issues.map((issue) => issue.code)).toContain(
+      "PROJECT_PANEL_GEOMETRY_HASH_MISMATCH",
+    );
+  });
+
   test("QA fails closed when rendered PDF proof and 3D panels are missing", async () => {
     const result = await buildArchitectureProjectVerticalSlice(
       createReadingRoomBrief(),
@@ -2166,7 +2216,7 @@ describe("projectGraphVerticalSliceService", () => {
     );
   });
 
-  test("QA uses the active presentation-v3 registry for required 3D panels", async () => {
+  test("QA keeps presentation-v3 renderability scoped but visual locks still require every authority panel", async () => {
     const briefInput = createReadingRoomBrief();
     briefInput.brief.building_type = "dwelling";
     briefInput.brief.project_name = "Presentation V3 Dwelling";
@@ -2197,13 +2247,24 @@ describe("projectGraphVerticalSliceService", () => {
       (check) => check.code === "REQUIRED_3D_PANELS_PRESENT",
     );
 
-    expect(qa.status).toBe("pass");
+    expect(qa.status).toBe("fail");
+    expect(qa.issues.map((issue) => issue.code)).toContain(
+      "VISUAL_PANEL_MISSING",
+    );
     expect(qa.issues.map((issue) => issue.code)).not.toContain(
       "REQUIRED_3D_PANEL_MISSING",
     );
     expect(required3dCheck.status).toBe("pass");
     expect(required3dCheck.details.expected.sort()).toEqual(
       ["axonometric", "hero_3d", "interior_3d"].sort(),
+    );
+    expect(qa.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "VISUAL_PANEL_LOCKS_PASS",
+          status: "fail",
+        }),
+      ]),
     );
   });
 

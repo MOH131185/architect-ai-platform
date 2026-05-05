@@ -21,6 +21,10 @@ import {
   getBlockedOpenAIReasoningCalls,
 } from "../openaiReasoningExecutor.js";
 import { computeCDSHashSync } from "../validation/cdsHash.js";
+import {
+  validateTechnicalPanelAuthority,
+  validateVisualPanelLocks,
+} from "../validation/drawingConsistencyChecks.js";
 import { validateProgrammeAdjacency } from "../validation/programmeAdjacencyValidator.js";
 import { computeQuantitativeMetrics } from "../validation/qaScorers/quantitativeScorer.js";
 import {
@@ -10697,6 +10701,63 @@ export function validateProjectGraphVerticalSlice({
     artifacts.a1Sheet?.layoutTemplate ||
       resolvePresentationLayoutTemplate(projectGraph?.brief || {}),
   );
+  const technicalPanelTypesForStoreys = buildTechnicalA1PanelTypes(
+    projectGraph?.brief?.target_storeys || 1,
+  );
+  const visualPanelLockValidation = validateVisualPanelLocks({
+    panels: Object.fromEntries(
+      REQUIRED_3D_A1_PANEL_TYPES.map((panelType) => [
+        panelType,
+        artifacts.visuals3d?.[panelType] ||
+          findPanelArtifact(panelArtifacts, panelType) ||
+          null,
+      ]),
+    ),
+    expectedGeometryHash: geometryHash,
+    expectedVisualManifestHash:
+      artifacts.visualManifest?.manifestHash ||
+      artifacts.visualManifestHash ||
+      artifacts.a1Sheet?.metadata?.visualManifestHash ||
+      null,
+    imageGenEnabled: process.env.PROJECT_GRAPH_IMAGE_GEN_ENABLED === "true",
+    strictPhotoreal: process.env.OPENAI_STRICT_IMAGE_GEN === "true",
+  });
+  addCheck(
+    checks,
+    "VISUAL_PANEL_LOCKS_PASS",
+    visualPanelLockValidation.errors.length === 0,
+    visualPanelLockValidation.checks,
+    "consistency_2d_3d",
+    0,
+  );
+  for (const error of visualPanelLockValidation.errors) {
+    issues.push(
+      buildIssue(error.code, "error", error.message, error.details || {}),
+    );
+  }
+
+  const technicalPanelAuthorityValidation = validateTechnicalPanelAuthority({
+    technicalPanels: Object.fromEntries(
+      technicalPanelTypesForStoreys.map((panelType) => [
+        panelType,
+        findPanelArtifact(artifacts.drawings || {}, panelType) || null,
+      ]),
+    ),
+    expectedGeometryHash: geometryHash,
+  });
+  addCheck(
+    checks,
+    "TECHNICAL_PANEL_AUTHORITY_PASS",
+    technicalPanelAuthorityValidation.errors.length === 0,
+    technicalPanelAuthorityValidation.checks,
+    "consistency_2d_3d",
+    0,
+  );
+  for (const error of technicalPanelAuthorityValidation.errors) {
+    issues.push(
+      buildIssue(error.code, "error", error.message, error.details || {}),
+    );
+  }
   const panelRenderabilityRecords = expectedPanels.map((panelType) => {
     const artifact = findPanelArtifact(panelArtifacts, panelType);
     const evaluation = evaluatePanelRenderability(artifact);
@@ -10887,9 +10948,6 @@ export function validateProjectGraphVerticalSlice({
     }
   }
 
-  const technicalPanelTypesForStoreys = buildTechnicalA1PanelTypes(
-    projectGraph?.brief?.target_storeys || 1,
-  );
   const technicalPanelFailures = technicalPanelTypesForStoreys.filter(
     (panelType) => {
       const artifact = findPanelArtifact(artifacts.drawings || {}, panelType);

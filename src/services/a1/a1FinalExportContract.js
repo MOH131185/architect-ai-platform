@@ -1490,6 +1490,15 @@ function evaluateSheetArtifactEvidence({ sheetArtifact, pdfMetadata } = {}) {
     );
   }
 
+  if (typeof svgString === "string" && /<svg[\s>]/i.test(svgString)) {
+    if (!sheetSvgHash) {
+      codes.push("A1_SHEET_SVG_HASH_MISSING");
+      blockers.push(
+        "A1_SHEET_SVG_HASH_MISSING: Final A1 export requires sheetArtifact.svgHash for the source SVG.",
+      );
+    }
+  }
+
   if (
     pdfMetadata?.emptyFrameFallbackUsed === true ||
     pdfMetadata?.usesEmptyFrames === true ||
