@@ -29,9 +29,17 @@ function unique(items = []) {
 }
 
 function hasSvgPayload(entry) {
-  const svg = entry?.svg || entry?.svgString || entry?.metadata?.svgString;
+  const svg =
+    entry?.svg ||
+    entry?.svgString ||
+    entry?.metadata?.svgString ||
+    entry?.dataUrl ||
+    entry?.imageUrl ||
+    entry?.url;
   return Boolean(svg && String(svg).includes("<svg"));
 }
+
+const TECHNICAL_PANEL_CONTRACT_VERSION = "technical-panel-contract-v1";
 
 function classTokenRegex(token) {
   return new RegExp(`class=["'][^"']*\\b${token}\\b[^"']*["']`, "i");
@@ -986,6 +994,24 @@ export function validateTechnicalPanelAuthority({
   };
 }
 
+export function validateTechnicalPanelContract({
+  technicalPanels = {},
+  expectedGeometryHash = null,
+} = {}) {
+  const result = validateTechnicalPanelAuthority({
+    technicalPanels,
+    expectedGeometryHash,
+  });
+  return {
+    ...result,
+    checks: {
+      version: TECHNICAL_PANEL_CONTRACT_VERSION,
+      passed: result.errors.length === 0,
+      ...result.checks,
+    },
+  };
+}
+
 function validateCadGradeTechnicalQa({ drawings = {}, projectGeometry = {} }) {
   const warnings = [];
   const planEntries = drawings.plan || [];
@@ -1194,4 +1220,5 @@ export default {
   validateCrossViewConsistency,
   validateTechnicalPanelAuthority,
   validateVisualPanelLocks,
+  validateTechnicalPanelContract,
 };

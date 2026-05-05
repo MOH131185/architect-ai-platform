@@ -52,21 +52,37 @@ const TWO_STOREY_REQUIRED_REGISTRY = [
 // ---------------------------------------------------------------------------
 
 function readyPanel(type) {
-  const isProjectPanel =
+  const isTechnicalPanel =
     type.startsWith("floor_plan_") ||
     type.startsWith("elevation_") ||
-    type.startsWith("section_") ||
+    type.startsWith("section_");
+  const isProjectPanel =
+    isTechnicalPanel ||
     ["hero_3d", "exterior_render", "axonometric", "interior_3d"].includes(type);
   return {
     type,
     status: "ready",
     hasSvg: true,
+    ...(isTechnicalPanel
+      ? {
+          svgString: `<svg xmlns="http://www.w3.org/2000/svg" data-panel-id="${type}"></svg>`,
+          technicalDrawing: true,
+          renderer: "deterministic_svg",
+          provider: "deterministic",
+          providerUsed: "deterministic_svg",
+          imageProviderUsed: "none",
+        }
+      : {}),
     ...(isProjectPanel
       ? {
           geometryHash: "geometry-hash-1",
           sourceGeometryHash: "geometry-hash-1",
-          providerUsed: "deterministic",
-          imageProviderUsed: "deterministic",
+          ...(isTechnicalPanel
+            ? {}
+            : {
+                providerUsed: "deterministic",
+                imageProviderUsed: "deterministic",
+              }),
         }
       : {}),
   };
@@ -254,6 +270,28 @@ describe("Phase 4 — evaluateTechnicalPanelEvidence (via gate)", () => {
     const gate = evaluateFinalA1ExportGate(gateInputs());
     expect(gate.evidence.technicalPanelStatus.status).toBe("pass");
     expect(gate.evidence.technicalPanelStatus.blockers).toEqual([]);
+  });
+
+  test("image-model provenance on a technical panel blocks final export gate", () => {
+    const panels = fullPanelSet().map((panel) =>
+      panel.type === "section_AA"
+        ? {
+            ...panel,
+            imageProviderUsed: "openai",
+            providerUsed: "gpt-image-1.5",
+            model: "gpt-image-1.5",
+          }
+        : panel,
+    );
+    const gate = evaluateFinalA1ExportGate(gateInputs({ panels }));
+
+    expect(gate.status).toBe("blocked");
+    expect(gate.evidence.technicalPanelStatus.codes).toContain(
+      "TECHNICAL_PANEL_IMAGE_MODEL_USED",
+    );
+    expect(gate.blockers.join(" ")).toMatch(
+      /TECHNICAL_PANEL_IMAGE_MODEL_USED|section_AA/,
+    );
   });
 });
 

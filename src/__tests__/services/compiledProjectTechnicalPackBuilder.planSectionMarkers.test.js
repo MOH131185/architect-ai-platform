@@ -606,4 +606,46 @@ describe("buildCompiledProjectTechnicalPanels — end-to-end plan markers", () =
     expect(groundPlan.svgString).toContain('data-section-label="A-A"');
     expect(groundPlan.svgString).toContain('data-section-label="B-B"');
   });
+
+  test("technical pack emits deterministic provenance on floor plan, elevation, and section artifacts", () => {
+    const result = buildCompiledProjectTechnicalPanels(
+      makeCompiledProjectFixture(),
+      { layoutTemplate: "presentation-v3" },
+    );
+
+    expect(result.ok).toBe(true);
+    for (const panelType of [
+      "floor_plan_ground",
+      "elevation_north",
+      "section_AA",
+    ]) {
+      const panel = result.technicalPanels?.[panelType];
+      expect(panel).toEqual(
+        expect.objectContaining({
+          technicalDrawing: true,
+          renderer: "deterministic_svg",
+          imageProviderUsed: "none",
+          providerUsed: "deterministic_svg",
+          provider: "deterministic",
+          geometryHash: "test-hash",
+          sourceGeometryHash: "test-hash",
+          source_model_hash: "test-hash",
+          svgHash: expect.any(String),
+        }),
+      );
+      expect(panel.metadata).toEqual(
+        expect.objectContaining({
+          technicalDrawing: true,
+          renderer: "deterministic_svg",
+          imageProviderUsed: "none",
+          providerUsed: "deterministic_svg",
+          provider: "deterministic",
+          geometryHash: "test-hash",
+          sourceGeometryHash: "test-hash",
+          source_model_hash: "test-hash",
+          svgHash: panel.svgHash,
+        }),
+      );
+    }
+  });
 });
