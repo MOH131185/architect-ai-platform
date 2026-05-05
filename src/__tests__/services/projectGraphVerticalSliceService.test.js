@@ -2398,12 +2398,13 @@ describe("projectGraphVerticalSliceService", () => {
 
   test("ProjectGraph export hashes are deterministic for identical inputs", async () => {
     const first = await buildArchitectureProjectVerticalSlice(
-      createReadingRoomBrief(),
+      { ...createReadingRoomBrief(), seed: 246810 },
     );
     const second = await buildArchitectureProjectVerticalSlice(
-      createReadingRoomBrief(),
+      { ...createReadingRoomBrief(), seed: 246810 },
     );
 
+    expect(second.generationSeed).toBe(first.generationSeed);
     expect(second.geometryHash).toBe(first.geometryHash);
     expect(second.architectReasoningManifest.manifestHash).toBe(
       first.architectReasoningManifest.manifestHash,

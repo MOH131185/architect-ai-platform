@@ -1,5 +1,7 @@
 import {
   buildProjectGraphVerticalSliceRequest,
+  createProjectGraphGenerationSeed,
+  normalizeProjectGraphGenerationSeed,
   normalizeProjectGraphDrawingArtifacts,
   sanitizeProjectGraphPanelMap,
   sanitizeProjectGraphSvg,
@@ -126,6 +128,87 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
     expect(request.projectDetails.baseSeed).toBe(1777895862);
     expect(request.brief.generation_seed).toBe(1777895862);
     expect(request.brief.baseSeed).toBe(1777895862);
+  });
+
+  test("generates fresh ProjectGraph seeds for new requests without an explicit seed", () => {
+    const first = buildProjectGraphVerticalSliceRequest({
+      designSpec: {
+        buildingCategory: "residential",
+        buildingSubType: "detached-house",
+        area: 180,
+        floorCount: 2,
+      },
+    });
+    const second = buildProjectGraphVerticalSliceRequest({
+      designSpec: {
+        buildingCategory: "residential",
+        buildingSubType: "detached-house",
+        area: 180,
+        floorCount: 2,
+      },
+    });
+
+    expect(first.generationSeed).toEqual(expect.any(Number));
+    expect(second.generationSeed).toEqual(expect.any(Number));
+    expect(second.generationSeed).not.toBe(first.generationSeed);
+    expect(first.seedSource).toBe("auto_new_project");
+    expect(first.variationMode).toBe("new_design");
+    expect(first.brief.generation_seed).toBe(first.generationSeed);
+    expect(first.brief.generation_lifecycle).toEqual({
+      generationSeed: first.generationSeed,
+      seedSource: "auto_new_project",
+      variationMode: "new_design",
+    });
+  });
+
+  test("reuses existing ProjectGraph seeds for same-geometry regeneration requests", () => {
+    const request = buildProjectGraphVerticalSliceRequest({
+      projectId: "project-123",
+      designHistoryId: "history-123",
+      designSpec: {
+        geometryHash: "geom-existing",
+        generationSeed: 424242,
+        buildingCategory: "residential",
+        buildingSubType: "detached-house",
+        area: 180,
+        floorCount: 2,
+      },
+    });
+
+    expect(request.generationSeed).toBe(424242);
+    expect(request.seedSource).toBe("reused_existing_project");
+    expect(request.variationMode).toBe("same_geometry_regen");
+  });
+
+  test("layout modifies do not reuse the previous ProjectGraph seed implicitly", () => {
+    const request = buildProjectGraphVerticalSliceRequest({
+      projectId: "project-123",
+      designHistoryId: "history-123",
+      modifyRequest: {
+        variationMode: "layout_modify",
+        customPrompt: "Add a larger first floor studio",
+      },
+      designSpec: {
+        geometryHash: "geom-existing",
+        generationSeed: 424242,
+        buildingCategory: "residential",
+        buildingSubType: "detached-house",
+        area: 220,
+        floorCount: 2,
+      },
+    });
+
+    expect(request.generationSeed).toEqual(expect.any(Number));
+    expect(request.generationSeed).not.toBe(424242);
+    expect(request.seedSource).toBe("auto_new_project");
+    expect(request.variationMode).toBe("layout_modify");
+  });
+
+  test("normalizes generated ProjectGraph seed values into provider-safe integers", () => {
+    const seed = createProjectGraphGenerationSeed();
+    expect(normalizeProjectGraphGenerationSeed(seed)).toBe(seed);
+    expect(seed).toBeGreaterThan(0);
+    expect(seed).toBeLessThan(2147483647);
   });
 
   test("raises unlocked 250 sqm detached-house payloads to two storeys", () => {

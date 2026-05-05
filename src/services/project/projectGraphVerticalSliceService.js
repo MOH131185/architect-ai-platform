@@ -121,6 +121,7 @@ const PROFESSIONAL_REVIEW_DISCLAIMER =
   "AI-generated early-stage architecture package. Regulation checks are preliminary design flags and require professional review.";
 const A1_SHEET_LAYOUT_VERSION = "projectgraph-a1-reference-board-v1";
 const A1_SHEET_SIZE_MM = { width: 841, height: 594 };
+const PROJECT_GRAPH_GENERATION_SEED_MAX = 2_147_483_647;
 const MAX_TARGET_STOREYS = Math.max(
   1,
   Number.parseInt(process.env.MAX_TARGET_STOREYS, 10) || 8,
@@ -164,6 +165,7 @@ const TECHNICAL_A1_PANEL_TYPES_BASE = [
   "section_AA",
   "section_BB",
 ];
+let projectGraphAutoSeedCounter = 0;
 
 export function buildRequiredA1PanelTypes(
   targetStoreys = 1,
@@ -283,7 +285,7 @@ function round(value, precision = 3) {
 function normalizeGenerationSeed(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return null;
-  return Math.abs(Math.trunc(numeric)) % 2147483647;
+  return Math.abs(Math.trunc(numeric)) % PROJECT_GRAPH_GENERATION_SEED_MAX;
 }
 
 function resolveGenerationSeed(input = {}, sourceBrief = {}) {
@@ -298,6 +300,228 @@ function resolveGenerationSeed(input = {}, sourceBrief = {}) {
       sourceBrief.generationSeed ??
       sourceBrief.seed,
   );
+}
+
+function createAutoGenerationSeed() {
+  projectGraphAutoSeedCounter =
+    (projectGraphAutoSeedCounter + 1) % PROJECT_GRAPH_GENERATION_SEED_MAX;
+  const seed = normalizeGenerationSeed(
+    Date.now() +
+      Math.floor(Math.random() * PROJECT_GRAPH_GENERATION_SEED_MAX) +
+      projectGraphAutoSeedCounter,
+  );
+  return seed === null || seed === 0 ? 1 : seed;
+}
+
+function firstGenerationSeedCandidate(candidates = []) {
+  for (const candidate of candidates) {
+    const normalized = normalizeGenerationSeed(candidate);
+    if (normalized !== null) return normalized;
+  }
+  return null;
+}
+
+function normalizeVariationMode(value) {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  if (
+    [
+      "new_design",
+      "same_geometry_regen",
+      "style_modify",
+      "layout_modify",
+    ].includes(normalized)
+  ) {
+    return normalized;
+  }
+  if (["regenerate", "panel_regen", "same_geometry"].includes(normalized)) {
+    return "same_geometry_regen";
+  }
+  if (["style", "materials", "material_modify"].includes(normalized)) {
+    return "style_modify";
+  }
+  if (["layout", "programme", "program", "geometry"].includes(normalized)) {
+    return "layout_modify";
+  }
+  return null;
+}
+
+function normalizeSeedSource(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["user", "auto_new_project", "reused_existing_project"].includes(
+    normalized,
+  )
+    ? normalized
+    : null;
+}
+
+function hasExistingProjectIdentity(input = {}) {
+  return Boolean(
+    input.projectId ||
+      input.project_id ||
+      input.designId ||
+      input.design_id ||
+      input.designHistoryId ||
+      input.design_history_id ||
+      input.compiledProject ||
+      input.artifacts?.compiledProject ||
+      input.projectDetails?.compiledProject ||
+      input.geometryHash ||
+      input.geometry_hash ||
+      input.existingGeometryHash ||
+      input.projectDetails?.geometryHash ||
+      input.projectDetails?.existingGeometryHash,
+  );
+}
+
+function requestLooksLayoutAffecting(input = {}) {
+  const modifyRequest = input.modifyRequest || {};
+  const changeText = [
+    input.changeType,
+    input.modifyType,
+    modifyRequest.changeType,
+    modifyRequest.scope,
+    modifyRequest.mode,
+    modifyRequest.customPrompt,
+    ...(Array.isArray(modifyRequest.quickToggles)
+      ? modifyRequest.quickToggles
+      : []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    /\b(layout|programme|program|room|space|area|floor|storey|story|massing|footprint|opening|window|door|stair)\b/.test(
+      changeText,
+    ) ||
+    Boolean(
+      input.programSpaces ||
+        input.programme?.spaces ||
+        input.program?.spaces ||
+        input.projectDetails?.programSpaces,
+    )
+  );
+}
+
+function requestLooksStyleOnly(input = {}) {
+  const modifyRequest = input.modifyRequest || {};
+  const changeText = [
+    input.changeType,
+    input.modifyType,
+    modifyRequest.changeType,
+    modifyRequest.scope,
+    modifyRequest.mode,
+    modifyRequest.customPrompt,
+    ...(Array.isArray(modifyRequest.quickToggles)
+      ? modifyRequest.quickToggles
+      : []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    /\b(style|material|materials|palette|facade|colour|color|finish|tone)\b/.test(
+      changeText,
+    ) && !requestLooksLayoutAffecting(input)
+  );
+}
+
+function resolveVariationMode(input = {}) {
+  const hasExistingProject = hasExistingProjectIdentity(input);
+  const explicit = normalizeVariationMode(
+    input.variationMode ||
+      input.projectVariationMode ||
+      input.modifyRequest?.variationMode ||
+      input.brief?.variationMode ||
+      input.projectBrief?.variationMode,
+  );
+  if (explicit) return explicit;
+  if (hasExistingProject && requestLooksLayoutAffecting(input)) {
+    return "layout_modify";
+  }
+  if (hasExistingProject && requestLooksStyleOnly(input)) {
+    return "style_modify";
+  }
+  if (hasExistingProject) return "same_geometry_regen";
+  return "new_design";
+}
+
+function resolveExistingProjectSeed(input = {}, sourceBrief = {}) {
+  return firstGenerationSeedCandidate([
+    input.existingGenerationSeed,
+    input.previousGenerationSeed,
+    input.projectDetails?.existingGenerationSeed,
+    input.projectDetails?.generationSeed,
+    input.designHistory?.generationSeed,
+    input.designHistory?.seed,
+    input.designHistoryEntry?.generationSeed,
+    input.designHistoryEntry?.seed,
+    input.metadata?.generationSeed,
+    input.generationLifecycle?.generationSeed,
+    input.seedLifecycle?.generationSeed,
+    input.artifacts?.generationSeed,
+    input.artifacts?.compiledProject?.metadata?.generationSeed,
+    input.compiledProject?.metadata?.generationSeed,
+    input.compiledProject?.generationSeed,
+    sourceBrief.generation_lifecycle?.generationSeed,
+    sourceBrief.seedLifecycle?.generationSeed,
+  ]);
+}
+
+function resolveGenerationSeedLifecycle(input = {}, sourceBrief = {}) {
+  const variationMode = resolveVariationMode(input);
+  const explicitSeed = firstGenerationSeedCandidate([
+    input.seed,
+    input.baseSeed,
+    input.generationSeed,
+    input.projectDetails?.seed,
+    input.projectDetails?.baseSeed,
+  ]);
+  if (explicitSeed !== null) {
+    return {
+      generationSeed: explicitSeed,
+      seedSource: normalizeSeedSource(input.seedSource) || "user",
+      variationMode,
+    };
+  }
+
+  const briefSeed = firstGenerationSeedCandidate([
+    sourceBrief.baseSeed,
+    sourceBrief.generation_seed,
+    sourceBrief.generationSeed,
+    sourceBrief.seed,
+  ]);
+  const existingSeed =
+    resolveExistingProjectSeed(input, sourceBrief) ?? briefSeed;
+  if (
+    existingSeed !== null &&
+    hasExistingProjectIdentity(input) &&
+    variationMode !== "layout_modify"
+  ) {
+    return {
+      generationSeed: existingSeed,
+      seedSource: "reused_existing_project",
+      variationMode,
+    };
+  }
+
+  if (briefSeed !== null) {
+    return {
+      generationSeed: briefSeed,
+      seedSource: "user",
+      variationMode,
+    };
+  }
+
+  return {
+    generationSeed: createAutoGenerationSeed(),
+    seedSource: "auto_new_project",
+    variationMode,
+  };
 }
 
 function seededIndex(seed, length, salt = "design-option") {
@@ -810,7 +1034,11 @@ function detectProgrammeGroundCollapse({
 
 function normalizeBrief(input = {}) {
   const sourceBrief = input.brief || input.projectBrief || input;
-  const generationSeed = resolveGenerationSeed(input, sourceBrief);
+  const generationLifecycle = resolveGenerationSeedLifecycle(
+    input,
+    sourceBrief,
+  );
+  const { generationSeed, seedSource, variationMode } = generationLifecycle;
   const projectDetails = input.projectDetails || {};
   const locationData = input.locationData || {};
   const referenceMatch = isReferenceMatchRequested(input, sourceBrief);
@@ -1047,6 +1275,10 @@ function normalizeBrief(input = {}) {
     generation_seed: generationSeed,
     design_variant_seed: generationSeed,
     generation_variation_enabled: generationSeed !== null,
+    generationSeed,
+    seedSource,
+    variationMode,
+    generation_lifecycle: generationLifecycle,
     referenceMatch,
     reference_match: referenceMatch,
     brief_input_hash: briefInputHash,
@@ -7145,6 +7377,9 @@ export async function buildVisual3DPanelArtifacts({
       const requestId =
         renderProvenance?.requestId || renderResult?.requestId || null;
       const usage = renderProvenance?.usage || renderResult?.usage || null;
+      const generationSeed = normalizeGenerationSeed(brief?.generation_seed);
+      const seedSource = brief?.seedSource || null;
+      const variationMode = brief?.variationMode || null;
 
       const svgHash =
         renderInput.svgHash ||
@@ -7167,6 +7402,9 @@ export async function buildVisual3DPanelArtifacts({
           source_model_hash: geometryHash,
           geometryHash,
           sourceGeometryHash: geometryHash,
+          generationSeed,
+          seedSource,
+          variationMode,
           visualManifestId: visualManifest?.manifestId || null,
           visualManifestHash: visualManifest?.manifestHash || null,
           visualIdentityLocked: Boolean(visualManifest?.manifestHash),
@@ -7197,6 +7435,10 @@ export async function buildVisual3DPanelArtifacts({
             geometryHash,
             svgHash,
             sourceGeometryHash: geometryHash,
+            generationSeed,
+            seedSource,
+            variationMode,
+            generationLifecycle: brief?.generation_lifecycle || null,
             referenceSource: "compiled_3d_control_svg",
             controlSvgHash,
             promptHash,
@@ -9009,6 +9251,9 @@ function buildResultPanelMap(panelArtifacts = {}) {
             authoritySource:
               artifact.authoritySource || "project_graph_compiled_geometry",
             geometryHash: artifact.geometryHash || artifact.source_model_hash,
+            generationSeed: artifact.generationSeed || null,
+            seedSource: artifact.seedSource || null,
+            variationMode: artifact.variationMode || null,
             source_model_hash: artifact.source_model_hash || null,
             svgHash: artifact.svgHash || null,
             metadata: cloneData(artifact.metadata || {}),
@@ -9449,6 +9694,33 @@ function artifactArray(artifacts = {}) {
   if (Array.isArray(artifacts)) return artifacts.filter(Boolean);
   if (!artifacts || typeof artifacts !== "object") return [];
   return Object.values(artifacts).filter(Boolean);
+}
+
+export function stampGenerationLifecycleOnArtifacts(
+  artifacts = {},
+  lifecycle = {},
+) {
+  const generationSeed = normalizeGenerationSeed(lifecycle.generationSeed);
+  const seedSource = lifecycle.seedSource || null;
+  const variationMode = lifecycle.variationMode || null;
+  for (const artifact of artifactArray(artifacts)) {
+    if (!artifact || typeof artifact !== "object") continue;
+    artifact.generationSeed = generationSeed;
+    artifact.seedSource = seedSource;
+    artifact.variationMode = variationMode;
+    artifact.metadata = {
+      ...(artifact.metadata || {}),
+      generationSeed,
+      seedSource,
+      variationMode,
+      generationLifecycle: {
+        generationSeed,
+        seedSource,
+        variationMode,
+      },
+    };
+  }
+  return artifacts;
 }
 
 function findPanelArtifact(artifacts = {}, panelType) {
@@ -11452,6 +11724,16 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       localMaterials: localStyle.material_palette,
     },
   });
+  compiledProject.generationSeed = brief.generation_seed;
+  compiledProject.seedSource = brief.seedSource || null;
+  compiledProject.variationMode = brief.variationMode || null;
+  compiledProject.metadata = {
+    ...(compiledProject.metadata || {}),
+    generationSeed: brief.generation_seed,
+    seedSource: brief.seedSource || null,
+    variationMode: brief.variationMode || null,
+    generationLifecycle: brief.generation_lifecycle || null,
+  };
   __vsMark = __vsLog("compile_project", __vsMark);
   // Compiled-project QA. Catches geometry layers losing a level (e.g. the
   // 3-level brief silently producing a 2-level model). The level-count
@@ -11684,6 +11966,27 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
   const sheetArtifact = primary.sheetArtifact;
   const pdfArtifact = primary.pdf;
   const primaryPanelArtifacts = primary.sheetPanelArtifacts || {};
+  const generationLifecycle = {
+    generationSeed: brief.generation_seed,
+    seedSource: brief.seedSource || null,
+    variationMode: brief.variationMode || null,
+  };
+  stampGenerationLifecycleOnArtifacts(drawingArtifacts, generationLifecycle);
+  stampGenerationLifecycleOnArtifacts(primary.panelArtifacts, generationLifecycle);
+  stampGenerationLifecycleOnArtifacts(
+    primary.sheetPanelArtifacts,
+    generationLifecycle,
+  );
+  sheetArtifact.generationSeed = generationLifecycle.generationSeed;
+  sheetArtifact.seedSource = generationLifecycle.seedSource;
+  sheetArtifact.variationMode = generationLifecycle.variationMode;
+  sheetArtifact.metadata = {
+    ...(sheetArtifact.metadata || {}),
+    generationSeed: generationLifecycle.generationSeed,
+    seedSource: generationLifecycle.seedSource,
+    variationMode: generationLifecycle.variationMode,
+    generationLifecycle,
+  };
   const siteMapArtifact =
     Object.values(primaryPanelArtifacts).find(
       (artifact) => artifact.panel_type === "site_context",
@@ -12104,6 +12407,10 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     visuals3d,
     renderedProof: pdfArtifact.renderedProof,
     textRenderStatus: pdfArtifact.renderedProof?.textRenderStatus,
+    generationSeed: generationLifecycle.generationSeed,
+    seedSource: generationLifecycle.seedSource,
+    variationMode: generationLifecycle.variationMode,
+    generationLifecycle,
     presentationMode: sheetArtifact.presentationMode,
     visualFidelityStatus: sheetArtifact.visualFidelityStatus,
     referenceMatch: brief?.reference_match === true,
@@ -12323,6 +12630,19 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     success: qa.status === "pass",
     pipelineVersion: PROJECT_GRAPH_VERTICAL_SLICE_VERSION,
     geometryHash: compiledProject.geometryHash,
+    seed: generationLifecycle.generationSeed,
+    generationSeed: generationLifecycle.generationSeed,
+    seedSource: generationLifecycle.seedSource,
+    variationMode: generationLifecycle.variationMode,
+    generationLifecycle,
+    metadata: {
+      generationSeed: generationLifecycle.generationSeed,
+      seedSource: generationLifecycle.seedSource,
+      variationMode: generationLifecycle.variationMode,
+      generationLifecycle,
+      geometryHash: compiledProject.geometryHash,
+      visualManifestHash: visualManifest.manifestHash,
+    },
     projectTypeSupport: brief.project_type_support || null,
     projectGraph: finalGraph,
     provenanceManifest,
@@ -12371,6 +12691,8 @@ export async function buildArchitectureProjectVerticalSliceWithRepair(
 export const __projectGraphVerticalSliceInternals = Object.freeze({
   normalizeBrief,
   normalizeGenerationSeed,
+  resolveGenerationSeedLifecycle,
+  createAutoGenerationSeed,
   selectDesignOptionForRun,
   seededFraction,
   seededRotation,

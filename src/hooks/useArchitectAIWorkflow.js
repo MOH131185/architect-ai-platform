@@ -52,8 +52,240 @@ const STAGES = Object.freeze([
 ]);
 const PROJECT_GRAPH_REQUEST_SOFT_LIMIT_CHARS = 750_000;
 const PROJECT_GRAPH_SITE_SNAPSHOT_DATA_URL_MAX_CHARS = 600_000;
+const PROJECT_GRAPH_GENERATION_SEED_MAX = 2_147_483_647;
 const SITE_SNAPSHOT_IMAGE_DATA_URL_RE =
   /^data:image\/(?:png|jpe?g|webp);base64,[a-z0-9+/=\s]+$/i;
+let projectGraphAutoSeedCounter = 0;
+
+export function normalizeProjectGraphGenerationSeed(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return Math.abs(Math.trunc(numeric)) % PROJECT_GRAPH_GENERATION_SEED_MAX;
+}
+
+function randomProjectGraphSeedComponent() {
+  const cryptoObj =
+    typeof window !== "undefined" ? window.crypto : null;
+  if (cryptoObj?.getRandomValues) {
+    const buffer = new Uint32Array(1);
+    cryptoObj.getRandomValues(buffer);
+    return buffer[0];
+  }
+  return Math.floor(Math.random() * PROJECT_GRAPH_GENERATION_SEED_MAX);
+}
+
+export function createProjectGraphGenerationSeed() {
+  projectGraphAutoSeedCounter =
+    (projectGraphAutoSeedCounter + 1) % PROJECT_GRAPH_GENERATION_SEED_MAX;
+  const seed = normalizeProjectGraphGenerationSeed(
+    Date.now() + randomProjectGraphSeedComponent() + projectGraphAutoSeedCounter,
+  );
+  return seed === null || seed === 0 ? 1 : seed;
+}
+
+function firstProjectGraphSeedCandidate(candidates = []) {
+  for (const candidate of candidates) {
+    const normalized = normalizeProjectGraphGenerationSeed(candidate);
+    if (normalized !== null) return normalized;
+  }
+  return null;
+}
+
+function normalizeProjectGraphVariationMode(value) {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  if (
+    [
+      "new_design",
+      "same_geometry_regen",
+      "style_modify",
+      "layout_modify",
+    ].includes(normalized)
+  ) {
+    return normalized;
+  }
+  if (["regenerate", "panel_regen", "same_geometry"].includes(normalized)) {
+    return "same_geometry_regen";
+  }
+  if (["style", "materials", "material_modify"].includes(normalized)) {
+    return "style_modify";
+  }
+  if (["layout", "programme", "program", "geometry"].includes(normalized)) {
+    return "layout_modify";
+  }
+  return null;
+}
+
+function hasProjectGraphExistingIdentity(params = {}, designSpec = {}) {
+  const projectDetails =
+    designSpec.projectDetails ||
+    designSpec.specifications ||
+    designSpec.project ||
+    {};
+  return Boolean(
+    params.projectId ||
+      params.designId ||
+      params.designHistoryId ||
+      params.compiledProject ||
+      params.geometryHash ||
+      designSpec.projectId ||
+      designSpec.designId ||
+      designSpec.designHistoryId ||
+      designSpec.compiledProject ||
+      designSpec.geometryHash ||
+      designSpec.v2Bundle?.compiledProject ||
+      designSpec.v2Bundle?.geometryHash ||
+      projectDetails.projectId ||
+      projectDetails.designId ||
+      projectDetails.designHistoryId ||
+      projectDetails.geometryHash,
+  );
+}
+
+function requestLooksLayoutAffecting(params = {}, designSpec = {}) {
+  const modifyRequest = params.modifyRequest || designSpec.modifyRequest || {};
+  const changeText = [
+    params.changeType,
+    params.modifyType,
+    modifyRequest.changeType,
+    modifyRequest.scope,
+    modifyRequest.mode,
+    modifyRequest.customPrompt,
+    ...(Array.isArray(modifyRequest.quickToggles)
+      ? modifyRequest.quickToggles
+      : []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    /\b(layout|programme|program|room|space|area|floor|storey|story|massing|footprint|opening|window|door|stair)\b/.test(
+      changeText,
+    ) ||
+    Boolean(
+      params.programSpaces ||
+        designSpec.programSpaces ||
+        designSpec.programme?.spaces ||
+        designSpec.program?.spaces,
+    )
+  );
+}
+
+function requestLooksStyleOnly(params = {}, designSpec = {}) {
+  const modifyRequest = params.modifyRequest || designSpec.modifyRequest || {};
+  const changeText = [
+    params.changeType,
+    params.modifyType,
+    modifyRequest.changeType,
+    modifyRequest.scope,
+    modifyRequest.mode,
+    modifyRequest.customPrompt,
+    ...(Array.isArray(modifyRequest.quickToggles)
+      ? modifyRequest.quickToggles
+      : []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    /\b(style|material|materials|palette|facade|facade|colour|color|finish|tone)\b/.test(
+      changeText,
+    ) && !requestLooksLayoutAffecting(params, designSpec)
+  );
+}
+
+function resolveProjectGraphVariationMode(params = {}, designSpec = {}) {
+  const hasExistingProject = hasProjectGraphExistingIdentity(params, designSpec);
+  const explicit = normalizeProjectGraphVariationMode(
+    params.variationMode ||
+      params.projectVariationMode ||
+      designSpec.variationMode ||
+      designSpec.projectVariationMode ||
+      params.modifyRequest?.variationMode ||
+      designSpec.modifyRequest?.variationMode,
+  );
+  if (explicit) return explicit;
+  if (hasExistingProject && requestLooksLayoutAffecting(params, designSpec)) {
+    return "layout_modify";
+  }
+  if (hasExistingProject && requestLooksStyleOnly(params, designSpec)) {
+    return "style_modify";
+  }
+  if (hasExistingProject) {
+    return "same_geometry_regen";
+  }
+  return "new_design";
+}
+
+function resolveProjectGraphGenerationLifecycle(params = {}) {
+  const designSpec = params.designSpec || {};
+  const projectDetails =
+    designSpec.projectDetails ||
+    designSpec.specifications ||
+    designSpec.project ||
+    designSpec;
+  const sourceBrief = designSpec.brief || designSpec.projectBrief || {};
+  const variationMode = resolveProjectGraphVariationMode(params, designSpec);
+  const hasExistingProject = hasProjectGraphExistingIdentity(params, designSpec);
+  const directSeed = firstProjectGraphSeedCandidate([
+    params.seed,
+    params.baseSeed,
+    params.generationSeed,
+  ]);
+  if (directSeed !== null) {
+    return {
+      generationSeed: directSeed,
+      seedSource: "user",
+      variationMode,
+    };
+  }
+
+  const projectSeed = firstProjectGraphSeedCandidate([
+    designSpec.seed,
+    designSpec.baseSeed,
+    designSpec.generationSeed,
+    projectDetails.seed,
+    projectDetails.baseSeed,
+    projectDetails.generationSeed,
+    sourceBrief.generation_seed,
+    sourceBrief.generationSeed,
+    sourceBrief.baseSeed,
+    designSpec.metadata?.generationSeed,
+    designSpec.a1Sheet?.metadata?.generationSeed,
+    designSpec.compiledProject?.metadata?.generationSeed,
+    designSpec.v2Bundle?.compiledProject?.metadata?.generationSeed,
+  ]);
+
+  if (
+    projectSeed !== null &&
+    hasExistingProject &&
+    variationMode !== "layout_modify"
+  ) {
+    return {
+      generationSeed: projectSeed,
+      seedSource: "reused_existing_project",
+      variationMode,
+    };
+  }
+
+  if (projectSeed !== null && !hasExistingProject) {
+    return {
+      generationSeed: projectSeed,
+      seedSource: "user",
+      variationMode,
+    };
+  }
+
+  return {
+    generationSeed: createProjectGraphGenerationSeed(),
+    seedSource: "auto_new_project",
+    variationMode,
+  };
+}
 
 function isTruthyRequestFlag(value) {
   if (value === true) return true;
@@ -565,18 +797,8 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
     String(params.qualityTarget || designSpec.qualityTarget || "")
       .trim()
       .toLowerCase() === "reference_match";
-  const rawGenerationSeed =
-    params.seed ??
-    params.baseSeed ??
-    designSpec.seed ??
-    designSpec.baseSeed ??
-    projectDetails.seed ??
-    projectDetails.baseSeed ??
-    null;
-  const numericGenerationSeed = Number(rawGenerationSeed);
-  const generationSeed = Number.isFinite(numericGenerationSeed)
-    ? Math.abs(Math.trunc(numericGenerationSeed))
-    : null;
+  const generationLifecycle = resolveProjectGraphGenerationLifecycle(params);
+  const { generationSeed, seedSource, variationMode } = generationLifecycle;
   const resolvedBrief = sourceProjectBrief
     ? {
         ...sourceProjectBrief,
@@ -612,7 +834,11 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
         target_storeys: resolvedFloorCount,
         targetStoreys: resolvedFloorCount,
         generation_seed: generationSeed,
+        generationSeed,
         baseSeed: generationSeed,
+        seedSource,
+        variationMode,
+        generation_lifecycle: generationLifecycle,
         referenceMatch,
         reference_match: referenceMatch,
         renderIntent: referenceMatch
@@ -634,7 +860,11 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
         target_storeys: resolvedFloorCount,
         targetStoreys: resolvedFloorCount,
         generation_seed: generationSeed,
+        generationSeed,
         baseSeed: generationSeed,
+        seedSource,
+        variationMode,
+        generation_lifecycle: generationLifecycle,
         building_type: canonicalBuildingType || "dwelling",
         canonical_building_type: canonicalBuildingType || "dwelling",
         original_category: originalCategory,
@@ -687,6 +917,19 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
   return {
     baseSeed: generationSeed,
     seed: generationSeed,
+    generationSeed,
+    seedSource,
+    variationMode,
+    generationLifecycle,
+    projectId: params.projectId || designSpec.projectId || null,
+    designHistoryId:
+      params.designHistoryId || designSpec.designHistoryId || null,
+    existingGeometryHash:
+      params.geometryHash ||
+      designSpec.geometryHash ||
+      designSpec.compiledProject?.geometryHash ||
+      designSpec.v2Bundle?.compiledProject?.geometryHash ||
+      null,
     referenceMatch,
     reference_match: referenceMatch,
     renderIntent: referenceMatch
@@ -720,6 +963,9 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
       ),
       generationSeed,
       baseSeed: generationSeed,
+      seedSource,
+      variationMode,
+      generationLifecycle,
       customNotes: projectDetails.customNotes || designSpec.buildingNotes || "",
       entranceDirection:
         projectDetails.entranceDirection ||
@@ -976,6 +1222,10 @@ async function runProjectGraphVerticalSliceWorkflow({
       verticalSlice.projectGraph?.project_id ||
       null,
     geometryHash: verticalSlice.geometryHash,
+    seed: verticalSlice.generationSeed || verticalSlice.seed || null,
+    generationSeed: verticalSlice.generationSeed || verticalSlice.seed || null,
+    seedSource: verticalSlice.seedSource || null,
+    variationMode: verticalSlice.variationMode || null,
     compiledProject: verticalSlice.artifacts?.compiledProject || null,
     projectGeometry: verticalSlice.artifacts?.projectGeometry || null,
     panels: panelMap,
@@ -987,6 +1237,10 @@ async function runProjectGraphVerticalSliceWorkflow({
     metadata: {
       workflow: PIPELINE_MODE.PROJECT_GRAPH,
       pipelineVersion: verticalSlice.pipelineVersion,
+      generationSeed: verticalSlice.generationSeed || verticalSlice.seed || null,
+      seedSource: verticalSlice.seedSource || null,
+      variationMode: verticalSlice.variationMode || null,
+      generationLifecycle: verticalSlice.generationLifecycle || null,
       projectGraphId:
         verticalSlice.projectGraph?.project_graph_id ||
         verticalSlice.projectGraph?.project_id ||
