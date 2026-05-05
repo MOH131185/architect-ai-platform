@@ -5165,13 +5165,17 @@ function formatPanelTitle(panelType) {
   return raw
     .replace(/^floor_plan_ground$/, "Ground floor plan")
     .replace(/^floor_plan_first$/, "First floor plan")
+    .replace(/^elevation_north$/, "North elevation")
+    .replace(/^elevation_south$/, "South elevation")
+    .replace(/^elevation_east$/, "East elevation")
+    .replace(/^elevation_west$/, "West elevation")
     .replace(/^section_AA$/, "Section A-A")
     .replace(/^section_BB$/, "Section B-B")
-    .replace(/^site_context$/, "Site plan")
+    .replace(/^site_context$/, "Site / Context")
     .replace(/^hero_3d$/, "Exterior perspective")
-    .replace(/^exterior_render$/, "Exterior render")
-    .replace(/^axonometric$/, "Axonometric view")
-    .replace(/^interior_3d$/, "Interior perspective")
+    .replace(/^exterior_render$/, "Exterior perspective")
+    .replace(/^axonometric$/, "Axonometric")
+    .replace(/^interior_3d$/, "Interior view")
     .replace(/^material_palette$/, "Material palette")
     .replace(/^key_notes$/, "Key notes")
     .replace(/^title_block$/, "Title block")
@@ -6534,6 +6538,7 @@ export function buildTitleBlockPanelArtifact({
   geometryHash,
   sheetPlan,
   sheetDesignContext = null,
+  visualManifest = null,
 }) {
   const width = 620;
   const height = 900;
@@ -6575,6 +6580,10 @@ export function buildTitleBlockPanelArtifact({
       sheetDesignContext?.studio_footer ||
       "Architecture | Design | Planning",
   ).trim();
+  const visualManifestHash =
+    visualManifest?.manifestHash ||
+    sheetDesignContext?.visualManifestHash ||
+    null;
   const disclaimerLines = splitNoteLines(PROFESSIONAL_REVIEW_DISCLAIMER, 64, 3);
   // Phase 2 — broader RIBA-style metadata. The first 5 rows preserve the
   // existing data source (so existing tests and downstream readers continue
@@ -6638,7 +6647,8 @@ export function buildTitleBlockPanelArtifact({
   ${disclaimerSvg}
   <text x="34" y="808" font-family="Arial, sans-serif" font-size="15" font-weight="700" fill="#222222">${escapeXml(architectName.toUpperCase())}</text>
   <text x="34" y="828" font-family="Arial, sans-serif" font-size="12" fill="#555555">${escapeXml(studioFooter)}</text>
-  <text x="34" y="862" font-family="Arial, sans-serif" font-size="11" fill="#888888">source_model_hash ${escapeXml(String(geometryHash || "").slice(0, 16))}</text>
+  <text x="34" y="846" font-family="Arial, sans-serif" font-size="10" fill="#666666">geometryHash ${escapeXml(String(geometryHash || "").slice(0, 18))}</text>
+  <text x="34" y="862" font-family="Arial, sans-serif" font-size="10" fill="#666666">visualManifestHash ${escapeXml(String(visualManifestHash || "n/a").slice(0, 18))}</text>
   <text x="586" y="862" font-family="Arial, sans-serif" font-size="11" text-anchor="end" fill="#888888">${escapeXml(`${ribaStageLabel} • Rev ${revision}`)}</text>
 </svg>`;
   const svgHash = computeCDSHashSync({
@@ -6690,6 +6700,7 @@ export function buildTitleBlockPanelArtifact({
       date: dateLabel,
       architect: architectName,
       studioFooter,
+      visualManifestHash,
       rowKeys: rows.map((r) => r[0]),
       sheetDesignContextHash: sheetDesignContext?.contextHash || null,
       sourceContext: sheetDesignContext
@@ -6971,7 +6982,7 @@ export function buildProjectGraphRenderPrompt({
 function wrapPngAsSvgPanel(pngBuffer, viewBox, width, height) {
   const dataUrl = `data:image/png;base64,${pngBuffer.toString("base64")}`;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="${viewBox}" preserveAspectRatio="xMidYMid meet">
-  <image href="${dataUrl}" x="0" y="0" width="${width}" height="${height}" preserveAspectRatio="xMidYMid slice"/>
+  <image href="${dataUrl}" x="0" y="0" width="${width}" height="${height}" preserveAspectRatio="xMidYMid meet" data-fit-mode="object-contain"/>
 </svg>`;
 }
 
@@ -7310,6 +7321,7 @@ async function buildSheetPanelArtifacts({
     geometryHash,
     sheetPlan,
     sheetDesignContext,
+    visualManifest,
   });
   const visual3d = await buildVisual3DPanelArtifacts({
     compiledProject,
@@ -8361,6 +8373,53 @@ export function computePanelSlotFitMetrics({
   };
 }
 
+function artifactMetadataValue(artifact = null, key) {
+  if (!artifact) return null;
+  if (artifact[key] !== undefined && artifact[key] !== null) return artifact[key];
+  if (
+    artifact.metadata &&
+    artifact.metadata[key] !== undefined &&
+    artifact.metadata[key] !== null
+  ) {
+    return artifact.metadata[key];
+  }
+  return null;
+}
+
+function panelKindForSheet(panelType = "") {
+  if (REQUIRED_3D_A1_PANEL_TYPES.includes(panelType)) return "visual";
+  if (
+    String(panelType).startsWith("floor_plan_") ||
+    String(panelType).startsWith("elevation_") ||
+    String(panelType).startsWith("section_")
+  ) {
+    return "technical";
+  }
+  return "data";
+}
+
+function buildVisualPanelStatusBadge(artifact = null) {
+  const panelType = artifact?.panel_type || artifact?.panelType || "";
+  if (!REQUIRED_3D_A1_PANEL_TYPES.includes(panelType)) return null;
+  const fallback = artifactMetadataValue(artifact, "imageRenderFallback") !== false;
+  if (fallback) {
+    return {
+      label: "DETERMINISTIC FALLBACK",
+      providerUsed: "deterministic",
+      fallback: true,
+      fallbackReason:
+        artifactMetadataValue(artifact, "imageRenderFallbackReason") ||
+        "image_generation_disabled_or_unavailable",
+    };
+  }
+  return {
+    label: "IMAGE2 / OPENAI EDIT",
+    providerUsed: artifactMetadataValue(artifact, "imageProviderUsed") || "openai",
+    fallback: false,
+    fallbackReason: null,
+  };
+}
+
 function renderSheetPanel({
   placement,
   artifact,
@@ -8387,14 +8446,22 @@ function renderSheetPanel({
   });
   const content =
     placement.status === "ready"
-      ? `<svg x="${contentX}" y="${contentY}" width="${contentWidth}" height="${contentHeight}" viewBox="${escapeXml(viewBox)}" preserveAspectRatio="xMidYMid meet" overflow="hidden" data-inlined-panel="true">${svgBody}</svg>`
+      ? `<svg x="${contentX}" y="${contentY}" width="${contentWidth}" height="${contentHeight}" viewBox="${escapeXml(viewBox)}" preserveAspectRatio="xMidYMid meet" overflow="hidden" data-inlined-panel="true" data-fit-mode="object-contain">${svgBody}</svg>`
       : `<g data-panel-missing="true"><rect x="${contentX}" y="${contentY}" width="${contentWidth}" height="${contentHeight}" fill="#fff3f0" stroke="#a43f2a" stroke-dasharray="4 3"/><text x="${contentX + 8}" y="${contentY + 22}" font-size="7" fill="#a43f2a">Missing source panel</text></g>`;
+  const panelKind = panelKindForSheet(placement.panelType);
+  const visualBadge = buildVisualPanelStatusBadge(artifact);
+  const badgeSvg = visualBadge
+    ? `<g data-visual-provider-badge="true">
+  <rect x="${placement.x + placement.width - 70}" y="${placement.y + 2.2}" width="66" height="6.8" fill="${visualBadge.fallback ? "#fff4df" : "#eef8ff"}" stroke="${visualBadge.fallback ? "#b26b00" : "#0b5d7d"}" stroke-width="0.35"/>
+  <text x="${placement.x + placement.width - 37}" y="${placement.y + 7.4}" font-size="3.2" font-family="${EMBEDDED_FONT_STACK}" text-anchor="middle" fill="${visualBadge.fallback ? "#8a4b00" : "#0b5d7d"}">${escapeXml(visualBadge.label)}</text>
+</g>`
+    : "";
 
   // Phase B caption cleanup: show only title (left) + scale (right). The
   // geometry hash and source-model-hash were colliding with the title and
   // adding visual clutter; they remain available on the wrapping <g>
   // (data-source-model-hash) and on sheet metadata for downstream QA.
-  return `<g data-panel-id="${escapeXml(placement.panelType)}" data-source-panel-asset-id="${escapeXml(placement.sourcePanelAssetId || "")}" data-source-model-hash="${escapeXml(placement.source_model_hash || "")}" data-caption-layout="${caption.layout}">
+  return `<g data-panel-id="${escapeXml(placement.panelType)}" data-panel-kind="${panelKind}" data-source-panel-asset-id="${escapeXml(placement.sourcePanelAssetId || "")}" data-source-model-hash="${escapeXml(placement.source_model_hash || "")}" data-caption-layout="${caption.layout}" data-preserve-aspect-ratio="xMidYMid meet" data-fit-mode="object-contain" data-provider-used="${escapeXml(visualBadge?.providerUsed || artifactMetadataValue(artifact, "providerUsed") || "")}" data-image-render-fallback="${visualBadge ? String(visualBadge.fallback) : ""}" data-image-render-fallback-reason="${escapeXml(visualBadge?.fallbackReason || "")}">
   <rect x="${placement.x}" y="${placement.y}" width="${placement.width}" height="${placement.height}" rx="0.4" fill="#ffffff" stroke="#111111" stroke-width="0.45"/>
   <text x="${placement.x + caption.titleX}" y="${placement.y + caption.titleY}" font-size="${CAPTION_TITLE_FONT_SIZE}" font-family="${EMBEDDED_FONT_STACK}" font-weight="700" fill="#111111">${titleText}</text>
   ${
@@ -8402,7 +8469,43 @@ function renderSheetPanel({
       ? `<text x="${placement.x + caption.scaleX}" y="${placement.y + caption.scaleY}" font-size="${caption.scaleFontSize}" font-family="${EMBEDDED_FONT_STACK}" text-anchor="end" fill="#444444">${scaleText}</text>`
       : ""
   }
+  ${badgeSvg}
   ${content}
+</g>`;
+}
+
+function buildSheetProvenanceFooter({
+  geometryHash,
+  visualManifest,
+  panelArtifacts,
+} = {}) {
+  const visualArtifacts = normalizeArtifactCollection(panelArtifacts).filter(
+    (artifact) => REQUIRED_3D_A1_PANEL_TYPES.includes(artifact?.panel_type),
+  );
+  const providerValues = [
+    ...new Set(
+      visualArtifacts
+        .map((artifact) => artifactMetadataValue(artifact, "imageProviderUsed"))
+        .filter(Boolean),
+    ),
+  ];
+  const fallbackPanels = visualArtifacts
+    .filter((artifact) => artifactMetadataValue(artifact, "imageRenderFallback") !== false)
+    .map((artifact) => artifact.panel_type);
+  const providerSummary =
+    providerValues.length > 0 ? providerValues.join("+") : "deterministic";
+  const fallbackStatus = fallbackPanels.length
+    ? `fallback ${fallbackPanels.join(",")}`
+    : "fallback none";
+  const visualManifestHash = visualManifest?.manifestHash || null;
+  return `<g data-provenance-footer="true" data-geometry-hash="${escapeXml(geometryHash || "")}" data-visual-manifest-hash="${escapeXml(visualManifestHash || "")}" data-provider-summary="${escapeXml(providerSummary)}" data-image-render-fallback-status="${escapeXml(fallbackStatus)}" data-authority-source="ProjectGraph compiled geometry" data-export-source="sheetArtifact.svgString">
+  <rect x="6" y="582" width="829" height="7" fill="#ffffff" opacity="0.96"/>
+  <line x1="6" y1="582" x2="835" y2="582" stroke="#111111" stroke-width="0.25"/>
+  <text x="10" y="587" font-size="3.4" font-family="${EMBEDDED_FONT_STACK}" fill="#222222">ProjectGraph authority: compiled geometry / deterministic technical SVGs / geometry-locked visual edits</text>
+  <text x="382" y="587" font-size="3.4" font-family="${EMBEDDED_FONT_STACK}" fill="#444444">geometryHash ${escapeXml(String(geometryHash || "").slice(0, 16))}</text>
+  <text x="535" y="587" font-size="3.4" font-family="${EMBEDDED_FONT_STACK}" fill="#444444">visualManifestHash ${escapeXml(String(visualManifestHash || "n/a").slice(0, 16))}</text>
+  <text x="735" y="587" font-size="3.4" font-family="${EMBEDDED_FONT_STACK}" text-anchor="end" fill="#444444">providers ${escapeXml(providerSummary)}</text>
+  <text x="831" y="587" font-size="3.4" font-family="${EMBEDDED_FONT_STACK}" text-anchor="end" fill="${fallbackPanels.length ? "#8a4b00" : "#444444"}">${escapeXml(fallbackStatus)}</text>
 </g>`;
 }
 
@@ -8416,6 +8519,7 @@ function buildSheetSvg({
   sheetNumber = "A1-00",
   sheetLabel = "RIBA Stage 2 Master",
   layoutTemplate = "board-v2",
+  visualManifest = null,
 }) {
   const artifactIndex = buildPanelArtifactIndex(panelArtifacts);
   const panelGroups = panelPlacements
@@ -8430,12 +8534,18 @@ function buildSheetSvg({
   const sourcePanelAssetIds = panelPlacements
     .map((placement) => placement.sourcePanelAssetId)
     .filter(Boolean);
+  const provenanceFooter = buildSheetProvenanceFooter({
+    geometryHash,
+    visualManifest,
+    panelArtifacts,
+  });
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${A1_SHEET_SIZE_MM.width}mm" height="${A1_SHEET_SIZE_MM.height}mm" viewBox="0 0 ${A1_SHEET_SIZE_MM.width} ${A1_SHEET_SIZE_MM.height}" data-layout-version="${A1_SHEET_LAYOUT_VERSION}" data-layout-template="${escapeXml(layoutTemplate)}" data-placeholder-only="false" data-reference-match="${brief?.reference_match === true ? "true" : "false"}" data-brief-input-hash="${escapeXml(brief?.brief_input_hash || "")}" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-sheet-number="${escapeXml(sheetNumber)}" data-sheet-label="${escapeXml(sheetLabel)}" data-qa-status="${escapeXml(qaStatus || "pending")}">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${A1_SHEET_SIZE_MM.width}mm" height="${A1_SHEET_SIZE_MM.height}mm" viewBox="0 0 ${A1_SHEET_SIZE_MM.width} ${A1_SHEET_SIZE_MM.height}" data-layout-version="${A1_SHEET_LAYOUT_VERSION}" data-layout-template="${escapeXml(layoutTemplate)}" data-placeholder-only="false" data-reference-match="${brief?.reference_match === true ? "true" : "false"}" data-brief-input-hash="${escapeXml(brief?.brief_input_hash || "")}" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-visual-manifest-hash="${escapeXml(visualManifest?.manifestHash || "")}" data-sheet-number="${escapeXml(sheetNumber)}" data-sheet-label="${escapeXml(sheetLabel)}" data-qa-status="${escapeXml(qaStatus || "pending")}" data-export-source="sheetArtifact.svgString">
   <rect width="${A1_SHEET_SIZE_MM.width}" height="${A1_SHEET_SIZE_MM.height}" fill="#ffffff"/>
   <rect x="5" y="5" width="831" height="584" fill="none" stroke="#111111" stroke-width="0.7"/>
   <desc>Reference board A1 package for ${escapeXml(brief.project_name)}. Panels ${sourcePanelAssetIds.length}. Geometry hash ${escapeXml(geometryHash)}.</desc>
   ${panelGroups}
+  ${provenanceFooter}
 </svg>`;
 }
 
@@ -8599,6 +8709,7 @@ async function buildA1Sheet({
     sheetNumber: drawingNumber,
     sheetLabel,
     layoutTemplate,
+    visualManifest,
   });
   __a1mark = __a1sheetLog(
     "build_sheet_svg",
@@ -8915,6 +9026,18 @@ const FINAL_A1_RASTER_DPI = 300;
 const PREVIEW_A1_RASTER_DPI = 144;
 const FINAL_A1_RASTER_MIN_RATIO = 0.95; // tolerance vs expected pixel size
 
+function buildA1PdfSourceMetadata(sheetArtifact = {}) {
+  return {
+    sourceSvgHash: sheetArtifact?.svgHash || null,
+    sourceSvgAssetId: sheetArtifact?.asset_id || null,
+    sheetArtifactSvgStringUsed:
+      typeof sheetArtifact?.svgString === "string" &&
+      sheetArtifact.svgString.length > 0,
+    sourceSvgRole: "sheetArtifact.svgString",
+    emptyFrameFallbackUsed: false,
+  };
+}
+
 async function buildA1PdfArtifact({
   projectGraphId,
   brief,
@@ -9198,10 +9321,7 @@ async function buildA1PdfArtifact({
     textRenderMode: "font_paths",
     rasterIntegrityStatus: rasterGlyphIntegrity?.status || "not_run",
     hybridVectorPdfFollowUp: true,
-    sourceSvgHash: sheetArtifact.svgHash,
-    sourceSvgAssetId: sheetArtifact.asset_id,
-    sheetArtifactSvgStringUsed: true,
-    emptyFrameFallbackUsed: false,
+    ...buildA1PdfSourceMetadata(sheetArtifact),
   };
 
   // Phase 5D: optional vector PDF as an *additional* artifact behind a
@@ -12263,6 +12383,12 @@ export const __projectGraphVerticalSliceInternals = Object.freeze({
   syncProgrammeActuals,
   compileProject,
   buildArchitectReasoningManifest,
+  buildPanelPlacements,
+  buildSheetSvg,
+  buildSheetProvenanceFooter,
+  buildA1PdfSourceMetadata,
+  renderSheetPanel,
+  wrapPngAsSvgPanel,
   // Phase 4: exposed for unit testing the upstream-gate technical-blocker fold.
   applyUpstreamGateTechnicalBlockersToQa,
 });
