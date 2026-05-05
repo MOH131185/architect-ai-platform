@@ -17,6 +17,7 @@ const EXTERIOR_VIEW_SPECS = {
     visibleSides: ["south", "east"],
     title: "Compiled Hero 3D Control",
     renderKind: "compiled_exterior_oblique",
+    controlViewType: "exterior_massing_opening_control",
     theme: {
       background: "#f6f3ee",
       ground: "#e6dfd3",
@@ -41,6 +42,7 @@ const EXTERIOR_VIEW_SPECS = {
     visibleSides: ["south"],
     title: "Compiled Exterior Render Control",
     renderKind: "compiled_exterior_front",
+    controlViewType: "exterior_massing_opening_control",
     theme: {
       background: "#eef1f4",
       ground: "#d6cfc1",
@@ -65,6 +67,7 @@ const EXTERIOR_VIEW_SPECS = {
     visibleSides: ["south", "west"],
     title: "Compiled Axonometric Control",
     renderKind: "compiled_axonometric",
+    controlViewType: "axonometric_massing_opening_control",
     theme: {
       background: "#ffffff",
       ground: "#f2f2f2",
@@ -90,6 +93,7 @@ const INTERIOR_VIEW_SPEC = {
   perspective: true,
   title: "Compiled Interior Control",
   renderKind: "compiled_interior_cutaway",
+  controlViewType: "interior_room_cutaway_control",
   theme: {
     background: "#f8f5ef",
     floor: "#eadfce",
@@ -1403,6 +1407,7 @@ function buildRenderInputRecord(
   return {
     panelType,
     viewType: panelType,
+    controlViewType: spec.controlViewType,
     width: spec.width,
     height: spec.height,
     svgString,
@@ -1416,6 +1421,7 @@ function buildRenderInputRecord(
       panelType,
       sourceType: "compiled_render_input",
       renderKind: spec.renderKind,
+      controlViewType: spec.controlViewType,
       geometryHash: geometryHash || null,
       svgHash,
       deterministic: true,
@@ -1441,6 +1447,7 @@ function normalizeExistingRenderInput(panelType, entry, geometryHash = null) {
       dataUrl: entry.startsWith("data:") ? entry : null,
       url: entry.startsWith("data:") ? null : entry,
       sourceType: "compiled_render_input",
+      controlViewType: viewSpecForPanelType(panelType).controlViewType || null,
       geometryHash: geometryHash || null,
       metadata: {
         source: "compiled_project",
@@ -1474,6 +1481,11 @@ function normalizeExistingRenderInput(panelType, entry, geometryHash = null) {
     ...cloneData(entry),
     panelType: entry.panelType || entry.viewType || panelType,
     viewType: entry.viewType || panelType,
+    controlViewType:
+      entry.controlViewType ||
+      existingMetadata.controlViewType ||
+      fallbackSpec.controlViewType ||
+      null,
     svgString,
     dataUrl,
     svgHash,
@@ -1484,6 +1496,10 @@ function normalizeExistingRenderInput(panelType, entry, geometryHash = null) {
       source: "compiled_project",
       panelType,
       sourceType: entry.sourceType || entry.source || "compiled_render_input",
+      controlViewType:
+        existingMetadata.controlViewType ||
+        fallbackSpec.controlViewType ||
+        null,
       geometryHash: geometryHash || entry.geometryHash || null,
       ...(svgHash ? { svgHash } : {}),
       deterministic: true,

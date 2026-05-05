@@ -356,6 +356,24 @@ describe("buildProjectGraphRenderPrompt — Phase D injection", () => {
     expect(prompt).toContain("Do not invent extra bays, extra storeys");
   });
 
+  test("prompts add hard view-specific blocks for exterior, axonometric, and interior panels", () => {
+    const exterior = promptFor("exterior_render");
+    const axonometric = promptFor("axonometric");
+    const interior = promptFor("interior_3d");
+
+    expect(exterior).toContain("VIEW-SPECIFIC HARD BLOCK - EXTERIOR_RENDER");
+    expect(exterior).toContain("Render an exterior architectural view only");
+    expect(exterior).toContain("the locked window/opening rhythm");
+    expect(axonometric).toContain("VIEW-SPECIFIC HARD BLOCK - AXONOMETRIC");
+    expect(axonometric).toContain(
+      "true axonometric/isometric architectural projection",
+    );
+    expect(interior).toContain("VIEW-SPECIFIC HARD BLOCK - INTERIOR_3D");
+    expect(interior).toContain("Render an indoor interior view only");
+    expect(interior).toContain("Do not show an exterior facade");
+    expect(interior).toContain("room programme, room adjacency");
+  });
+
   test("when no manifest is supplied, no lock block is emitted", () => {
     const prompt = promptFor("hero_3d", { manifest: null });
     expect(prompt).not.toMatch(/VISUAL IDENTITY LOCK/);

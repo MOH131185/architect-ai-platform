@@ -109,7 +109,9 @@ function buildFixtureArtifacts({ fallbackHero = false } = {}) {
     dataArtifact("key_notes", "NOTES"),
     dataArtifact("title_block", "TITLE"),
   ];
-  return Object.fromEntries(artifacts.map((artifact) => [artifact.asset_id, artifact]));
+  return Object.fromEntries(
+    artifacts.map((artifact) => [artifact.asset_id, artifact]),
+  );
 }
 
 function buildFixtureSheet({ fallbackHero = false } = {}) {
@@ -199,7 +201,9 @@ describe("ProjectGraph A1 composer Phase 4", () => {
     });
     const svg = buildFixtureSheet();
 
-    expect(titleBlock.svgString).toContain(`geometryHash ${GEOMETRY_HASH.slice(0, 18)}`);
+    expect(titleBlock.svgString).toContain(
+      `geometryHash ${GEOMETRY_HASH.slice(0, 18)}`,
+    );
     expect(titleBlock.svgString).toContain(
       `visualManifestHash ${VISUAL_MANIFEST.manifestHash.slice(0, 18)}`,
     );
@@ -235,5 +239,46 @@ describe("ProjectGraph A1 composer Phase 4", () => {
     expect(svg).toContain('data-provider-used="deterministic"');
     expect(svg).toContain("DETERMINISTIC FALLBACK");
     expect(svg).toContain("fallback hero_3d");
+  });
+
+  test("visual badges stay clipped inside panel bounds and footer reserve avoids clipping", () => {
+    const panelArtifacts = buildFixtureArtifacts();
+    const panelPlacements = buildPanelPlacements({
+      drawingSet: { drawings: [] },
+      panelArtifacts,
+      targetStoreys: 2,
+      layoutTemplate: "presentation-v3",
+      geometryHash: GEOMETRY_HASH,
+      briefInputHash: "brief-hash-phase4",
+    });
+    const svg = buildSheetSvg({
+      projectGraphId: "project-phase4",
+      brief: {
+        project_name: "Phase 4 Composer Test",
+        reference_match: false,
+        brief_input_hash: "brief-hash-phase4",
+      },
+      geometryHash: GEOMETRY_HASH,
+      panelPlacements,
+      panelArtifacts,
+      qaStatus: "pending",
+      sheetNumber: "A1-01",
+      sheetLabel: "Phase 4",
+      layoutTemplate: "presentation-v3",
+      visualManifest: VISUAL_MANIFEST,
+    });
+    const lastPanelBottom = Math.max(
+      ...panelPlacements.map((placement) => placement.y + placement.height),
+    );
+    const badgeMatch = svg.match(
+      /data-visual-provider-badge="true"[^>]*clip-path="url\(#([^)]+)\)"[\s\S]*?<rect x="([^"]+)" y="([^"]+)" width="([^"]+)"/,
+    );
+
+    expect(lastPanelBottom).toBeLessThanOrEqual(570);
+    expect(svg).toContain('data-provenance-footer="true"');
+    expect(svg).toContain('<rect x="6" y="574" width="829" height="14"');
+    expect(badgeMatch).toBeTruthy();
+    expect(Number(badgeMatch[2])).toBeGreaterThanOrEqual(10);
+    expect(Number(badgeMatch[4])).toBeLessThanOrEqual(66);
   });
 });

@@ -64,8 +64,7 @@ export function normalizeProjectGraphGenerationSeed(value) {
 }
 
 function randomProjectGraphSeedComponent() {
-  const cryptoObj =
-    typeof window !== "undefined" ? window.crypto : null;
+  const cryptoObj = typeof window !== "undefined" ? window.crypto : null;
   if (cryptoObj?.getRandomValues) {
     const buffer = new Uint32Array(1);
     cryptoObj.getRandomValues(buffer);
@@ -78,7 +77,9 @@ export function createProjectGraphGenerationSeed() {
   projectGraphAutoSeedCounter =
     (projectGraphAutoSeedCounter + 1) % PROJECT_GRAPH_GENERATION_SEED_MAX;
   const seed = normalizeProjectGraphGenerationSeed(
-    Date.now() + randomProjectGraphSeedComponent() + projectGraphAutoSeedCounter,
+    Date.now() +
+      randomProjectGraphSeedComponent() +
+      projectGraphAutoSeedCounter,
   );
   return seed === null || seed === 0 ? 1 : seed;
 }
@@ -126,21 +127,21 @@ function hasProjectGraphExistingIdentity(params = {}, designSpec = {}) {
     {};
   return Boolean(
     params.projectId ||
-      params.designId ||
-      params.designHistoryId ||
-      params.compiledProject ||
-      params.geometryHash ||
-      designSpec.projectId ||
-      designSpec.designId ||
-      designSpec.designHistoryId ||
-      designSpec.compiledProject ||
-      designSpec.geometryHash ||
-      designSpec.v2Bundle?.compiledProject ||
-      designSpec.v2Bundle?.geometryHash ||
-      projectDetails.projectId ||
-      projectDetails.designId ||
-      projectDetails.designHistoryId ||
-      projectDetails.geometryHash,
+    params.designId ||
+    params.designHistoryId ||
+    params.compiledProject ||
+    params.geometryHash ||
+    designSpec.projectId ||
+    designSpec.designId ||
+    designSpec.designHistoryId ||
+    designSpec.compiledProject ||
+    designSpec.geometryHash ||
+    designSpec.v2Bundle?.compiledProject ||
+    designSpec.v2Bundle?.geometryHash ||
+    projectDetails.projectId ||
+    projectDetails.designId ||
+    projectDetails.designHistoryId ||
+    projectDetails.geometryHash,
   );
 }
 
@@ -167,9 +168,9 @@ function requestLooksLayoutAffecting(params = {}, designSpec = {}) {
     ) ||
     Boolean(
       params.programSpaces ||
-        designSpec.programSpaces ||
-        designSpec.programme?.spaces ||
-        designSpec.program?.spaces,
+      designSpec.programSpaces ||
+      designSpec.programme?.spaces ||
+      designSpec.program?.spaces,
     )
   );
 }
@@ -199,7 +200,10 @@ function requestLooksStyleOnly(params = {}, designSpec = {}) {
 }
 
 function resolveProjectGraphVariationMode(params = {}, designSpec = {}) {
-  const hasExistingProject = hasProjectGraphExistingIdentity(params, designSpec);
+  const hasExistingProject = hasProjectGraphExistingIdentity(
+    params,
+    designSpec,
+  );
   const explicit = normalizeProjectGraphVariationMode(
     params.variationMode ||
       params.projectVariationMode ||
@@ -230,7 +234,10 @@ function resolveProjectGraphGenerationLifecycle(params = {}) {
     designSpec;
   const sourceBrief = designSpec.brief || designSpec.projectBrief || {};
   const variationMode = resolveProjectGraphVariationMode(params, designSpec);
-  const hasExistingProject = hasProjectGraphExistingIdentity(params, designSpec);
+  const hasExistingProject = hasProjectGraphExistingIdentity(
+    params,
+    designSpec,
+  );
   const directSeed = firstProjectGraphSeedCandidate([
     params.seed,
     params.baseSeed,
@@ -476,6 +483,14 @@ function compactSiteSnapshotForRequest(siteSnapshot = null) {
         typeof sourceLabel === "string" && !sourceLabel.includes("key=")
           ? sourceLabel
           : null,
+      boundarySource:
+        siteSnapshot.metadata?.boundarySource ||
+        siteSnapshot.boundarySource ||
+        null,
+      boundaryConfidence:
+        siteSnapshot.metadata?.boundaryConfidence ??
+        siteSnapshot.boundaryConfidence ??
+        null,
       siteMetrics: siteSnapshot.metadata?.siteMetrics || null,
       sitePlanMode: siteSnapshot.metadata?.sitePlanMode || null,
       boundaryAuthoritative:
@@ -505,15 +520,77 @@ function compactSiteSnapshotForRequest(siteSnapshot = null) {
   };
 }
 
+function compactManualVerifiedBoundaryForRequest(boundary = null) {
+  if (!boundary || typeof boundary !== "object") {
+    return null;
+  }
+  const polygon = compactLatLngPolygon(
+    boundary.polygon ||
+      boundary.sitePolygon ||
+      boundary.siteBoundary ||
+      boundary.boundary ||
+      [],
+  );
+  if (polygon.length < 3) {
+    return null;
+  }
+  return {
+    polygon,
+    areaM2: boundary.areaM2 ?? boundary.area ?? null,
+    surfaceAreaM2: boundary.surfaceAreaM2 ?? boundary.surfaceArea ?? null,
+    perimeterM: boundary.perimeterM ?? null,
+    boundarySource: boundary.boundarySource || "manual_verified",
+    boundaryAuthoritative: boundary.boundaryAuthoritative !== false,
+    boundaryConfidence: boundary.boundaryConfidence ?? 1,
+    hash: boundary.hash || boundary.boundaryHash || null,
+    policyVersion: boundary.policyVersion || null,
+  };
+}
+
 function compactLocationDataForRequest(locationData = {}) {
   if (!locationData || typeof locationData !== "object") {
     return {};
   }
+  const sitePolygon = compactLatLngPolygon(
+    locationData.sitePolygon ||
+      locationData.siteBoundary ||
+      locationData.authoritativeSiteBoundary ||
+      locationData.siteAnalysis?.siteBoundary ||
+      locationData.siteAnalysis?.authoritativeSiteBoundary ||
+      [],
+  );
+  const manualVerifiedBoundary = compactManualVerifiedBoundaryForRequest(
+    locationData.manualVerifiedBoundary ||
+      locationData.manual_verified_boundary ||
+      locationData.siteAnalysis?.manualVerifiedBoundary ||
+      null,
+  );
 
   return {
+    siteAddress: locationData.siteAddress || locationData.address || null,
     address: locationData.address || null,
     postcode: locationData.postcode || null,
     coordinates: normalizeLatLngPoint(locationData.coordinates) || null,
+    sitePolygon,
+    siteBoundary: sitePolygon,
+    manualVerifiedBoundary,
+    manual_verified_boundary: manualVerifiedBoundary,
+    locationMetadata: {
+      source:
+        locationData.locationMetadata?.source ||
+        locationData.metadata?.source ||
+        locationData.source ||
+        null,
+      placeId:
+        locationData.locationMetadata?.placeId ||
+        locationData.placeId ||
+        locationData.metadata?.placeId ||
+        null,
+      geocodedAddress:
+        locationData.locationMetadata?.geocodedAddress ||
+        locationData.geocodedAddress ||
+        null,
+    },
     climate: locationData.climate || null,
     zoning: locationData.zoning || null,
     sunPath: locationData.sunPath || locationData.siteDNA?.solar || null,
@@ -575,6 +652,12 @@ function compactLocationDataForRequest(locationData = {}) {
           mainEntry: compactMainEntry(locationData.siteAnalysis.mainEntry),
           mainEntryDirection: compactMainEntry(
             locationData.siteAnalysis.mainEntryDirection,
+          ),
+          siteBoundary: compactLatLngPolygon(
+            locationData.siteAnalysis.siteBoundary || [],
+          ),
+          authoritativeSiteBoundary: compactLatLngPolygon(
+            locationData.siteAnalysis.authoritativeSiteBoundary || [],
           ),
           estimatedSiteBoundary: compactLatLngPolygon(
             locationData.siteAnalysis.estimatedSiteBoundary || [],
@@ -662,12 +745,44 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
     designSpec.specifications ||
     designSpec.project ||
     designSpec;
-  const locationData =
-    designSpec.location || params.locationData || params.siteSnapshot || {};
+  const locationData = {
+    ...(params.locationData || {}),
+    ...(designSpec.location || {}),
+  };
   const compactSiteSnapshot = compactSiteSnapshotForRequest(
     params.siteSnapshot || designSpec.siteSnapshot || null,
   );
-  const compactSitePolygon = compactLatLngPolygon(designSpec.sitePolygon);
+  const compactLocationData = compactLocationDataForRequest(locationData);
+  const currentSiteAddress =
+    compactLocationData.siteAddress ||
+    compactLocationData.address ||
+    designSpec.siteAddress ||
+    designSpec.address ||
+    params.siteAddress ||
+    params.siteSnapshot?.address ||
+    compactSiteSnapshot?.address ||
+    null;
+  const compactSitePolygon = compactLatLngPolygon(
+    designSpec.sitePolygon ||
+      designSpec.siteBoundary ||
+      compactLocationData.manualVerifiedBoundary?.polygon ||
+      compactLocationData.sitePolygon ||
+      params.sitePolygon ||
+      [],
+  );
+  const compactSiteInputPolygon =
+    compactLocationData.manualVerifiedBoundary?.polygon?.length >= 3
+      ? compactLocationData.manualVerifiedBoundary.polygon
+      : compactSitePolygon.length >= 3
+        ? compactSitePolygon
+        : compactLocationData.sitePolygon?.length >= 3
+          ? compactLocationData.sitePolygon
+          : compactSiteSnapshot?.sitePolygon || [];
+  const currentCoordinates =
+    compactLocationData.coordinates ||
+    normalizeLatLngPoint(params.siteSnapshot?.coordinates) ||
+    normalizeLatLngPoint(compactSiteSnapshot?.coordinates) ||
+    null;
   const programSpaces =
     designSpec.programSpaces ||
     designSpec.programme?.spaces ||
@@ -839,6 +954,50 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
         seedSource,
         variationMode,
         generation_lifecycle: generationLifecycle,
+        siteAddress:
+          currentSiteAddress ||
+          sourceProjectBrief.siteAddress ||
+          sourceProjectBrief.site_input?.address ||
+          null,
+        site_input: {
+          ...(sourceProjectBrief.site_input ||
+            sourceProjectBrief.siteInput ||
+            {}),
+          address:
+            currentSiteAddress ||
+            sourceProjectBrief.site_input?.address ||
+            sourceProjectBrief.siteInput?.address ||
+            null,
+          postcode:
+            compactLocationData.postcode ||
+            sourceProjectBrief.site_input?.postcode ||
+            sourceProjectBrief.siteInput?.postcode ||
+            null,
+          coordinates:
+            currentCoordinates ||
+            sourceProjectBrief.site_input?.coordinates ||
+            sourceProjectBrief.siteInput?.coordinates ||
+            null,
+          lat:
+            currentCoordinates?.lat ??
+            sourceProjectBrief.site_input?.lat ??
+            sourceProjectBrief.siteInput?.lat ??
+            null,
+          lon:
+            currentCoordinates?.lng ??
+            currentCoordinates?.lon ??
+            sourceProjectBrief.site_input?.lon ??
+            sourceProjectBrief.siteInput?.lon ??
+            null,
+          boundary_geojson:
+            compactSiteInputPolygon.length >= 3
+              ? compactSiteInputPolygon
+              : sourceProjectBrief.site_input?.boundary_geojson ||
+                sourceProjectBrief.siteInput?.boundary_geojson ||
+                null,
+          boundarySource: compactLocationData.boundarySource || null,
+          boundaryConfidence: compactLocationData.boundaryConfidence ?? null,
+        },
         referenceMatch,
         reference_match: referenceMatch,
         renderIntent: referenceMatch
@@ -873,6 +1032,20 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
         programme_template_key: projectTypeSupportMetadata.programmeTemplateKey,
         project_type_route: projectTypeSupportMetadata.route,
         project_type_support: projectTypeSupportMetadata,
+        siteAddress: currentSiteAddress,
+        site_input: {
+          address: currentSiteAddress,
+          postcode: compactLocationData.postcode || null,
+          coordinates: currentCoordinates,
+          lat: currentCoordinates?.lat ?? null,
+          lon: currentCoordinates?.lng ?? currentCoordinates?.lon ?? null,
+          boundary_geojson:
+            compactSiteInputPolygon.length >= 3
+              ? compactSiteInputPolygon
+              : null,
+          boundarySource: compactLocationData.boundarySource || null,
+          boundaryConfidence: compactLocationData.boundaryConfidence ?? null,
+        },
         required_spaces_text:
           projectDetails.requiredSpacesText ||
           designSpec.requiredSpacesText ||
@@ -979,7 +1152,17 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
       mainEntryEdgeId: requestMainEntry?.mainEntryEdgeId || null,
       pipelineVersion: designSpec.pipelineVersion || null,
     },
-    locationData: compactLocationDataForRequest(locationData),
+    siteAddress: currentSiteAddress,
+    boundarySource:
+      compactLocationData.boundarySource ||
+      requestSiteMetrics?.boundarySource ||
+      null,
+    boundaryConfidence:
+      compactLocationData.boundaryConfidence ??
+      requestSiteMetrics?.boundaryConfidence ??
+      null,
+    locationMetadata: compactLocationData.locationMetadata || null,
+    locationData: compactLocationData,
     siteSnapshot: compactSiteSnapshot,
     sitePolygon: requestSitePolygon,
     siteMetrics: requestSiteMetrics,
@@ -1237,7 +1420,8 @@ async function runProjectGraphVerticalSliceWorkflow({
     metadata: {
       workflow: PIPELINE_MODE.PROJECT_GRAPH,
       pipelineVersion: verticalSlice.pipelineVersion,
-      generationSeed: verticalSlice.generationSeed || verticalSlice.seed || null,
+      generationSeed:
+        verticalSlice.generationSeed || verticalSlice.seed || null,
       seedSource: verticalSlice.seedSource || null,
       variationMode: verticalSlice.variationMode || null,
       generationLifecycle: verticalSlice.generationLifecycle || null,

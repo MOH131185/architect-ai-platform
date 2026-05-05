@@ -44,12 +44,19 @@ const VISUAL_MANIFEST = {
 };
 
 function makeRenderInputs(overrides = {}) {
+  const controlViewTypes = {
+    hero_3d: "exterior_massing_opening_control",
+    exterior_render: "exterior_massing_opening_control",
+    axonometric: "axonometric_massing_opening_control",
+    interior_3d: "interior_room_cutaway_control",
+  };
   return Object.fromEntries(
     PANEL_TYPES.map((panelType) => [
       panelType,
       {
         svgString: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 80"><rect width="100" height="80"/><text>${panelType}</text></svg>`,
         svgHash: `control-svg-hash-${panelType}`,
+        controlViewType: controlViewTypes[panelType],
         width: 100,
         height: 80,
         metadata: {
@@ -59,6 +66,7 @@ function makeRenderInputs(overrides = {}) {
           camera: { view: panelType },
           primitiveCount: 6,
           surfaceCount: 6,
+          controlViewType: controlViewTypes[panelType],
         },
         ...(overrides[panelType] || {}),
       },
@@ -170,6 +178,18 @@ describe("ProjectGraph visual image2 Phase 2", () => {
     expect(promptsByPanel.interior_3d).toMatch(
       /derived from the same project programme/i,
     );
+    expect(promptsByPanel.interior_3d).toContain(
+      "VIEW-SPECIFIC HARD BLOCK - INTERIOR_3D",
+    );
+    expect(promptsByPanel.interior_3d).toContain(
+      "Render an indoor interior view only",
+    );
+    expect(promptsByPanel.interior_3d).toContain(
+      "Do not show an exterior facade",
+    );
+    expect(promptsByPanel.axonometric).toContain(
+      "VIEW-SPECIFIC HARD BLOCK - AXONOMETRIC",
+    );
     for (const prompt of Object.values(promptsByPanel)) {
       expect(prompt).toContain(`geometryHash: ${GEOMETRY_HASH}`);
       expect(prompt).toContain(
@@ -207,6 +227,12 @@ describe("ProjectGraph visual image2 Phase 2", () => {
         requestId: `req-${panelType}`,
         usage: { total_tokens: 10 },
         controlSvgHash: `control-svg-hash-${panelType}`,
+        controlViewType:
+          panelType === "interior_3d"
+            ? "interior_room_cutaway_control"
+            : panelType === "axonometric"
+              ? "axonometric_massing_opening_control"
+              : "exterior_massing_opening_control",
       });
       expect(artifact.promptHash).toEqual(expect.any(String));
       expect(artifact.metadata).toMatchObject({
@@ -224,6 +250,7 @@ describe("ProjectGraph visual image2 Phase 2", () => {
         openaiRequestId: `req-${panelType}`,
         openaiUsage: { total_tokens: 10 },
         controlSvgHash: `control-svg-hash-${panelType}`,
+        controlViewType: artifact.controlViewType,
         promptHash: artifact.promptHash,
       });
     }

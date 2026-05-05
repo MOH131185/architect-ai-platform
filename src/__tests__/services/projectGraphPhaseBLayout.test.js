@@ -203,6 +203,29 @@ describe("Phase B closeout — presentation-v3 panel fit", () => {
       }),
     ).toBe("10 10 780 580");
   });
+
+  test("presentation-v3 embeds technical panels from tight content bounds instead of huge fallback viewBox", () => {
+    const artifact = {
+      svgString:
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900"></svg>',
+      width: 1200,
+      height: 900,
+      normalizedViewBox: "-1800 -1200 4800 3300",
+      contentBounds: { x: 120, y: 90, width: 960, height: 700 },
+    };
+    const viewBox = selectPanelContentViewBox({
+      panelType: "floor_plan_ground",
+      artifact,
+      layoutTemplate: "presentation-v3",
+    });
+    const [x, y, width, height] = viewBox.split(/\s+/).map(Number);
+
+    expect(x).toBeGreaterThanOrEqual(0);
+    expect(y).toBeGreaterThanOrEqual(0);
+    expect(width).toBeLessThan(1000);
+    expect(height).toBeLessThan(730);
+    expect((960 * 700) / (width * height)).toBeGreaterThan(0.92);
+  });
 });
 
 describe("Phase B closeout — caption layout", () => {
@@ -322,15 +345,15 @@ describe("Phase B closeout v3 — presentation-v3 slot proportions", () => {
     }
   });
 
-  test("3-storey row 1 height shrinks to 130mm so plans fit landscape", () => {
+  test("3-storey row 1 reserves footer space while keeping plans landscape", () => {
     const specs = buildPresentationV3SheetPanelSpecs(3);
     const site = specs.find((s) => s.panelType === "site_context");
     const ground = specs.find((s) => s.panelType === "floor_plan_ground");
     const elevationN = specs.find((s) => s.panelType === "elevation_north");
-    expect(site.height).toBe(130);
-    expect(ground.height).toBe(130);
+    expect(site.height).toBe(126);
+    expect(ground.height).toBe(126);
     // North elevation is half the row height with a small gap above its
-    // bottom sibling — so each elevation cell is ~62mm tall.
+    // bottom sibling — so each elevation cell is about 60mm tall.
     expect(elevationN.height).toBeLessThanOrEqual(70);
   });
 
@@ -356,9 +379,9 @@ describe("Phase B closeout v3 — presentation-v3 slot proportions", () => {
     const ground = specs.find((s) => s.panelType === "floor_plan_ground");
     const sectionAA = specs.find((s) => s.panelType === "section_AA");
     const hero = specs.find((s) => s.panelType === "hero_3d");
-    expect(site.height).toBe(180);
-    expect(ground.height).toBe(180);
-    expect(sectionAA.height).toBe(178);
+    expect(site.height).toBe(172);
+    expect(ground.height).toBe(172);
+    expect(sectionAA.height).toBe(172);
     expect(hero.height).toBe(200);
     expect(findOverlap(specs)).toBeNull();
   });
@@ -367,10 +390,10 @@ describe("Phase B closeout v3 — presentation-v3 slot proportions", () => {
     const specs = buildPresentationV3SheetPanelSpecs(2);
     const ground = specs.find((s) => s.panelType === "floor_plan_ground");
     const first = specs.find((s) => s.panelType === "floor_plan_first");
-    expect(ground.height).toBe(180);
-    expect(first.height).toBe(180);
+    expect(ground.height).toBe(172);
+    expect(first.height).toBe(172);
     expect(first.x).toBeGreaterThan(ground.x);
-    expect(ground.width).toBeGreaterThanOrEqual(175);
+    expect(ground.width).toBeGreaterThanOrEqual(200);
     expect(first.width).toBe(ground.width);
     expect(findOverlap(specs)).toBeNull();
   });
@@ -429,6 +452,6 @@ describe("Phase B closeout v3 — presentation-v3 slot proportions", () => {
     });
     expect(metrics.occupancyRatio).toBeGreaterThan(0.7);
     expect(metrics.slotContentHeight).toBeLessThan(ground.height);
-    expect(metrics.captionLayout).toBe("stacked");
+    expect(metrics.captionLayout).toBe("inline");
   });
 });

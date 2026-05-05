@@ -184,6 +184,90 @@ function cloneForTest(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+test("title block and site panel use the current Scunthorpe site instead of stale Birmingham fixture data", () => {
+  const sitePolygon = [
+    { lat: 53.59131, lng: -0.68847 },
+    { lat: 53.59131, lng: -0.68817 },
+    { lat: 53.59112, lng: -0.68817 },
+    { lat: 53.59112, lng: -0.68847 },
+  ];
+  const brief = __projectGraphVerticalSliceInternals.normalizeBrief({
+    projectDetails: {
+      projectName: "Current Scunthorpe House",
+      address: "97 Bradford Street, Birmingham",
+      area: 120,
+      floorCount: 2,
+      floorCountLocked: true,
+      subType: "detached-house",
+    },
+    brief: {
+      project_name: "Current Scunthorpe House",
+      building_type: "dwelling",
+      site_input: {
+        address: "97 Bradford Street, Birmingham",
+        postcode: "B5 6AA",
+        lat: 52.474,
+        lon: -1.892,
+      },
+      target_gia_m2: 120,
+      target_storeys: 2,
+    },
+    siteAddress: "17 Kensington Road, Scunthorpe DN15 8BQ",
+    locationData: {
+      address: "17 Kensington Road, Scunthorpe DN15 8BQ",
+      postcode: "DN15 8BQ",
+      coordinates: { lat: 53.5912182, lng: -0.6883197 },
+      sitePolygon,
+      boundarySource: "manual_verified",
+      boundaryAuthoritative: true,
+      boundaryConfidence: 1,
+    },
+  });
+  const site = __projectGraphVerticalSliceInternals.buildSiteContext({
+    brief,
+    sitePolygon,
+    siteMetrics: {
+      areaM2: 238,
+      boundarySource: "manual_verified",
+      boundaryAuthoritative: true,
+      boundaryConfidence: 1,
+    },
+  });
+  const titleBlock = buildTitleBlockPanelArtifact({
+    projectGraphId: "project-scunthorpe",
+    brief,
+    geometryHash: "geom-scunthorpe",
+    sheetPlan: { sheet_number: "A1-01", label: "RIBA Stage 2" },
+    sheetDesignContext: { region: "Birmingham" },
+  });
+  const sitePanel =
+    __projectGraphVerticalSliceInternals.buildSiteContextPanelArtifact({
+      projectGraphId: "project-scunthorpe",
+      site,
+      geometryHash: "geom-scunthorpe",
+      siteSnapshot: {
+        address: "17 Kensington Road, Scunthorpe DN15 8BQ",
+      },
+    });
+
+  expect(brief.site_input.address).toBe(
+    "17 Kensington Road, Scunthorpe DN15 8BQ",
+  );
+  expect(titleBlock.metadata.location).toBe(
+    "17 Kensington Road, Scunthorpe DN15 8BQ",
+  );
+  expect(titleBlock.svgString).toContain("17 Kensington Road, Scunthorpe");
+  expect(titleBlock.svgString).toContain("DN15 8BQ");
+  expect(sitePanel.metadata.siteAddress).toBe(
+    "17 Kensington Road, Scunthorpe DN15 8BQ",
+  );
+  expect(sitePanel.svgString).toContain('data-site-address-label="true"');
+  expect(sitePanel.svgString).toContain("17 Kensington Road, Scunthorpe");
+  expect(sitePanel.svgString).toContain("DN15 8BQ");
+  expect(titleBlock.svgString).not.toMatch(/Birmingham|Bradford Street/i);
+  expect(sitePanel.svgString).not.toMatch(/Birmingham|Bradford Street/i);
+});
+
 let kensingtonReferenceMatchBuildPromise = null;
 
 async function getKensingtonReferenceMatchResult() {
@@ -2278,6 +2362,43 @@ describe("projectGraphVerticalSliceService", () => {
           renderMode: "compiled_technical_svg",
         }),
       ]),
+    );
+  });
+
+  test("strict visual semantic QA failures are blocking QA errors", async () => {
+    const result = await getKensingtonReferenceMatchResult();
+    const qa = validateProjectGraphVerticalSlice({
+      projectGraph: result.projectGraph,
+      artifacts: {
+        ...result.artifacts,
+        visuals3d: wrapVisualsAsGeometryLockedImages(result),
+        visualSemanticQa: {
+          version: "visual-semantic-qa-v1",
+          status: "fail",
+          strictMode: true,
+          summary: { blockerCount: 1, totalPanels: 4 },
+          blockers: [
+            {
+              panelType: "interior_3d",
+              code: "VISUAL_SEMANTIC_INTERIOR_CLASSIFIED_EXTERIOR",
+              severity: "error",
+            },
+          ],
+        },
+      },
+    });
+
+    expect(qa.status).toBe("fail");
+    expect(qa.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "VISUAL_SEMANTIC_QA_PASS",
+          status: "fail",
+        }),
+      ]),
+    );
+    expect(qa.issues.map((issue) => issue.code)).toContain(
+      "VISUAL_SEMANTIC_QA_BLOCKED",
     );
   });
 

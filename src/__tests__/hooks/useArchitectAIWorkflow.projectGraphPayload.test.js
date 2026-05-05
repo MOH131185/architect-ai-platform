@@ -472,6 +472,89 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
     );
   });
 
+  test("forwards current manual site location into ProjectGraph payload instead of stale Birmingham brief data", () => {
+    const scunthorpePolygon = [
+      { lat: 53.59131, lng: -0.68847 },
+      { lat: 53.59131, lng: -0.68817 },
+      { lat: 53.59112, lng: -0.68817 },
+      { lat: 53.59112, lng: -0.68847 },
+    ];
+    const request = buildProjectGraphVerticalSliceRequest({
+      designSpec: {
+        buildingCategory: "residential",
+        buildingSubType: "detached-house",
+        projectDetails: {
+          projectName: "Stale Cherry House",
+          address: "97 Bradford Street, Birmingham",
+          area: 120,
+          floorCount: 2,
+        },
+        brief: {
+          project_name: "Current Scunthorpe House",
+          building_type: "dwelling",
+          site_input: {
+            address: "97 Bradford Street, Birmingham",
+            postcode: "B5 6AA",
+            lat: 52.474,
+            lon: -1.892,
+          },
+          target_gia_m2: 120,
+          target_storeys: 2,
+        },
+        location: {
+          address: "17 Kensington Road, Scunthorpe DN15 8BQ",
+          siteAddress: "17 Kensington Road, Scunthorpe DN15 8BQ",
+          postcode: "DN15 8BQ",
+          coordinates: { lat: 53.5912182, lng: -0.6883197 },
+          sitePolygon: scunthorpePolygon,
+          manualVerifiedBoundary: {
+            polygon: scunthorpePolygon,
+            areaM2: 238,
+            boundarySource: "manual_verified",
+            boundaryAuthoritative: true,
+            boundaryConfidence: 1,
+            hash: "manual-scunthorpe-boundary",
+          },
+          boundarySource: "manual_verified",
+          boundaryAuthoritative: true,
+          boundaryConfidence: 1,
+        },
+        sitePolygon: scunthorpePolygon,
+        siteMetrics: {
+          areaM2: 238,
+          boundarySource: "manual_verified",
+          boundaryAuthoritative: true,
+          boundaryConfidence: 1,
+        },
+      },
+    });
+
+    expect(request.siteAddress).toBe("17 Kensington Road, Scunthorpe DN15 8BQ");
+    expect(request.locationData.address).toBe(
+      "17 Kensington Road, Scunthorpe DN15 8BQ",
+    );
+    expect(request.locationData.coordinates).toEqual({
+      lat: 53.5912182,
+      lng: -0.6883197,
+    });
+    expect(request.locationData.sitePolygon).toEqual(scunthorpePolygon);
+    expect(request.locationData.manualVerifiedBoundary).toEqual(
+      expect.objectContaining({
+        polygon: scunthorpePolygon,
+        boundarySource: "manual_verified",
+        boundaryAuthoritative: true,
+      }),
+    );
+    expect(request.brief.site_input.address).toBe(
+      "17 Kensington Road, Scunthorpe DN15 8BQ",
+    );
+    expect(request.brief.site_input.postcode).toBe("DN15 8BQ");
+    expect(request.brief.site_input.boundary_geojson).toEqual(
+      scunthorpePolygon,
+    );
+    expect(JSON.stringify(request.brief.site_input)).not.toMatch(/Birmingham/i);
+  });
+
   test("normalizes ProjectGraph drawing artifact maps before panel mapping", () => {
     const drawingMap = {
       "asset-ground": {

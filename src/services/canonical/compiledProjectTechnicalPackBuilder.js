@@ -464,6 +464,11 @@ function numberAttr(attributes = {}, key, fallback = 0) {
   return Number.isFinite(numeric) ? numeric : fallback;
 }
 
+function hasNumericAttr(attributes = {}, key) {
+  const numeric = Number(attributes[key]);
+  return Number.isFinite(numeric);
+}
+
 function mergePixelBounds(bounds, candidate) {
   if (!candidate) {
     return bounds;
@@ -491,6 +496,87 @@ function mergePixelBounds(bounds, candidate) {
     maxX: Math.max(bounds.maxX, maxX),
     maxY: Math.max(bounds.maxY, maxY),
   };
+}
+
+function svgElementMarker(attributes = {}) {
+  return [
+    attributes.id,
+    attributes.class,
+    attributes["data-role"],
+    attributes["data-layer"],
+    attributes["data-guide"],
+    attributes["aria-label"],
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function looksLikeOffCanvasGuide(attributes = {}, candidate = {}, root = {}) {
+  const marker = svgElementMarker(attributes);
+  if (
+    /\b(?:guide|construction|debug|off[-_ ]?canvas|infinite[-_ ]?line)\b/.test(
+      marker,
+    )
+  ) {
+    return true;
+  }
+  const rootMinX = Number(root.x || 0);
+  const rootMinY = Number(root.y || 0);
+  const rootMaxX = rootMinX + Number(root.width || 0);
+  const rootMaxY = rootMinY + Number(root.height || 0);
+  const outsideX =
+    Number(candidate.maxX) < rootMinX || Number(candidate.minX) > rootMaxX;
+  const outsideY =
+    Number(candidate.maxY) < rootMinY || Number(candidate.minY) > rootMaxY;
+  if (outsideX || outsideY) {
+    return true;
+  }
+  const width = Number(candidate.maxX) - Number(candidate.minX);
+  const height = Number(candidate.maxY) - Number(candidate.minY);
+  const dashed = Boolean(attributes["stroke-dasharray"]);
+  return (
+    dashed &&
+    ((width > Number(root.width || 0) * 1.25 && height <= 2) ||
+      (height > Number(root.height || 0) * 1.25 && width <= 2))
+  );
+}
+
+function clampPixelBoundsToRoot(candidate = {}, root = {}) {
+  const rootMinX = Number(root.x || 0);
+  const rootMinY = Number(root.y || 0);
+  const rootMaxX = rootMinX + Number(root.width || 0);
+  const rootMaxY = rootMinY + Number(root.height || 0);
+  const minX = clamp(Number(candidate.minX), rootMinX, rootMaxX);
+  const minY = clamp(Number(candidate.minY), rootMinY, rootMaxY);
+  const maxX = clamp(Number(candidate.maxX), rootMinX, rootMaxX);
+  const maxY = clamp(Number(candidate.maxY), rootMinY, rootMaxY);
+  if (maxX <= minX || maxY <= minY) {
+    return null;
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+function mergeDrawableBounds(bounds, candidate, attributes, root, stats) {
+  if (!candidate) return bounds;
+  if (looksLikeOffCanvasGuide(attributes, candidate, root)) {
+    stats.ignoredGuideElementCount += 1;
+    return bounds;
+  }
+  const clamped = clampPixelBoundsToRoot(candidate, root);
+  if (!clamped) {
+    stats.ignoredOffCanvasElementCount += 1;
+    return bounds;
+  }
+  if (
+    clamped.minX !== Number(candidate.minX) ||
+    clamped.minY !== Number(candidate.minY) ||
+    clamped.maxX !== Number(candidate.maxX) ||
+    clamped.maxY !== Number(candidate.maxY)
+  ) {
+    stats.clampedElementCount += 1;
+  }
+  return mergePixelBounds(bounds, clamped);
 }
 
 function boundsFromNumberPairs(values = []) {
@@ -570,7 +656,7 @@ function looksLikeRootBackgroundRect(attributes = {}, root = {}) {
   );
 }
 
-function analyseTechnicalSvgContentFrame(
+export function analyseTechnicalSvgContentFrame(
   svgString = "",
   width = 0,
   height = 0,
@@ -586,6 +672,11 @@ function analyseTechnicalSvgContentFrame(
     .replace(/<defs\b[\s\S]*?<\/defs>/gi, "")
     .replace(/<!--[\s\S]*?-->/g, "");
   let bounds = null;
+  const normalizationStats = {
+    ignoredGuideElementCount: 0,
+    ignoredOffCanvasElementCount: 0,
+    clampedElementCount: 0,
+  };
 
   body.replace(/<rect\b([^>]*)>/gi, (match, attrs) => {
     const attributes = parseSvgAttributes(attrs);
@@ -596,35 +687,44 @@ function analyseTechnicalSvgContentFrame(
     const y = numberAttr(attributes, "y", 0);
     const rectWidth = numberAttr(attributes, "width", 0);
     const rectHeight = numberAttr(attributes, "height", 0);
-    bounds = mergePixelBounds(bounds, {
-      minX: x,
-      minY: y,
-      maxX: x + rectWidth,
-      maxY: y + rectHeight,
-    });
+    bounds = mergeDrawableBounds(
+      bounds,
+      {
+        minX: x,
+        minY: y,
+        maxX: x + rectWidth,
+        maxY: y + rectHeight,
+      },
+      attributes,
+      root,
+      normalizationStats,
+    );
     return match;
   });
 
   body.replace(/<line\b([^>]*)>/gi, (match, attrs) => {
     const attributes = parseSvgAttributes(attrs);
-    bounds = mergePixelBounds(bounds, {
-      minX: Math.min(
-        numberAttr(attributes, "x1", 0),
-        numberAttr(attributes, "x2", 0),
-      ),
-      minY: Math.min(
-        numberAttr(attributes, "y1", 0),
-        numberAttr(attributes, "y2", 0),
-      ),
-      maxX: Math.max(
-        numberAttr(attributes, "x1", 0),
-        numberAttr(attributes, "x2", 0),
-      ),
-      maxY: Math.max(
-        numberAttr(attributes, "y1", 0),
-        numberAttr(attributes, "y2", 0),
-      ),
-    });
+    const x1 = numberAttr(attributes, "x1", 0);
+    const x2 = numberAttr(attributes, "x2", 0);
+    const y1 = numberAttr(attributes, "y1", 0);
+    const y2 = numberAttr(attributes, "y2", 0);
+    const minX = Math.min(x1, x2);
+    const maxX = Math.max(x1, x2);
+    const minY = Math.min(y1, y2);
+    const maxY = Math.max(y1, y2);
+    const strokeExtent = 0.5;
+    bounds = mergeDrawableBounds(
+      bounds,
+      {
+        minX: minX === maxX ? minX - strokeExtent : minX,
+        minY: minY === maxY ? minY - strokeExtent : minY,
+        maxX: minX === maxX ? maxX + strokeExtent : maxX,
+        maxY: minY === maxY ? maxY + strokeExtent : maxY,
+      },
+      attributes,
+      root,
+      normalizationStats,
+    );
     return match;
   });
 
@@ -633,7 +733,13 @@ function analyseTechnicalSvgContentFrame(
     const values = String(attributes.points || "")
       .match(SVG_NUMBER_PATTERN)
       ?.map((value) => Number(value));
-    bounds = mergePixelBounds(bounds, boundsFromNumberPairs(values || []));
+    bounds = mergeDrawableBounds(
+      bounds,
+      boundsFromNumberPairs(values || []),
+      attributes,
+      root,
+      normalizationStats,
+    );
     return match;
   });
 
@@ -643,12 +749,18 @@ function analyseTechnicalSvgContentFrame(
     const cy = numberAttr(attributes, "cy", 0);
     const rx = numberAttr(attributes, "rx", numberAttr(attributes, "r", 0));
     const ry = numberAttr(attributes, "ry", numberAttr(attributes, "r", 0));
-    bounds = mergePixelBounds(bounds, {
-      minX: cx - rx,
-      minY: cy - ry,
-      maxX: cx + rx,
-      maxY: cy + ry,
-    });
+    bounds = mergeDrawableBounds(
+      bounds,
+      {
+        minX: cx - rx,
+        minY: cy - ry,
+        maxX: cx + rx,
+        maxY: cy + ry,
+      },
+      attributes,
+      root,
+      normalizationStats,
+    );
     return match;
   });
 
@@ -665,7 +777,54 @@ function analyseTechnicalSvgContentFrame(
     const values = pathData
       .match(SVG_NUMBER_PATTERN)
       ?.map((value) => Number(value));
-    bounds = mergePixelBounds(bounds, boundsFromNumberPairs(values || []));
+    bounds = mergeDrawableBounds(
+      bounds,
+      boundsFromNumberPairs(values || []),
+      attributes,
+      root,
+      normalizationStats,
+    );
+    return match;
+  });
+
+  body.replace(/<text\b([^>]*)>([\s\S]*?)<\/text>/gi, (match, attrs, text) => {
+    const attributes = parseSvgAttributes(attrs);
+    if (!hasNumericAttr(attributes, "x") || !hasNumericAttr(attributes, "y")) {
+      return match;
+    }
+    const fontSize = clamp(numberAttr(attributes, "font-size", 16), 4, 96);
+    const content = String(text || "")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&[#a-zA-Z0-9]+;/g, "x")
+      .trim();
+    if (!content) {
+      return match;
+    }
+    const anchor = String(attributes["text-anchor"] || "start").toLowerCase();
+    const approxWidth = Math.max(
+      fontSize * 0.6,
+      content.length * fontSize * 0.56,
+    );
+    const x = numberAttr(attributes, "x", 0);
+    const y = numberAttr(attributes, "y", 0);
+    const minX =
+      anchor === "middle"
+        ? x - approxWidth / 2
+        : anchor === "end"
+          ? x - approxWidth
+          : x;
+    bounds = mergeDrawableBounds(
+      bounds,
+      {
+        minX,
+        minY: y - fontSize,
+        maxX: minX + approxWidth,
+        maxY: y + fontSize * 0.25,
+      },
+      attributes,
+      root,
+      normalizationStats,
+    );
     return match;
   });
 
@@ -721,6 +880,7 @@ function analyseTechnicalSvgContentFrame(
         (normalized.width * normalized.height) / (rootWidth * rootHeight),
         4,
       ),
+      ...normalizationStats,
     },
   };
 }

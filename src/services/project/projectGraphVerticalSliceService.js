@@ -41,6 +41,10 @@ import {
   VISUAL_MANIFEST_VALIDATOR_VERSION,
 } from "../render/visualManifestValidator.js";
 import {
+  evaluateVisualSemanticQa,
+  VISUAL_SEMANTIC_QA_VERSION,
+} from "../render/visualSemanticValidator.js";
+import {
   buildSheetDesignContext,
   assertSheetDesignContext,
   SHEET_DESIGN_CONTEXT_VERSION,
@@ -1063,6 +1067,7 @@ function normalizeBrief(input = {}) {
   const siteInput = sourceBrief.site_input || sourceBrief.siteInput || {};
   const coordinates =
     locationData.coordinates ||
+    input.coordinates ||
     siteInput.coordinates ||
     (Number.isFinite(Number(siteInput.lat)) &&
     Number.isFinite(Number(siteInput.lon))
@@ -1207,11 +1212,23 @@ function normalizeBrief(input = {}) {
     projectDetails.name ||
     "ArchiAI Project";
   const activeAddress =
-    siteInput.address ||
-    input.address ||
     input.siteAddress ||
+    input.address ||
+    locationData.siteAddress ||
     locationData.address ||
+    siteInput.address ||
     projectDetails.address ||
+    null;
+  const manualVerifiedBoundary =
+    locationData.manualVerifiedBoundary ||
+    locationData.manual_verified_boundary ||
+    locationData.siteAnalysis?.manualVerifiedBoundary ||
+    null;
+  const activeBoundaryGeojson =
+    manualVerifiedBoundary?.polygon ||
+    locationData.sitePolygon ||
+    locationData.siteBoundary ||
+    siteInput.boundary_geojson ||
     null;
   const requiredSpacesText =
     sourceBrief.required_spaces_text ||
@@ -1270,7 +1287,18 @@ function normalizeBrief(input = {}) {
       lon: Number(
         coordinates?.lng ?? coordinates?.lon ?? siteInput.lon ?? -0.1278,
       ),
-      boundary_geojson: siteInput.boundary_geojson || null,
+      coordinates: coordinates || null,
+      boundary_geojson: activeBoundaryGeojson,
+      boundarySource:
+        locationData.boundarySource ||
+        locationData.siteAnalysis?.boundarySource ||
+        siteInput.boundarySource ||
+        null,
+      boundaryConfidence:
+        locationData.boundaryConfidence ??
+        locationData.siteAnalysis?.boundaryConfidence ??
+        siteInput.boundaryConfidence ??
+        null,
     },
     target_gia_m2: round(targetGiaM2, 2),
     target_storeys: targetStoreys,
@@ -5768,6 +5796,26 @@ function buildSiteContextPanelArtifact({
   const attribution = hasMapImage
     ? siteSnapshot.attribution || "Map image supplied by request"
     : "No map snapshot available";
+  const siteAddress = String(
+    site?.address_normalised ||
+      site?.address ||
+      site?.site_address ||
+      siteSnapshot?.address ||
+      "",
+  ).trim();
+  const siteAddressLines = siteAddress
+    ? splitNoteLines(siteAddress, 54, 2)
+    : [];
+  const siteAddressSvg = siteAddressLines.length
+    ? `<g data-site-address-label="true">
+  ${siteAddressLines
+    .map(
+      (line, index) =>
+        `<text x="450" y="${744 + index * 20}" font-family="Arial, sans-serif" font-size="18" font-weight="${index === 0 ? "700" : "500"}" text-anchor="middle" fill="#222222">${escapeXml(line)}</text>`,
+    )
+    .join("\n  ")}
+</g>`
+    : "";
   const mapLayer = boundaryEstimated
     ? hasMapImage
       ? `<image x="28" y="52" width="844" height="676" href="${escapeXml(siteSnapshot.dataUrl)}" preserveAspectRatio="xMidYMid slice"/>
@@ -5828,6 +5876,7 @@ function buildSiteContextPanelArtifact({
   <text x="450" y="342" font-family="Arial, sans-serif" font-size="24" text-anchor="middle" fill="#333333">${boundaryEstimated ? "Proposed Footprint" : "Rear Garden"}</text>
   <text x="450" y="682" font-family="Arial, sans-serif" font-size="24" text-anchor="middle" fill="#333333">${boundaryEstimated ? "Estimated Boundary" : "Front Garden"}</text>
   <text x="82" y="690" font-family="Arial, sans-serif" font-size="20" fill="#333333">${boundaryEstimated ? "Context Street" : "Driveway"}</text>
+  ${siteAddressSvg}
   <line x1="48" y1="790" x2="348" y2="790" stroke="#111111" stroke-width="5"/>
   <line x1="48" y1="780" x2="48" y2="800" stroke="#111111" stroke-width="3"/>
   <line x1="168" y1="780" x2="168" y2="800" stroke="#111111" stroke-width="3"/>
@@ -5871,6 +5920,7 @@ function buildSiteContextPanelArtifact({
       boundaryEstimated,
       boundaryConfidence: site.boundary_confidence ?? null,
       boundarySource: site.boundary_source || null,
+      siteAddress: siteAddress || null,
       boundaryLabel,
       boundaryWarningCode: site.boundary_warning_code || null,
       fallbackReason: site.fallback_reason || null,
@@ -6790,12 +6840,10 @@ export function buildTitleBlockPanelArtifact({
   const width = 620;
   const height = 900;
   const location =
-    sheetDesignContext?.region && brief?.site_input?.address
-      ? `${brief.site_input.address}, ${sheetDesignContext.region}`
-      : brief?.site_input?.address ||
-        brief?.site_input?.postcode ||
-        sheetDesignContext?.region ||
-        "Project site";
+    brief?.site_input?.address ||
+    brief?.site_input?.postcode ||
+    sheetDesignContext?.region ||
+    "Project site";
   const drawingNumber = sheetPlan?.sheet_number || "A1-00";
   const sheetLabel = sheetPlan?.label || "RIBA Stage 2 Master";
   const projectTitle = String(brief?.project_name || "ArchiAI Project")
@@ -7034,6 +7082,69 @@ function buildAxonometricCutawayIntent({ sheetDesignContext, brief }) {
   ].join(" ");
 }
 
+function buildViewSpecificPromptBlock({
+  panelType,
+  brief,
+  visualManifest = null,
+  sheetDesignContext = null,
+}) {
+  const storeys =
+    visualManifest?.storeyCount ||
+    visualManifest?.storeys ||
+    brief?.target_storeys ||
+    sheetDesignContext?.targetStoreys ||
+    "the resolved";
+  const materials = Array.isArray(visualManifest?.materials)
+    ? visualManifest.materials
+        .map((entry) => entry?.name || entry?.label || entry)
+        .filter(Boolean)
+        .slice(0, 6)
+        .join(", ")
+    : Array.isArray(sheetDesignContext?.materials)
+      ? sheetDesignContext.materials
+          .map((entry) => entry?.name || entry?.label || entry)
+          .filter(Boolean)
+          .slice(0, 6)
+          .join(", ")
+      : "the locked material palette";
+  const roof =
+    visualManifest?.roofForm ||
+    visualManifest?.roof?.type ||
+    sheetDesignContext?.roofForm ||
+    "the ProjectGraph roof form";
+  const windowRhythm =
+    visualManifest?.windowRhythm ||
+    visualManifest?.facadeRhythm ||
+    "the locked opening rhythm";
+
+  if (panelType === "interior_3d") {
+    return [
+      "VIEW-SPECIFIC HARD BLOCK - INTERIOR_3D:",
+      "Render an indoor interior view only. Camera is inside the building, looking through the principal room or cutaway room volume.",
+      "Do not show an exterior facade, a full outside building view, street frontage, roof massing, garden-only scene, or aerial exterior.",
+      "Match the ProjectGraph room programme, room adjacency, stair/door logic, and window/opening positions visible from the selected interior.",
+      `Use the same material identity as the exterior panels: ${materials}.`,
+    ].join("\n");
+  }
+  if (panelType === "axonometric") {
+    return [
+      "VIEW-SPECIFIC HARD BLOCK - AXONOMETRIC:",
+      "Render a true axonometric/isometric architectural projection, not a street-level perspective photograph.",
+      `Show exactly ${storeys} storey(s), the ${roof} roof, the locked footprint proportions, and the same window/opening rhythm: ${windowRhythm}.`,
+      `Use the exact material palette from the visual identity lock: ${materials}.`,
+    ].join("\n");
+  }
+  if (panelType === "hero_3d" || panelType === "exterior_render") {
+    return [
+      `VIEW-SPECIFIC HARD BLOCK - ${panelType.toUpperCase()}:`,
+      "Render an exterior architectural view only, with the full building facade/massing visible from the requested exterior camera.",
+      `Show exactly ${storeys} storey(s), the ${roof} roof, and the locked window/opening rhythm: ${windowRhythm}.`,
+      `Use the exact material palette from the visual identity lock: ${materials}.`,
+    ].join("\n");
+  }
+  return "";
+}
+
 export function buildProjectGraphRenderPrompt({
   panelType,
   brief,
@@ -7091,6 +7202,12 @@ export function buildProjectGraphRenderPrompt({
   ].join("\n");
   const visualContinuity =
     buildProjectGraphVisualContinuityBlock(visualManifest);
+  const viewSpecificBlock = buildViewSpecificPromptBlock({
+    panelType,
+    brief,
+    visualManifest,
+    sheetDesignContext,
+  });
   // Regional vernacular block — when the slice resolved a UK pack
   // (london-stucco-terrace, edinburgh-tenement, etc.), inject the pack's
   // narrative + facade/roof/window/material language so the photoreal
@@ -7216,6 +7333,7 @@ export function buildProjectGraphRenderPrompt({
     identityLock,
     authorityLine,
     visualContinuity,
+    viewSpecificBlock,
     `Project: ${projectName} — ${buildingType}.`,
     intent,
     vernacularBlock,
@@ -7224,6 +7342,15 @@ export function buildProjectGraphRenderPrompt({
   ]
     .filter(Boolean)
     .join("\n\n");
+}
+
+function controlViewTypeForPanelType(panelType = "") {
+  if (panelType === "interior_3d") return "interior_room_cutaway_control";
+  if (panelType === "axonometric") return "axonometric_massing_opening_control";
+  if (panelType === "hero_3d" || panelType === "exterior_render") {
+    return "exterior_massing_opening_control";
+  }
+  return null;
 }
 
 function wrapPngAsSvgPanel(pngBuffer, viewBox, width, height) {
@@ -7395,6 +7522,16 @@ export async function buildVisual3DPanelArtifacts({
       const generationSeed = normalizeGenerationSeed(brief?.generation_seed);
       const seedSource = brief?.seedSource || null;
       const variationMode = brief?.variationMode || null;
+      const controlViewType =
+        renderInput.controlViewType ||
+        renderInput.metadata?.controlViewType ||
+        controlViewTypeForPanelType(panelType);
+      const semanticViewClass =
+        panelType === "interior_3d"
+          ? "interior"
+          : panelType === "axonometric"
+            ? "axonometric"
+            : "exterior";
 
       const svgHash =
         renderInput.svgHash ||
@@ -7424,6 +7561,7 @@ export async function buildVisual3DPanelArtifacts({
           visualManifestHash: visualManifest?.manifestHash || null,
           visualIdentityLocked: Boolean(visualManifest?.manifestHash),
           referenceSource: "compiled_3d_control_svg",
+          controlViewType,
           provider,
           providerUsed,
           imageProviderUsed,
@@ -7456,6 +7594,12 @@ export async function buildVisual3DPanelArtifacts({
             generationLifecycle: brief?.generation_lifecycle || null,
             referenceSource: "compiled_3d_control_svg",
             controlSvgHash,
+            controlViewType,
+            visualSemanticClassification: {
+              viewClass: semanticViewClass,
+              source: "control_view_type",
+              confidence: 1,
+            },
             promptHash,
             provider,
             providerUsed,
@@ -7682,9 +7826,9 @@ export function buildPresentationV3SheetPanelSpecs(targetStoreys = 1) {
   // Row geometry (mm; A1 landscape = 841×594mm with 10mm side margins).
   const ROW_GAP = 8;
   const ROW1_Y = 10;
-  const ROW1_H = isMultiStorey ? 130 : 180;
+  const ROW1_H = isMultiStorey ? 126 : 172;
   const ROW2_Y = ROW1_Y + ROW1_H + ROW_GAP;
-  const ROW2_H = isMultiStorey ? 246 : 178;
+  const ROW2_H = isMultiStorey ? 238 : 172;
   const ROW3_Y = ROW2_Y + ROW2_H + ROW_GAP;
   const ROW3_H = isMultiStorey ? 178 : 200;
 
@@ -7692,12 +7836,12 @@ export function buildPresentationV3SheetPanelSpecs(targetStoreys = 1) {
   // 100mm of elevation width for a wider plans column (510mm vs 370mm)
   // so each cell can be landscape; elevations stack tighter (62mm each).
   const SITE_X = 10;
-  const SITE_W = isMultiStorey ? 140 : 180;
+  const SITE_W = isMultiStorey ? 140 : 150;
   const PLANS_X = SITE_X + SITE_W + 10;
-  const PLANS_W_TOTAL = isMultiStorey ? 510 : 370;
+  const PLANS_W_TOTAL = isMultiStorey ? 510 : 430;
   const ELEV_X = PLANS_X + PLANS_W_TOTAL + 10;
-  const ELEV_W = isMultiStorey ? 151 : 251;
-  const ELEV_HALF_H = isMultiStorey ? 62 : 88;
+  const ELEV_W = isMultiStorey ? 151 : 221;
+  const ELEV_HALF_H = isMultiStorey ? 60 : 84;
 
   // Row 1 right-column N/S elevations (stacked).
   const elevationsRow1 = [
@@ -7724,7 +7868,7 @@ export function buildPresentationV3SheetPanelSpecs(targetStoreys = 1) {
   // Row 2 right-column E/W elevations. In multi-storey row 2 is 246mm
   // tall, so each elevation gets ~121mm height (still a comfortable
   // 2:1+ aspect). Standard rows keep 92mm halves.
-  const ELEV_R2_HALF_H = isMultiStorey ? 121 : 87;
+  const ELEV_R2_HALF_H = isMultiStorey ? 117 : 84;
   const ELEV_R2_X = isMultiStorey ? 580 : ELEV_X;
   const ELEV_R2_W = isMultiStorey ? 251 : ELEV_W;
   const elevationsRow2 = [
@@ -8447,6 +8591,10 @@ const PRESENTATION_V3_PANEL_PADDING = {
   elevation_west: 0.025,
 };
 
+function clampNumber(value, minimum, maximum) {
+  return Math.max(minimum, Math.min(maximum, Number(value)));
+}
+
 export function selectPanelContentViewBox({
   panelType,
   artifact,
@@ -8473,11 +8621,33 @@ export function selectPanelContentViewBox({
   }
   const padX = bounds.width * paddingRatio;
   const padY = bounds.height * paddingRatio;
+  const root = parseViewBoxTuple(fallbackViewBox);
+  const raw = {
+    x: bounds.x - padX,
+    y: bounds.y - padY,
+    width: bounds.width + padX * 2,
+    height: bounds.height + padY * 2,
+  };
+  const fitted = root
+    ? {
+        x: clampNumber(raw.x, root.x, root.x + root.width),
+        y: clampNumber(raw.y, root.y, root.y + root.height),
+        width: Math.min(raw.width, root.width),
+        height: Math.min(raw.height, root.height),
+      }
+    : raw;
+  if (root) {
+    fitted.width = Math.min(fitted.width, root.x + root.width - fitted.x);
+    fitted.height = Math.min(fitted.height, root.y + root.height - fitted.y);
+  }
+  if (!(fitted.width > 0) || !(fitted.height > 0)) {
+    return fallbackViewBox;
+  }
   return [
-    round(bounds.x - padX, 2),
-    round(bounds.y - padY, 2),
-    round(bounds.width + padX * 2, 2),
-    round(bounds.height + padY * 2, 2),
+    round(fitted.x, 2),
+    round(fitted.y, 2),
+    round(fitted.width, 2),
+    round(fitted.height, 2),
   ].join(" ");
 }
 
@@ -8710,10 +8880,28 @@ function renderSheetPanel({
       : `<g data-panel-missing="true"><rect x="${contentX}" y="${contentY}" width="${contentWidth}" height="${contentHeight}" fill="#fff3f0" stroke="#a43f2a" stroke-dasharray="4 3"/><text x="${contentX + 8}" y="${contentY + 22}" font-size="7" fill="#a43f2a">Missing source panel</text></g>`;
   const panelKind = panelKindForSheet(placement.panelType);
   const visualBadge = buildVisualPanelStatusBadge(artifact);
+  const panelClipId = createStableId(
+    "sheet-panel-clip",
+    placement.panelId || placement.panelType,
+    placement.slotIndex ?? "",
+  );
+  const badgeWidth = Math.min(
+    66,
+    Math.max(
+      38,
+      Number(placement.width || 0) - CAPTION_HORIZONTAL_PADDING_MM * 2,
+    ),
+  );
+  const badgeX =
+    Number(placement.x || 0) +
+    Number(placement.width || 0) -
+    CAPTION_HORIZONTAL_PADDING_MM -
+    badgeWidth;
+  const badgeY = Number(placement.y || 0) + 2.2;
   const badgeSvg = visualBadge
-    ? `<g data-visual-provider-badge="true">
-  <rect x="${placement.x + placement.width - 70}" y="${placement.y + 2.2}" width="66" height="6.8" fill="${visualBadge.fallback ? "#fff4df" : "#eef8ff"}" stroke="${visualBadge.fallback ? "#b26b00" : "#0b5d7d"}" stroke-width="0.35"/>
-  <text x="${placement.x + placement.width - 37}" y="${placement.y + 7.4}" font-size="3.2" font-family="${EMBEDDED_FONT_STACK}" text-anchor="middle" fill="${visualBadge.fallback ? "#8a4b00" : "#0b5d7d"}">${escapeXml(visualBadge.label)}</text>
+    ? `<g data-visual-provider-badge="true" clip-path="url(#${panelClipId})">
+  <rect x="${badgeX}" y="${badgeY}" width="${badgeWidth}" height="6.8" fill="${visualBadge.fallback ? "#fff4df" : "#eef8ff"}" stroke="${visualBadge.fallback ? "#b26b00" : "#0b5d7d"}" stroke-width="0.35"/>
+  <text x="${badgeX + badgeWidth / 2}" y="${badgeY + 5.2}" font-size="3.2" font-family="${EMBEDDED_FONT_STACK}" text-anchor="middle" fill="${visualBadge.fallback ? "#8a4b00" : "#0b5d7d"}">${escapeXml(visualBadge.label)}</text>
 </g>`
     : "";
 
@@ -8722,6 +8910,7 @@ function renderSheetPanel({
   // adding visual clutter; they remain available on the wrapping <g>
   // (data-source-model-hash) and on sheet metadata for downstream QA.
   return `<g data-panel-id="${escapeXml(placement.panelType)}" data-panel-kind="${panelKind}" data-source-panel-asset-id="${escapeXml(placement.sourcePanelAssetId || "")}" data-source-model-hash="${escapeXml(placement.source_model_hash || "")}" data-caption-layout="${caption.layout}" data-preserve-aspect-ratio="xMidYMid meet" data-fit-mode="object-contain" data-provider-used="${escapeXml(visualBadge?.providerUsed || artifactMetadataValue(artifact, "providerUsed") || "")}" data-image-render-fallback="${visualBadge ? String(visualBadge.fallback) : ""}" data-image-render-fallback-reason="${escapeXml(visualBadge?.fallbackReason || "")}">
+  <defs><clipPath id="${panelClipId}"><rect x="${placement.x}" y="${placement.y}" width="${placement.width}" height="${placement.height}"/></clipPath></defs>
   <rect x="${placement.x}" y="${placement.y}" width="${placement.width}" height="${placement.height}" rx="0.4" fill="#ffffff" stroke="#111111" stroke-width="0.45"/>
   <text x="${placement.x + caption.titleX}" y="${placement.y + caption.titleY}" font-size="${CAPTION_TITLE_FONT_SIZE}" font-family="${EMBEDDED_FONT_STACK}" font-weight="700" fill="#111111">${titleText}</text>
   ${
@@ -8762,13 +8951,13 @@ function buildSheetProvenanceFooter({
     : "fallback none";
   const visualManifestHash = visualManifest?.manifestHash || null;
   return `<g data-provenance-footer="true" data-geometry-hash="${escapeXml(geometryHash || "")}" data-visual-manifest-hash="${escapeXml(visualManifestHash || "")}" data-provider-summary="${escapeXml(providerSummary)}" data-image-render-fallback-status="${escapeXml(fallbackStatus)}" data-authority-source="ProjectGraph compiled geometry" data-export-source="sheetArtifact.svgString">
-  <rect x="6" y="582" width="829" height="7" fill="#ffffff" opacity="0.96"/>
-  <line x1="6" y1="582" x2="835" y2="582" stroke="#111111" stroke-width="0.25"/>
-  <text x="10" y="587" font-size="3.4" font-family="${EMBEDDED_FONT_STACK}" fill="#222222">ProjectGraph authority: compiled geometry / deterministic technical SVGs / geometry-locked visual edits</text>
-  <text x="382" y="587" font-size="3.4" font-family="${EMBEDDED_FONT_STACK}" fill="#444444">geometryHash ${escapeXml(String(geometryHash || "").slice(0, 16))}</text>
-  <text x="535" y="587" font-size="3.4" font-family="${EMBEDDED_FONT_STACK}" fill="#444444">visualManifestHash ${escapeXml(String(visualManifestHash || "n/a").slice(0, 16))}</text>
-  <text x="735" y="587" font-size="3.4" font-family="${EMBEDDED_FONT_STACK}" text-anchor="end" fill="#444444">providers ${escapeXml(providerSummary)}</text>
-  <text x="831" y="587" font-size="3.4" font-family="${EMBEDDED_FONT_STACK}" text-anchor="end" fill="${fallbackPanels.length ? "#8a4b00" : "#444444"}">${escapeXml(fallbackStatus)}</text>
+  <rect x="6" y="574" width="829" height="14" fill="#ffffff" opacity="0.98"/>
+  <line x1="6" y1="574" x2="835" y2="574" stroke="#111111" stroke-width="0.25"/>
+  <text x="10" y="580" font-size="3.35" font-family="${EMBEDDED_FONT_STACK}" fill="#222222">ProjectGraph authority: compiled geometry / deterministic technical SVGs / geometry-locked visual edits</text>
+  <text x="10" y="586" font-size="3.25" font-family="${EMBEDDED_FONT_STACK}" fill="#444444">geometryHash ${escapeXml(String(geometryHash || "").slice(0, 16))}</text>
+  <text x="166" y="586" font-size="3.25" font-family="${EMBEDDED_FONT_STACK}" fill="#444444">visualManifestHash ${escapeXml(String(visualManifestHash || "n/a").slice(0, 16))}</text>
+  <text x="735" y="586" font-size="3.25" font-family="${EMBEDDED_FONT_STACK}" text-anchor="end" fill="#444444">providers ${escapeXml(providerSummary)}</text>
+  <text x="831" y="586" font-size="3.25" font-family="${EMBEDDED_FONT_STACK}" text-anchor="end" fill="${fallbackPanels.length ? "#8a4b00" : "#444444"}">${escapeXml(fallbackStatus)}</text>
 </g>`;
 }
 
@@ -11140,6 +11329,39 @@ export function validateProjectGraphVerticalSlice({
       );
     }
   }
+  const visualSemanticQa =
+    artifacts.visualSemanticQa ||
+    artifacts.a1Sheet?.metadata?.visualSemanticQa ||
+    null;
+  if (visualSemanticQa) {
+    const visualSemanticOk = visualSemanticQa.status !== "fail";
+    addCheck(
+      checks,
+      "VISUAL_SEMANTIC_QA_PASS",
+      visualSemanticOk,
+      {
+        status: visualSemanticQa.status,
+        strictMode: visualSemanticQa.strictMode === true,
+        blockers: visualSemanticQa.blockers || [],
+        summary: visualSemanticQa.summary || null,
+      },
+      "graphic",
+      0,
+    );
+    if (!visualSemanticOk) {
+      issues.push(
+        buildIssue(
+          "VISUAL_SEMANTIC_QA_BLOCKED",
+          "error",
+          "Strict visual semantic QA blocked the A1 sheet because one or more visual panels do not match their required view semantics.",
+          {
+            blockers: visualSemanticQa.blockers || [],
+            summary: visualSemanticQa.summary || null,
+          },
+        ),
+      );
+    }
+  }
 
   // Plan §10 site/context category (15 pts)
   const siteOk = projectGraph?.site || {};
@@ -12074,6 +12296,57 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     __vsMark,
     `status=${visualIdentityValidation.status} warnings=${visualIdentityValidation.summary?.totalWarnings ?? 0}`,
   );
+  const visualSemanticStrictMode =
+    String(
+      (typeof process !== "undefined" &&
+        process.env?.PROJECT_GRAPH_VISUAL_SEMANTIC_QA_STRICT) ||
+        "",
+    )
+      .toLowerCase()
+      .trim() === "true";
+  let visualSemanticQa;
+  try {
+    visualSemanticQa = evaluateVisualSemanticQa({
+      panelArtifacts: visuals3d,
+      visualManifest,
+      classifier:
+        typeof input.visualSemanticClassifier === "function"
+          ? input.visualSemanticClassifier
+          : null,
+      strictMode: visualSemanticStrictMode,
+    });
+  } catch (semanticError) {
+    visualSemanticQa = {
+      version: VISUAL_SEMANTIC_QA_VERSION,
+      status: visualSemanticStrictMode ? "fail" : "warning",
+      severity: visualSemanticStrictMode ? "error" : "warning",
+      strictMode: visualSemanticStrictMode,
+      summary: { totalPanels: 4, blockerCount: 1, warningCount: 0 },
+      panels: {},
+      blockers: visualSemanticStrictMode
+        ? [
+            {
+              panelType: null,
+              code: "VISUAL_SEMANTIC_QA_ERROR",
+              severity: "error",
+              message: `Visual semantic QA threw: ${semanticError?.message || "unknown"}.`,
+            },
+          ]
+        : [],
+      warnings: [
+        `Visual semantic QA threw: ${semanticError?.message || "unknown"}.`,
+      ],
+    };
+  }
+  sheetArtifact.metadata = {
+    ...(sheetArtifact.metadata || {}),
+    visualSemanticQa,
+  };
+  __vsMark = __vsLog(
+    "visual_semantic_qa",
+    __vsMark,
+    `status=${visualSemanticQa.status} blockers=${visualSemanticQa.summary?.blockerCount ?? 0}`,
+  );
   const openaiReasoningExecution =
     input.openaiReasoningExecution ||
     input.providerExecution?.openaiReasoning ||
@@ -12195,6 +12468,8 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
         usage: artifact.usage || metadata.usage || null,
         controlSvgHash:
           artifact.controlSvgHash || metadata.controlSvgHash || null,
+        controlViewType:
+          artifact.controlViewType || metadata.controlViewType || null,
         promptHash: artifact.promptHash || metadata.promptHash || null,
         svgHash: artifact.svgHash || metadata.svgHash || null,
         svgString: artifact.svgString || placement?.svgString || null,
@@ -12486,6 +12761,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     // sheet-level sheetDesignContextHash and emits a structured per-panel
     // report. See src/services/render/visualManifestValidator.js.
     visualIdentityValidation,
+    visualSemanticQa,
     technicalBuild: {
       ok: technicalBuild.ok,
       technicalPanelTypes: technicalBuild.technicalPanelTypes,
@@ -12726,6 +13002,7 @@ export const __projectGraphVerticalSliceInternals = Object.freeze({
   seededIndex,
   buildProgramme,
   buildSiteContext,
+  buildSiteContextPanelArtifact,
   buildClimatePack,
   buildLocalStylePack,
   buildProjectGeometryFromProgramme,

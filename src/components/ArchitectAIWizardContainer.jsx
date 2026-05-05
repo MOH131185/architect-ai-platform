@@ -2399,6 +2399,48 @@ const ArchitectAIWizardContainer = () => {
           mainEntry: generationMainEntry,
           mainEntryDirection: generationMainEntry,
         },
+        location: {
+          ...(locationData || {}),
+          address: locationData?.address || address || null,
+          siteAddress:
+            locationData?.siteAddress ||
+            locationData?.address ||
+            address ||
+            null,
+          coordinates: locationData?.coordinates || null,
+          sitePolygon,
+          siteBoundary: sitePolygon,
+          manualVerifiedBoundary: locationData?.manualVerifiedBoundary || null,
+          manual_verified_boundary:
+            locationData?.manualVerifiedBoundary || null,
+          boundarySource:
+            locationData?.boundarySource ||
+            locationData?.siteAnalysis?.boundarySource ||
+            generationSiteMetrics?.boundarySource ||
+            null,
+          boundaryConfidence:
+            locationData?.boundaryConfidence ??
+            locationData?.siteAnalysis?.boundaryConfidence ??
+            generationSiteMetrics?.boundaryConfidence ??
+            null,
+          boundaryAuthoritative:
+            locationData?.boundaryAuthoritative ??
+            locationData?.siteAnalysis?.boundaryAuthoritative ??
+            generationSiteMetrics?.boundaryAuthoritative ??
+            null,
+          locationMetadata: {
+            ...(locationData?.locationMetadata || {}),
+            address: locationData?.address || address || null,
+            boundarySource:
+              locationData?.boundarySource ||
+              locationData?.siteAnalysis?.boundarySource ||
+              generationSiteMetrics?.boundarySource ||
+              null,
+          },
+          climate: locationData?.climate,
+          sunPath: locationData?.sunPath || locationData?.siteDNA?.solar,
+          wind: locationData?.wind,
+        },
         siteDNA: locationData?.siteDNA,
         localMaterials: locationData?.localMaterials,
         programBrief: v2Bundle?.programBrief || null,
@@ -2417,12 +2459,6 @@ const ArchitectAIWizardContainer = () => {
               projectQuantityTakeoff: v2Bundle?.projectQuantityTakeoff || null,
               blendedStyle: v2Bundle?.blendedStyle || null,
               v2Bundle,
-              location: {
-                ...locationData,
-                climate: locationData?.climate,
-                sunPath: locationData?.sunPath || locationData?.siteDNA?.solar,
-                wind: locationData?.wind,
-              },
             }),
         sheetConfig: {
           size: "A1",
@@ -2455,6 +2491,7 @@ const ArchitectAIWizardContainer = () => {
       setIsGenerationTimerRunning(false);
     }
   }, [
+    address,
     characteristicWeight,
     generateSheet,
     handleGenerateSpaces,

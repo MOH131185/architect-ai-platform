@@ -109,7 +109,23 @@ describe("ensureCompiledProjectRenderInputs", () => {
       expect(renderInput.metadata.source).toBe("compiled_project");
       expect(renderInput.metadata.primitiveCount).toBeGreaterThanOrEqual(5);
       expect(renderInput.metadata.camera).toEqual(expect.any(Object));
+      expect(renderInput.metadata.controlViewType).toEqual(expect.any(String));
     });
+    expect(renderInputs.hero_3d.metadata.controlViewType).toBe(
+      "exterior_massing_opening_control",
+    );
+    expect(renderInputs.exterior_render.metadata.controlViewType).toBe(
+      "exterior_massing_opening_control",
+    );
+    expect(renderInputs.axonometric.metadata.controlViewType).toBe(
+      "axonometric_massing_opening_control",
+    );
+    expect(renderInputs.interior_3d.metadata.controlViewType).toBe(
+      "interior_room_cutaway_control",
+    );
+    expect(renderInputs.interior_3d.metadata.controlViewType).not.toMatch(
+      /^exterior_/,
+    );
   });
 
   test("preserves existing strong compiled control SVGs", () => {
