@@ -23,6 +23,7 @@ import {
 import { computeCDSHashSync } from "../validation/cdsHash.js";
 import {
   validateTechnicalPanelAuthority,
+  validateTechnicalPanelContract,
   validateVisualPanelLocks,
 } from "../validation/drawingConsistencyChecks.js";
 import { validateProgrammeAdjacency } from "../validation/programmeAdjacencyValidator.js";
@@ -5332,6 +5333,7 @@ function buildDrawingSet(compiledProject, options = {}) {
             sourceGeometryHash: geometryHash,
             renderer: "deterministic_svg",
             providerUsed: "deterministic_svg",
+            provider: "deterministic",
             imageProviderUsed: "none",
             technicalDrawing: true,
             svgHash: panel.svgHash,
@@ -5347,10 +5349,13 @@ function buildDrawingSet(compiledProject, options = {}) {
               source: "compiled_project_technical_panel",
               renderer: "deterministic_svg",
               providerUsed: "deterministic_svg",
+              provider: "deterministic",
               imageProviderUsed: "none",
               technicalDrawing: true,
               geometryHash,
               sourceGeometryHash: geometryHash,
+              source_model_hash: geometryHash,
+              svgHash: panel.svgHash,
               panelType,
               expectedPanelType: panelType,
               drawingType: panel.drawingType || drawingTypeForPanel(panelType),
@@ -10948,6 +10953,36 @@ export function validateProjectGraphVerticalSlice({
     }
   }
 
+  const technicalPanelsForContract = technicalPanelTypesForStoreys.map(
+    (panelType) =>
+      findPanelArtifact(artifacts.drawings || {}, panelType) || {
+        panel_type: panelType,
+      },
+  );
+  const technicalPanelContract = validateTechnicalPanelContract({
+    technicalPanels: technicalPanelsForContract,
+    expectedGeometryHash: geometryHash,
+  });
+  addCheck(
+    checks,
+    "TECHNICAL_PANEL_CONTRACT",
+    technicalPanelContract.errors.length === 0,
+    {
+      expectedGeometryHash: geometryHash,
+      errors: technicalPanelContract.errors,
+      checks: technicalPanelContract.checks,
+    },
+    "consistency_2d_3d",
+    0,
+  );
+  for (const error of technicalPanelContract.errors) {
+    issues.push(
+      buildIssue(error.code, "error", error.message, {
+        panelType: error.panelType,
+        ...(error.details || {}),
+      }),
+    );
+  }
   const technicalPanelFailures = technicalPanelTypesForStoreys.filter(
     (panelType) => {
       const artifact = findPanelArtifact(artifacts.drawings || {}, panelType);
@@ -12501,6 +12536,12 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
           metadata.geometryHash ||
           artifact.source_model_hash ||
           null,
+        source_model_hash:
+          artifact.source_model_hash || metadata.source_model_hash || null,
+        technicalDrawing:
+          artifact.technicalDrawing === true ||
+          metadata.technicalDrawing === true,
+        renderer: artifact.renderer || metadata.renderer || null,
         visualManifestId:
           artifact.visualManifestId || metadata.visualManifestId || null,
         visualManifestHash:
@@ -12514,6 +12555,10 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
         providerUsed: artifact.providerUsed || metadata.providerUsed || null,
         imageProviderUsed:
           artifact.imageProviderUsed || metadata.imageProviderUsed || null,
+        openaiImageUsed:
+          artifact.openaiImageUsed ?? metadata.openaiImageUsed ?? null,
+        imageModelGenerated:
+          artifact.imageModelGenerated ?? metadata.imageModelGenerated ?? null,
         imageRenderFallback:
           artifact.imageRenderFallback ?? metadata.imageRenderFallback ?? null,
         imageRenderFallbackReason:

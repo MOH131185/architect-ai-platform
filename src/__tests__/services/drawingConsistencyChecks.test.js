@@ -3,6 +3,7 @@ import {
   validateTechnicalPanelAuthority,
   validateCrossViewConsistency,
   validateVisualPanelLocks,
+  validateTechnicalPanelContract,
 } from "../../services/validation/drawingConsistencyChecks.js";
 
 const SVG_HEADER = '<svg xmlns="http://www.w3.org/2000/svg">';
@@ -714,6 +715,115 @@ describe("runDrawingConsistencyChecks — per-view reliability", () => {
         ),
       ).toBe(true);
     });
+  });
+});
+
+describe("validateTechnicalPanelContract — deterministic provenance", () => {
+  function technicalPanel(type, overrides = {}) {
+    return {
+      type,
+      svgString: `<svg xmlns="http://www.w3.org/2000/svg" data-panel-id="${type}"></svg>`,
+      technicalDrawing: true,
+      renderer: "deterministic_svg",
+      imageProviderUsed: "none",
+      providerUsed: "deterministic_svg",
+      provider: "deterministic",
+      geometryHash: "geometry-hash-1",
+      sourceGeometryHash: "geometry-hash-1",
+      source_model_hash: "geometry-hash-1",
+      svgHash: `svg-${type}`,
+      ...overrides,
+    };
+  }
+
+  function errorCodes(result) {
+    return result.errors.map((error) => error.code);
+  }
+
+  test("passes valid deterministic SVG technical panels", () => {
+    const result = validateTechnicalPanelContract({
+      expectedGeometryHash: "geometry-hash-1",
+      technicalPanels: [
+        technicalPanel("floor_plan_ground"),
+        technicalPanel("elevation_north"),
+        technicalPanel("section_AA"),
+      ],
+    });
+
+    expect(result.errors).toEqual([]);
+    expect(result.warnings).toEqual([]);
+    expect(result.checks.passed).toBe(true);
+  });
+
+  test("fails when technicalDrawing is missing", () => {
+    const panel = technicalPanel("floor_plan_ground");
+    delete panel.technicalDrawing;
+    const result = validateTechnicalPanelContract({
+      expectedGeometryHash: "geometry-hash-1",
+      technicalPanels: [panel],
+    });
+
+    expect(errorCodes(result)).toContain(
+      "TECHNICAL_PANEL_NOT_MARKED_DETERMINISTIC",
+    );
+  });
+
+  test('fails when imageProviderUsed="openai"', () => {
+    const result = validateTechnicalPanelContract({
+      expectedGeometryHash: "geometry-hash-1",
+      technicalPanels: [
+        technicalPanel("floor_plan_ground", {
+          imageProviderUsed: "openai",
+        }),
+      ],
+    });
+
+    expect(errorCodes(result)).toContain("TECHNICAL_PANEL_IMAGE_MODEL_USED");
+  });
+
+  test('fails when providerUsed="gpt-image-1.5"', () => {
+    const result = validateTechnicalPanelContract({
+      expectedGeometryHash: "geometry-hash-1",
+      technicalPanels: [
+        technicalPanel("section_AA", {
+          providerUsed: "gpt-image-1.5",
+        }),
+      ],
+    });
+
+    expect(errorCodes(result)).toContain("TECHNICAL_PANEL_IMAGE_MODEL_USED");
+  });
+
+  test("fails when geometryHash/source hash fields are missing", () => {
+    const panel = technicalPanel("elevation_north");
+    delete panel.geometryHash;
+    delete panel.sourceGeometryHash;
+    delete panel.source_model_hash;
+    const result = validateTechnicalPanelContract({
+      expectedGeometryHash: "geometry-hash-1",
+      technicalPanels: [panel],
+    });
+
+    expect(errorCodes(result)).toContain(
+      "TECHNICAL_PANEL_GEOMETRY_HASH_MISSING",
+    );
+  });
+
+  test("fails when geometry hash differs from expectedGeometryHash", () => {
+    const result = validateTechnicalPanelContract({
+      expectedGeometryHash: "geometry-hash-1",
+      technicalPanels: [
+        technicalPanel("section_BB", {
+          geometryHash: "geometry-hash-2",
+          sourceGeometryHash: "geometry-hash-2",
+          source_model_hash: "geometry-hash-2",
+        }),
+      ],
+    });
+
+    expect(errorCodes(result)).toContain(
+      "TECHNICAL_PANEL_GEOMETRY_HASH_MISMATCH",
+    );
   });
 });
 

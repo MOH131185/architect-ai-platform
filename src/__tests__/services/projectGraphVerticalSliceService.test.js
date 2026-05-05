@@ -2643,6 +2643,48 @@ describe("projectGraphVerticalSliceService", () => {
     );
   });
 
+  test("QA blocks technical panels that lose deterministic provenance contract", async () => {
+    const result = await buildArchitectureProjectVerticalSlice(
+      createReadingRoomBrief(),
+    );
+    const tamperedDrawings = Object.fromEntries(
+      Object.entries(result.artifacts.drawings).map(([assetId, artifact]) => [
+        assetId,
+        artifact.panel_type === "floor_plan_ground"
+          ? {
+              ...artifact,
+              technicalDrawing: false,
+              metadata: {
+                ...artifact.metadata,
+                technicalDrawing: false,
+              },
+            }
+          : artifact,
+      ]),
+    );
+
+    const qa = validateProjectGraphVerticalSlice({
+      projectGraph: result.projectGraph,
+      artifacts: {
+        ...result.artifacts,
+        drawings: tamperedDrawings,
+      },
+    });
+
+    expect(qa.status).toBe("fail");
+    expect(qa.issues.map((issue) => issue.code)).toContain(
+      "TECHNICAL_PANEL_NOT_MARKED_DETERMINISTIC",
+    );
+    expect(qa.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "TECHNICAL_PANEL_CONTRACT",
+          status: "fail",
+        }),
+      ]),
+    );
+  });
+
   test("QA rejects frame-only render proof even when sheet ink ratio is high", async () => {
     const result = await buildArchitectureProjectVerticalSlice(
       createReadingRoomBrief(),

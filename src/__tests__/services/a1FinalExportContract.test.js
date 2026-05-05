@@ -56,15 +56,32 @@ function healthyProjectAuthorityEvidence() {
     "interior_3d",
   ];
   return {
-    panels: panelTypes.map((type) => ({
-      type,
-      status: "ready",
-      hasSvg: true,
-      geometryHash: "geometry-hash-OK",
-      sourceGeometryHash: "geometry-hash-OK",
-      providerUsed: "deterministic",
-      imageProviderUsed: "deterministic",
-    })),
+    panels: panelTypes.map((type) => {
+      const isTechnical =
+        type.startsWith("floor_plan_") ||
+        type.startsWith("elevation_") ||
+        type.startsWith("section_");
+      return {
+        type,
+        status: "ready",
+        hasSvg: true,
+        geometryHash: "geometry-hash-OK",
+        sourceGeometryHash: "geometry-hash-OK",
+        ...(isTechnical
+          ? {
+              svgString: `<svg xmlns="http://www.w3.org/2000/svg" data-panel-id="${type}"></svg>`,
+              technicalDrawing: true,
+              renderer: "deterministic_svg",
+              provider: "deterministic",
+              providerUsed: "deterministic_svg",
+              imageProviderUsed: "none",
+            }
+          : {
+              providerUsed: "deterministic",
+              imageProviderUsed: "deterministic",
+            }),
+      };
+    }),
     panelRegistry: panelTypes,
     visualManifest: {
       manifestId: "visual-manifest-test-001",
@@ -461,10 +478,12 @@ describe("a1FinalExportContract", () => {
 
     const buildHealthyPanels = () =>
       HEALTHY_PANEL_REGISTRY.map((type) => {
-        const isProjectPanel =
+        const isTechnicalPanel =
           type.startsWith("floor_plan_") ||
           type.startsWith("elevation_") ||
-          type.startsWith("section_") ||
+          type.startsWith("section_");
+        const isProjectPanel =
+          isTechnicalPanel ||
           ["hero_3d", "exterior_render", "axonometric", "interior_3d"].includes(
             type,
           );
@@ -472,12 +491,26 @@ describe("a1FinalExportContract", () => {
           type,
           status: "ready",
           hasSvg: true,
+          ...(isTechnicalPanel
+            ? {
+                svgString: `<svg xmlns="http://www.w3.org/2000/svg" data-panel-id="${type}"></svg>`,
+                technicalDrawing: true,
+                renderer: "deterministic_svg",
+                provider: "deterministic",
+                providerUsed: "deterministic_svg",
+                imageProviderUsed: "none",
+              }
+            : {}),
           ...(isProjectPanel
             ? {
                 geometryHash: "geometry-hash-OK",
                 sourceGeometryHash: "geometry-hash-OK",
-                providerUsed: "deterministic",
-                imageProviderUsed: "deterministic",
+                ...(isTechnicalPanel
+                  ? {}
+                  : {
+                      providerUsed: "deterministic",
+                      imageProviderUsed: "deterministic",
+                    }),
               }
             : {}),
         };

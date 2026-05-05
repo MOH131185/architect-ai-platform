@@ -150,6 +150,23 @@ function hasCompiledProjectAuthorityMarkers(candidate) {
   );
 }
 
+function resolveCompiledProjectGeometryHash(...candidates) {
+  for (const candidate of candidates) {
+    const value =
+      candidate?.geometryHash ||
+      candidate?.sourceGeometryHash ||
+      candidate?.source_model_hash ||
+      candidate?.metadata?.geometryHash ||
+      candidate?.metadata?.geometry_hash ||
+      candidate?.metadata?.sourceGeometryHash ||
+      candidate?.metadata?.source_model_hash;
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
 function isCompiledProjectSchema(candidate) {
   if (!looksLikeCompiledProject(candidate)) {
     return false;
@@ -885,7 +902,13 @@ export function analyseTechnicalSvgContentFrame(
   };
 }
 
-function buildPanelRecord(panelType, rendererResult, width, height) {
+function buildPanelRecord(
+  panelType,
+  rendererResult,
+  width,
+  height,
+  { geometryHash = null } = {},
+) {
   const svgString = rendererResult?.svg;
   if (typeof svgString !== "string" || !svgString.trim()) {
     return {
@@ -915,12 +938,25 @@ function buildPanelRecord(panelType, rendererResult, width, height) {
       : {}),
   };
 
+  const svgHash = computeCDSHashSync({ svg: svgString });
+  const deterministicProvenance = {
+    technicalDrawing: true,
+    renderer: "deterministic_svg",
+    imageProviderUsed: "none",
+    providerUsed: "deterministic_svg",
+    provider: "deterministic",
+    geometryHash,
+    sourceGeometryHash: geometryHash,
+    source_model_hash: geometryHash,
+    svgHash,
+  };
+
   return {
     ok: true,
     panel: {
       dataUrl: null,
       svgString,
-      svgHash: computeCDSHashSync({ svg: svgString }),
+      ...deterministicProvenance,
       width,
       height,
       title: rendererResult?.title || panelType,
@@ -929,8 +965,16 @@ function buildPanelRecord(panelType, rendererResult, width, height) {
       normalizedViewBox: contentFrame?.normalizedViewBox || null,
       viewBoxNormalization: contentFrame?.normalization || null,
       technicalQualityMetadata,
-      renderer: rendererResult?.renderer || null,
+      rendererImplementation: rendererResult?.renderer || null,
       drawingType: technicalQualityMetadata?.drawing_type || null,
+      metadata: {
+        source: "compiled_project_technical_panel",
+        panelType,
+        expectedPanelType: panelType,
+        rendererImplementation: rendererResult?.renderer || null,
+        technicalQualityMetadata,
+        ...deterministicProvenance,
+      },
     },
   };
 }
@@ -1105,6 +1149,11 @@ export function buildCompiledProjectTechnicalPanels(source = {}, options = {}) {
     ? adaptCompiledProjectToCanonicalGeometry(compiledProjectSource, styleDNA)
     : compiledProjectSource;
   const compiledProject = coerceToCanonicalProjectGeometry(canonicalSource);
+  const geometryHash = resolveCompiledProjectGeometryHash(
+    compiledProject,
+    compiledProjectSource,
+    source,
+  );
   const technicalPanels = {};
   const technicalPanelTypes = [];
   const failures = [];
@@ -1169,6 +1218,7 @@ export function buildCompiledProjectTechnicalPanels(source = {}, options = {}) {
       result,
       renderSize.width,
       renderSize.height,
+      { geometryHash },
     );
     if (!normalized.ok) {
       failures.push(normalized.failure);
@@ -1208,6 +1258,7 @@ export function buildCompiledProjectTechnicalPanels(source = {}, options = {}) {
         result,
         renderSize.width,
         renderSize.height,
+        { geometryHash },
       );
       if (!normalized.ok) {
         failures.push(normalized.failure);
@@ -1252,6 +1303,7 @@ export function buildCompiledProjectTechnicalPanels(source = {}, options = {}) {
         result,
         renderSize.width,
         renderSize.height,
+        { geometryHash },
       );
       if (!normalized.ok) {
         failures.push(normalized.failure);
