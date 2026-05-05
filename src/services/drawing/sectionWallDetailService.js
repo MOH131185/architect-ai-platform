@@ -36,6 +36,9 @@ function isInteriorBackgroundPocheZone(wall = {}) {
   return width >= 56 && height >= 72;
 }
 
+const INTERIOR_BACKGROUND_POCHE_FILL = "#f4f5f6";
+const INTERIOR_BACKGROUND_POCHE_OPACITY = 0.92;
+
 export function buildSectionWallDetailMarkup({
   walls = [],
   lineweights = {},
@@ -69,8 +72,11 @@ export function buildSectionWallDetailMarkup({
               : 0.76 + bandCoverage * 0.1;
       const interiorBackgroundZone = isInteriorBackgroundPocheZone(wall);
       const pocheOpacity = interiorBackgroundZone
-        ? Math.min(rawPocheOpacity, 0.38)
+        ? INTERIOR_BACKGROUND_POCHE_OPACITY
         : rawPocheOpacity;
+      const pocheFill = interiorBackgroundZone
+        ? INTERIOR_BACKGROUND_POCHE_FILL
+        : "#151515";
       const outlineWeight = isCutFace
         ? Math.max(2, (lineweights.cutOutline || 1.6) * 1.22)
         : isCutProfile
@@ -87,7 +93,9 @@ export function buildSectionWallDetailMarkup({
       const interiorHatchOpacity = isCutFace
         ? 0.54
         : isCutProfile
-          ? 0.48 + profileContinuity * 0.08
+          ? interiorBackgroundZone
+            ? 0.34
+            : 0.48 + profileContinuity * 0.08
           : nearBoolean
             ? 0.42
             : contextual
@@ -112,11 +120,11 @@ export function buildSectionWallDetailMarkup({
         : "";
       return `
         <g id="phase13-section-cut-wall-${escapeXml(wall.id || index)}" data-truth-kind="${escapeXml(truthKind || truthState)}">
-          <rect x="${wall.x}" y="${wall.y}" width="${wall.width}" height="${wall.height}" data-poche-zone="${interiorBackgroundZone ? "interior-background" : "cut-wall"}" data-poche-opacity="${pocheOpacity}" fill="#151515" fill-opacity="${pocheOpacity}" stroke="#111" stroke-width="${outlineWeight}"${dashArray} />
+          <rect x="${wall.x}" y="${wall.y}" width="${wall.width}" height="${wall.height}" data-poche-zone="${interiorBackgroundZone ? "interior-background" : "cut-wall"}" data-poche-fill-role="${interiorBackgroundZone ? "label-readable-background" : "section-cut"}" data-poche-opacity="${pocheOpacity}" fill="${pocheFill}" fill-opacity="${pocheOpacity}" stroke="#111" stroke-width="${outlineWeight}"${dashArray} />
           ${cutFaceReveal}
-          <rect x="${wall.x + Math.max(1.5, wall.width * 0.08)}" y="${wall.y + 1.5}" width="${Math.max(2, wall.width - Math.max(3, wall.width * 0.16))}" height="${Math.max(6, wall.height - 3)}" fill="none" stroke="#f5f2ec" stroke-width="${isCutFace ? (lineweights.hatch || 0.7) * 1.2 : nearBoolean ? lineweights.hatch || 0.7 : lineweights.guide || 0.62}" stroke-opacity="${interiorHatchOpacity}"${interiorHatchDash} />
-          <line x1="${wall.x + wall.width * 0.2}" y1="${wall.y}" x2="${wall.x + wall.width * 0.2}" y2="${wall.y + wall.height}" stroke="#f4f1eb" stroke-width="${lineweights.guide || 0.62}" stroke-opacity="${isCutFace ? 0.46 : contextual ? 0.2 : 0.35}" />
-          <line x1="${wall.x + wall.width * 0.8}" y1="${wall.y}" x2="${wall.x + wall.width * 0.8}" y2="${wall.y + wall.height}" stroke="#f4f1eb" stroke-width="${lineweights.guide || 0.62}" stroke-opacity="${isCutFace ? 0.46 : contextual ? 0.2 : 0.35}" />
+          <rect x="${wall.x + Math.max(1.5, wall.width * 0.08)}" y="${wall.y + 1.5}" width="${Math.max(2, wall.width - Math.max(3, wall.width * 0.16))}" height="${Math.max(6, wall.height - 3)}" fill="none" stroke="${interiorBackgroundZone ? "#9ca3af" : "#f5f2ec"}" stroke-width="${isCutFace ? (lineweights.hatch || 0.7) * 1.2 : nearBoolean ? lineweights.hatch || 0.7 : lineweights.guide || 0.62}" stroke-opacity="${interiorHatchOpacity}"${interiorHatchDash} />
+          <line x1="${wall.x + wall.width * 0.2}" y1="${wall.y}" x2="${wall.x + wall.width * 0.2}" y2="${wall.y + wall.height}" stroke="${interiorBackgroundZone ? "#9ca3af" : "#f4f1eb"}" stroke-width="${lineweights.guide || 0.62}" stroke-opacity="${isCutFace ? 0.46 : contextual ? 0.2 : interiorBackgroundZone ? 0.28 : 0.35}" />
+          <line x1="${wall.x + wall.width * 0.8}" y1="${wall.y}" x2="${wall.x + wall.width * 0.8}" y2="${wall.y + wall.height}" stroke="${interiorBackgroundZone ? "#9ca3af" : "#f4f1eb"}" stroke-width="${lineweights.guide || 0.62}" stroke-opacity="${isCutFace ? 0.46 : contextual ? 0.2 : interiorBackgroundZone ? 0.28 : 0.35}" />
           ${interiorGuides}
         </g>`;
     })

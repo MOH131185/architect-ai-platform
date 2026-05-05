@@ -1461,7 +1461,7 @@ export function renderElevationSvg(
   const showInternalTitleBlock =
     !sheetMode || options.showInternalTitleBlock === true;
   const layout = sheetMode
-    ? { left: 28, top: 16, right: 30, bottom: 38 }
+    ? { left: 16, top: 8, right: 16, bottom: 24 }
     : { left: 80, top: 62, right: 94, bottom: 118 };
   const availableWidth = Math.max(1, width - layout.left - layout.right);
   const availableHeight = Math.max(1, height - layout.top - layout.bottom);
@@ -1483,7 +1483,7 @@ export function renderElevationSvg(
     spanM: metrics.width_m,
   });
   const roofAllowanceM = Math.max(
-    sheetMode ? 0.72 : 1.2,
+    sheetMode ? 0.56 : 1.2,
     Number(roofPitchInfoBase.riseM || 0),
   );
   const scale = Math.min(
