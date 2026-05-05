@@ -8,6 +8,7 @@ import {
   FURNITURE_SYMBOL_VERSION,
 } from "../../../services/drawing/furnitureSymbolService.js";
 import { getBlueprintTheme } from "../../../services/drawing/drawingBounds.js";
+import { resolveUKVernacular } from "../../../services/style/ukVernacularPacks.js";
 
 function rectangle(minX, minY, maxX, maxY) {
   return [
@@ -236,7 +237,45 @@ function createPolishFixture() {
         head_height_m: 2.1,
       },
     ],
-    stairs: [],
+    stairs: [
+      {
+        id: "main-stair",
+        level_id: "ground",
+        bbox: { min_x: 14, min_y: 12, max_x: 18, max_y: 16 },
+        depth_m: 3.2,
+      },
+    ],
+  };
+}
+
+function createW2FacadeGrammar(pack) {
+  return {
+    orientations: [
+      {
+        side: "south",
+        roofline_language: pack.roof_language,
+        parapet_mode: pack.parapet_default ? "continuous parapet" : "none",
+        material_zones: [
+          {
+            material: "white stucco render",
+            application: "primary facade",
+            start_m: 0,
+            end_m: 8,
+          },
+          {
+            material: "natural slate",
+            application: "roof parapet",
+            start_m: 8,
+            end_m: 12,
+          },
+        ],
+        components: {
+          bays: [{ center_m: 3 }, { center_m: 6 }, { center_m: 9 }],
+          parapets: [{ type: "parapet" }],
+          sills: [{ type: "sill band" }],
+        },
+      },
+    ],
   };
 }
 
@@ -346,6 +385,65 @@ describe("Phase 3 — elevation datums", () => {
     expect(typeof result.svg).toBe("string");
     expect(result.svg.length).toBeGreaterThan(500);
   });
+
+  test("blueprint-grade elevation carries CAD material hatches, datums and opening cues", () => {
+    const fixture = createPolishFixture();
+    const result = renderElevationSvg(fixture, {}, { orientation: "south" });
+    const meta = result.technical_quality_metadata;
+
+    expect(result.svg).toContain('data-blueprint-grade="true"');
+    expect(result.svg).toContain("cad-layer-material-hatches");
+    expect(result.svg).toContain("cad-material-hatch");
+    expect(result.svg).toContain('data-datum-role="ffl-ground"');
+    expect(result.svg).toContain('data-datum-role="eaves"');
+    expect(result.svg).toContain('data-datum-role="ridge"');
+    expect(result.svg).toContain("cad-window-head-line");
+    expect(result.svg).toContain("cad-window-sill-line");
+    expect(result.svg).toContain("cad-opening-tag");
+    expect(result.svg).toContain("cad-facade-rhythm-cue");
+    expect(meta.has_cad_layer_classes).toBe(true);
+    expect(meta.has_cad_lineweight_classes).toBe(true);
+    expect(meta.has_eaves_datum).toBe(true);
+    expect(meta.has_ridge_datum).toBe(true);
+    expect(meta.has_opening_tags).toBe(true);
+  });
+
+  test("W2 London stucco pack still drives elevation material and parapet cues", () => {
+    const fixture = createPolishFixture();
+    const pack = resolveUKVernacular({ postcode: "W2 5SH" });
+    expect(pack.packId).toBe("london-stucco-terrace");
+    const result = renderElevationSvg(
+      fixture,
+      {
+        materials: pack.materials.map((name) => ({
+          name,
+          application: /slate/i.test(name) ? "roof parapet" : "primary facade",
+          source: "ukVernacularPacks",
+        })),
+        facade_language: pack.facade_language,
+        roof_language: pack.roof_language,
+      },
+      {
+        orientation: "south",
+        vernacularPack: { ...pack, source: "ukVernacularPacks" },
+        facadeGrammar: createW2FacadeGrammar(pack),
+      },
+    );
+
+    expect(result.svg).toContain(
+      'data-vernacular-pack="london-stucco-terrace"',
+    );
+    expect(result.svg).toContain('data-pack-parapet="true"');
+    expect(result.svg).toContain('data-pack-facade-stucco="true"');
+    expect(result.svg).toContain('data-material-hatch="render"');
+    expect(result.svg).toMatch(/parapet|stucco|render/i);
+    expect(result.technical_quality_metadata.vernacular_pack_parapet).toBe(
+      true,
+    );
+    expect(result.technical_quality_metadata.vernacular_pack_has_stucco).toBe(
+      true,
+    );
+  });
 });
 
 describe("Phase 3 — section ground hatch and cut rooms", () => {
@@ -379,6 +477,33 @@ describe("Phase 3 — section ground hatch and cut rooms", () => {
     expect(
       result.technical_quality_metadata.cut_room_count,
     ).toBeGreaterThanOrEqual(0);
+  });
+
+  test("blueprint-grade section carries cut poche, ground hatch, datums and vertical dimensions", () => {
+    const fixture = createPolishFixture();
+    const result = renderSectionSvg(
+      fixture,
+      {},
+      { sectionType: "longitudinal" },
+    );
+    const meta = result.technical_quality_metadata;
+
+    expect(result.svg).toContain('data-blueprint-grade="true"');
+    expect(result.svg).toContain("cad-section-cut-poche");
+    expect(result.svg).toContain("cad-lineweight-cut");
+    expect(result.svg).toContain("cad-ground-hatch");
+    expect(result.svg).toContain("cad-foundation-build-up");
+    expect(result.svg).toContain("cad-slab-build-up");
+    expect(result.svg).toContain("cad-roof-build-up");
+    expect(result.svg).toContain("cad-vertical-dimension-chain");
+    expect(result.svg).toContain('data-datum-role="ffl"');
+    expect(result.svg).toContain('data-datum-role="eaves"');
+    expect(result.svg).toContain('data-datum-role="ridge"');
+    expect(meta.has_cad_layer_classes).toBe(true);
+    expect(meta.has_cad_lineweight_classes).toBe(true);
+    expect(meta.has_vertical_dimension_chain).toBe(true);
+    expect(meta.eaves_datum_count).toBeGreaterThan(0);
+    expect(meta.ridge_datum_count).toBeGreaterThan(0);
   });
 });
 

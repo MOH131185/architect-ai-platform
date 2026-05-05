@@ -15,6 +15,7 @@ import {
   buildKeyNoteItems,
   buildKeyNotesPanelArtifact,
   buildMaterialPalettePanelArtifact,
+  __projectGraphVerticalSliceInternals,
 } from "../../services/project/projectGraphVerticalSliceService.js";
 import { resolveUKVernacular } from "../../services/style/ukVernacularPacks.js";
 
@@ -124,6 +125,111 @@ describe("buildKeyNoteItems — QA summary group", () => {
     });
     const qaGroup = groups.find((g) => g.id === "qa_summary");
     expect(qaGroup).toBeUndefined();
+  });
+});
+
+describe("ArchitectReasoningManifest — Key Notes design rationale", () => {
+  test("builds a deterministic compact sidecar manifest and Key Notes group", () => {
+    const pack = resolveUKVernacular({ postcode: "W2 5SH" });
+    const localStyle = makeLocalStyleWithPack(pack);
+    const compiledProject = {
+      geometryHash: "geometry-hash-w2",
+      levels: [{ id: "ground" }, { id: "first" }],
+      rooms: [
+        { id: "living", name: "Living Room", zone: "day" },
+        { id: "kitchen", name: "Kitchen", zone: "service" },
+        { id: "landing", name: "Landing", zone: "circulation" },
+      ],
+      windows: [
+        { id: "w1", orientation: "south" },
+        { id: "w2", orientation: "west" },
+      ],
+      stairs: [{ id: "main-stair" }],
+      sectionCuts: {
+        candidates: [
+          { sectionType: "longitudinal", strategyName: "stair/daylight cut" },
+          { sectionType: "transverse", strategyName: "front-to-back cut" },
+        ],
+      },
+    };
+    const manifest =
+      __projectGraphVerticalSliceInternals.buildArchitectReasoningManifest({
+        projectGraphId: "pg-w2",
+        brief: {
+          ...baseBrief,
+          site_input: { postcode: "W2 5SH" },
+        },
+        site: {
+          postcode: "W2 5SH",
+          north_angle_degrees: 8,
+          boundary_source: "manual_verified",
+          main_entry: { orientation: "south", source: "manual" },
+        },
+        climate: { source: "deterministic", zone: "UK temperate" },
+        regulations: { parts: [{ part: "Part L" }, { part: "Part M" }] },
+        localStyle,
+        programmeSummary: {
+          rooms_per_level: {
+            ground: ["Living Room", "Kitchen", "WC"],
+            first: ["Bedroom", "Bathroom"],
+          },
+        },
+        compiledProject,
+        technicalBuild: { technicalPanelTypes: ["section_AA", "section_BB"] },
+        sheetDesignContext: {
+          materials: [
+            { name: "white stucco render" },
+            { name: "natural slate" },
+          ],
+        },
+      });
+
+    expect(manifest).toEqual(
+      expect.objectContaining({
+        asset_type: "architect_reasoning_manifest_json",
+        schema_version: "architect-reasoning-manifest-v1",
+        source_model_hash: "geometry-hash-w2",
+        geometryHash: "geometry-hash-w2",
+        authoritySource: "project_graph_compiled_geometry",
+        deterministic: true,
+        manifestHash: expect.any(String),
+      }),
+    );
+    expect(manifest.prompt_splice_lines.length).toBeGreaterThanOrEqual(6);
+    expect(manifest.prompt_splice_lines.length).toBeLessThanOrEqual(8);
+    expect(manifest.design_rationale).toEqual(
+      expect.objectContaining({
+        site_orientation: expect.stringMatching(/Site\/orientation/i),
+        zoning: expect.stringMatching(/Zoning/i),
+        circulation: expect.stringMatching(/Circulation/i),
+        daylight: expect.stringMatching(/Daylight/i),
+        facade_vernacular: expect.stringMatching(/London stucco terrace/i),
+        section_cut: expect.stringMatching(/Section cuts/i),
+        material: expect.stringMatching(/stucco|slate/i),
+        qa_caveats: expect.stringMatching(/QA caveats/i),
+      }),
+    );
+    expect(manifest.qa_caveats.join(" ")).toMatch(/warning-only/i);
+
+    const groups = buildKeyNoteItems({
+      brief: baseBrief,
+      site: baseSite,
+      climate: baseClimate,
+      regulations: baseRegulations,
+      localStyle,
+      architectReasoningManifest: manifest,
+    });
+    const rationaleGroup = groups.find((g) => g.id === "design_rationale");
+    expect(rationaleGroup).toEqual(
+      expect.objectContaining({
+        heading: "Design rationale",
+        lines: manifest.key_note_lines,
+      }),
+    );
+    expect(rationaleGroup.lines.length).toBeGreaterThanOrEqual(3);
+    expect(rationaleGroup.lines.join(" ")).toMatch(
+      /Site\/orientation|Circulation|Section cuts/i,
+    );
   });
 });
 

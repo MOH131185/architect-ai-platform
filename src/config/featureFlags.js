@@ -1447,6 +1447,62 @@ export const FEATURE_FLAGS = {
   dualQaQuantitativeScoring: true,
 
   /**
+   * Blueprint-grade deterministic technical renderer.
+   *
+   * When enabled, deterministic SVG technical panels emit CAD-grade layer
+   * classes, line-weight metadata, datums, dimension markers, and drafting
+   * annotations. This remains SVG / ProjectGraph authority only.
+   *
+   * @type {boolean}
+   * @default true
+   */
+  blueprintGradeTechnicalRenderer: true,
+
+  /**
+   * Architect reasoning manifest.
+   *
+   * When enabled, the ProjectGraph vertical slice emits a compact deterministic
+   * reasoning sidecar and a concise Design rationale group on Key Notes.
+   *
+   * @type {boolean}
+   * @default true
+   */
+  architectReasoningManifest: true,
+
+  /**
+   * CAD-grade technical QA.
+   *
+   * When enabled, deterministic drawing QA reports drafting-grade completeness
+   * gaps as warnings. It does not use qualitative LLM scoring.
+   *
+   * @type {boolean}
+   * @default true
+   */
+  cadGradeTechnicalQa: true,
+
+  /**
+   * CAD-grade technical QA blocking mode.
+   *
+   * Kept off for this PR: CAD-grade issues are warnings only and must not
+   * become export blockers.
+   *
+   * @type {boolean}
+   * @default false
+   */
+  cadGradeTechnicalQaBlocking: false,
+
+  /**
+   * Architect critique pass.
+   *
+   * Reserved for a future qualitative critique pass. Off by default and not
+   * used by technical SVG generation.
+   *
+   * @type {boolean}
+   * @default false
+   */
+  architectCritiquePass: false,
+
+  /**
    * Dual-scored QA report — qualitative LLM-rubric block (paper §4.6).
    *
    * When enabled, runs a fixed RIBA-rubric LLM evaluator and attaches a

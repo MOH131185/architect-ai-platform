@@ -12,31 +12,57 @@ function planSvg({
   scaleBar = true,
   roomLabel = true,
   dimensionChain = true,
+  roomArea = true,
+  sectionMarker = true,
 } = {}) {
   return [
     SVG_HEADER,
     northArrow ? '<g id="north-arrow"/>' : "",
     titleBlock ? '<g id="title-block"/>' : "",
     scaleBar ? '<g id="scale-bar"/>' : "",
+    '<g class="cad-layer-walls cad-lineweight-cut"/>',
     roomLabel ? '<text class="room-label">Living Room</text>' : "",
+    roomArea
+      ? '<text class="room-area-label" data-room-area-m2="24.0">24.0 m2</text>'
+      : "",
     dimensionChain ? '<g class="dimension-chain"/>' : "",
+    sectionMarker
+      ? '<g id="plan-section-markers"><g class="section-marker cad-section-marker" data-section-label="A-A"/></g>'
+      : "",
     SVG_FOOTER,
   ].join("");
 }
 
-function elevationSvg({ groundLine = true, fflMarker = true } = {}) {
+function elevationSvg({
+  groundLine = true,
+  fflMarker = true,
+  eavesDatum = true,
+  ridgeDatum = true,
+} = {}) {
   return [
     SVG_HEADER,
+    '<g class="cad-layer-material-hatches cad-lineweight-outline"/>',
     groundLine ? '<line id="ground-line"/>' : "",
-    fflMarker ? "<text>FFL +0.000</text>" : "",
+    fflMarker ? '<text data-datum-role="ffl-ground">FFL +0.000</text>' : "",
+    eavesDatum ? '<text data-datum-role="eaves">EAVES +6.200</text>' : "",
+    ridgeDatum ? '<text data-datum-role="ridge">RIDGE +7.200</text>' : "",
     SVG_FOOTER,
   ].join("");
 }
 
-function sectionSvg({ groundLine = true, sectionId = true } = {}) {
+function sectionSvg({
+  groundLine = true,
+  sectionId = true,
+  verticalDimension = true,
+} = {}) {
   return [
     SVG_HEADER,
-    groundLine ? '<line id="ground-line"/>' : "",
+    groundLine
+      ? '<g id="phase3-section-ground-hatch" class="cad-layer-ground cad-lineweight-cut"><line id="ground-line"/></g>'
+      : "",
+    verticalDimension
+      ? '<g class="cad-layer-dimensions cad-vertical-dimension-chain cad-lineweight-detail"/>'
+      : "",
     sectionId ? "<text>Section A-A</text>" : "",
     SVG_FOOTER,
   ].join("");
@@ -48,8 +74,10 @@ function productionPlanSvg() {
     '<g id="north-arrow"/>',
     '<g id="title-block"/>',
     '<g id="blueprint-scale-bar"/>',
-    '<g id="plan-room-labels"><g class="plan-room-label"><text>Reading Room</text></g></g>',
-    '<g class="dimension-chain horizontal"/>',
+    '<g class="cad-layer-walls cad-lineweight-cut"/>',
+    '<g id="plan-room-labels"><g class="plan-room-label" data-room-area-m2="32.0"><text>Reading Room</text><text class="room-area-label">32.0 m2</text></g></g>',
+    '<g class="dimension-chain horizontal cad-dimension-chain"/>',
+    '<g id="plan-section-markers"><g class="section-marker cad-section-marker" data-section-label="A-A"/></g>',
     SVG_FOOTER,
   ].join("");
 }
@@ -57,9 +85,12 @@ function productionPlanSvg() {
 function productionElevationSvg() {
   return [
     SVG_HEADER,
-    '<g id="phase8-ground-line"/>',
+    '<g id="phase8-ground-line" class="cad-layer-site-ground cad-lineweight-outline"/>',
+    '<g class="cad-layer-material-hatches"/>',
     '<g class="phase8-window"/>',
-    "<text>FFL +0.000</text>",
+    '<text data-datum-role="ffl-ground">FFL +0.000</text>',
+    '<text data-datum-role="eaves">EAVES +6.200</text>',
+    '<text data-datum-role="ridge">RIDGE +7.200</text>',
     SVG_FOOTER,
   ].join("");
 }
@@ -67,7 +98,8 @@ function productionElevationSvg() {
 function productionSectionSvg() {
   return [
     SVG_HEADER,
-    '<g id="phase3-section-ground-hatch"/>',
+    '<g id="phase3-section-ground-hatch" class="cad-layer-ground cad-lineweight-cut"/>',
+    '<g class="cad-layer-dimensions cad-vertical-dimension-chain cad-lineweight-detail"/>',
     '<g id="phase8-section-stair-cuts"/>',
     SVG_FOOTER,
   ].join("");
@@ -199,6 +231,98 @@ describe("runDrawingConsistencyChecks — per-view reliability", () => {
     expect(result.valid).toBe(true);
     expect(result.errors).toEqual([]);
     expect(result.warnings).toEqual([]);
+  });
+
+  test("CAD-grade QA warnings are non-blocking export warnings only", () => {
+    const result = runDrawingConsistencyChecks({
+      projectGeometry: {
+        levels: [{ id: 0 }],
+        windows: [{ id: "w1" }],
+        doors: [{ id: "d1" }],
+      },
+      drawings: {
+        plan: [
+          {
+            level_id: "0",
+            svg: planSvg({
+              roomLabel: false,
+              roomArea: false,
+              dimensionChain: false,
+              sectionMarker: false,
+            }),
+            window_count: 1,
+            door_count: 1,
+          },
+        ],
+        elevation: [
+          {
+            svg: elevationSvg({
+              fflMarker: false,
+              eavesDatum: false,
+              ridgeDatum: false,
+            }),
+            window_count: 1,
+            door_count: 1,
+          },
+        ],
+        section: [
+          {
+            svg: sectionSvg({
+              groundLine: false,
+              verticalDimension: false,
+            }),
+            section_id: "SECTION A-A",
+          },
+        ],
+      },
+      enableCrossViewChecks: false,
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.errors).toEqual([]);
+    expect(result.checks.cadGradeTechnicalQa).toBe(true);
+    expect(result.checks.cadGradeTechnicalQaBlocking).toBe(false);
+    expect(result.warnings).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("CAD_QA_PLAN_ROOM_LABELS"),
+        expect.stringContaining("CAD_QA_PLAN_ROOM_AREAS"),
+        expect.stringContaining("CAD_QA_PLAN_DIMENSIONS"),
+        expect.stringContaining("CAD_QA_SECTION_MARKERS_MISSING"),
+        expect.stringContaining("CAD_QA_ELEVATION_FFL_DATUM"),
+        expect.stringContaining("CAD_QA_ELEVATION_EAVES_DATUM"),
+        expect.stringContaining("CAD_QA_ELEVATION_RIDGE_DATUM"),
+        expect.stringContaining("CAD_QA_SECTION_GROUND_LINE"),
+        expect.stringContaining("CAD_QA_SECTION_VERTICAL_DIMENSION"),
+      ]),
+    );
+  });
+
+  test("CAD-grade QA aligns compact section ids with plan markers", () => {
+    const matching = runDrawingConsistencyChecks({
+      projectGeometry: { levels: [{ id: 0 }] },
+      drawings: {
+        plan: [{ level_id: "0", svg: planSvg() }],
+        elevation: [{ svg: elevationSvg() }],
+        section: [{ svg: sectionSvg(), panel_type: "section_AA" }],
+      },
+      enableCrossViewChecks: false,
+    });
+    expect(matching.warnings.join("\n")).not.toContain(
+      "CAD_QA_SECTION_MARKER_ALIGNMENT",
+    );
+
+    const mismatched = runDrawingConsistencyChecks({
+      projectGeometry: { levels: [{ id: 0 }] },
+      drawings: {
+        plan: [{ level_id: "0", svg: planSvg() }],
+        elevation: [{ svg: elevationSvg() }],
+        section: [{ svg: sectionSvg(), panel_type: "section_BB" }],
+      },
+      enableCrossViewChecks: false,
+    });
+    expect(mismatched.warnings.join("\n")).toContain(
+      "CAD_QA_SECTION_MARKER_ALIGNMENT",
+    );
   });
 
   // Hotfix coverage: in the A1 sheet, the global title-block + north arrow

@@ -343,16 +343,16 @@ function renderRoomLabel(room = {}, project, theme) {
   );
 
   return `
-    <g class="plan-room-label">
+    <g class="plan-room-label" data-room-id="${escapeXml(room.id || room.name || "")}" data-room-area-m2="${formatNumber(areaValue, 1)}">
       <rect x="${formatNumber(labelPoint.x - labelWidth / 2)}" y="${formatNumber(
         labelPoint.y - 22,
-      )}" width="${formatNumber(labelWidth)}" height="38" fill="${theme.paper}" fill-opacity="0.95" stroke="${theme.guide}" stroke-width="0.95" rx="4" ry="4"/>
+      )}" width="${formatNumber(labelWidth)}" height="38" fill="${theme.paper}" fill-opacity="0.95" stroke="${theme.guide}" stroke-width="0.95" rx="4" ry="4" class="cad-room-label-backplate cad-lineweight-detail"/>
       <text x="${formatNumber(labelPoint.x)}" y="${formatNumber(
         labelPoint.y - 6,
-      )}" font-size="13" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">${name}</text>
+      )}" font-size="13" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" class="sheet-critical-label cad-room-name-label" data-text-role="critical">${name}</text>
       <text x="${formatNumber(labelPoint.x)}" y="${formatNumber(
         labelPoint.y + 10,
-      )}" font-size="10" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">${escapeXml(
+      )}" font-size="10" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label room-area-label cad-text-room-area" data-text-role="critical">${escapeXml(
         secondaryLine,
       )}</text>
     </g>
@@ -455,7 +455,7 @@ function renderWallMarkup(walls = [], project, theme) {
       const fill = wall.exterior ? theme.poche : theme.pocheSoft;
       const stroke = wall.exterior ? theme.line : theme.lineMuted;
       const strokeWidth = wall.exterior ? 2.05 : 1.28;
-      return `<path d="${path}" fill="${fill}" fill-opacity="${wall.exterior ? "0.98" : "0.76"}" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linejoin="miter" data-wall-role="${wall.exterior ? "exterior" : "interior"}"/>`;
+      return `<path class="cad-wall-poche ${wall.exterior ? "cad-lineweight-cut cad-wall-exterior" : "cad-lineweight-primary cad-wall-interior"}" d="${path}" fill="${fill}" fill-opacity="${wall.exterior ? "0.98" : "0.76"}" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linejoin="miter" data-wall-role="${wall.exterior ? "exterior" : "interior"}"/>`;
     })
     .join("");
 }
@@ -472,7 +472,7 @@ function renderWindowMarkup(
     (entry) =>
       `${entry.wall_id || ""}:${entry.position_m?.x || 0}:${entry.position_m?.y || 0}:${entry.id || ""}`,
   )
-    .map((windowElement) => {
+    .map((windowElement, index) => {
       const wall = wallMap.get(windowElement.wall_id);
       const vectors = wallVectors(wall);
       if (!vectors) {
@@ -542,6 +542,11 @@ function renderWindowMarkup(
         x: gapB.x - jambNxPx * jambHalfPx,
         y: gapB.y - jambNyPx * jambHalfPx,
       };
+      const tagPoint = project({
+        x: center.x + vectors.normal.x * (thicknessM + 0.28),
+        y: center.y + vectors.normal.y * (thicknessM + 0.28),
+      });
+      const tag = `W${String(index + 1).padStart(2, "0")}`;
 
       return `
         <g class="plan-window" data-window-id="${escapeXml(windowElement.id || "")}">
@@ -577,6 +582,7 @@ function renderWindowMarkup(
           )}" x2="${formatNumber(jambEndFace2.x)}" y2="${formatNumber(
             jambEndFace2.y,
           )}" stroke="${theme.line}" stroke-width="1.05" stroke-linecap="square"/>
+          <text class="cad-opening-tag cad-window-tag" x="${formatNumber(tagPoint.x)}" y="${formatNumber(tagPoint.y)}" font-size="8" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" fill="${theme.lineMuted}">${escapeXml(tag)}</text>
         </g>
       `;
     })
@@ -595,7 +601,7 @@ function renderDoorMarkup(
     (entry) =>
       `${entry.wall_id || ""}:${entry.position_m?.x || 0}:${entry.position_m?.y || 0}:${entry.id || ""}`,
   )
-    .map((door) => {
+    .map((door, index) => {
       const wall = wallMap.get(door.wall_id);
       const vectors = wallVectors(wall);
       if (!vectors) {
@@ -665,6 +671,11 @@ function renderDoorMarkup(
         closedVector.x * openVector.y - closedVector.y * openVector.x >= 0
           ? 1
           : 0;
+      const tagPoint = {
+        x: (hingePx.x + closedPx.x + openPx.x) / 3,
+        y: (hingePx.y + closedPx.y + openPx.y) / 3,
+      };
+      const tag = `D${String(index + 1).padStart(2, "0")}`;
 
       return `
         <g class="plan-door" data-door-id="${escapeXml(door.id || "")}">
@@ -691,10 +702,11 @@ function renderDoorMarkup(
             radiusPx,
           )} 0 0 ${sweepFlag} ${formatNumber(openPx.x)} ${formatNumber(
             openPx.y,
-          )}" fill="none" stroke="${theme.lineMuted}" stroke-width="1.15"/>
+          )}" fill="none" stroke="${theme.lineMuted}" stroke-width="1.15" class="cad-door-swing-arc cad-lineweight-detail"/>
           <circle cx="${formatNumber(hingePx.x)}" cy="${formatNumber(
             hingePx.y,
           )}" r="1.8" fill="${theme.line}"/>
+          <text class="cad-opening-tag cad-door-tag" x="${formatNumber(tagPoint.x)}" y="${formatNumber(tagPoint.y)}" font-size="8" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" fill="${theme.lineMuted}">${escapeXml(tag)}</text>
         </g>
       `;
     })
@@ -793,15 +805,15 @@ function renderStairMarkup(stairs = [], project, theme) {
           )}" x2="${formatNumber(topRight.x - 6)}" y2="${formatNumber(
             topLeft.y + 6,
           )}" stroke="${theme.guide}" stroke-width="0.85" stroke-dasharray="4 3"/>
-          <line x1="${formatNumber(arrowStart.x)}" y1="${formatNumber(
+          <line class="plan-stair-arrow cad-stair-arrow cad-lineweight-primary" x1="${formatNumber(arrowStart.x)}" y1="${formatNumber(
             arrowStart.y,
           )}" x2="${formatNumber(arrowEnd.x)}" y2="${formatNumber(
             arrowEnd.y,
           )}" stroke="${theme.line}" stroke-width="1.35"/>
-          <path d="${arrowHead}" fill="${theme.line}"/>
+          <path class="plan-stair-arrow-head cad-stair-arrow" d="${arrowHead}" fill="${theme.line}"/>
           <text x="${formatNumber(
             (topLeft.x + topRight.x) / 2,
-          )}" y="${formatNumber(bottomLeft.y - 6)}" font-size="10" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">UP</text>
+          )}" y="${formatNumber(bottomLeft.y - 6)}" font-size="10" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" class="sheet-critical-label cad-stair-label" data-text-role="critical">UP</text>
         </g>
       `;
     })
@@ -983,7 +995,7 @@ function renderExternalDimensions(
   });
 
   const markup = `
-    <g id="external-dimensions">
+    <g id="external-dimensions" class="cad-layer-dimensions cad-dimension-chain-overall cad-lineweight-detail" data-dimension-chain-types="overall bay opening internal">
       <line x1="${formatNumber(topLeft.x)}" y1="${formatNumber(
         topLeft.y,
       )}" x2="${formatNumber(topLeft.x)}" y2="${formatNumber(
@@ -1047,8 +1059,8 @@ function renderExternalDimensions(
       )} ${formatNumber(
         (topRight.y + bottomRight.y) / 2,
       )})" text-anchor="middle">${escapeXml(formatMeters(bounds.height))}</text>
-      ${horizontalChain.markup ? `<g class="dimension-chain horizontal">${horizontalChain.markup}</g>` : ""}
-      ${verticalChain.markup ? `<g class="dimension-chain vertical">${verticalChain.markup}</g>` : ""}
+      ${horizontalChain.markup ? `<g class="dimension-chain horizontal"><g class="cad-dimension-chain cad-dimension-chain-bay cad-dimension-chain-internal">${horizontalChain.markup}</g></g>` : ""}
+      ${verticalChain.markup ? `<g class="dimension-chain vertical"><g class="cad-dimension-chain cad-dimension-chain-opening cad-dimension-chain-internal">${verticalChain.markup}</g></g>` : ""}
     </g>
   `;
 
@@ -1181,7 +1193,7 @@ function renderSectionMarkers(sections, project, theme) {
     const py = ux;
     const tickLen = 8;
     labels.push(`${letter}-${letter}`);
-    return `<g class="section-marker" data-section-id="${escapeXml(section.id || "")}" data-section-type="${escapeXml(section.sectionType || "")}" data-section-letter="${letter}">
+    return `<g class="section-marker cad-section-marker cad-lineweight-primary" data-section-id="${escapeXml(section.id || "")}" data-section-type="${escapeXml(section.sectionType || "")}" data-section-letter="${letter}" data-section-label="${letter}-${letter}">
       <line x1="${formatNumber(from.x)}" y1="${formatNumber(from.y)}" x2="${formatNumber(to.x)}" y2="${formatNumber(to.y)}" stroke="${theme.line}" stroke-width="1.4" stroke-dasharray="10 4 2 4"/>
       <circle cx="${formatNumber(from.x)}" cy="${formatNumber(from.y)}" r="9" fill="${theme.paper}" stroke="${theme.line}" stroke-width="1.3"/>
       <circle cx="${formatNumber(to.x)}" cy="${formatNumber(to.y)}" r="9" fill="${theme.paper}" stroke="${theme.line}" stroke-width="1.3"/>
@@ -1237,6 +1249,7 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
   const width = options.width || 1200;
   const height = options.height || 900;
   const sheetMode = options.sheetMode === true;
+  const blueprintGrade = isFeatureEnabled("blueprintGradeTechnicalRenderer");
   const showInternalTitleBlock =
     !sheetMode || options.showInternalTitleBlock === true;
   const includeSiteContext = options.includeSiteContext === true && !sheetMode;
@@ -1410,8 +1423,9 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
   );
 
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-theme="${theme.name}" data-bounds-source="${boundsSource}">
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-theme="${theme.name}" data-bounds-source="${boundsSource}" data-blueprint-grade="${blueprintGrade ? "true" : "false"}">
   <rect width="${width}" height="${height}" fill="${theme.paper}"/>
+  ${blueprintGrade ? '<g class="cad-lineweight-registry cad-lineweight-cut cad-lineweight-primary cad-lineweight-secondary cad-lineweight-detail" data-cad-layer="lineweight-registry"/>' : ""}
   ${
     siteOutline
       ? `<path d="${siteOutline}" fill="none" stroke="${theme.guide}" stroke-width="1" stroke-dasharray="8 5"/>`
@@ -1422,14 +1436,14 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
       ? `<path d="${buildableOutline}" fill="none" stroke="${theme.lineLight}" stroke-width="1" stroke-dasharray="4 4"/>`
       : ""
   }
-  ${footprintPath ? `<path d="${footprintPath}" fill="none" stroke="${theme.lineMuted}" stroke-width="1.1"/>` : ""}
-  ${roomFillMarkup}
+  ${footprintPath ? `<path class="cad-building-footprint cad-lineweight-primary" d="${footprintPath}" fill="none" stroke="${theme.lineMuted}" stroke-width="1.1"/>` : ""}
+  ${roomFillMarkup ? `<g class="cad-layer-rooms cad-lineweight-secondary">${roomFillMarkup}</g>` : ""}
   ${furnitureHints.markup}
-  <g id="plan-walls">${wallMarkup}</g>
-  <g id="plan-openings">${windowMarkup}${doorMarkup}</g>
+  <g id="plan-walls" class="cad-layer-walls">${wallMarkup}</g>
+  <g id="plan-openings" class="cad-layer-openings cad-lineweight-secondary">${windowMarkup}${doorMarkup}</g>
   ${circulationMarkup ? `<g id="plan-circulation">${circulationMarkup}</g>` : ""}
-  ${stairMarkup ? `<g id="plan-stairs">${stairMarkup}</g>` : ""}
-  ${roomLabelMarkup ? `<g id="plan-room-labels">${roomLabelMarkup}</g>` : ""}
+  ${stairMarkup ? `<g id="plan-stairs" class="cad-layer-stairs">${stairMarkup}</g>` : ""}
+  ${roomLabelMarkup ? `<g id="plan-room-labels" class="cad-layer-annotations">${roomLabelMarkup}</g>` : ""}
   ${sectionMarkers.markup}
   ${dimensionMarkup}
   ${!sheetMode ? renderNorthArrow(width, layout, theme, geometry.site?.north_orientation_deg || 0) : ""}
@@ -1478,6 +1492,25 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
         dimensionResult.chain.horizontalSegmentCount,
       dimension_chain_vertical_segments:
         dimensionResult.chain.verticalSegmentCount,
+      cad_grade_renderer: blueprintGrade,
+      cad_layer_classes: [
+        "cad-layer-rooms",
+        "cad-layer-walls",
+        "cad-layer-openings",
+        "cad-layer-stairs",
+        "cad-layer-annotations",
+        "cad-layer-dimensions",
+      ],
+      cad_lineweight_classes: [
+        "cad-lineweight-cut",
+        "cad-lineweight-primary",
+        "cad-lineweight-secondary",
+        "cad-lineweight-detail",
+      ],
+      dimension_chain_types: ["overall", "bay", "opening", "internal"],
+      has_room_area_labels: !options.hideRoomLabels && levelRooms.length > 0,
+      has_cad_layer_classes: blueprintGrade,
+      has_cad_lineweight_classes: blueprintGrade,
       line_hierarchy: {
         exterior_wall: 2.05,
         interior_wall: 1.28,

@@ -114,6 +114,8 @@ import { resolveMainEntryDirection } from "../site/mainEntryDirectionService.js"
 export const PROJECT_GRAPH_SCHEMA_VERSION = "project-graph-v1";
 export const PROJECT_GRAPH_VERTICAL_SLICE_VERSION =
   "project-graph-vertical-slice-v1";
+export const ARCHITECT_REASONING_MANIFEST_VERSION =
+  "architect-reasoning-manifest-v1";
 
 const PROFESSIONAL_REVIEW_DISCLAIMER =
   "AI-generated early-stage architecture package. Regulation checks are preliminary design flags and require professional review.";
@@ -5791,6 +5793,7 @@ function splitNoteLines(note = "", maxChars = 36, maxLines = 3) {
 // across runs so the panel order is deterministic regardless of input.
 const KEY_NOTE_GROUP_ORDER = Object.freeze([
   "style_provenance",
+  "design_rationale",
   "external_walls",
   "roof",
   "windows_doors",
@@ -5820,6 +5823,287 @@ function describeMaterial(material) {
   return tail.length ? `${name} (${tail.join(" / ")})` : name;
 }
 
+function compactManifestText(value, fallback = "", maxLength = 180) {
+  const raw = String(value || fallback || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!raw) return "";
+  if (raw.length <= maxLength) return raw;
+  return `${raw.slice(0, Math.max(0, maxLength - 1)).trimEnd()}.`;
+}
+
+function summarizeProgrammeZones(
+  programmeSummary = null,
+  compiledProject = {},
+) {
+  const roomsPerLevel =
+    programmeSummary && typeof programmeSummary === "object"
+      ? programmeSummary.rooms_per_level || {}
+      : {};
+  const levelSummaries = Object.entries(roomsPerLevel)
+    .map(([level, rooms]) => {
+      const roomList = Array.isArray(rooms) ? rooms : [];
+      if (!roomList.length) return "";
+      return `${level}: ${roomList.slice(0, 4).join(", ")}`;
+    })
+    .filter(Boolean);
+  if (levelSummaries.length) {
+    return levelSummaries.slice(0, 2).join("; ");
+  }
+
+  const zones = [
+    ...new Set(
+      (compiledProject.rooms || [])
+        .map((room) => room.zone || room.programme_zone || room.function)
+        .filter(Boolean)
+        .map((entry) => String(entry).trim()),
+    ),
+  ];
+  return zones.length ? zones.slice(0, 4).join(", ") : "programme zones";
+}
+
+function summarizeCirculationStrategy(compiledProject = {}) {
+  const circulationRooms = (compiledProject.rooms || []).filter((room) =>
+    /circulation|hall|landing|lobby|stair/i.test(
+      `${room.name || ""} ${room.function || ""} ${room.zone || ""}`,
+    ),
+  );
+  const stairCount = (compiledProject.stairs || []).length;
+  const levelCount = (compiledProject.levels || []).length;
+  const circulationNames = circulationRooms
+    .map((room) => room.name || room.function || room.id)
+    .filter(Boolean)
+    .slice(0, 3);
+  const names = circulationNames.length
+    ? ` via ${circulationNames.join(", ")}`
+    : "";
+  const stairText = stairCount
+    ? `${stairCount} stair core${stairCount === 1 ? "" : "s"}`
+    : "direct horizontal circulation";
+  return `${stairText}${names}; ${Math.max(1, levelCount || 1)} level stack.`;
+}
+
+function summarizeDaylightStrategy(compiledProject = {}, climate = {}) {
+  const windowCount = (compiledProject.windows || []).length;
+  const southOrWestWindows = (compiledProject.windows || []).filter((window) =>
+    /south|west/i.test(
+      `${window.orientation || ""} ${window.side || ""} ${window.wall_side || ""}`,
+    ),
+  ).length;
+  const climateCue =
+    climate?.design_strategy ||
+    climate?.strategy ||
+    climate?.zone ||
+    climate?.koppen ||
+    "UK temperate default";
+  return `${windowCount} external opening${windowCount === 1 ? "" : "s"} coordinate daylight; ${southOrWestWindows} south/west aperture cue${southOrWestWindows === 1 ? "" : "s"}; ${climateCue}.`;
+}
+
+function summarizeVernacularStrategy(localStyle = {}) {
+  const provenance =
+    localStyle?.style_provenance &&
+    typeof localStyle.style_provenance === "object"
+      ? localStyle.style_provenance
+      : {};
+  const packLabel = provenance.packLabel || provenance.label || null;
+  const facade =
+    provenance.facade_language ||
+    localStyle?.styleDNA?.facade_language ||
+    localStyle?.facade_language ||
+    "local facade grammar";
+  const windows =
+    provenance.window_language ||
+    localStyle?.styleDNA?.window_language ||
+    localStyle?.window_language ||
+    "coordinated openings";
+  const roof =
+    provenance.roof_language ||
+    localStyle?.styleDNA?.roof_language ||
+    localStyle?.roof_language ||
+    "contextual roofline";
+  return packLabel
+    ? `${packLabel}: ${facade}; ${windows}; ${roof}.`
+    : `${facade}; ${windows}; ${roof}.`;
+}
+
+function summarizeMaterialRationale(
+  localStyle = {},
+  sheetDesignContext = null,
+) {
+  const provenanceMaterials = Array.isArray(
+    localStyle?.style_provenance?.materials,
+  )
+    ? localStyle.style_provenance.materials
+    : [];
+  const contextMaterials = Array.isArray(sheetDesignContext?.materials)
+    ? sheetDesignContext.materials.map((entry) =>
+        typeof entry === "string" ? entry : entry?.name || entry?.material,
+      )
+    : [];
+  const paletteMaterials = Array.isArray(localStyle?.material_palette)
+    ? localStyle.material_palette.map((entry) =>
+        typeof entry === "string" ? entry : entry?.name || entry?.material,
+      )
+    : [];
+  const materials = [
+    ...new Set(
+      [...provenanceMaterials, ...contextMaterials, ...paletteMaterials]
+        .filter(Boolean)
+        .map((entry) => String(entry).trim()),
+    ),
+  ];
+  return materials.length
+    ? `Material logic follows ${materials.slice(0, 4).join(", ")}.`
+    : "Material logic follows local style palette and canonical facade/roof defaults.";
+}
+
+function summarizeSectionCutRationale(
+  compiledProject = {},
+  technicalBuild = {},
+) {
+  const sectionCandidates = Array.isArray(
+    compiledProject.sectionCuts?.candidates,
+  )
+    ? compiledProject.sectionCuts.candidates
+    : [];
+  const renderedSections = (technicalBuild.technicalPanelTypes || []).filter(
+    (type) => String(type).startsWith("section_"),
+  );
+  const candidateText = sectionCandidates.length
+    ? sectionCandidates
+        .slice(0, 2)
+        .map(
+          (entry) =>
+            entry.strategyName ||
+            entry.strategyId ||
+            entry.sectionType ||
+            entry.id,
+        )
+        .filter(Boolean)
+        .join(", ")
+    : "longitudinal and transverse building cuts";
+  return `${renderedSections.length || 2} coordinated section view${(renderedSections.length || 2) === 1 ? "" : "s"} use ${candidateText}.`;
+}
+
+function buildArchitectReasoningManifest({
+  projectGraphId,
+  brief,
+  site,
+  climate,
+  regulations,
+  localStyle,
+  programmeSummary,
+  compiledProject,
+  technicalBuild,
+  sheetDesignContext = null,
+}) {
+  if (!isFeatureEnabled("architectReasoningManifest")) return null;
+
+  const geometryHash = compiledProject?.geometryHash || null;
+  const siteOrientation = compactManifestText(
+    `Site/orientation: main entry ${site?.main_entry?.orientation || "north"} (${site?.main_entry?.source || "fallback"}), north ${Number(site?.north_angle_degrees || 0).toFixed(0)} deg, boundary ${site?.boundary_source || "site geometry"}.`,
+  );
+  const zoning = compactManifestText(
+    `Zoning: ${summarizeProgrammeZones(programmeSummary, compiledProject)}.`,
+  );
+  const circulation = compactManifestText(
+    `Circulation: ${summarizeCirculationStrategy(compiledProject)}.`,
+  );
+  const daylight = compactManifestText(
+    `Daylight: ${summarizeDaylightStrategy(compiledProject, climate)}.`,
+  );
+  const facadeVernacular = compactManifestText(
+    `Facade/vernacular: ${summarizeVernacularStrategy(localStyle)}`,
+  );
+  const sectionCut = compactManifestText(
+    `Section cuts: ${summarizeSectionCutRationale(compiledProject, technicalBuild)}`,
+  );
+  const material = compactManifestText(
+    `Materials: ${summarizeMaterialRationale(localStyle, sheetDesignContext)}`,
+  );
+  const qaCaveat = compactManifestText(
+    `QA caveats: deterministic concept package; ${PROFESSIONAL_REVIEW_DISCLAIMER}`,
+  );
+  const promptSpliceLines = [
+    siteOrientation,
+    zoning,
+    circulation,
+    daylight,
+    facadeVernacular,
+    sectionCut,
+    material,
+    qaCaveat,
+  ].filter(Boolean);
+  const keyNoteLines = [
+    `${siteOrientation} ${zoning}`,
+    `${circulation} ${daylight}`,
+    `${facadeVernacular} ${material}`,
+    `${sectionCut} ${qaCaveat}`,
+  ].map((line) => compactManifestText(line, "", 220));
+
+  const manifestBody = {
+    asset_type: "architect_reasoning_manifest_json",
+    schema_version: ARCHITECT_REASONING_MANIFEST_VERSION,
+    source_model_hash: geometryHash,
+    geometryHash,
+    projectGraphId,
+    generated_by: PROJECT_GRAPH_VERTICAL_SLICE_VERSION,
+    deterministic: true,
+    authoritySource: "project_graph_compiled_geometry",
+    prompt_splice_lines: promptSpliceLines.slice(0, 8),
+    key_note_lines: keyNoteLines.filter(Boolean).slice(0, 4),
+    design_rationale: {
+      site_orientation: siteOrientation,
+      zoning,
+      circulation,
+      daylight,
+      facade_vernacular: facadeVernacular,
+      section_cut: sectionCut,
+      material,
+      qa_caveats: qaCaveat,
+    },
+    inputs: {
+      building_type: brief?.building_type || null,
+      canonical_building_type: brief?.canonical_building_type || null,
+      target_storeys: brief?.target_storeys || null,
+      target_gia_m2: brief?.target_gia_m2 || null,
+      postcode: brief?.site_input?.postcode || site?.postcode || null,
+      climate_source: climate?.weather_source || climate?.source || null,
+      regulation_parts: Array.isArray(regulations?.parts)
+        ? regulations.parts
+            .map((part) => part.part || part.id || part.name)
+            .filter(Boolean)
+        : [],
+      vernacular_pack_id:
+        localStyle?.style_provenance?.ukVernacularPackId ||
+        localStyle?.style_provenance?.packId ||
+        null,
+    },
+    qa_caveats: [
+      "CAD-grade checks are warning-only in this PR.",
+      "Regulatory checks are preliminary concept-stage flags.",
+      "Verify dimensions, structure, planning, and buildability with qualified professionals.",
+    ],
+  };
+  const manifestHash = computeCDSHashSync({
+    schema_version: manifestBody.schema_version,
+    source_model_hash: geometryHash,
+    prompt_splice_lines: manifestBody.prompt_splice_lines,
+    design_rationale: manifestBody.design_rationale,
+    inputs: manifestBody.inputs,
+  });
+  return {
+    asset_id: createStableId(
+      "asset-architect-reasoning",
+      projectGraphId,
+      geometryHash,
+      manifestHash,
+    ),
+    manifestHash,
+    ...manifestBody,
+  };
+}
+
 export function buildKeyNoteItems({
   brief,
   site,
@@ -5828,6 +6112,7 @@ export function buildKeyNoteItems({
   localStyle,
   sheetDesignContext = null,
   qaSummary = null,
+  architectReasoningManifest = null,
 }) {
   const ctxMaterials =
     Array.isArray(sheetDesignContext?.materials) &&
@@ -5943,6 +6228,12 @@ export function buildKeyNoteItems({
     }
   }
 
+  const designRationaleLines =
+    architectReasoningManifest &&
+    Array.isArray(architectReasoningManifest.key_note_lines)
+      ? architectReasoningManifest.key_note_lines.slice(0, 4)
+      : [];
+
   // QA summary — paper §4.6 dual-track assessment. Optional; when the caller
   // hasn't supplied a qaSummary (panel built before QA computed), the group
   // emits no lines and is filtered out. When supplied, surfaces the
@@ -5982,6 +6273,10 @@ export function buildKeyNoteItems({
     style_provenance: {
       heading: "Style provenance",
       lines: styleProvenanceLines,
+    },
+    design_rationale: {
+      heading: "Design rationale",
+      lines: designRationaleLines,
     },
     qa_summary: {
       heading: "QA summary",
@@ -6093,6 +6388,7 @@ export function buildKeyNotesPanelArtifact({
   geometryHash,
   sheetDesignContext = null,
   qaSummary = null,
+  architectReasoningManifest = null,
 }) {
   const width = 560;
   const height = 900;
@@ -6104,6 +6400,7 @@ export function buildKeyNotesPanelArtifact({
     localStyle,
     sheetDesignContext,
     qaSummary,
+    architectReasoningManifest,
   });
   let cursorY = 102;
   const groupSvg = groups
@@ -6875,6 +7172,7 @@ async function buildSheetPanelArtifacts({
   // consumers; not consumed by the existing data-panel builders yet.
   // eslint-disable-next-line no-unused-vars
   sheetDesignContext = null,
+  architectReasoningManifest = null,
   // Optional partial QA summary precomputed before panels (programme
   // adjacency + quantitative metrics — both pure functions of compiledProject
   // and projectGraph and therefore safe to compute pre-panel). Surfaces on
@@ -6909,6 +7207,7 @@ async function buildSheetPanelArtifacts({
     geometryHash,
     sheetDesignContext,
     qaSummary,
+    architectReasoningManifest,
   });
   const titleBlock = buildTitleBlockPanelArtifact({
     projectGraphId,
@@ -8066,6 +8365,7 @@ async function buildA1Sheet({
   // Phase 1: optional SheetDesignContext. Existing callers may omit it; the
   // function does not yet hard-depend on it.
   sheetDesignContext = null,
+  architectReasoningManifest = null,
 }) {
   const __a1sheetStart = Date.now();
   const __a1sheetLog = (step, sinceMs, extra = "") => {
@@ -8160,6 +8460,7 @@ async function buildA1Sheet({
     },
     visualManifest,
     sheetDesignContext,
+    architectReasoningManifest,
     qaSummary: panelQaSummary,
   });
   __a1mark = __a1sheetLog("build_panel_artifacts", __a1mark);
@@ -11085,6 +11386,25 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     __vsMark,
     `hash=${sheetDesignContext.contextHash} ok=${sheetDesignContextReport.ok} gaps=${sheetDesignContextReport.gaps.length}`,
   );
+  const architectReasoningManifest = buildArchitectReasoningManifest({
+    projectGraphId,
+    brief,
+    site,
+    climate,
+    regulations,
+    localStyle,
+    programmeSummary,
+    compiledProject,
+    technicalBuild,
+    sheetDesignContext,
+  });
+  if (architectReasoningManifest) {
+    __vsMark = __vsLog(
+      "architect_reasoning_manifest",
+      __vsMark,
+      `lines=${architectReasoningManifest.prompt_splice_lines.length}`,
+    );
+  }
   const renderedSheets = [];
   for (const sheetPlan of splitDecision.sheets) {
     const sheetIndex = renderedSheets.length;
@@ -11109,6 +11429,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       sheetPlan,
       visualManifest,
       sheetDesignContext,
+      architectReasoningManifest,
     });
     __vsMark = __vsLog(`build_a1_sheet[${sheetTag}]`, __vsMark);
     const pdfStart = Date.now();
@@ -11543,6 +11864,9 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     sheetDesignContext,
     sheetDesignContextHash: sheetDesignContext.contextHash,
     sheetDesignContextReport,
+    architectReasoningManifest,
+    architectReasoningManifestHash:
+      architectReasoningManifest?.manifestHash || null,
     // Phase 5B — post-render visual identity validation report. Warning-
     // only by default; opt-in strict mode lets a downstream export gate
     // demote on visual-identity drift. The validator reads what panel
@@ -11724,8 +12048,10 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     projectTypeSupport: brief.project_type_support || null,
     projectGraph: finalGraph,
     provenanceManifest,
+    architectReasoningManifest,
     artifacts: {
       ...artifacts,
+      ...(architectReasoningManifest ? { architectReasoningManifest } : {}),
       qaReport: {
         asset_id: createStableId(
           "asset-qa",
@@ -11778,6 +12104,7 @@ export const __projectGraphVerticalSliceInternals = Object.freeze({
   buildProjectGeometryFromProgramme,
   syncProgrammeActuals,
   compileProject,
+  buildArchitectReasoningManifest,
   // Phase 4: exposed for unit testing the upstream-gate technical-blocker fold.
   applyUpstreamGateTechnicalBlockersToQa,
 });
@@ -11785,6 +12112,7 @@ export const __projectGraphVerticalSliceInternals = Object.freeze({
 export default {
   PROJECT_GRAPH_SCHEMA_VERSION,
   PROJECT_GRAPH_VERTICAL_SLICE_VERSION,
+  ARCHITECT_REASONING_MANIFEST_VERSION,
   buildArchitectureProjectVerticalSlice,
   buildArchitectureProjectVerticalSliceWithRepair,
   validateProjectGraphVerticalSlice,
