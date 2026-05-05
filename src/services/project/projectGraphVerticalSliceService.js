@@ -7114,35 +7114,90 @@ function resolveProgrammeDisplayLabel(brief = {}) {
     .trim();
 }
 
-function resolveBriefAddress(brief = {}) {
+function normalizeTitleText(value) {
+  return String(value || "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isPlaceholderProjectTitle(value) {
+  const normalised = normalizeTitleText(value).toLowerCase();
+  return (
+    !normalised ||
+    normalised === "archiai project" ||
+    normalised === "architect ai project" ||
+    normalised === "untitled" ||
+    normalised === "untitled project"
+  );
+}
+
+function toTitleCaseLabel(value) {
+  return normalizeTitleText(value).replace(/\b([a-z])/g, (match) =>
+    match.toUpperCase(),
+  );
+}
+
+function resolveBriefAddress(brief = {}, projectContext = null) {
   return String(
     brief?.site_input?.address ||
       brief?.siteInput?.address ||
       brief?.address ||
       brief?.siteAddress ||
+      projectContext?.address ||
+      projectContext?.siteAddress ||
+      projectContext?.site_address ||
+      projectContext?.site_input?.address ||
+      projectContext?.siteInput?.address ||
       "",
   )
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function resolveProjectTitle(brief = {}) {
-  const address = resolveBriefAddress(brief);
-  const title = String(
-    brief?.project_name ||
-      brief?.projectName ||
-      brief?.programme ||
-      brief?.programme_label ||
-      brief?.programmeLabel ||
-      address ||
-      "Untitled",
-  )
+function formatAddressForProjectTitle(address = "") {
+  const compact = normalizeTitleText(address);
+  const withoutPostcode = compact
+    .replace(/\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i, "")
+    .replace(/\s*,\s*$/g, "")
     .replace(/\s+/g, " ")
     .trim();
-  return title || "Untitled";
+  return withoutPostcode || compact;
 }
 
-function resolveSheetSubtitle(brief = {}) {
+function resolveProjectTitle(brief = {}, projectContext = null) {
+  const explicitTitle = [
+    brief?.project_name,
+    brief?.projectName,
+    brief?.name,
+    projectContext?.project_name,
+    projectContext?.projectName,
+    projectContext?.name,
+  ]
+    .map(normalizeTitleText)
+    .find((entry) => !isPlaceholderProjectTitle(entry));
+  const programme = toTitleCaseLabel(
+    brief?.programme ||
+      brief?.programme_label ||
+      brief?.programmeLabel ||
+      brief?.property_type ||
+      brief?.propertyType ||
+      brief?.building_type ||
+      brief?.buildingType ||
+      projectContext?.programme ||
+      projectContext?.buildingType ||
+      "",
+  );
+  const address = formatAddressForProjectTitle(
+    resolveBriefAddress(brief, projectContext),
+  );
+  if (!explicitTitle && programme && address) {
+    return `${programme} — ${address}`;
+  }
+  return explicitTitle || programme || address || "Untitled Project";
+}
+
+function resolveSheetSubtitle(brief = {}, projectContext = null) {
   const parts = [
     brief?.programme ||
       brief?.programme_label ||
@@ -7151,7 +7206,7 @@ function resolveSheetSubtitle(brief = {}) {
       brief?.propertyType ||
       brief?.building_type ||
       brief?.buildingType,
-    resolveBriefAddress(brief),
+    resolveBriefAddress(brief, projectContext),
   ]
     .map((entry) =>
       String(entry || "")
@@ -7174,13 +7229,13 @@ export function buildTitleBlockPanelArtifact({
   const width = 620;
   const height = 900;
   const location =
-    resolveBriefAddress(brief) ||
+    resolveBriefAddress(brief, sheetDesignContext) ||
     brief?.site_input?.postcode ||
     sheetDesignContext?.region ||
     "Project site";
   const drawingNumber = sheetPlan?.sheet_number || "A1-00";
   const sheetLabel = sheetPlan?.label || "RIBA Stage 2 Master";
-  const projectTitle = resolveProjectTitle(brief)
+  const projectTitle = resolveProjectTitle(brief, sheetDesignContext)
     .replace(/\s+/g, " ")
     .trim()
     .toUpperCase();
@@ -7219,7 +7274,7 @@ export function buildTitleBlockPanelArtifact({
   // working). The new rows surface RIBA Stage / Status / Revision / Date /
   // Drawing No. so reviewers get the full set on the sheet.
   const rows = [
-    ["Project", resolveProjectTitle(brief)],
+    ["Project", resolveProjectTitle(brief, sheetDesignContext)],
     ["Scale", sheetPlan?.scale || "As noted"],
     ["Status", status],
     ["Date", dateLabel],
@@ -7237,7 +7292,7 @@ export function buildTitleBlockPanelArtifact({
     .map((row, index) => {
       const y = rowStartY + index * rowGap;
       const rawValue = String(row[1] || "");
-      const valueMaxChars = index <= 1 ? 34 : 28;
+      const valueMaxChars = row[0] === "Location" || index <= 1 ? 34 : 28;
       const valueLines = splitNoteLines(rawValue, valueMaxChars, 2);
       const valueFontSize =
         rawValue.length > 54 ? 12 : rawValue.length > 38 ? 14 : 16;
@@ -9565,9 +9620,15 @@ function buildSheetProvenanceFooter({
 </g>`;
 }
 
-function buildSheetTitleBar({ brief, sheetNumber, sheetLabel } = {}) {
-  const title = resolveProjectTitle(brief).toUpperCase();
-  const subtitle = resolveSheetSubtitle(brief) || sheetLabel || "";
+function buildSheetTitleBar({
+  brief,
+  sheetNumber,
+  sheetLabel,
+  projectContext = null,
+} = {}) {
+  const title = resolveProjectTitle(brief, projectContext).toUpperCase();
+  const subtitle =
+    resolveSheetSubtitle(brief, projectContext) || sheetLabel || "";
   const logoDataUrl = brief?.brand?.logoDataUrl || brief?.brand?.logo_data_url;
   const logo = logoDataUrl
     ? `<image x="682" y="6.05" width="148" height="3.35" href="${escapeXml(logoDataUrl)}" preserveAspectRatio="xMaxYMid meet"/>`
@@ -9644,6 +9705,7 @@ function buildSheetSvg({
   sheetLabel = "RIBA Stage 2 Master",
   layoutTemplate = "board-v2",
   visualManifest = null,
+  projectContext = null,
 }) {
   const artifactIndex = buildPanelArtifactIndex(panelArtifacts);
   const panelGroups = panelPlacements
@@ -9665,12 +9727,18 @@ function buildSheetSvg({
         panelArtifacts,
       })
     : "";
-  const titleBar = buildSheetTitleBar({ brief, sheetNumber, sheetLabel });
+  const titleBar = buildSheetTitleBar({
+    brief,
+    sheetNumber,
+    sheetLabel,
+    projectContext,
+  });
+  const projectTitle = resolveProjectTitle(brief, projectContext);
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${A1_SHEET_SIZE_MM.width}mm" height="${A1_SHEET_SIZE_MM.height}mm" viewBox="0 0 ${A1_SHEET_SIZE_MM.width} ${A1_SHEET_SIZE_MM.height}" data-layout-version="${A1_SHEET_LAYOUT_VERSION}" data-layout-template="${escapeXml(layoutTemplate)}" data-placeholder-only="false" data-reference-match="${brief?.reference_match === true ? "true" : "false"}" data-brief-input-hash="${escapeXml(brief?.brief_input_hash || "")}" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-visual-manifest-hash="${escapeXml(visualManifest?.manifestHash || "")}" data-sheet-number="${escapeXml(sheetNumber)}" data-sheet-label="${escapeXml(sheetLabel)}" data-qa-status="${escapeXml(qaStatus || "pending")}" data-export-source="sheetArtifact.svgString">
   <rect width="${A1_SHEET_SIZE_MM.width}" height="${A1_SHEET_SIZE_MM.height}" fill="#ffffff"/>
   <rect x="5" y="5" width="831" height="584" fill="none" stroke="#111111" stroke-width="0.7"/>
-  <desc>Reference board A1 package for ${escapeXml(brief.project_name)}. Panels ${sourcePanelAssetIds.length}. Geometry hash ${escapeXml(geometryHash)}.</desc>
+  <desc>Reference board A1 package for ${escapeXml(projectTitle)}. Panels ${sourcePanelAssetIds.length}. Geometry hash ${escapeXml(geometryHash)}.</desc>
   ${titleBar}
   ${panelGroups}
   ${provenanceFooter}
@@ -9838,6 +9906,7 @@ async function buildA1Sheet({
     sheetLabel,
     layoutTemplate,
     visualManifest,
+    projectContext: sheetDesignContext,
   });
   __a1mark = __a1sheetLog(
     "build_sheet_svg",
