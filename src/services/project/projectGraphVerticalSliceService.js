@@ -228,6 +228,17 @@ function isTruthyFlag(value) {
   ].includes(String(value).trim().toLowerCase());
 }
 
+function createStrictVisualImageError({ panelType, reason, message }) {
+  const error = new Error(
+    `[OpenAI] strict image generation failed panel=${panelType} reason=${reason}: ${message || reason}`,
+  );
+  error.code = "OPENAI_STRICT_IMAGE_GEN_FAILED";
+  error.panelType = panelType;
+  error.fallbackReason = reason;
+  error.strictImageGeneration = true;
+  return error;
+}
+
 function isReferenceMatchRequested(input = {}, sourceBrief = {}) {
   return (
     isTruthyFlag(input.referenceMatch) ||
@@ -6790,13 +6801,13 @@ export function buildProjectGraphRenderPrompt({
   const baseIntent =
     {
       hero_3d:
-        "Photoreal hero exterior 3D perspective — magazine-cover quality. Match the silhouette of the reference image exactly (same massing, same roof shape, same opening positions, same storey count). Apply the materials, lighting, and detailing from the reasoning chain below.",
+        "Realistic front-left architectural exterior perspective for the hero_3d panel — magazine-cover quality. Match the silhouette of the control image exactly (same massing, same roof shape, same opening positions, same storey count). Apply the materials, lighting, and detailing from the reasoning chain below.",
       exterior_render:
-        "Photoreal front-elevation hero render — slight 12° angle, head-on composition. Match the reference silhouette exactly. Render with golden-hour lighting and physically-based materials.",
+        "Realistic front-left architectural exterior perspective for the exterior_render panel — slight 12° angle, composed from the main approach. Match the control silhouette exactly. Render with golden-hour lighting and physically-based materials.",
       axonometric:
-        "Photoreal axonometric 3D projection (30° isometric) showing roof form and four facades. Match the reference massing, roof, and opening layout exactly. Material textures legible.",
+        "Technical axonometric/isometric view matching the same massing, roof, storeys, openings, and facade rhythm as the control geometry. Material textures legible without changing the building logic.",
       interior_3d:
-        "Photoreal interior perspective — main living/kitchen space. Use the SAME materials and palette as the exterior. Match the reference interior volume.",
+        "Interior view derived from the same project programme — main living/kitchen or primary public space. Use the SAME materials and palette as the exterior, and do not alter shell, opening, stair, or room-adjacency logic.",
     }[panelType] || "Photoreal architectural render.";
   const intent = cutawayActive
     ? buildAxonometricCutawayIntent({ sheetDesignContext, brief })
@@ -6808,6 +6819,18 @@ export function buildProjectGraphRenderPrompt({
   // interior_3d) describe the same building. The block is identical across
   // panels for the same manifest, so OpenAI image generation cannot drift.
   const identityLock = buildVisualIdentityLockBlock(visualManifest);
+  const geometryHash =
+    compiledProject?.geometryHash ||
+    compiledProject?.geometry_hash ||
+    visualManifest?.geometryHash ||
+    "n/a";
+  const visualManifestHash = visualManifest?.manifestHash || "n/a";
+  const authorityLine = [
+    "GEOMETRY AND VISUAL AUTHORITY:",
+    `geometryHash: ${geometryHash}`,
+    `visualManifestHash: ${visualManifestHash}`,
+    "Use the supplied control image as the geometry reference; do not use text-only generation and do not invent project geometry.",
+  ].join("\n");
   const visualContinuity =
     buildProjectGraphVisualContinuityBlock(visualManifest);
   // Regional vernacular block — when the slice resolved a UK pack
@@ -6933,6 +6956,7 @@ export function buildProjectGraphRenderPrompt({
     : null;
   return [
     identityLock,
+    authorityLine,
     visualContinuity,
     `Project: ${projectName} — ${buildingType}.`,
     intent,
@@ -6951,7 +6975,7 @@ function wrapPngAsSvgPanel(pngBuffer, viewBox, width, height) {
 </svg>`;
 }
 
-async function buildVisual3DPanelArtifacts({
+export async function buildVisual3DPanelArtifacts({
   compiledProject,
   geometryHash,
   brief = null,
@@ -6978,6 +7002,12 @@ async function buildVisual3DPanelArtifacts({
     cutawayEnvOverride === "true" ||
     cutawayEnvOverride === "1" ||
     isFeatureEnabled("axonometricCutawayEnabled");
+  const strictImageGeneration =
+    isTruthyFlag(
+      typeof process !== "undefined"
+        ? process.env?.OPENAI_STRICT_IMAGE_GEN
+        : false,
+    ) === true;
   const renderInputs = ensureCompiledProjectRenderInputs(compiledProject, {
     geometryHash,
     views: REQUIRED_3D_A1_PANEL_TYPES,
@@ -6990,6 +7020,17 @@ async function buildVisual3DPanelArtifacts({
       const height = renderInput.height || renderInput.metadata?.height || 1050;
       const viewBox =
         renderInput.metadata?.normalizedViewBox || `0 0 ${width} ${height}`;
+      const controlSvgHash = deterministicSvgString
+        ? renderInput.svgHash ||
+          computeCDSHashSync({
+            panelType,
+            geometryHash,
+            referenceSource: "compiled_3d_control_svg",
+            svgString: deterministicSvgString,
+          })
+        : null;
+      let prompt = "";
+      let promptHash = null;
 
       // Phase 4: when PROJECT_GRAPH_IMAGE_GEN_ENABLED=true, anchor a
       // gpt-image call on the deterministic SVG silhouette and replace
@@ -7002,7 +7043,7 @@ async function buildVisual3DPanelArtifacts({
       let imageRenderFallbackReason = "gate_disabled";
       let renderResult = null;
       if (deterministicSvgString) {
-        const prompt = buildProjectGraphRenderPrompt({
+        prompt = buildProjectGraphRenderPrompt({
           panelType,
           brief,
           compiledProject,
@@ -7014,6 +7055,12 @@ async function buildVisual3DPanelArtifacts({
           visualManifest,
           sheetDesignContext,
           axonometricCutawayEnabled,
+        });
+        promptHash = computeCDSHashSync({
+          panelType,
+          geometryHash,
+          visualManifestHash: visualManifest?.manifestHash || null,
+          prompt,
         });
         try {
           renderResult = await renderProjectGraphPanelImage({
@@ -7047,10 +7094,27 @@ async function buildVisual3DPanelArtifacts({
           renderProvenance = renderResult.provenance;
           imageRenderFallbackReason = null;
         } else if (renderResult?.imageRenderFallbackReason) {
+          if (strictImageGeneration) {
+            throw createStrictVisualImageError({
+              panelType,
+              reason: renderResult.imageRenderFallbackReason,
+              message:
+                renderResult.error ||
+                "OpenAI image generation returned fallback metadata under strict image generation.",
+            });
+          }
           imageRenderFallbackReason = renderResult.imageRenderFallbackReason;
         }
       } else {
-        imageRenderFallbackReason = "empty_response";
+        imageRenderFallbackReason = "missing_control_svg";
+        if (strictImageGeneration) {
+          throw createStrictVisualImageError({
+            panelType,
+            reason: "missing_control_svg",
+            message:
+              "ProjectGraph visual panels require a deterministic compiled-geometry control SVG before image editing.",
+          });
+        }
       }
       const presentationMode = renderProvenance
         ? "geometry_locked_image_render"
@@ -7061,6 +7125,15 @@ async function buildVisual3DPanelArtifacts({
       const visualRenderMode = renderProvenance
         ? "photoreal_image_gen"
         : "deterministic_fallback";
+      const provider = renderProvenance ? "openai" : "deterministic";
+      const providerUsed = renderProvenance ? "openai" : "deterministic";
+      const imageProviderUsed = renderProvenance ? "openai" : "deterministic";
+      const imageRenderFallback = renderProvenance === null;
+      const renderModel =
+        renderProvenance?.model || renderResult?.model || null;
+      const requestId =
+        renderProvenance?.requestId || renderResult?.requestId || null;
+      const usage = renderProvenance?.usage || renderResult?.usage || null;
 
       const svgHash =
         renderInput.svgHash ||
@@ -7082,6 +7155,21 @@ async function buildVisual3DPanelArtifacts({
           panelType,
           source_model_hash: geometryHash,
           geometryHash,
+          sourceGeometryHash: geometryHash,
+          visualManifestId: visualManifest?.manifestId || null,
+          visualManifestHash: visualManifest?.manifestHash || null,
+          visualIdentityLocked: Boolean(visualManifest?.manifestHash),
+          referenceSource: "compiled_3d_control_svg",
+          provider,
+          providerUsed,
+          imageProviderUsed,
+          imageRenderFallback,
+          imageRenderFallbackReason,
+          model: renderModel,
+          requestId,
+          usage,
+          controlSvgHash,
+          promptHash,
           authoritySource: "project_graph_compiled_geometry",
           svgHash,
           width,
@@ -7099,19 +7187,26 @@ async function buildVisual3DPanelArtifacts({
             svgHash,
             sourceGeometryHash: geometryHash,
             referenceSource: "compiled_3d_control_svg",
-            imageRenderFallback: renderProvenance === null,
+            controlSvgHash,
+            promptHash,
+            provider,
+            providerUsed,
+            imageRenderFallback,
             imageRenderFallbackReason,
-            imageRenderModel: renderProvenance?.model || null,
+            imageRenderModel: renderModel,
+            model: renderModel,
             imageRenderSize: renderProvenance?.size || null,
             imageRenderByteLength,
-            imageProviderUsed: renderProvenance ? "openai" : "deterministic",
+            imageProviderUsed,
             openaiConfigured:
               renderResult?.openaiConfigured ??
               renderResult?.provenance?.openaiConfigured ??
               false,
             openaiImageUsed: Boolean(renderProvenance),
-            openaiRequestId: renderProvenance?.requestId || null,
-            openaiUsage: renderProvenance?.usage || null,
+            openaiRequestId: requestId,
+            requestId,
+            openaiUsage: usage,
+            usage,
             openaiKeySource:
               renderProvenance?.keySource ||
               renderResult?.keySource ||

@@ -362,6 +362,7 @@ describe("buildProjectGraphRenderPrompt — Phase D injection", () => {
     expect(prompt).not.toMatch(/VISUAL CONTINUITY CONSTRAINTS/);
     // But the rest of the prompt (intent + reasoning + style) must still be
     // present.
-    expect(prompt).toContain("Photoreal hero exterior 3D perspective");
+    expect(prompt).toContain("GEOMETRY AND VISUAL AUTHORITY");
+    expect(prompt).toContain("Realistic front-left architectural exterior");
   });
 });
