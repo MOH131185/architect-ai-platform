@@ -117,6 +117,40 @@ OPENAI_STRICT_IMAGE_GEN=false
 
 But the product path for the desired A1 result must run with image generation enabled and strict image generation enabled.
 
+### OpenAI image-edit access preflight
+
+Before running strict ProjectGraph A1 generation, run the image-edit access preflight:
+
+```bash
+npm run smoke:openai-image-edit-access
+```
+
+The preflight sends one tiny deterministic PNG reference to `/v1/images/edits`
+using:
+
+```text
+OPENAI_IMAGES_API_KEY or OPENAI_API_KEY
+STEP_10_IMAGE_MODEL or OPENAI_IMAGE_MODEL
+```
+
+It does not change `PROJECT_GRAPH_IMAGE_GEN_ENABLED` or
+`OPENAI_STRICT_IMAGE_GEN`. It only checks whether the configured image-edit
+model can be used by the configured key before the strict A1 run starts.
+
+If OpenAI returns `401`, `403`, or model-access errors, the script exits
+non-zero and prints the configured model, HTTP status, request id when
+available, the exact provider message, and the suggested fix:
+
+```text
+Verify the OpenAI organization for this image model or choose an allowed
+image-edit model.
+```
+
+This preflight is diagnostic only. It must not weaken strict ProjectGraph image
+generation: with `OPENAI_STRICT_IMAGE_GEN=true`, missing access during the real
+A1 run must still fail visibly instead of returning deterministic fallback as
+fake OpenAI success.
+
 ---
 
 ## 5. Desired pipeline architecture
