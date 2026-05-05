@@ -1,6 +1,7 @@
 import { coerceToCanonicalProjectGeometry } from "../../src/services/cad/geometryFactory.js";
 import { isFeatureEnabled } from "../../src/config/featureFlags.js";
 import { buildVisualGenerationPackage } from "../../src/services/visual/geometryLockedVisualRouter.js";
+import projectGraphProductionGuard from "../../server/utils/projectGraphProductionGuard.cjs";
 import {
   buildGenerateVisualPackageResponse,
   validateGenerateVisualPackageRequest,
@@ -18,6 +19,8 @@ import {
 
 export { config };
 
+const { rejectLegacyProjectGenerationIfDisabled } = projectGraphProductionGuard;
+
 export default async function handler(req, res) {
   if (handleOptions(req, res)) return;
   if (!setCors(req, res)) {
@@ -31,6 +34,15 @@ export default async function handler(req, res) {
     );
   }
   if (rejectInvalidMethod(req, res)) return;
+  if (
+    rejectLegacyProjectGenerationIfDisabled(
+      req,
+      res,
+      "/api/models/generate-visual-package",
+    )
+  ) {
+    return;
+  }
   if (
     !ensureFeatureEnabled(
       res,

@@ -8,8 +8,15 @@
  * models only for optional visual enhancement.
  */
 import openaiEnv from "../server/utils/openaiEnv.cjs";
+import projectGraphProductionGuard from "../server/utils/projectGraphProductionGuard.cjs";
 
 const { resolveOpenAIImageApiKeyInfo, buildOpenAIRequestHeaders } = openaiEnv;
+const {
+  GEOMETRY_LOCKED_IMAGE_PANEL_TYPES,
+  MISSING_GEOMETRY_CONTROL_IMAGE_CODE,
+  isGeometryLockedImagePanelType,
+  normalizePanelType,
+} = projectGraphProductionGuard;
 
 export const runtime = "nodejs";
 export const config = {
@@ -69,6 +76,7 @@ export default async function handler(req, res) {
     model,
     panelType,
   } = req.body || {};
+  const normalizedPanelType = normalizePanelType(panelType);
 
   if (!prompt || !String(prompt).trim()) {
     return res.status(400).json({
@@ -77,12 +85,24 @@ export default async function handler(req, res) {
     });
   }
 
-  const validPanelTypes = ["hero_3d", "interior_3d", "axonometric"];
-  if (panelType && !validPanelTypes.includes(panelType)) {
+  const validPanelTypes = GEOMETRY_LOCKED_IMAGE_PANEL_TYPES;
+  if (
+    normalizedPanelType &&
+    !isGeometryLockedImagePanelType(normalizedPanelType)
+  ) {
     return res.status(400).json({
       error: "INVALID_PANEL_TYPE",
       message: `Panel type must be one of: ${validPanelTypes.join(", ")}`,
       provided: panelType,
+    });
+  }
+
+  if (isGeometryLockedImagePanelType(normalizedPanelType) && !image) {
+    return res.status(422).json({
+      error: MISSING_GEOMETRY_CONTROL_IMAGE_CODE,
+      message:
+        "Geometry-locked architectural panels require a control image. Refusing text-to-image generation.",
+      panelType: normalizedPanelType,
     });
   }
 
@@ -102,7 +122,7 @@ export default async function handler(req, res) {
 
   try {
     console.log(
-      `[OpenAI] START image ${useEdit ? "edit" : "generation"} route=/api/openai-image-stylize panel=${panelType || "unknown"} model=${resolvedModel} keySource=${keyInfo.keySource}`,
+      `[OpenAI] START image ${useEdit ? "edit" : "generation"} route=/api/openai-image-stylize panel=${normalizedPanelType || "unknown"} model=${resolvedModel} keySource=${keyInfo.keySource}`,
     );
     const response = useEdit
       ? await fetch("https://api.openai.com/v1/images/edits", {
@@ -171,7 +191,7 @@ export default async function handler(req, res) {
       size: resolvedSize,
       mode: useEdit ? "edit" : "generation",
       geometryPreserved: useEdit,
-      panelType,
+      panelType: normalizedPanelType || null,
       requestId,
       usage: data.usage || null,
       keySource: keyInfo.keySource,

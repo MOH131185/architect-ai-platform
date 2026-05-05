@@ -28,6 +28,9 @@ const {
   isLegacyProviderEnabled,
 } = require('./server/utils/legacyProviderGuard.cjs');
 const {
+  createLegacyProjectGenerationMiddleware,
+} = require('./server/utils/projectGraphProductionGuard.cjs');
+const {
   resolveOpenAIReasoningApiKey,
   resolveOpenAIImageApiKey,
   resolveOpenAIReasoningApiKeyInfo,
@@ -382,12 +385,21 @@ mountDynamicApiRoute('post', '/api/project/export/xlsx',    'api/project/export/
 // Phase 1/2 architecture backend routes (shared with api/models/* serverless handlers)
 mountDynamicApiRoute('post', '/api/models/generate-style', 'api/models/generate-style.js', [aiApiLimiter]);
 mountDynamicApiRoute('post', '/api/models/generate-floorplan', 'api/models/generate-floorplan.js', [aiApiLimiter]);
-mountDynamicApiRoute('post', '/api/models/generate-drawings', 'api/models/generate-drawings.js', [aiApiLimiter]);
-mountDynamicApiRoute('post', '/api/models/generate-project', 'api/models/generate-project.js', [aiApiLimiter]);
+mountDynamicApiRoute('post', '/api/models/generate-drawings', 'api/models/generate-drawings.js', [
+  aiApiLimiter,
+  createLegacyProjectGenerationMiddleware('/api/models/generate-drawings'),
+]);
+mountDynamicApiRoute('post', '/api/models/generate-project', 'api/models/generate-project.js', [
+  aiApiLimiter,
+  createLegacyProjectGenerationMiddleware('/api/models/generate-project'),
+]);
 mountDynamicApiRoute('post', '/api/models/regenerate-layer', 'api/models/regenerate-layer.js', [aiApiLimiter]);
 mountDynamicApiRoute('post', '/api/models/repair-project', 'api/models/repair-project.js', [aiApiLimiter]);
 mountDynamicApiRoute('post', '/api/models/generate-facade', 'api/models/generate-facade.js', [aiApiLimiter]);
-mountDynamicApiRoute('post', '/api/models/generate-visual-package', 'api/models/generate-visual-package.js', [aiApiLimiter]);
+mountDynamicApiRoute('post', '/api/models/generate-visual-package', 'api/models/generate-visual-package.js', [
+  aiApiLimiter,
+  createLegacyProjectGenerationMiddleware('/api/models/generate-visual-package'),
+]);
 mountDynamicApiRoute('post', '/api/models/validate-project', 'api/models/validate-project.js', [aiApiLimiter]);
 mountDynamicApiRoute('post', '/api/models/project-readiness', 'api/models/project-readiness.js', [aiApiLimiter]);
 mountDynamicApiRoute('post', '/api/models/plan-a1-panels', 'api/models/plan-a1-panels.js', [aiApiLimiter]);

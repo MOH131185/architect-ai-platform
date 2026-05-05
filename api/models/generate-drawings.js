@@ -12,6 +12,7 @@
 import { generateTechnicalDrawings } from "../../src/services/drawing/technicalDrawingService.js";
 import { coerceToCanonicalProjectGeometry } from "../../src/services/cad/geometryFactory.js";
 import { isFeatureEnabled } from "../../src/config/featureFlags.js";
+import projectGraphProductionGuard from "../../server/utils/projectGraphProductionGuard.cjs";
 import {
   buildGenerateDrawingsResponse,
   validateGenerateDrawingsRequest,
@@ -29,6 +30,8 @@ import {
 
 export { config };
 
+const { rejectLegacyProjectGenerationIfDisabled } = projectGraphProductionGuard;
+
 export default async function handler(req, res) {
   if (handleOptions(req, res)) return;
   if (!setCors(req, res)) {
@@ -42,6 +45,15 @@ export default async function handler(req, res) {
     );
   }
   if (rejectInvalidMethod(req, res)) return;
+  if (
+    rejectLegacyProjectGenerationIfDisabled(
+      req,
+      res,
+      "/api/models/generate-drawings",
+    )
+  ) {
+    return;
+  }
   if (
     !ensureFeatureEnabled(
       res,
