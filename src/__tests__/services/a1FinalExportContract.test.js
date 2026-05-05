@@ -40,6 +40,58 @@ function createMockComposeResponse() {
   };
 }
 
+function healthyProjectAuthorityEvidence() {
+  const panelTypes = [
+    "floor_plan_ground",
+    "floor_plan_first",
+    "elevation_north",
+    "elevation_south",
+    "elevation_east",
+    "elevation_west",
+    "section_AA",
+    "section_BB",
+    "hero_3d",
+    "exterior_render",
+    "axonometric",
+    "interior_3d",
+  ];
+  return {
+    panels: panelTypes.map((type) => ({
+      type,
+      status: "ready",
+      hasSvg: true,
+      geometryHash: "geometry-hash-OK",
+      sourceGeometryHash: "geometry-hash-OK",
+      providerUsed: "deterministic",
+      imageProviderUsed: "deterministic",
+    })),
+    panelRegistry: panelTypes,
+    visualManifest: {
+      manifestId: "visual-manifest-test-001",
+      manifestHash: "manifest-hash-OK",
+      geometryHash: "geometry-hash-OK",
+    },
+    visualPanels: [
+      "hero_3d",
+      "exterior_render",
+      "axonometric",
+      "interior_3d",
+    ].map((type) => ({
+      type,
+      geometryHash: "geometry-hash-OK",
+      sourceGeometryHash: "geometry-hash-OK",
+      visualManifestHash: "manifest-hash-OK",
+      visualIdentityLocked: true,
+      referenceSource: "compiled_3d_control_svg",
+      provider: "openai",
+      providerUsed: "openai",
+      imageProviderUsed: "openai",
+      imageRenderFallback: false,
+      controlSvgHash: `control-svg-${type}`,
+    })),
+  };
+}
+
 describe("a1FinalExportContract", () => {
   test("resolves explicit final A1 exports to print-master dimensions and gates", () => {
     const contract = resolveA1RenderContract({
@@ -206,11 +258,9 @@ describe("a1FinalExportContract", () => {
       },
       glyphIntegrity: { status: "pass", blockers: [] },
       sheetSetPlan: { required: false },
+      ...healthyProjectAuthorityEvidence(),
     });
 
-    // Phase F: legacy minimal inputs (no PDF metadata, no panels, no manifest,
-    // no material palette, no openai provider) → gate degrades to "warning"
-    // because evidence is absent; `allowed` stays true (no hard blocker).
     expect(gate.allowed).toBe(true);
     expect(gate.status).toBe("warning");
     expect(gate.blockers).toEqual([]);
@@ -249,6 +299,7 @@ describe("a1FinalExportContract", () => {
       },
       glyphIntegrity: { status: "pass", blockers: [] },
       sheetSetPlan: { required: false },
+      ...healthyProjectAuthorityEvidence(),
     });
 
     // Phase F: legacy success vocabulary updated; stable contract is `allowed`.
@@ -318,6 +369,7 @@ describe("a1FinalExportContract", () => {
           pdfUrl: "/api/a1/compose-output/a1-02.pdf",
         },
       },
+      ...healthyProjectAuthorityEvidence(),
     });
 
     // Phase F: with companion sheet generated the split-status evidence is
@@ -390,6 +442,7 @@ describe("a1FinalExportContract", () => {
 
     const HEALTHY_PANEL_REGISTRY = Object.freeze([
       "hero_3d",
+      "exterior_render",
       "interior_3d",
       "axonometric",
       "site_diagram",
@@ -407,25 +460,53 @@ describe("a1FinalExportContract", () => {
     ]);
 
     const buildHealthyPanels = () =>
-      HEALTHY_PANEL_REGISTRY.map((type) => ({
-        type,
-        status: "ready",
-        hasSvg: true,
-      }));
+      HEALTHY_PANEL_REGISTRY.map((type) => {
+        const isProjectPanel =
+          type.startsWith("floor_plan_") ||
+          type.startsWith("elevation_") ||
+          type.startsWith("section_") ||
+          ["hero_3d", "exterior_render", "axonometric", "interior_3d"].includes(
+            type,
+          );
+        return {
+          type,
+          status: "ready",
+          hasSvg: true,
+          ...(isProjectPanel
+            ? {
+                geometryHash: "geometry-hash-OK",
+                sourceGeometryHash: "geometry-hash-OK",
+                providerUsed: "deterministic",
+                imageProviderUsed: "deterministic",
+              }
+            : {}),
+        };
+      });
 
     const HEALTHY_VISUAL_MANIFEST = Object.freeze({
       version: "visual-manifest-v1",
       manifestId: "visual-manifest-test-001",
       manifestHash: "manifest-hash-OK",
+      geometryHash: "geometry-hash-OK",
       storeyCount: 2,
     });
 
     const buildHealthyVisualPanels = () =>
-      ["hero_3d", "interior_3d", "axonometric"].map((type) => ({
-        type,
-        visualManifestHash: "manifest-hash-OK",
-        visualIdentityLocked: true,
-      }));
+      ["hero_3d", "exterior_render", "interior_3d", "axonometric"].map(
+        (type) => ({
+          type,
+          geometryHash: "geometry-hash-OK",
+          sourceGeometryHash: "geometry-hash-OK",
+          visualManifestHash: "manifest-hash-OK",
+          visualIdentityLocked: true,
+          referenceSource: "compiled_3d_control_svg",
+          provider: "openai",
+          providerUsed: "openai",
+          imageProviderUsed: "openai",
+          imageRenderFallback: false,
+          controlSvgHash: `control-svg-${type}`,
+        }),
+      );
 
     const buildHealthyMaterialPalette = () => ({
       cards: [
@@ -452,6 +533,27 @@ describe("a1FinalExportContract", () => {
       openaiImageUsed: true,
       openaiRequestIds: ["req_abc123"],
       providerFallbacks: [],
+    });
+
+    const buildHealthyGateInputs = (overrides = {}) => ({
+      renderContract: baseRenderContract(),
+      pdfUrl: "/api/a1/compose-output/a1.pdf",
+      finalSheetRegression: okFinalSheetRegression(),
+      postComposeVerification: okPostCompose(),
+      glyphIntegrity: { status: "pass", blockers: [] },
+      sheetSetPlan: { required: false },
+      pdfMetadata: HEALTHY_PDF_METADATA,
+      rasterGlyphIntegrity: HEALTHY_RASTER_INTEGRITY,
+      panels: buildHealthyPanels(),
+      panelRegistry: HEALTHY_PANEL_REGISTRY,
+      targetStoreys: 2,
+      visualManifest: HEALTHY_VISUAL_MANIFEST,
+      visualPanels: buildHealthyVisualPanels(),
+      materialPalette: buildHealthyMaterialPalette(),
+      openaiProvider: HEALTHY_OPENAI_PROVIDER,
+      strictPhotoreal: false,
+      imageGenEnabled: true,
+      ...overrides,
     });
 
     test("valid final A1 passes", () => {
@@ -654,33 +756,18 @@ describe("a1FinalExportContract", () => {
 
     test("visualManifestHash mismatch blocks", () => {
       const gate = evaluateFinalA1ExportGate({
-        renderContract: baseRenderContract(),
-        pdfUrl: "/api/a1/compose-output/a1.pdf",
-        finalSheetRegression: okFinalSheetRegression(),
-        postComposeVerification: okPostCompose(),
-        glyphIntegrity: { status: "pass", blockers: [] },
-        sheetSetPlan: { required: false },
-        pdfMetadata: HEALTHY_PDF_METADATA,
-        rasterGlyphIntegrity: HEALTHY_RASTER_INTEGRITY,
-        panels: buildHealthyPanels(),
-        panelRegistry: HEALTHY_PANEL_REGISTRY,
-        targetStoreys: 2,
-        visualManifest: HEALTHY_VISUAL_MANIFEST,
+        ...buildHealthyGateInputs(),
         visualPanels: [
+          ...buildHealthyVisualPanels().filter(
+            (panel) => panel.type !== "interior_3d",
+          ),
           {
-            type: "hero_3d",
-            visualManifestHash: "manifest-hash-OK",
-            visualIdentityLocked: true,
-          },
-          {
-            type: "interior_3d",
+            ...buildHealthyVisualPanels().find(
+              (panel) => panel.type === "interior_3d",
+            ),
             visualManifestHash: "manifest-hash-DIFFERENT",
-            visualIdentityLocked: true,
           },
         ],
-        materialPalette: buildHealthyMaterialPalette(),
-        openaiProvider: HEALTHY_OPENAI_PROVIDER,
-        imageGenEnabled: true,
       });
 
       expect(gate.status).toBe("blocked");
@@ -688,6 +775,144 @@ describe("a1FinalExportContract", () => {
         "interior_3d",
       );
       expect(gate.blockers.join(" ")).toMatch(/visualManifestHash|manifest/);
+    });
+
+    test.each([
+      [
+        "missing technical SVG panel",
+        () => ({
+          panels: buildHealthyPanels().filter(
+            (panel) => panel.type !== "floor_plan_ground",
+          ),
+        }),
+        /TECHNICAL_SVG_PANEL_MISSING|floor_plan_ground/,
+      ],
+      [
+        "technical panel generated by image model",
+        () => ({
+          panels: buildHealthyPanels().map((panel) =>
+            panel.type === "floor_plan_ground"
+              ? {
+                  ...panel,
+                  providerUsed: "openai",
+                  imageProviderUsed: "openai",
+                  model: "gpt-image-1.5",
+                }
+              : panel,
+          ),
+        }),
+        /TECHNICAL_PANEL_IMAGE_MODEL_USED|floor_plan_ground/,
+      ],
+      [
+        "missing visual panel artifact",
+        () => ({
+          visualPanels: buildHealthyVisualPanels().filter(
+            (panel) => panel.type !== "exterior_render",
+          ),
+        }),
+        /VISUAL_PANEL_MISSING|exterior_render/,
+      ],
+      [
+        "visual panel text-only image generation",
+        () => ({
+          visualPanels: buildHealthyVisualPanels().map((panel) =>
+            panel.type === "hero_3d"
+              ? { ...panel, referenceSource: "text_prompt" }
+              : panel,
+          ),
+        }),
+        /VISUAL_PANEL_TEXT_ONLY_IMAGE_GENERATION|hero_3d/,
+      ],
+      [
+        "missing geometryHash on a project panel",
+        () => ({
+          panels: buildHealthyPanels().map((panel) =>
+            panel.type === "section_AA"
+              ? {
+                  ...panel,
+                  geometryHash: null,
+                  sourceGeometryHash: null,
+                }
+              : panel,
+          ),
+        }),
+        /PROJECT_PANEL_GEOMETRY_HASH_MISSING|section_AA/,
+      ],
+      [
+        "mismatched geometryHash across project panels",
+        () => ({
+          visualPanels: buildHealthyVisualPanels().map((panel) =>
+            panel.type === "axonometric"
+              ? { ...panel, geometryHash: "geometry-hash-DIFFERENT" }
+              : panel,
+          ),
+        }),
+        /PROJECT_PANEL_GEOMETRY_HASH_MISMATCH|geometry-hash-DIFFERENT/,
+      ],
+      [
+        "missing visualManifestHash",
+        () => ({
+          visualPanels: buildHealthyVisualPanels().map((panel) =>
+            panel.type === "hero_3d"
+              ? { ...panel, visualManifestHash: null }
+              : panel,
+          ),
+        }),
+        /VISUAL_MANIFEST_HASH_MISSING|hero_3d/,
+      ],
+      [
+        "visualIdentityLocked false",
+        () => ({
+          visualPanels: buildHealthyVisualPanels().map((panel) =>
+            panel.type === "interior_3d"
+              ? { ...panel, visualIdentityLocked: false }
+              : panel,
+          ),
+        }),
+        /VISUAL_IDENTITY_UNLOCKED|interior_3d/,
+      ],
+      [
+        "strict mode visual fallback",
+        () => ({
+          strictPhotoreal: true,
+          imageGenEnabled: true,
+          visualPanels: buildHealthyVisualPanels().map((panel) =>
+            panel.type === "hero_3d"
+              ? {
+                  ...panel,
+                  provider: "deterministic",
+                  providerUsed: "deterministic",
+                  imageProviderUsed: "deterministic",
+                  imageRenderFallback: true,
+                  imageRenderFallbackReason: "openai_error",
+                }
+              : panel,
+          ),
+        }),
+        /STRICT_IMAGE_RENDER_FALLBACK|hero_3d/,
+      ],
+      [
+        "PDF used empty frames instead of sheetArtifact.svgString",
+        () => ({
+          sheetArtifact: {
+            svgString: '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+            svgHash: "sheet-svg-hash-OK",
+          },
+          pdfMetadata: {
+            ...HEALTHY_PDF_METADATA,
+            sourceSvgHash: "sheet-svg-hash-OK",
+            emptyFrameFallbackUsed: true,
+          },
+        }),
+        /A1_PDF_EMPTY_FRAMES_USED|sheetArtifact\.svgString/,
+      ],
+    ])("Phase 3 blocks %s", (_label, buildOverrides, blockerPattern) => {
+      const gate = evaluateFinalA1ExportGate(
+        buildHealthyGateInputs(buildOverrides()),
+      );
+      expect(gate.status).toBe("blocked");
+      expect(gate.allowed).toBe(false);
+      expect(gate.blockers.join(" ")).toMatch(blockerPattern);
     });
 
     test("missing material provenance warns", () => {

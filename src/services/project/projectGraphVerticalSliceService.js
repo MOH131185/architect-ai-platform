@@ -9198,6 +9198,10 @@ async function buildA1PdfArtifact({
     textRenderMode: "font_paths",
     rasterIntegrityStatus: rasterGlyphIntegrity?.status || "not_run",
     hybridVectorPdfFollowUp: true,
+    sourceSvgHash: sheetArtifact.svgHash,
+    sourceSvgAssetId: sheetArtifact.asset_id,
+    sheetArtifactSvgStringUsed: true,
+    emptyFrameFallbackUsed: false,
   };
 
   // Phase 5D: optional vector PDF as an *additional* artifact behind a
@@ -11685,21 +11689,73 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       targetStoreysForGate,
       sheetArtifact.layoutTemplate || resolvePresentationLayoutTemplate(brief),
     );
-    const visualPanelArtifacts = Object.values(primaryPanelArtifacts).filter(
-      (artifact) =>
-        REQUIRED_3D_A1_PANEL_TYPES.includes(artifact?.panel_type) ||
-        artifact?.metadata?.visualManifestHash,
+    const artifactByPanelType = new Map(
+      Object.values(primaryPanelArtifacts)
+        .filter((artifact) => artifact?.panel_type)
+        .map((artifact) => [artifact.panel_type, artifact]),
     );
-    const visualPanelsForGate = visualPanelArtifacts.map((artifact) => ({
-      type: artifact.panel_type,
-      visualManifestHash:
-        artifact.metadata?.visualManifestHash ||
-        artifact.visualManifestHash ||
-        null,
-      visualIdentityLocked:
-        artifact.metadata?.visualIdentityLocked === true ||
-        artifact.visualIdentityLocked === true,
-    }));
+    const buildGatePanelEvidence = (panelType, placement = null) => {
+      const artifact = artifactByPanelType.get(panelType) || {};
+      const metadata = artifact.metadata || {};
+      return {
+        type: panelType,
+        panelType,
+        status:
+          placement?.status ||
+          artifact.status ||
+          (artifact.svgString ? "ready" : null),
+        hasSvg: Boolean(
+          artifact.svgString || placement?.svgString || placement?.hasSvg,
+        ),
+        geometryHash:
+          artifact.geometryHash ||
+          metadata.geometryHash ||
+          artifact.sourceGeometryHash ||
+          metadata.sourceGeometryHash ||
+          artifact.source_model_hash ||
+          null,
+        sourceGeometryHash:
+          artifact.sourceGeometryHash ||
+          metadata.sourceGeometryHash ||
+          artifact.geometryHash ||
+          metadata.geometryHash ||
+          artifact.source_model_hash ||
+          null,
+        visualManifestId:
+          artifact.visualManifestId || metadata.visualManifestId || null,
+        visualManifestHash:
+          artifact.visualManifestHash || metadata.visualManifestHash || null,
+        visualIdentityLocked:
+          artifact.visualIdentityLocked === true ||
+          metadata.visualIdentityLocked === true,
+        referenceSource:
+          artifact.referenceSource || metadata.referenceSource || null,
+        provider: artifact.provider || metadata.provider || null,
+        providerUsed: artifact.providerUsed || metadata.providerUsed || null,
+        imageProviderUsed:
+          artifact.imageProviderUsed || metadata.imageProviderUsed || null,
+        imageRenderFallback:
+          artifact.imageRenderFallback ?? metadata.imageRenderFallback ?? null,
+        imageRenderFallbackReason:
+          artifact.imageRenderFallbackReason ||
+          metadata.imageRenderFallbackReason ||
+          null,
+        model: artifact.model || metadata.model || null,
+        requestId: artifact.requestId || metadata.requestId || null,
+        usage: artifact.usage || metadata.usage || null,
+        controlSvgHash:
+          artifact.controlSvgHash || metadata.controlSvgHash || null,
+        promptHash: artifact.promptHash || metadata.promptHash || null,
+        svgHash: artifact.svgHash || metadata.svgHash || null,
+        svgString: artifact.svgString || placement?.svgString || null,
+        metadata,
+      };
+    };
+    const visualPanelsForGate = REQUIRED_3D_A1_PANEL_TYPES.map((panelType) =>
+      artifactByPanelType.has(panelType)
+        ? buildGatePanelEvidence(panelType)
+        : null,
+    ).filter(Boolean);
     const materialPaletteArtifact = Object.values(primaryPanelArtifacts).find(
       (artifact) => artifact?.panel_type === "material_palette",
     );
@@ -11712,11 +11768,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
         }
       : null;
     const panelsForGate = (sheetArtifact.panelPlacements || []).map(
-      (placement) => ({
-        type: placement.panelType,
-        status: placement.status,
-        hasSvg: placement.status === "ready",
-      }),
+      (placement) => buildGatePanelEvidence(placement.panelType, placement),
     );
     // Phase 4: bucket the deterministic drawing SVGs by drawing type so the
     // gate's cross-view evidence evaluator (drawingConsistencyChecks) can
@@ -11794,6 +11846,16 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     const upstreamGate = evaluateFinalA1ExportGate({
       renderContract: upstreamRenderContract,
       // PDF/raster/post-compose evidence is owned by the compose route.
+      pdfMetadata: pdfArtifact?.pdfMetadata
+        ? {
+            ...pdfArtifact.pdfMetadata,
+            sourceSvgHash:
+              pdfArtifact.pdfMetadata.sourceSvgHash ||
+              pdfArtifact.source_svg_hash ||
+              null,
+          }
+        : null,
+      sheetArtifact,
       panels: panelsForGate,
       panelRegistry: phaseFRequiredPanels,
       targetStoreys: targetStoreysForGate,
@@ -11805,6 +11867,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
         brief?.reference_match === true ||
         process.env.OPENAI_STRICT_IMAGE_GEN === "true",
       imageGenEnabled: process.env.PROJECT_GRAPH_IMAGE_GEN_ENABLED === "true",
+      expectedGeometryHash: compiledProject.geometryHash,
       scope: "upstream_partial",
       // Phase 4: cross-view consistency evidence inputs.
       drawings: drawingsForGate,
