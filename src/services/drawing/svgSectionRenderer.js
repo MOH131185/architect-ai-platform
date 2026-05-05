@@ -1745,9 +1745,18 @@ export function renderSectionSvg(
         vernacularPack.ukVernacularPackId || vernacularPack.packId || "",
       )}" data-pack-parapet="${packParapet}"`
     : "";
+  // Sheet composition unwraps the panel SVG into a <g data-panel-id="…">, so
+  // outer-<svg> attributes are dropped from the composed sheet. Mirror the
+  // pack attributes onto an inner self-closing <g> so they survive the unwrap.
+  const packAttrsGroup = vernacularPack
+    ? `<g class="cad-vernacular-pack-attrs" data-vernacular-pack="${escapeXml(
+        vernacularPack.ukVernacularPackId || vernacularPack.packId || "",
+      )}" data-pack-parapet="${packParapet}"/>`
+    : "";
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-theme="${SECTION_THEME.name}" data-bounds-source="${envelopeBounds.source}" data-a1-quality-polish="${sheetMode ? "section_datums_dimensions_v2" : "section_standard"}" data-section-edge-clearance-status="${sectionVisualMetrics.edgeClearanceStatus}" data-section-body-occupancy="${sectionVisualMetrics.bodyOccupancyRatio}" data-blueprint-grade="${blueprintGrade ? "true" : "false"}"${packDataAttrs}>
   <rect width="${width}" height="${height}" fill="${SECTION_THEME.paper}" />
+  ${packAttrsGroup}
   ${blueprintGrade ? '<g class="cad-lineweight-registry cad-lineweight-cut cad-lineweight-projection cad-lineweight-detail" data-cad-layer="lineweight-registry"/>' : ""}
   ${stairMarkup.defs || ""}
   ${
