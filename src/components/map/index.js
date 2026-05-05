@@ -10,6 +10,7 @@ export { SiteBoundaryEditorV2 } from "./SiteBoundaryEditorV2.jsx";
 
 // Sub-components
 export { VertexTableEditor } from "./VertexTableEditor.jsx";
+export { BoundaryNumericEditor } from "./BoundaryNumericEditor.jsx";
 export { BoundaryDiagnostics } from "./BoundaryDiagnostics.jsx";
 export { EntranceCompassOverlay } from "./EntranceCompassOverlay.jsx";
 

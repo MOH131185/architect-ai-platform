@@ -38,6 +38,7 @@ import {
  * @param {Function} props.onVertexSelect - (index) => void
  * @param {number} props.selectedIndex - Currently selected vertex
  * @param {boolean} props.disabled - Disable editing
+ * @param {boolean} props.embedded - Render inside another editor shell
  */
 export function VertexTableEditor({
   vertices = [],
@@ -45,6 +46,7 @@ export function VertexTableEditor({
   onVertexSelect,
   selectedIndex = null,
   disabled = false,
+  embedded = false,
 }) {
   const [editingCell, setEditingCell] = useState(null); // { row, col }
   const [editValue, setEditValue] = useState("");
@@ -290,7 +292,11 @@ export function VertexTableEditor({
 
   return (
     <div
-      className="bg-white rounded-lg shadow-lg overflow-hidden"
+      className={
+        embedded
+          ? "overflow-hidden"
+          : "bg-white rounded-lg shadow-lg overflow-hidden"
+      }
       onPaste={handlePaste}
     >
       {/* Header */}
