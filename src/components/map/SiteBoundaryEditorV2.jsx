@@ -17,7 +17,13 @@
  * @module SiteBoundaryEditorV2
  */
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+} from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useGoogleMap } from "./useGoogleMap.js";
 import { useBoundaryState } from "./useBoundaryState.js";
@@ -30,7 +36,12 @@ import {
   calculateBounds,
   boundsToGoogleBounds,
 } from "./mapUtils.js";
-import { closeRing, latLngPolygonsEqual } from "./boundaryGeometry.js";
+import {
+  closeRing,
+  latLngArrayToRing,
+  latLngPolygonsEqual,
+  openRing,
+} from "./boundaryGeometry.js";
 import { buildManualVerifiedBoundary } from "../../services/site/boundaryPolicy.js";
 import logger from "../../utils/logger.js";
 
@@ -56,6 +67,8 @@ export function SiteBoundaryEditorV2({
   autoDetectDisabledMessage = "Automatic boundary detection is unavailable for this address. Draw or enter a verified boundary manually.",
   contextualBoundaryPolygon = [],
   boundarySource = null,
+  contextualBoundarySource = null,
+  contextualBoundaryRole = null,
 }) {
   // OGL v3.0 attribution: when the boundary comes from HM Land Registry
   // (via either the bundled INSPIRE fixture or Digital Land's
@@ -142,6 +155,19 @@ export function SiteBoundaryEditorV2({
   const fitBoundaryLength = Array.isArray(fitBoundaryPolygon)
     ? fitBoundaryPolygon.length
     : 0;
+  const contextualBoundaryVertices = useMemo(() => {
+    if (polygonLength >= 3 || contextualBoundaryLength < 3) return [];
+    return openRing(latLngArrayToRing(contextualBoundaryPolygon));
+  }, [contextualBoundaryLength, contextualBoundaryPolygon, polygonLength]);
+  const isContextualBuildingFootprint =
+    contextualBoundaryRole === "contextual_building_footprint" ||
+    contextualBoundarySource === "google_building_outline";
+  const contextualMeasurementTitle = isContextualBuildingFootprint
+    ? "Detected Building Footprint"
+    : "Contextual Boundary Overlay";
+  const contextualMeasurementCopy = isContextualBuildingFootprint
+    ? "Detected footprint is shown for scale only. Draw or verify the parcel boundary before treating area or setbacks as authoritative."
+    : "Estimated boundary is shown for context only. Draw or verify the parcel boundary before treating area or setbacks as authoritative.";
 
   const handleAutoDetect = useCallback(async () => {
     if (!autoDetectEnabled) {
@@ -1070,6 +1096,40 @@ export function SiteBoundaryEditorV2({
             >
               <BoundaryDiagnostics
                 vertices={vertices}
+                showSegments={showDiagnostics}
+                showAngles={showDiagnostics}
+              />
+            </motion.div>
+          </AnimatePresence>
+        </section>
+      )}
+
+      {polygon.length < 3 && contextualBoundaryVertices.length >= 3 && (
+        <section
+          className="bg-white rounded-lg shadow-lg p-4 space-y-3"
+          data-testid="contextual-boundary-measurements"
+        >
+          <div>
+            <h3 className="text-lg font-bold text-slate-900">
+              {contextualMeasurementTitle}
+            </h3>
+            <p className="text-sm text-slate-600">
+              {contextualMeasurementCopy}
+            </p>
+          </div>
+          <AnimatePresence initial={false}>
+            <motion.div
+              key={
+                showDiagnostics
+                  ? "contextual-diagnostics-detailed"
+                  : "contextual-diagnostics-summary"
+              }
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+            >
+              <BoundaryDiagnostics
+                vertices={contextualBoundaryVertices}
                 showSegments={showDiagnostics}
                 showAngles={showDiagnostics}
               />

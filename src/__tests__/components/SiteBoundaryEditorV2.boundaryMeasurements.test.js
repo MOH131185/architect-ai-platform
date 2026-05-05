@@ -135,6 +135,38 @@ describe("SiteBoundaryEditorV2 boundary measurements", () => {
     unmount();
   });
 
+  test("shows contextual building footprint measurements without marking it verified", async () => {
+    const onBoundaryChange = jest.fn();
+    const { container, unmount } = renderBoundaryEditor({
+      initialBoundaryPolygon: [],
+      contextualBoundaryPolygon: LAT_LNG_BOUNDARY,
+      contextualBoundaryRole: "contextual_building_footprint",
+      contextualBoundarySource: "google_building_outline",
+      onBoundaryChange,
+    });
+
+    await act(async () => {});
+
+    expect(container.textContent).toContain("Detected Building Footprint");
+    expect(container.textContent).toContain("shown for scale only");
+    expect(container.textContent).toContain("Area");
+    expect(container.textContent).toContain("Perimeter");
+    expect(onBoundaryChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        invalid: true,
+        manualVerified: false,
+        boundarySource: "manual_invalid",
+      }),
+    );
+    expect(onBoundaryChange).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        boundarySource: "manual_verified",
+      }),
+    );
+
+    unmount();
+  });
+
   test("diagnostics include segment details and interior angles", () => {
     const { container, unmount } = renderBoundaryEditor();
 

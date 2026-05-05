@@ -470,6 +470,66 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
     expect(request.locationData.siteAnalysis.boundarySource).toBe(
       "Intelligent Fallback",
     );
+    expect(request.brief.site_input.boundary_geojson).toBeNull();
+  });
+
+  test("keeps contextual building-footprint snapshot out of authoritative ProjectGraph boundary input", () => {
+    const estimatedBoundary = [
+      { lat: 53.591, lng: -0.689 },
+      { lat: 53.591, lng: -0.687 },
+      { lat: 53.59, lng: -0.687 },
+    ];
+    const buildingFootprint = [
+      { lat: 53.59123, lng: -0.68837 },
+      { lat: 53.59123, lng: -0.68818 },
+      { lat: 53.59104, lng: -0.68818 },
+      { lat: 53.59104, lng: -0.68837 },
+    ];
+
+    const request = buildProjectGraphVerticalSliceRequest({
+      designSpec: {
+        buildingCategory: "residential",
+        buildingSubType: "detached-house",
+        area: 75,
+        floorCount: 2,
+        location: {
+          address: "17 Kensington Road, Scunthorpe DN15 8BQ",
+          coordinates: { lat: 53.591237, lng: -0.688325 },
+          boundaryAuthoritative: false,
+          boundaryEstimated: true,
+          boundarySource: "Intelligent Fallback",
+          boundaryConfidence: 0.4,
+          estimatedSiteBoundary: estimatedBoundary,
+          contextualSiteBoundary: buildingFootprint,
+          contextualBoundaryRole: "contextual_building_footprint",
+          contextualBoundarySource: "google_building_outline",
+          buildingFootprint,
+        },
+        sitePolygon: buildingFootprint,
+      },
+      siteSnapshot: {
+        sitePolygon: buildingFootprint,
+        mapType: "roadmap",
+        drawPolygonOverlay: true,
+        metadata: {
+          sitePlanMode: "contextual_building_footprint",
+          siteSnapshotPolygonRole: "contextual_building_footprint",
+          siteSnapshotPolygonSource: "google_building_outline",
+          boundaryAuthoritative: false,
+          boundaryEstimated: true,
+          contextualBoundaryOverlayUsed: true,
+          contextualBoundaryPolygon: buildingFootprint,
+        },
+      },
+    });
+
+    expect(request.sitePolygon).toEqual([]);
+    expect(request.brief.site_input.boundary_geojson).toBeNull();
+    expect(request.siteSnapshot.sitePolygon).toEqual(buildingFootprint);
+    expect(request.siteSnapshot.metadata.siteSnapshotPolygonRole).toBe(
+      "contextual_building_footprint",
+    );
+    expect(request.locationData.buildingFootprint).toEqual(buildingFootprint);
   });
 
   test("forwards current manual site location into ProjectGraph payload instead of stale Birmingham brief data", () => {

@@ -365,6 +365,9 @@ export const useLocationData = () => {
         detectedBuildingFootprint,
       });
       const authoritativeSitePolygon = boundaryResolution.sitePolygon;
+      const contextualDisplayPolygon =
+        boundaryResolution.contextualDisplayPolygon ||
+        boundaryResolution.contextualEstimatedBoundary;
 
       if (boundaryResolution.boundaryAuthoritative) {
         setSitePolygon(authoritativeSitePolygon);
@@ -410,14 +413,14 @@ export const useLocationData = () => {
 
         const sitePolygonForMap = boundaryResolution.boundaryAuthoritative
           ? authoritativeSitePolygon
-          : null;
+          : contextualDisplayPolygon;
 
         const snapshotResult = await getSiteSnapshotWithMetadata({
           coordinates: { lat, lng },
           polygon: sitePolygonForMap,
           mapType: "roadmap",
           size: [640, 400],
-          zoom: sitePolygonForMap ? undefined : 19,
+          zoom: sitePolygonForMap?.length >= 3 ? undefined : 19,
         });
 
         if (snapshotResult && snapshotResult.dataUrl) {
@@ -435,7 +438,7 @@ export const useLocationData = () => {
       // Step 9: Save location data and advance to next step
       const sitePolygonForMap = boundaryResolution.boundaryAuthoritative
         ? authoritativeSitePolygon
-        : null;
+        : [];
 
       const siteDNA = buildSiteContext({
         location: { address: formattedAddress, coordinates: { lat, lng } },
@@ -470,7 +473,11 @@ export const useLocationData = () => {
         boundarySource: siteAnalysis?.boundarySource || null,
         boundaryConfidence: siteAnalysis?.boundaryConfidence ?? null,
         estimatedSiteBoundary: boundaryResolution.contextualEstimatedBoundary,
-        contextualSiteBoundary: boundaryResolution.contextualEstimatedBoundary,
+        contextualSiteBoundary: contextualDisplayPolygon,
+        contextualBoundaryRole:
+          boundaryResolution.contextualDisplayRole || "context_only",
+        contextualBoundarySource:
+          boundaryResolution.contextualDisplaySource || null,
         estimatedSurfaceArea: siteAnalysis?.estimatedSurfaceArea || null,
         siteBoundary: authoritativeSitePolygon,
         // PR-C re-review blocker 2: resolve area via the shared normalizer so

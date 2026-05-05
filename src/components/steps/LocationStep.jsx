@@ -177,9 +177,12 @@ const LocationStep = ({
               contextualBoundaryPolygon={contextualBoundaryPolygon}
               boundarySource={
                 locationData?.boundarySource ||
+                locationData?.siteAnalysis?.boundarySource ||
                 locationData?.siteAnalysis?.boundary?.source ||
                 null
               }
+              contextualBoundarySource={locationData?.contextualBoundarySource}
+              contextualBoundaryRole={locationData?.contextualBoundaryRole}
             />
           </motion.div>
         )}

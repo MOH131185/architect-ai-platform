@@ -32,6 +32,9 @@ export function resolveUiSiteBoundaryAuthority({
   detectedBuildingFootprint = [],
 } = {}) {
   const analysisBoundaryEstimated = isEstimatedSiteBoundary(siteAnalysis);
+  const detectedFootprint = hasUsablePolygon(detectedBuildingFootprint)
+    ? detectedBuildingFootprint
+    : [];
   const authoritativeAnalysisBoundary =
     !analysisBoundaryEstimated && hasUsablePolygon(analysisBoundary)
       ? analysisBoundary
@@ -46,7 +49,7 @@ export function resolveUiSiteBoundaryAuthority({
   const existingAuthoritativeFallback =
     !analysisBoundaryEstimated &&
     !hasUsablePolygon(authoritativeAnalysisBoundary) &&
-    !hasUsablePolygon(detectedBuildingFootprint) &&
+    !hasUsablePolygon(detectedFootprint) &&
     hasUsablePolygon(existingPolygon)
       ? existingPolygon
       : [];
@@ -55,15 +58,31 @@ export function resolveUiSiteBoundaryAuthority({
     : existingAuthoritativeFallback;
   const boundaryAuthoritative =
     hasUsablePolygon(sitePolygon) && !analysisBoundaryEstimated;
+  const contextualDisplayPolygon = boundaryAuthoritative
+    ? []
+    : hasUsablePolygon(detectedFootprint)
+      ? detectedFootprint
+      : contextualEstimatedBoundary;
+  const contextualDisplayRole = boundaryAuthoritative
+    ? "authoritative_boundary"
+    : hasUsablePolygon(detectedFootprint)
+      ? "contextual_building_footprint"
+      : hasUsablePolygon(contextualEstimatedBoundary)
+        ? "contextual_estimated_boundary"
+        : "context_only";
 
   return {
     sitePolygon,
     boundaryAuthoritative,
     boundaryEstimated: analysisBoundaryEstimated,
     contextualEstimatedBoundary,
-    detectedBuildingFootprint: hasUsablePolygon(detectedBuildingFootprint)
-      ? detectedBuildingFootprint
-      : [],
+    contextualDisplayPolygon,
+    contextualDisplayRole,
+    contextualDisplaySource:
+      contextualDisplayRole === "contextual_building_footprint"
+        ? "google_building_outline"
+        : siteAnalysis?.boundarySource || siteAnalysis?.source || null,
+    detectedBuildingFootprint: detectedFootprint,
     siteBoundaryWarning: analysisBoundaryEstimated
       ? siteAnalysis?.boundaryWarning || ESTIMATED_SITE_BOUNDARY_WARNING
       : null,

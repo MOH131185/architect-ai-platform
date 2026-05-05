@@ -502,6 +502,10 @@ function compactSiteSnapshotForRequest(siteSnapshot = null) {
       boundaryEstimated: siteSnapshot.metadata?.boundaryEstimated === true,
       siteSnapshotPolygonRole:
         siteSnapshot.metadata?.siteSnapshotPolygonRole || null,
+      siteSnapshotPolygonSource:
+        siteSnapshot.metadata?.siteSnapshotPolygonSource || null,
+      contextualBoundarySource:
+        siteSnapshot.metadata?.contextualBoundarySource || null,
       contextualBoundaryOverlayUsed:
         siteSnapshot.metadata?.contextualBoundaryOverlayUsed === true,
       contextualBoundaryPolygon: compactLatLngPolygon(
@@ -621,6 +625,10 @@ function compactLocationDataForRequest(locationData = {}) {
     contextualSiteBoundary: compactLatLngPolygon(
       locationData.contextualSiteBoundary || [],
     ),
+    contextualBoundaryRole: locationData.contextualBoundaryRole || null,
+    contextualBoundarySource: locationData.contextualBoundarySource || null,
+    contextualSurfaceAreaM2: locationData.contextualSurfaceAreaM2 || null,
+    buildingFootprintAreaM2: locationData.buildingFootprintAreaM2 || null,
     buildingFootprint: compactLatLngPolygon(
       locationData.buildingFootprint || [],
     ),
@@ -752,6 +760,17 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
   const compactSiteSnapshot = compactSiteSnapshotForRequest(
     params.siteSnapshot || designSpec.siteSnapshot || null,
   );
+  const compactSiteSnapshotNonAuthoritative =
+    compactSiteSnapshot?.metadata?.boundaryAuthoritative === false ||
+    compactSiteSnapshot?.metadata?.boundaryEstimated === true ||
+    /^contextual_|^context_only$/.test(
+      String(compactSiteSnapshot?.metadata?.siteSnapshotPolygonRole || ""),
+    ) ||
+    /^contextual_|^context_only$/.test(
+      String(compactSiteSnapshot?.metadata?.sitePlanMode || ""),
+    );
+  const compactSiteSnapshotUsableForBoundaryInput =
+    !compactSiteSnapshotNonAuthoritative;
   const compactLocationData = compactLocationDataForRequest(locationData);
   const currentSiteAddress =
     compactLocationData.siteAddress ||
@@ -770,14 +789,24 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
       params.sitePolygon ||
       [],
   );
-  const compactSiteInputPolygon =
-    compactLocationData.manualVerifiedBoundary?.polygon?.length >= 3
-      ? compactLocationData.manualVerifiedBoundary.polygon
+  const hasManualVerifiedBoundary =
+    compactLocationData.manualVerifiedBoundary?.polygon?.length >= 3;
+  const compactSiteInputPolygonNonAuthoritative =
+    !hasManualVerifiedBoundary &&
+    (compactLocationData.boundaryAuthoritative === false ||
+      designSpec.location?.boundaryAuthoritative === false ||
+      designSpec.boundaryAuthoritative === false);
+  const compactSiteInputPolygon = hasManualVerifiedBoundary
+    ? compactLocationData.manualVerifiedBoundary.polygon
+    : compactSiteInputPolygonNonAuthoritative
+      ? []
       : compactSitePolygon.length >= 3
         ? compactSitePolygon
         : compactLocationData.sitePolygon?.length >= 3
           ? compactLocationData.sitePolygon
-          : compactSiteSnapshot?.sitePolygon || [];
+          : compactSiteSnapshotUsableForBoundaryInput
+            ? compactSiteSnapshot?.sitePolygon || []
+            : [];
   const currentCoordinates =
     compactLocationData.coordinates ||
     normalizeLatLngPoint(params.siteSnapshot?.coordinates) ||
@@ -1072,11 +1101,23 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
         boundaryAuthoritative: false,
       }
     : rawSiteMetrics;
+  const sitePolygonNonAuthoritative =
+    !hasManualVerifiedBoundary &&
+    (compactLocationData.boundaryAuthoritative === false ||
+      designSpec.location?.boundaryAuthoritative === false ||
+      designSpec.boundaryAuthoritative === false ||
+      requestSiteMetrics?.boundaryAuthoritative === false);
   const requestSitePolygon = siteMetricsNonAuthoritative
     ? []
-    : compactSitePolygon.length >= 3
-      ? compactSitePolygon
-      : compactSiteSnapshot?.sitePolygon || [];
+    : hasManualVerifiedBoundary
+      ? compactLocationData.manualVerifiedBoundary.polygon
+      : sitePolygonNonAuthoritative
+        ? []
+        : compactSitePolygon.length >= 3
+          ? compactSitePolygon
+          : compactSiteSnapshotUsableForBoundaryInput
+            ? compactSiteSnapshot?.sitePolygon || []
+            : [];
   const requestMainEntry = compactMainEntry(
     projectDetails.mainEntry ||
       projectDetails.mainEntryDirection ||

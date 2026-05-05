@@ -83,6 +83,11 @@ export function selectContextualBoundaryPolygon(locationData = null) {
   }
 
   return firstUsablePolygon([
+    locationData.buildingFootprint,
+    locationData.detectedBuildingFootprint,
+    locationData.siteAnalysis?.buildingFootprint,
+    locationData.siteAnalysis?.detectedBuildingFootprint,
+    locationData.metadata?.buildingFootprint,
     locationData.contextualSiteBoundary,
     locationData.estimatedSiteBoundary,
     locationData.siteBoundary,

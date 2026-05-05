@@ -39,6 +39,9 @@ describe("site boundary UI authority", () => {
     expect(result.sitePolygon).toEqual([]);
     expect(result.detectedBuildingFootprint).toEqual(buildingFootprint);
     expect(result.contextualEstimatedBoundary).toEqual(fallbackBoundary);
+    expect(result.contextualDisplayPolygon).toEqual(buildingFootprint);
+    expect(result.contextualDisplayRole).toBe("contextual_building_footprint");
+    expect(result.contextualDisplaySource).toBe("google_building_outline");
     expect(result.siteBoundaryWarning).toMatch(/estimated only/i);
   });
 

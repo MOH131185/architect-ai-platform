@@ -99,6 +99,26 @@ describe("site boundary authority", () => {
     ).toEqual([]);
   });
 
+  test("prefers detected building footprint over large fallback for contextual display", () => {
+    const detectedFootprint = [
+      { lat: 53.59123, lng: -0.68837 },
+      { lat: 53.59123, lng: -0.68818 },
+      { lat: 53.59104, lng: -0.68818 },
+      { lat: 53.59104, lng: -0.68837 },
+    ];
+
+    expect(
+      selectContextualBoundaryPolygon({
+        boundarySource: INTELLIGENT_FALLBACK_BOUNDARY_SOURCE,
+        boundaryConfidence: INTELLIGENT_FALLBACK_BOUNDARY_CONFIDENCE,
+        boundaryAuthoritative: false,
+        estimatedOnly: true,
+        buildingFootprint: detectedFootprint,
+        contextualSiteBoundary: samplePolygon,
+      }),
+    ).toEqual(detectedFootprint);
+  });
+
   test("keeps normal high-confidence boundaries authoritative", () => {
     const assessment = assessSiteBoundaryAuthority(
       {

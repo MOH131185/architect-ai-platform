@@ -835,6 +835,13 @@ const ArchitectAIWizardContainer = () => {
       const polygon = boundaryResolution.sitePolygon;
       const contextualEstimatedBoundary =
         boundaryResolution.contextualEstimatedBoundary;
+      const contextualDisplayPolygon =
+        boundaryResolution.contextualDisplayPolygon ||
+        contextualEstimatedBoundary;
+      const contextualDisplayRole =
+        boundaryResolution.contextualDisplayRole || "context_only";
+      const contextualDisplaySource =
+        boundaryResolution.contextualDisplaySource || null;
       const siteBoundaryWarning = boundaryResolution.siteBoundaryWarning;
 
       const siteDNA = buildSiteContext({
@@ -898,6 +905,10 @@ const ArchitectAIWizardContainer = () => {
         siteDNA,
         siteAnalysis,
         buildingFootprint: detectedFootprint,
+        buildingFootprintAreaM2:
+          detectedFootprint?.length >= 3
+            ? computeSiteMetrics(detectedFootprint).areaM2
+            : null,
         detectedShape,
         boundaryAuthoritative: boundaryResolution.boundaryAuthoritative,
         boundaryEstimated: boundaryResolution.boundaryEstimated,
@@ -906,7 +917,13 @@ const ArchitectAIWizardContainer = () => {
         boundarySource: siteAnalysis?.boundarySource || null,
         boundaryConfidence: siteAnalysis?.boundaryConfidence || null,
         estimatedSiteBoundary: contextualEstimatedBoundary,
-        contextualSiteBoundary: contextualEstimatedBoundary,
+        contextualSiteBoundary: contextualDisplayPolygon,
+        contextualBoundaryRole: contextualDisplayRole,
+        contextualBoundarySource: contextualDisplaySource,
+        contextualSurfaceAreaM2:
+          contextualDisplayPolygon?.length >= 3
+            ? computeSiteMetrics(contextualDisplayPolygon).areaM2
+            : null,
         estimatedSurfaceArea: siteAnalysis.estimatedSurfaceArea || null,
         recommendedStyle: styleRecommendations.recommendedStyle,
         localStyles: styleRecommendations.localStyles || [],
@@ -2134,6 +2151,12 @@ const ArchitectAIWizardContainer = () => {
       const contextualSnapshotPolygon = normalizeSitePolygonForUi(
         selectContextualBoundaryPolygon(locationData),
       );
+      const contextualSnapshotIsBuildingFootprint =
+        contextualSnapshotPolygon.length >= 3 &&
+        polygonsEqual(
+          contextualSnapshotPolygon,
+          normalizeSitePolygonForUi(locationData?.buildingFootprint),
+        );
       const hasAuthoritativeSnapshotPolygon =
         authoritativeSnapshotPolygon.length >= 3;
       const siteSnapshotDisplayPolygon = hasAuthoritativeSnapshotPolygon
@@ -2142,9 +2165,20 @@ const ArchitectAIWizardContainer = () => {
       const siteSnapshotBoundaryAuthoritative = hasAuthoritativeSnapshotPolygon;
       const siteSnapshotMode = siteSnapshotBoundaryAuthoritative
         ? "authoritative_boundary"
-        : siteSnapshotDisplayPolygon.length >= 3
-          ? "contextual_estimated_boundary"
-          : "context_only";
+        : contextualSnapshotIsBuildingFootprint
+          ? "contextual_building_footprint"
+          : siteSnapshotDisplayPolygon.length >= 3
+            ? "contextual_estimated_boundary"
+            : "context_only";
+      const siteSnapshotPolygonSource = siteSnapshotBoundaryAuthoritative
+        ? locationData?.boundarySource ||
+          locationData?.siteAnalysis?.boundarySource ||
+          null
+        : contextualSnapshotIsBuildingFootprint
+          ? "google_building_outline"
+          : locationData?.boundarySource ||
+            locationData?.siteAnalysis?.boundarySource ||
+            null;
       const siteSnapshotMapType = "roadmap";
 
       let capturedSnapshot = null;
@@ -2219,6 +2253,8 @@ const ArchitectAIWizardContainer = () => {
             locationData?.siteAnalysis?.boundaryConfidence ??
             null,
           siteSnapshotPolygonRole: siteSnapshotMode,
+          siteSnapshotPolygonSource,
+          contextualBoundarySource: siteSnapshotPolygonSource,
           contextualBoundaryOverlayUsed:
             !siteSnapshotBoundaryAuthoritative &&
             siteSnapshotDisplayPolygon.length >= 3,

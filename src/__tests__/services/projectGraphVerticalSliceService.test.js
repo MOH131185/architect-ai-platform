@@ -282,7 +282,8 @@ async function getKensingtonReferenceMatchResult() {
 
 function wrapVisualsAsGeometryLockedImages(result) {
   const pngPayload =
-    "AAA1x1BBBplaceholder_3dCCCgeometryRenderService" + "a".repeat(1600);
+    "AAA/NaN/undefined/Infinity/1x1/placeholder_3d/geometryRenderService/" +
+    "a".repeat(1600);
   return Object.fromEntries(
     Object.entries(result.artifacts.visuals3d).map(([panelType, artifact]) => [
       panelType,
@@ -2230,7 +2231,8 @@ describe("projectGraphVerticalSliceService", () => {
       createReadingRoomBrief(),
     );
     const pngPayload =
-      "AAA1x1BBBplaceholder_3dCCCgeometryRenderService" + "a".repeat(1600);
+      "AAA/NaN/undefined/Infinity/1x1/placeholder_3d/geometryRenderService/" +
+      "a".repeat(1600);
     const imageWrappedVisuals = Object.fromEntries(
       Object.entries(result.artifacts.visuals3d).map(
         ([panelType, artifact]) => [

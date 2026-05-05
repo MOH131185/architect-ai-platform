@@ -9941,9 +9941,8 @@ function findPanelArtifact(artifacts = {}, panelType) {
 }
 
 function svgHasInvalidTokens(svgString = "") {
-  return /\b(?:NaN|undefined|Infinity|-Infinity)\b/i.test(
-    String(svgString || ""),
-  );
+  const svg = stripEmbeddedImageDataForPlaceholderScan(svgString);
+  return /\b(?:NaN|undefined|Infinity|-Infinity)\b/i.test(svg);
 }
 
 function svgLooksRenderable(svgString = "") {
