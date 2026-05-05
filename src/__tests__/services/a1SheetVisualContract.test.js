@@ -7,6 +7,7 @@ import {
   resolvePresentationLayoutTemplate,
   __projectGraphVerticalSliceInternals,
 } from "../../services/project/projectGraphVerticalSliceService.js";
+import { prepareFinalSheetSvgForRasterization } from "../../utils/svgFontEmbedder.js";
 
 const { buildPanelPlacements, buildSheetSvg, buildSiteContextPanelArtifact } =
   __projectGraphVerticalSliceInternals;
@@ -232,8 +233,15 @@ test("terraced-house A1 sheet carries the visual contract chrome and technical S
   try {
     const brief = {
       project_name: "ARCHIAI PROJECT",
-      programme: "Terraced House",
-      property_type: "terraced-house",
+      building_type: "dwelling",
+      canonical_building_type: "dwelling",
+      original_category: "residential",
+      original_subtype: "terraced-house",
+      project_type_support: {
+        label: "Terraced House",
+        canonicalBuildingType: "dwelling",
+        subtypeId: "terraced-house",
+      },
       site_input: { address: "17 Kensington Road, Scunthorpe DN15 8BQ" },
       target_storeys: 2,
       target_gia_m2: 132,
@@ -423,4 +431,17 @@ test("section wall detail keeps broad interior poche label-readable while preser
   expect(Number(cutWallMatch[1])).toBeGreaterThan(0.7);
   expect(cutWallMatch[2]).toBe("#151515");
   expect(markup).toContain('stroke="#111"');
+});
+
+test("final A1 sheet raster prep preserves project-title em dashes", async () => {
+  const prepared = await prepareFinalSheetSvgForRasterization(
+    `<svg xmlns="http://www.w3.org/2000/svg" data-sheet-project-title="TERRACED HOUSE — 17 KENSINGTON ROAD, SCUNTHORPE">
+      <text x="10" y="20" font-family="EmbeddedSans" font-size="8">TERRACED HOUSE — 17 KENSINGTON ROAD, SCUNTHORPE</text>
+    </svg>`,
+  );
+
+  expect(prepared).toContain(
+    'data-sheet-project-title="TERRACED HOUSE — 17 KENSINGTON ROAD, SCUNTHORPE"',
+  );
+  expect(prepared).toContain("TERRACED HOUSE — 17 KENSINGTON ROAD, SCUNTHORPE");
 });

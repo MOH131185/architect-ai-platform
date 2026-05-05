@@ -7106,6 +7106,10 @@ function resolveProgrammeDisplayLabel(brief = {}) {
       brief?.programmeLabel ||
       brief?.property_type ||
       brief?.propertyType ||
+      brief?.original_subtype ||
+      brief?.originalSubtype ||
+      brief?.building_subtype ||
+      brief?.buildingSubType ||
       brief?.building_type ||
       brief?.buildingType ||
       "architecture",
@@ -7177,14 +7181,31 @@ function resolveProjectTitle(brief = {}, projectContext = null) {
     .map(normalizeTitleText)
     .find((entry) => !isPlaceholderProjectTitle(entry));
   const programme = toTitleCaseLabel(
-    brief?.programme ||
+    brief?.project_type_support?.label ||
+      brief?.projectTypeSupport?.label ||
+      projectContext?.project_type_support?.label ||
+      projectContext?.projectTypeSupport?.label ||
+      brief?.programme ||
       brief?.programme_label ||
       brief?.programmeLabel ||
       brief?.property_type ||
       brief?.propertyType ||
+      brief?.original_subtype ||
+      brief?.originalSubtype ||
+      brief?.building_subtype ||
+      brief?.buildingSubType ||
+      projectContext?.programme ||
+      projectContext?.programme_label ||
+      projectContext?.programmeLabel ||
+      projectContext?.property_type ||
+      projectContext?.propertyType ||
+      projectContext?.original_subtype ||
+      projectContext?.originalSubtype ||
+      projectContext?.building_subtype ||
+      projectContext?.buildingSubType ||
       brief?.building_type ||
       brief?.buildingType ||
-      projectContext?.programme ||
+      projectContext?.building_type ||
       projectContext?.buildingType ||
       "",
   );

@@ -212,7 +212,6 @@ function normalizeTypography(svgString) {
 
   return svgString
     .replace(/\u2026/g, "...")
-    .replace(/[\u2013\u2014]/g, "-")
     .replace(/\u00D7/g, "x")
     .replace(/\u00B2/g, "2")
     .replace(/\u00B0C/g, " C")
