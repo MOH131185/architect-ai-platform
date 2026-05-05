@@ -23,7 +23,7 @@ import { useGoogleMap } from "./useGoogleMap.js";
 import { useBoundaryState } from "./useBoundaryState.js";
 import { createPrecisionPolygonEditor } from "./PrecisionPolygonEditor.js";
 import { createPolygonDrawingManager } from "./PolygonDrawingManager.js";
-import { VertexTableEditor } from "./VertexTableEditor.jsx";
+import { BoundaryNumericEditor } from "./BoundaryNumericEditor.jsx";
 import { BoundaryDiagnostics } from "./BoundaryDiagnostics.jsx";
 import {
   fetchAutoBoundary,
@@ -130,6 +130,9 @@ export function SiteBoundaryEditorV2({
     convertToDNA,
   } = useBoundaryState(initialBoundaryPolygon);
 
+  const initialBoundaryKey = JSON.stringify(initialBoundaryPolygon || []);
+  const lastInitialBoundaryKeyRef = useRef(initialBoundaryKey);
+
   const polygonLength = polygon.length;
   const contextualBoundaryLength = Array.isArray(contextualBoundaryPolygon)
     ? contextualBoundaryPolygon.length
@@ -199,6 +202,12 @@ export function SiteBoundaryEditorV2({
 
   // Initialize polygon from props
   useEffect(() => {
+    if (lastInitialBoundaryKeyRef.current === initialBoundaryKey) {
+      return;
+    }
+
+    lastInitialBoundaryKeyRef.current = initialBoundaryKey;
+
     if (
       initialBoundaryPolygon &&
       initialBoundaryPolygon.length > 0 &&
@@ -206,7 +215,7 @@ export function SiteBoundaryEditorV2({
     ) {
       setPolygon(initialBoundaryPolygon, false);
     }
-  }, [initialBoundaryPolygon, polygon, setPolygon]);
+  }, [initialBoundaryKey, initialBoundaryPolygon, polygon, setPolygon]);
 
   // Auto-detect boundary when map loads if no polygon exists
   useEffect(() => {
@@ -880,12 +889,21 @@ export function SiteBoundaryEditorV2({
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              className="mt-3 p-2 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800"
+              className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-900"
+              data-testid="edit-mode-instructions"
             >
-              <strong>Edit Mode:</strong> Drag vertices • Click midpoints to add
-              • Right-click/Delete to remove •
-              <span className="font-mono mx-1">SHIFT</span>=angle snap •
-              <span className="font-mono mx-1">ALT</span>=disable snap
+              <strong className="block mb-1">Edit Mode</strong>
+              <ul className="grid gap-1 sm:grid-cols-2">
+                <li>Drag blue corner points to adjust the boundary</li>
+                <li>Click midpoint dots to add a corner</li>
+                <li>Select a corner and press Delete/Backspace to remove it</li>
+                <li>
+                  <span className="font-mono">Shift</span> = angle snap
+                </li>
+                <li>
+                  <span className="font-mono">Alt</span> = free movement
+                </li>
+              </ul>
             </motion.div>
           )}
           {mode === MODES.DRAW && (
@@ -893,13 +911,18 @@ export function SiteBoundaryEditorV2({
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              className="mt-3 p-2 bg-purple-50 border border-purple-200 rounded-lg text-sm text-purple-800"
+              className="mt-3 p-3 bg-purple-50 border border-purple-200 rounded-lg text-sm text-purple-900"
+              data-testid="draw-mode-instructions"
             >
-              <strong>Draw Mode:</strong> Click to place vertices • Double-click
-              or
-              <span className="font-mono mx-1">ENTER</span> to finish •
-              <span className="font-mono mx-1">ESC</span>/Backspace to undo last
-              point •<span className="font-mono mx-1">SHIFT</span>=45° snap
+              <strong className="block mb-1">Draw Mode</strong>
+              <ul className="grid gap-1 sm:grid-cols-2">
+                <li>Click to place corners</li>
+                <li>Double-click or Enter to finish</li>
+                <li>Esc/Backspace to undo last point</li>
+                <li>
+                  <span className="font-mono">Shift</span> = 45° snap
+                </li>
+              </ul>
             </motion.div>
           )}
         </AnimatePresence>
@@ -928,19 +951,6 @@ export function SiteBoundaryEditorV2({
           )}
         </AnimatePresence>
       </div>
-
-      {/* Always-visible summary bar — surfaces area / perimeter / vertex
-          count + reference + length-of-each-side data the moment a polygon
-          is loaded, so the user never has to discover the Diagnostics
-          toggle to see it. */}
-      {polygon.length >= 3 && (
-        <div
-          className="bg-white rounded-lg shadow p-3 mb-3"
-          data-testid="boundary-summary-bar"
-        >
-          <BoundaryDiagnostics vertices={vertices} compact={true} />
-        </div>
-      )}
 
       {/* Main Content Grid */}
       <div className={`grid gap-4 ${showTableEditor ? "lg:grid-cols-2" : ""}`}>
@@ -980,8 +990,8 @@ export function SiteBoundaryEditorV2({
           {/* Map Container */}
           <div
             ref={handleMapContainerRef}
-            className="w-full h-[450px] bg-slate-100"
-            style={{ minHeight: "450px" }}
+            className="h-[320px] w-full bg-slate-100 md:h-[390px]"
+            style={{ minHeight: "300px" }}
           />
         </div>
 
@@ -1017,7 +1027,7 @@ export function SiteBoundaryEditorV2({
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 20 }}
             >
-              <VertexTableEditor
+              <BoundaryNumericEditor
                 vertices={vertices}
                 onVerticesChange={handleTableVerticesChange}
                 onVertexSelect={(index) => {
@@ -1034,28 +1044,38 @@ export function SiteBoundaryEditorV2({
         </AnimatePresence>
       </div>
 
-      {/* Diagnostics */}
-      <AnimatePresence>
-        {showDiagnostics && polygon.length >= 3 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-          >
-            <BoundaryDiagnostics
-              vertices={vertices}
-              showSegments={true}
-              showAngles={true}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Quick Metrics Bar (when diagnostics hidden) */}
-      {!showDiagnostics && polygon.length >= 3 && (
-        <div className="bg-white rounded-lg shadow p-3">
-          <BoundaryDiagnostics vertices={vertices} compact={true} />
-        </div>
+      {/* Measurements */}
+      {polygon.length >= 3 && (
+        <section
+          className="bg-white rounded-lg shadow-lg p-4 space-y-3"
+          data-testid="boundary-measurements"
+        >
+          <div>
+            <h3 className="text-lg font-bold text-slate-900">
+              Boundary Measurements
+            </h3>
+            <p className="text-sm text-slate-600">
+              Drag corners, draw a new polygon, or enter numeric values to
+              refine the site boundary.
+            </p>
+          </div>
+          <AnimatePresence initial={false}>
+            <motion.div
+              key={
+                showDiagnostics ? "diagnostics-detailed" : "diagnostics-summary"
+              }
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+            >
+              <BoundaryDiagnostics
+                vertices={vertices}
+                showSegments={showDiagnostics}
+                showAngles={showDiagnostics}
+              />
+            </motion.div>
+          </AnimatePresence>
+        </section>
       )}
     </div>
   );

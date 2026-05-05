@@ -321,18 +321,26 @@ export class PrecisionPolygonEditor {
     const isSelected = index === this.selectedIndex;
     const isDragging = index === this.draggedIndex;
 
-    let fillColor = "#3B82F6"; // Blue
-    let scale = 8;
+    let fillColor = "#2563EB"; // Blue
+    let strokeColor = "#FFFFFF";
+    let strokeWeight = 3;
+    let scale = 10;
 
     if (isDragging) {
       fillColor = "#EF4444"; // Red
-      scale = 12;
+      strokeColor = "#7F1D1D";
+      strokeWeight = 4;
+      scale = 15;
     } else if (isSelected) {
-      fillColor = "#8B5CF6"; // Purple
-      scale = 10;
+      fillColor = "#F59E0B"; // Amber
+      strokeColor = "#1E3A8A";
+      strokeWeight = 4;
+      scale = 13;
     } else if (isHovered) {
       fillColor = "#10B981"; // Green
-      scale = 10;
+      strokeColor = "#064E3B";
+      strokeWeight = 4;
+      scale = 12;
     }
 
     return {
@@ -340,8 +348,8 @@ export class PrecisionPolygonEditor {
       scale,
       fillColor,
       fillOpacity: 1,
-      strokeColor: "#FFFFFF",
-      strokeWeight: 2,
+      strokeColor,
+      strokeWeight,
       anchor: new this.google.maps.Point(0, 0),
     };
   }
@@ -402,11 +410,11 @@ export class PrecisionPolygonEditor {
   _getMidpointIcon(isHovered = false) {
     return {
       path: this.google.maps.SymbolPath.CIRCLE,
-      scale: isHovered ? 6 : 4,
-      fillColor: isHovered ? "#10B981" : "#94A3B8",
-      fillOpacity: isHovered ? 1 : 0.6,
-      strokeColor: "#FFFFFF",
-      strokeWeight: 1,
+      scale: isHovered ? 9 : 6,
+      fillColor: isHovered ? "#10B981" : "#F59E0B",
+      fillOpacity: isHovered ? 1 : 0.9,
+      strokeColor: isHovered ? "#064E3B" : "#FFFFFF",
+      strokeWeight: isHovered ? 3 : 2,
       anchor: new this.google.maps.Point(0, 0),
     };
   }

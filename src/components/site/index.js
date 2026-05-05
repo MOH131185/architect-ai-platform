@@ -21,6 +21,7 @@ export { default as SiteBoundaryEditorLegacy } from "../map/SiteBoundaryEditor.j
 
 // V2 Sub-components
 export { VertexTableEditor } from "../map/VertexTableEditor.jsx";
+export { BoundaryNumericEditor } from "../map/BoundaryNumericEditor.jsx";
 export { BoundaryDiagnostics } from "../map/BoundaryDiagnostics.jsx";
 
 // V2 Hooks
