@@ -25,8 +25,12 @@ const VISUAL_MANIFEST = {
   manifestHash: "visual-manifest-hash-phase2",
   geometryHash: GEOMETRY_HASH,
   buildingType: "house",
+  buildingTypology: "terraced/row-house dwelling",
+  attachmentType: "terraced",
+  partyWallSides: ["left", "right"],
   storeyCount: 2,
   roof: { form: "concealed parapet", materialName: "slate" },
+  rooflights: { present: false, count: 0, source: "test" },
   primaryFacadeMaterial: {
     name: "London stock brick",
     hex: "#b89b72",
@@ -40,6 +44,7 @@ const VISUAL_MANIFEST = {
   windowMaterial: "painted timber",
   doorMaterial: "painted timber",
   windowRhythm: "regular three-bay",
+  windowRhythmFingerprint: { totalWindowCount: 6, bySide: { south: 6 } },
   entranceOrientation: "front-left approach",
 };
 
@@ -159,6 +164,17 @@ describe("ProjectGraph visual image2 Phase 2", () => {
         }),
       );
     }
+    for (const [call] of renderProjectGraphPanelImage.mock.calls) {
+      expect(call.deterministicSvg).toContain(
+        'data-control-identity-markers="true"',
+      );
+      expect(call.deterministicSvg).toContain(
+        'data-attachment-type="terraced"',
+      );
+      expect(call.deterministicSvg).toContain("PARTY WALLS: left+right");
+      expect(call.deterministicSvg).toContain("ROOFLIGHTS: NONE");
+      expect(call.deterministicSvg).toContain("SAME WINDOW LOCATIONS");
+    }
 
     const promptsByPanel = Object.fromEntries(
       renderProjectGraphPanelImage.mock.calls.map(([call]) => [
@@ -226,7 +242,7 @@ describe("ProjectGraph visual image2 Phase 2", () => {
         model: "gpt-image-2",
         requestId: `req-${panelType}`,
         usage: { total_tokens: 10 },
-        controlSvgHash: `control-svg-hash-${panelType}`,
+        controlSvgHash: expect.any(String),
         controlViewType:
           panelType === "interior_3d"
             ? "interior_room_cutaway_control"
@@ -235,6 +251,17 @@ describe("ProjectGraph visual image2 Phase 2", () => {
               : "exterior_massing_opening_control",
       });
       expect(artifact.promptHash).toEqual(expect.any(String));
+      expect(artifact.metadata.visualControlConsistency).toMatchObject({
+        rooflightsPresent: false,
+        materialSplit: {
+          primary: "London stock brick",
+          secondary: "Portland stone",
+          roof: "slate",
+        },
+        windowRhythm: "regular three-bay",
+        windowCount: 6,
+        attachmentType: "terraced",
+      });
       expect(artifact.metadata).toMatchObject({
         geometryHash: GEOMETRY_HASH,
         sourceGeometryHash: GEOMETRY_HASH,
@@ -249,7 +276,7 @@ describe("ProjectGraph visual image2 Phase 2", () => {
         openaiImageUsed: true,
         openaiRequestId: `req-${panelType}`,
         openaiUsage: { total_tokens: 10 },
-        controlSvgHash: `control-svg-hash-${panelType}`,
+        controlSvgHash: expect.any(String),
         controlViewType: artifact.controlViewType,
         promptHash: artifact.promptHash,
       });

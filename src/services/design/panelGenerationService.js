@@ -1009,6 +1009,148 @@ function normalizeDimensions(masterDNA = {}) {
   };
 }
 
+function normalizeTypologySignal(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .trim();
+}
+
+function collectPanelTypologySignals(
+  masterDNA = {},
+  projectContext = {},
+  buildingType = "",
+) {
+  return [
+    buildingType,
+    masterDNA?.buildingTypology,
+    masterDNA?.attachmentType,
+    masterDNA?.typology,
+    masterDNA?.buildingType,
+    masterDNA?._structured?.brief?.building_type,
+    masterDNA?._structured?.brief?.buildingTypology,
+    masterDNA?._structured?.brief?.attachmentType,
+    projectContext?.buildingTypology,
+    projectContext?.attachmentType,
+    projectContext?.typology,
+    projectContext?.buildingType,
+    projectContext?.buildingProgram,
+    projectContext?.projectType,
+    projectContext?.brief?.building_type,
+    projectContext?.brief?.buildingTypology,
+    projectContext?.brief?.attachmentType,
+  ]
+    .map(normalizeTypologySignal)
+    .filter(Boolean)
+    .join(" ");
+}
+
+function resolvePanelAttachmentType(
+  masterDNA = {},
+  projectContext = {},
+  buildingType = "",
+) {
+  const explicit = normalizeTypologySignal(
+    masterDNA?.attachmentType ||
+      projectContext?.attachmentType ||
+      projectContext?.brief?.attachmentType,
+  );
+  if (explicit === "end terrace" || explicit === "end_terrace") {
+    return "end_terrace";
+  }
+  if (
+    ["detached", "semi detached", "semi_detached", "terraced"].includes(
+      explicit,
+    )
+  ) {
+    return explicit.replace("semi detached", "semi_detached");
+  }
+
+  const signals = collectPanelTypologySignals(
+    masterDNA,
+    projectContext,
+    buildingType,
+  );
+  if (/\bend\s+terrace\b|\bend\s+terraced\b/.test(signals)) {
+    return "end_terrace";
+  }
+  if (
+    /\bterraced\b|\bterrace\b|\brow\s+house\b|\browhouse\b|\btownhouse\b|\btown\s+house\b/.test(
+      signals,
+    )
+  ) {
+    return "terraced";
+  }
+  if (/\bsemi\s+detached\b|\bsemi-detached\b/.test(signals)) {
+    return "semi_detached";
+  }
+  if (/\bdetached\b|\bfreestanding\b|\bstandalone\b/.test(signals)) {
+    return "detached";
+  }
+  return "unknown";
+}
+
+function buildPanelGenerationTypologyLock(
+  masterDNA = {},
+  projectContext = {},
+  buildingType = "",
+) {
+  const attachmentType = resolvePanelAttachmentType(
+    masterDNA,
+    projectContext,
+    buildingType,
+  );
+  if (attachmentType === "terraced") {
+    return {
+      attachmentType,
+      positive:
+        "terraced/row-house dwelling, party walls / attached neighbours or attached-row context, no freestanding detached house, no open space on both side elevations, front facade follows terraced-house rhythm",
+      technicalPositive:
+        ", preserve terraced party-wall sides, no free-standing exposure on both side elevations",
+      technicalNegative:
+        ", freestanding detached house, standalone detached building, open space on both side elevations",
+      finalNegative:
+        ", freestanding detached house, standalone house, detached villa, isolated building, open space on both side elevations",
+    };
+  }
+  if (attachmentType === "end_terrace") {
+    return {
+      attachmentType,
+      positive:
+        "end-terrace dwelling, one party wall / attached neighbour, one exposed side elevation, no open space on both side elevations",
+      technicalPositive:
+        ", preserve one party-wall side and one exposed side elevation",
+      technicalNegative:
+        ", freestanding detached house, standalone detached building, open space on both side elevations",
+      finalNegative:
+        ", freestanding detached house, standalone house, detached villa, open space on both side elevations",
+    };
+  }
+  if (attachmentType === "semi_detached") {
+    return {
+      attachmentType,
+      positive:
+        "semi-detached dwelling, one shared party wall / paired-neighbour context, not a fully freestanding detached house",
+      technicalPositive:
+        ", preserve one shared party-wall side and one exposed side elevation",
+      technicalNegative:
+        ", freestanding detached house, mid-terrace row, open space on both side elevations",
+      finalNegative:
+        ", freestanding detached house, standalone detached villa, mid-terrace row house",
+    };
+  }
+  return {
+    attachmentType,
+    positive:
+      "single detached building structure, centered composition, continuous facade",
+    technicalPositive: ", no row houses, no detached elements",
+    technicalNegative:
+      ", row of houses, attached units, split mass, townhouses, terraced houses, semi-detached",
+    finalNegative:
+      ", multiple buildings, row houses, terraced houses, townhouses, semi-detached, housing estate",
+  };
+}
+
 function normalizeProgram(programSpaces = []) {
   if (!Array.isArray(programSpaces) || programSpaces.length === 0) {
     return "lobby, living, kitchen, bedrooms, services";
@@ -1521,6 +1663,11 @@ export async function planA1Panels({
     // STYLE LOCK: Create a deterministic style descriptor from DNA
     // This ensures ALL panels use the exact same materials, colors, and architectural language
     const styleLock = buildStyleLock(masterDNA);
+    const typologyLock = buildPanelGenerationTypologyLock(
+      masterDNA,
+      projectContext,
+      buildingType,
+    );
 
     // Try specialized builder first, fallback to generic
     let jobPrompt, jobNegativePrompt;
@@ -1609,10 +1756,9 @@ export async function planA1Panels({
       }
     }
 
-    // Enforce "Single Building" constraint in prompt to prevent row-of-houses hallucination
-    if (!jobPrompt.includes("single building")) {
-      jobPrompt +=
-        ", single detached building structure, centered composition, continuous facade";
+    // Enforce the locked attachment typology without overriding terraced/semi-detached briefs.
+    if (!jobPrompt.includes(typologyLock.positive)) {
+      jobPrompt += `, ${typologyLock.positive}`;
     }
 
     // Floor count enforcement in positive prompt
@@ -1624,10 +1770,8 @@ export async function planA1Panels({
 
     // Add specific constraints for elevations and sections to prevent splitting
     if (panelType.includes("elevation") || panelType.includes("section")) {
-      jobPrompt +=
-        ", one unified mass, no separate buildings, no row houses, no detached elements";
-      jobNegativePrompt +=
-        ", multiple buildings, row of houses, attached units, split mass, townhouses";
+      jobPrompt += `, one unified mass, no separate unrelated buildings${typologyLock.technicalPositive}`;
+      jobNegativePrompt += `, multiple unrelated buildings${typologyLock.technicalNegative}`;
     }
 
     // Add specific constraints for floor plans
@@ -1643,8 +1787,7 @@ export async function planA1Panels({
       jobNegativePrompt +=
         ", two storey, two story, second floor, upper floor, multi-level, 2-storey, first floor windows above ground";
     }
-    jobNegativePrompt +=
-      ", multiple buildings, row houses, terraced houses, townhouses, semi-detached, housing estate";
+    jobNegativePrompt += typologyLock.finalNegative;
 
     // NEW: Select FGL control image for elevation panels
     let fglControlImage = null;

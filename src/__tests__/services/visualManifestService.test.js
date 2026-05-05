@@ -80,6 +80,28 @@ function canonicalFixture(overrides = {}) {
   return { ...base, ...overrides };
 }
 
+function terracedFixture() {
+  const fixture = canonicalFixture();
+  fixture.brief = {
+    ...fixture.brief,
+    building_type: "dwelling",
+    original_subtype: "terraced-house",
+    project_type_support: {
+      subtypeId: "terraced-house",
+      programmeTemplateKey: "terraced-house",
+    },
+  };
+  fixture.compiledProject = {
+    ...fixture.compiledProject,
+    windows: [
+      { id: "w1", side: "south" },
+      { id: "w2", side: "south" },
+      { id: "w3", side: "south" },
+    ],
+  };
+  return fixture;
+}
+
 describe("buildVisualManifest", () => {
   test("emits version v1 + manifestId + manifestHash", () => {
     const m = buildVisualManifest(canonicalFixture());
@@ -175,6 +197,9 @@ describe("buildVisualManifest", () => {
       areaM2: 83.25,
     });
     expect(m.buildingType).toBe("detached_house");
+    expect(m.buildingTypology).toBe("detached dwelling");
+    expect(m.attachmentType).toBe("detached");
+    expect(m.partyWallSides).toEqual([]);
     expect(m.massingSummary).toEqual({
       form: "compact rectangular",
       longSideOrientation: "south",
@@ -194,6 +219,18 @@ describe("buildVisualManifest", () => {
     expect(m.windowMaterial).toBeTruthy();
     expect(m.doorMaterial).toBeTruthy();
     expect(m.windowRhythm).toBeTruthy();
+    expect(m.windowRhythmFingerprint).toEqual(
+      expect.objectContaining({
+        totalWindowCount: 0,
+        bySide: {},
+      }),
+    );
+    expect(m.rooflights).toEqual(
+      expect.objectContaining({
+        present: false,
+        count: 0,
+      }),
+    );
     expect(m.entranceOrientation).toBeTruthy();
     expect(m.climateResponse?.zone).toBe("Cfb");
     expect(m.localStyle).toBe("Birmingham red-brick vernacular");
@@ -208,6 +245,15 @@ describe("buildVisualManifest", () => {
     expect(m.negativeConstraints).toEqual([
       ...VISUAL_MANIFEST_NEGATIVE_CONSTRAINTS,
     ]);
+  });
+
+  test("carries terraced attachment type and party wall sides from the residential subtype", () => {
+    const m = buildVisualManifest(terracedFixture());
+    expect(m.buildingType).toBe("dwelling");
+    expect(m.buildingTypology).toBe("terraced/row-house dwelling");
+    expect(m.attachmentType).toBe("terraced");
+    expect(m.partyWallSides).toEqual(["left", "right"]);
+    expect(m.windowRhythmFingerprint.totalWindowCount).toBe(3);
   });
 
   test("changing only the negativeConstraints array on input does not change the hash (hash excludes the prompt-engineering aid)", () => {
@@ -240,7 +286,9 @@ describe("buildVisualIdentityLockBlock", () => {
     expect(block).toContain(m.manifestHash);
     // Storey count + building type
     expect(block).toMatch(/3-storey/);
-    expect(block).toContain("detached_house");
+    expect(block).toContain("detached dwelling");
+    expect(block).toContain("Attachment: detached");
+    expect(block).toContain("freestanding detached output is allowed");
     // Roof form + material
     expect(block).toContain("gable");
     expect(block).toContain("Dark grey roof tile");
@@ -259,6 +307,16 @@ describe("buildVisualIdentityLockBlock", () => {
     // Negative constraints listed
     expect(block).toContain("do not invent additional storeys");
     expect(block).toContain("do not change facade materials");
+  });
+
+  test("terraced lock block forbids detached freestanding drift", () => {
+    const m = buildVisualManifest(terracedFixture());
+    const block = buildVisualIdentityLockBlock(m);
+    expect(block).toContain("terraced/row-house dwelling");
+    expect(block).toContain("party wall sides: left, right");
+    expect(block).toContain("attached neighbours or attached-row context");
+    expect(block).toContain("No freestanding detached house");
+    expect(block).toContain("no open space on both side elevations");
   });
 
   test("two manifests with identical inputs produce identical lock blocks", () => {
@@ -354,6 +412,38 @@ describe("buildProjectGraphRenderPrompt — Phase D injection", () => {
     expect(prompt).toContain("Preserve the regular bay window rhythm");
     expect(prompt).toContain("Preserve the entrance at front facade centred");
     expect(prompt).toContain("Do not invent extra bays, extra storeys");
+  });
+
+  test("terraced visual prompt contains attached constraints and forbids detached freestanding output", () => {
+    const fixture = terracedFixture();
+    const terracedManifest = buildVisualManifest(fixture);
+    const prompt = buildProjectGraphRenderPrompt({
+      panelType: "exterior_render",
+      brief: fixture.brief,
+      compiledProject: fixture.compiledProject,
+      climate: fixture.climate,
+      localStyle: fixture.localStyle,
+      styleDNA: fixture.styleDNA,
+      programmeSummary: { targetStoreys: 3 },
+      region: "Birmingham",
+      visualManifest: terracedManifest,
+    });
+
+    expect(prompt).toContain("terraced/row-house dwelling");
+    expect(prompt).toContain("party walls / attached neighbours");
+    expect(prompt).toContain("No freestanding detached house");
+    expect(prompt).toContain("No open space on both side elevations");
+    expect(prompt).toContain("Front facade follows terraced-house rhythm");
+    expect(prompt).toContain("do not render a freestanding detached house");
+    expect(prompt).not.toContain("Single freestanding building, no neighbours");
+  });
+
+  test("detached visual prompt still allows freestanding detached output", () => {
+    const prompt = promptFor("exterior_render");
+    expect(prompt).toContain("Attachment type: detached; no party walls");
+    expect(prompt).toContain("Freestanding detached output is allowed");
+    expect(prompt).toContain("Single freestanding detached building");
+    expect(prompt).not.toContain("No freestanding detached house");
   });
 
   test("prompts add hard view-specific blocks for exterior, axonometric, and interior panels", () => {

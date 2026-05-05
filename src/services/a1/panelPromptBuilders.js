@@ -146,6 +146,147 @@ function normalizeMaterials(masterDNA = {}) {
   return ["stone", "glass", "timber"];
 }
 
+function normalizeTypologyText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .trim();
+}
+
+function collectTypologySignals(masterDNA = {}, projectContext = {}) {
+  return [
+    masterDNA?.buildingTypology,
+    masterDNA?.attachmentType,
+    masterDNA?.typology,
+    masterDNA?.buildingType,
+    masterDNA?._structured?.brief?.building_type,
+    masterDNA?._structured?.brief?.typology,
+    masterDNA?._structured?.brief?.attachmentType,
+    projectContext?.buildingTypology,
+    projectContext?.attachmentType,
+    projectContext?.typology,
+    projectContext?.buildingType,
+    projectContext?.buildingProgram,
+    projectContext?.projectType,
+    projectContext?.brief?.building_type,
+    projectContext?.brief?.buildingType,
+    projectContext?.brief?.buildingTypology,
+    projectContext?.brief?.attachmentType,
+  ]
+    .map(normalizeTypologyText)
+    .filter(Boolean)
+    .join(" ");
+}
+
+function resolvePromptAttachmentType(masterDNA = {}, projectContext = {}) {
+  const explicit = normalizeTypologyText(
+    masterDNA?.attachmentType ||
+      projectContext?.attachmentType ||
+      projectContext?.brief?.attachmentType,
+  );
+  if (explicit === "end terrace" || explicit === "end_terrace") {
+    return "end_terrace";
+  }
+  if (
+    ["detached", "semi detached", "semi_detached", "terraced"].includes(
+      explicit,
+    )
+  ) {
+    return explicit.replace("semi detached", "semi_detached");
+  }
+
+  const signals = collectTypologySignals(masterDNA, projectContext);
+  if (/\bend\s+terrace\b|\bend\s+terraced\b/.test(signals)) {
+    return "end_terrace";
+  }
+  if (
+    /\bterraced\b|\bterrace\b|\brow\s+house\b|\browhouse\b|\btownhouse\b|\btown\s+house\b/.test(
+      signals,
+    )
+  ) {
+    return "terraced";
+  }
+  if (/\bsemi\s+detached\b|\bsemi-detached\b/.test(signals)) {
+    return "semi_detached";
+  }
+  if (/\bdetached\b|\bfreestanding\b|\bstandalone\b/.test(signals)) {
+    return "detached";
+  }
+  return "unknown";
+}
+
+function buildPromptTypologyLock(masterDNA = {}, projectContext = {}) {
+  const attachmentType = resolvePromptAttachmentType(masterDNA, projectContext);
+  if (attachmentType === "terraced") {
+    return {
+      attachmentType,
+      renderNoun: "terraced/row-house dwelling",
+      contextPhrase:
+        "attached-row context with party walls and no open space on both side elevations",
+      requirements: [
+        "Attachment type: terraced/row-house dwelling.",
+        "Show party walls / attached neighbours or attached-row context.",
+        "No freestanding detached house; no open space on both side elevations unless end-terrace is explicitly selected.",
+        "Front facade follows terraced-house rhythm.",
+      ],
+      negativePrompt:
+        "freestanding detached house, standalone house, detached villa, isolated building, open space on both side elevations",
+    };
+  }
+  if (attachmentType === "end_terrace") {
+    return {
+      attachmentType,
+      renderNoun: "end-terrace dwelling",
+      contextPhrase:
+        "end-terrace context with one party wall and one exposed side elevation",
+      requirements: [
+        "Attachment type: end-terrace dwelling.",
+        "Show one party wall / attached neighbour and one exposed side elevation only.",
+        "Do not show open space on both side elevations.",
+        "Front facade follows terraced-house rhythm.",
+      ],
+      negativePrompt:
+        "freestanding detached house, standalone house, detached villa, open space on both side elevations, mid-terrace both-side party walls",
+    };
+  }
+  if (attachmentType === "semi_detached") {
+    return {
+      attachmentType,
+      renderNoun: "semi-detached dwelling",
+      contextPhrase:
+        "semi-detached context with one party wall and one exposed side elevation",
+      requirements: [
+        "Attachment type: semi-detached dwelling.",
+        "Show one shared party wall / paired-neighbour context.",
+        "Do not show a fully freestanding detached house.",
+      ],
+      negativePrompt:
+        "freestanding detached house, standalone villa, mid-terrace row house, open space on both side elevations",
+    };
+  }
+  if (attachmentType === "detached") {
+    return {
+      attachmentType,
+      renderNoun: "single detached dwelling",
+      contextPhrase:
+        "freestanding building with garden/open space on all sides",
+      requirements: [
+        "Attachment type: detached dwelling.",
+        "Freestanding detached output is allowed; keep open space on all side elevations.",
+      ],
+      negativePrompt:
+        "terraced, row houses, semi-detached, attached buildings, shared walls, townhouses",
+    };
+  }
+  return {
+    attachmentType,
+    renderNoun: "residential dwelling",
+    contextPhrase: "attachment context matching the brief",
+    requirements: ["Attachment type: match the brief exactly."],
+    negativePrompt: "different building typology, inconsistent attachment type",
+  };
+}
+
 /**
 /**
  * Build a REGIONAL VERNACULAR block (paper §4.3 transfer-by-curation).
@@ -820,6 +961,7 @@ export function buildHero3DPrompt({
     masterDNA?.roof?.type ||
     masterDNA?._structured?.geometry_rules?.roof_type ||
     "gable";
+  const typologyLock = buildPromptTypologyLock(masterDNA, projectContext);
   const geomConstraint = geometryHint?.type
     ? `FOLLOW PROVIDED GEOMETRY silhouette (${geometryHint.type}) for massing and roofline.`
     : "Keep massing consistent with plans and elevations.";
@@ -882,9 +1024,9 @@ export function buildHero3DPrompt({
           .join(", ") || materials.join(", ");
 
   const buildingTypePrefix =
-    `${materialDesc}, a single detached ${floorText}, ` +
+    `${materialDesc}, a ${typologyLock.renderNoun}, ${floorText}, ` +
     `${style} architecture, ${roofType} roof, ` +
-    `one freestanding building with garden on all sides, ` +
+    `${typologyLock.contextPhrase}, ` +
     `photographed from front-left corner, `;
 
   // Hero establishes the design - include strong design specification
@@ -902,6 +1044,7 @@ ${vernacularBlock ? `\n${vernacularBlock}\n` : ""}
 
 DESIGN SPECIFICATION (All subsequent panels MUST match this):
 - Building massing: ${storeyDesc}
+- ${typologyLock.requirements.join("\n- ")}
 - Roof type: ${roofType} (EXACT roof shape will be used for all views)
 - Facade materials: ${canonicalIdentitySpec.primaryMaterial?.name || materials[0] || "primary material"} as dominant
 - Secondary materials: ${canonicalIdentitySpec.secondaryMaterial?.name || "matching accent material"}
@@ -935,7 +1078,7 @@ STYLE: ${RENDER_STYLE_SUFFIX}`;
 
   return {
     prompt,
-    negativePrompt: `terraced, row houses, semi-detached, attached buildings, shared walls, multiple buildings, housing estate, street of houses, neighborhood, multiple roofs, duplex, apartment block, flats, apartments, townhouses, housing development, cartoon, sketch, overexposed, low detail, wireframe, different building styles, inconsistent design, people, cars, toy model, miniature, diorama, tilt-shift, plastic, CGI render, video game, unreal engine UI, blueprint drawing, line art, flat shading, anime, illustration, ${dims.floors === 1 ? "two storey, second floor, upper floor, balcony, " : ""}${buildRoofTypeNegatives(roofType)}, ${buildFloorCountNegatives(dims.floors)}`,
+    negativePrompt: `${typologyLock.negativePrompt}, multiple unrelated buildings, housing estate, street of houses, neighborhood clutter, multiple roofs, duplex, apartment block, flats, apartments, housing development, cartoon, sketch, overexposed, low detail, wireframe, different building styles, inconsistent design, people, cars, toy model, miniature, diorama, tilt-shift, plastic, CGI render, video game, unreal engine UI, blueprint drawing, line art, flat shading, anime, illustration, ${dims.floors === 1 ? "two storey, second floor, upper floor, balcony, " : ""}${buildRoofTypeNegatives(roofType)}, ${buildFloorCountNegatives(dims.floors)}`,
   };
 }
 
@@ -974,6 +1117,7 @@ export function buildExteriorRenderPrompt({
     masterDNA?.roof?.type ||
     masterDNA?._structured?.geometry_rules?.roof_type ||
     "gable";
+  const typologyLock = buildPromptTypologyLock(masterDNA, projectContext);
   const fingerprintConstraint = injectFingerprintConstraint({
     masterDNA,
     projectContext,
@@ -1023,7 +1167,8 @@ REQUIREMENTS:
 - Sky: subtle gradient with thin cirrus, no overexposed highlights
 - Detailed front entrance: door, lighting, threshold, address detail
 - Visible architectural detailing: window reveals (100mm depth), rainwater goods, plinth course, eaves
-- Single freestanding building, no neighbours, no street furniture clutter
+- ${typologyLock.requirements.join("\n- ")}
+- No street furniture clutter
 - ${geomConstraint}
 - FLOOR COUNT: EXACTLY ${dims.floors} floor(s).
 - ROOF: ${roofType} roof, profile clearly visible.
@@ -1035,7 +1180,7 @@ STYLE: ${RENDER_STYLE_SUFFIX}`;
 
   return {
     prompt,
-    negativePrompt: `terraced, row houses, semi-detached, attached buildings, shared walls, multiple buildings, neighborhood, cartoon, sketch, wireframe, different building styles, inconsistent design, people, cars in driveway, toy model, plastic, video game, blueprint drawing, line art, flat shading, anime, ${buildRoofTypeNegatives(roofType)}, ${buildFloorCountNegatives(dims.floors)}`,
+    negativePrompt: `${typologyLock.negativePrompt}, multiple unrelated buildings, neighborhood clutter, cartoon, sketch, wireframe, different building styles, inconsistent design, people, cars in driveway, toy model, plastic, video game, blueprint drawing, line art, flat shading, anime, ${buildRoofTypeNegatives(roofType)}, ${buildFloorCountNegatives(dims.floors)}`,
   };
 }
 
@@ -1652,6 +1797,7 @@ export function buildAxonometricPrompt({
     masterDNA?.roof?.type ||
     masterDNA?._structured?.geometry_rules?.roof_type ||
     "gable";
+  const typologyLock = buildPromptTypologyLock(masterDNA, projectContext);
   const fingerprintConstraint = injectFingerprintConstraint({
     masterDNA,
     projectContext,
@@ -1680,17 +1826,18 @@ CRITICAL: This axonometric MUST show THE EXACT SAME building as the hero 3D rend
 - SAME building massing and proportions
 - SAME materials and colors
 - SAME window arrangement
+- ${typologyLock.requirements.join("\n- ")}
 
 REQUIREMENTS:
 - TRUE AXONOMETRIC/ISOMETRIC PROJECTION (30° or 45° angle)
 - Equal scale on all axes (no perspective distortion)
 - View from above showing roof form (MUST match hero roof exactly)
-- All four facades partially visible (MUST match hero facades)
+- Facade visibility respects attachment type; do not expose both side elevations as free-standing walls for terraced dwellings
 - Material textures indicated (SAME as hero)
 - Building massing clearly readable
 - Shows relationship between plan and volume
 - Clean technical drawing style
-- No context/background (isolated building)
+- Minimal background; no unrelated context clutter
 - ${geomConstraint}
 - FLOOR COUNT: EXACTLY ${dims.floors} floor(s) visible from above. ${dims.floors === 1 ? "SINGLE STOREY — low horizontal massing, NO upper floor." : ""}
 - ROOF: ${roofType} roof. ${roofType === "flat" ? "Flat horizontal top." : roofType === "gable" ? "Gable ridge line visible." : ""}
@@ -1702,7 +1849,7 @@ STYLE: ${RENDER_STYLE_SUFFIX}`;
 
   return {
     prompt,
-    negativePrompt: `perspective view, vanishing points, context clutter, people, cars, sketchy, different building, different roof, inconsistent design, ${buildRoofTypeNegatives(roofType)}, ${buildFloorCountNegatives(dims.floors)}`,
+    negativePrompt: `${typologyLock.negativePrompt}, perspective view, vanishing points, context clutter, people, cars, sketchy, different building, different roof, inconsistent design, ${buildRoofTypeNegatives(roofType)}, ${buildFloorCountNegatives(dims.floors)}`,
   };
 }
 

@@ -33,7 +33,7 @@ const NEGATIVE_CONSTRAINTS = Object.freeze([
   "do not change facade materials between panels",
   "do not relocate the entrance",
   "do not change the roof form or pitch",
-  "do not introduce neighbouring buildings",
+  "do not introduce unrelated neighbouring buildings outside the locked attachment context",
   "do not depict a different building from the other visual panels",
 ]);
 
@@ -267,6 +267,211 @@ function deriveLocalStyleLabel({ localStyle, styleDNA }) {
   );
 }
 
+function normalizeSignalText(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ");
+}
+
+function collectTypologySignals({
+  compiledProject,
+  projectGraph,
+  brief,
+  masterDNA,
+}) {
+  return [
+    brief?.building_type,
+    brief?.buildingType,
+    brief?.original_subtype,
+    brief?.originalSubtype,
+    brief?.programme_template_key,
+    brief?.project_type_support?.subtypeId,
+    brief?.project_type_support?.programmeTemplateKey,
+    compiledProject?.buildingTypology,
+    compiledProject?.attachmentType,
+    compiledProject?.typology,
+    projectGraph?.buildingTypology,
+    projectGraph?.attachmentType,
+    masterDNA?.buildingTypology,
+    masterDNA?.attachmentType,
+  ]
+    .map(normalizeSignalText)
+    .filter(Boolean)
+    .join(" ");
+}
+
+function deriveAttachmentType({
+  compiledProject,
+  projectGraph,
+  brief,
+  masterDNA,
+}) {
+  const explicit = normalizeSignalText(
+    brief?.attachmentType ||
+      compiledProject?.attachmentType ||
+      projectGraph?.attachmentType ||
+      masterDNA?.attachmentType,
+  );
+  const text = `${explicit} ${collectTypologySignals({
+    compiledProject,
+    projectGraph,
+    brief,
+    masterDNA,
+  })}`;
+
+  if (
+    /\bend\s+terrace\b|\bend\s+terraced\b|\bterrace\s+end\b|\bend\s+row\b/.test(
+      text,
+    )
+  ) {
+    return "end_terrace";
+  }
+  if (
+    /\bterraced\b|\bterrace house\b|\bterraced house\b|\brow house\b|\browhouse\b|\btownhouse\b|\btown house\b/.test(
+      text,
+    )
+  ) {
+    return "terraced";
+  }
+  if (/\bsemi\s+detached\b|\bsemi detached house\b|\bsemi\b/.test(text)) {
+    return "semi_detached";
+  }
+  if (
+    /\bdetached\b|\bfreestanding\b|\bfree standing\b|\bstandalone\b|\bstand alone\b/.test(
+      text,
+    )
+  ) {
+    return "detached";
+  }
+  return "unknown";
+}
+
+function derivePartyWallSides({
+  compiledProject,
+  projectGraph,
+  brief,
+  attachmentType,
+}) {
+  const explicit =
+    brief?.partyWallSides ||
+    compiledProject?.partyWallSides ||
+    projectGraph?.partyWallSides;
+  if (Array.isArray(explicit) && explicit.length > 0) {
+    return explicit.map((side) => String(side).trim()).filter(Boolean);
+  }
+  if (attachmentType === "terraced") return ["left", "right"];
+  if (attachmentType === "end_terrace" || attachmentType === "semi_detached") {
+    return ["one_side"];
+  }
+  return [];
+}
+
+function deriveBuildingTypology({
+  buildingType,
+  attachmentType,
+  compiledProject,
+  projectGraph,
+  brief,
+  masterDNA,
+}) {
+  const explicit = nullable(
+    brief?.buildingTypology ||
+      compiledProject?.buildingTypology ||
+      projectGraph?.buildingTypology ||
+      masterDNA?.buildingTypology,
+  );
+  if (explicit) return explicit;
+  if (attachmentType === "terraced") return "terraced/row-house dwelling";
+  if (attachmentType === "end_terrace") return "end-terrace dwelling";
+  if (attachmentType === "semi_detached") return "semi-detached dwelling";
+  if (attachmentType === "detached") return "detached dwelling";
+  return buildingType || "building";
+}
+
+function toCountedArray(value) {
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (value && typeof value === "object")
+    return Object.values(value).filter(Boolean);
+  return [];
+}
+
+function deriveRooflights({ compiledProject, masterDNA, projectGraph }) {
+  const candidates = [
+    {
+      source: "compiledProject.roof.rooflights",
+      value: compiledProject?.roof?.rooflights,
+    },
+    {
+      source: "compiledProject.roof.skylights",
+      value: compiledProject?.roof?.skylights,
+    },
+    {
+      source: "compiledProject.roof.openings",
+      value: compiledProject?.roof?.openings,
+    },
+    {
+      source: "compiledProject.rooflights",
+      value: compiledProject?.rooflights,
+    },
+    { source: "compiledProject.skylights", value: compiledProject?.skylights },
+    { source: "masterDNA.roof.rooflights", value: masterDNA?.roof?.rooflights },
+    { source: "masterDNA.roof.skylights", value: masterDNA?.roof?.skylights },
+    { source: "projectGraph.rooflights", value: projectGraph?.rooflights },
+  ];
+
+  for (const candidate of candidates) {
+    if (candidate.value === true) {
+      return { present: true, count: null, source: candidate.source };
+    }
+    const arrayValue = toCountedArray(candidate.value);
+    if (arrayValue.length > 0) {
+      return {
+        present: true,
+        count: arrayValue.length,
+        source: candidate.source,
+      };
+    }
+  }
+  return { present: false, count: 0, source: "not_specified" };
+}
+
+function deriveManifestMaterials({ palette }) {
+  return palette
+    .map((entry, index) =>
+      normaliseMaterial(entry, index === 0 ? "primary facade" : null),
+    )
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+function deriveWindowRhythmFingerprint({ compiledProject }) {
+  const windows = [
+    ...toCountedArray(compiledProject?.windows),
+    ...toCountedArray(compiledProject?.openings).filter((opening) => {
+      const type = String(
+        opening?.type || opening?.kind || "window",
+      ).toLowerCase();
+      return type !== "door";
+    }),
+  ];
+  const bySide = {};
+  for (const windowEntry of windows) {
+    const side = nullable(
+      windowEntry?.side ||
+        windowEntry?.facade ||
+        windowEntry?.orientation ||
+        windowEntry?.metadata?.side,
+    );
+    const key = side || "unknown";
+    bySide[key] = (bySide[key] || 0) + 1;
+  }
+  return {
+    totalWindowCount: windows.length,
+    bySide,
+  };
+}
+
 /**
  * Build the visual manifest. Pure, deterministic, no I/O.
  *
@@ -323,10 +528,35 @@ export function buildVisualManifest({
       brief?.project_graph_id,
   );
   const buildingType = nullable(brief?.building_type || brief?.buildingType);
+  const attachmentType = deriveAttachmentType({
+    compiledProject,
+    projectGraph,
+    brief,
+    masterDNA,
+  });
+  const partyWallSides = derivePartyWallSides({
+    compiledProject,
+    projectGraph,
+    brief,
+    attachmentType,
+  });
+  const buildingTypology = deriveBuildingTypology({
+    buildingType,
+    attachmentType,
+    compiledProject,
+    projectGraph,
+    brief,
+    masterDNA,
+  });
   const primaryFacadeMaterial = derivePrimaryFacade({ palette });
   const secondaryFacadeMaterial = deriveSecondaryFacade({
     palette,
     primary: primaryFacadeMaterial,
+  });
+  const rooflights = deriveRooflights({
+    compiledProject,
+    masterDNA,
+    projectGraph,
   });
 
   const manifestSourceGaps = [];
@@ -344,6 +574,9 @@ export function buildVisualManifest({
     storeyHeights: deriveStoreyHeights({ compiledProject, storeyCount }),
     footprintSummary: deriveFootprintSummary({ compiledProject }),
     buildingType,
+    buildingTypology,
+    attachmentType,
+    partyWallSides,
     massingSummary: deriveMassingSummary({ compiledProject, masterDNA }),
     roof: deriveRoof({
       compiledProject,
@@ -351,8 +584,10 @@ export function buildVisualManifest({
       styleDNA,
       palette,
     }),
+    rooflights,
     primaryFacadeMaterial,
     secondaryFacadeMaterial,
+    materials: deriveManifestMaterials({ palette }),
     windowMaterial: deriveWindowMaterial({ styleDNA, localStyle, palette }),
     doorMaterial: deriveDoorMaterial({ styleDNA, localStyle, palette }),
     windowRhythm: deriveWindowRhythm({
@@ -360,6 +595,9 @@ export function buildVisualManifest({
       projectGraph,
       styleDNA,
       localStyle,
+    }),
+    windowRhythmFingerprint: deriveWindowRhythmFingerprint({
+      compiledProject,
     }),
     entranceOrientation: deriveEntranceOrientation({
       compiledProject,
@@ -403,13 +641,23 @@ export function buildVisualIdentityLockBlock(manifest) {
   if (!manifest || typeof manifest !== "object") return "";
 
   const m = manifest;
-  const buildingLine = `Building: ${m.buildingType || "as specified"}, ${m.storeyCount}-storey${
+  const buildingLine = `Building: ${m.buildingTypology || m.buildingType || "as specified"}, ${m.storeyCount}-storey${
     m.massingSummary?.form ? `, ${m.massingSummary.form}` : ""
+  }`;
+  const attachmentLine = `Attachment: ${m.attachmentType || "unknown"}${
+    Array.isArray(m.partyWallSides) && m.partyWallSides.length > 0
+      ? `, party wall sides: ${m.partyWallSides.join(", ")}`
+      : ", party wall sides: none"
   }`;
   const roofLine = `Roof: ${m.roof?.form || "as specified"}${
     m.roof?.pitchDeg ? `, ${m.roof.pitchDeg}°` : ""
   }, clad in ${m.roof?.materialName || "specified material"}${
     m.roof?.materialHex ? ` (${m.roof.materialHex})` : ""
+  }`;
+  const rooflightLine = `Rooflights/skylights: ${
+    m.rooflights?.present
+      ? `${m.rooflights.count || "specified"} present`
+      : "none - do not add rooflights or skylights"
   }`;
   const primaryLine = `Primary facade: ${m.primaryFacadeMaterial?.name || "as specified"}${
     m.primaryFacadeMaterial?.hex ? ` (${m.primaryFacadeMaterial.hex})` : ""
@@ -440,18 +688,28 @@ export function buildVisualIdentityLockBlock(manifest) {
   const constraints = Array.isArray(m.negativeConstraints)
     ? m.negativeConstraints
     : NEGATIVE_CONSTRAINTS;
+  const typologyConstraints = buildTypologyConstraintLines(m);
+  const windowFingerprintLine =
+    m.windowRhythmFingerprint?.totalWindowCount > 0
+      ? `Window count/rhythm: ${m.windowRhythmFingerprint.totalWindowCount} windows total, ${m.windowRhythm || "specified rhythm"}`
+      : null;
 
   const lines = [
     `=== VISUAL IDENTITY LOCK (manifestHash: ${m.manifestHash}) ===`,
     buildingLine,
+    attachmentLine,
     roofLine,
+    rooflightLine,
     primaryLine,
     secondaryLine,
     glazingLine,
+    windowFingerprintLine,
     doorLine,
     entranceLine,
     climateLine,
     styleLine,
+    typologyConstraints.length ? `Typology constraints:` : null,
+    ...typologyConstraints.map((c) => `- ${c}`),
     `Constraints (do NOT violate):`,
     ...constraints.map((c) => `- ${c}`),
     `This panel MUST depict the SAME building identity as all other visual panels.`,
@@ -460,6 +718,35 @@ export function buildVisualIdentityLockBlock(manifest) {
   ].filter(Boolean);
 
   return lines.join("\n");
+}
+
+function buildTypologyConstraintLines(manifest) {
+  const attachmentType = manifest?.attachmentType || "unknown";
+  if (attachmentType === "terraced") {
+    return [
+      "Terraced/row-house dwelling with party walls / attached neighbours or attached-row context.",
+      "No freestanding detached house and no open space on both side elevations.",
+      "Front facade follows a terraced-house rhythm with repeated vertical bays and a continuous street-wall reading.",
+    ];
+  }
+  if (attachmentType === "end_terrace") {
+    return [
+      "End-terrace dwelling with one party wall side and one exposed side elevation.",
+      "Do not show a fully detached freestanding house.",
+    ];
+  }
+  if (attachmentType === "semi_detached") {
+    return [
+      "Semi-detached dwelling with one attached neighbour / one party-wall side.",
+      "Do not show a fully detached freestanding house or a full terrace row.",
+    ];
+  }
+  if (attachmentType === "detached") {
+    return [
+      "Detached dwelling: freestanding detached output is allowed, with no party walls required.",
+    ];
+  }
+  return [];
 }
 
 export const VISUAL_MANIFEST_NEGATIVE_CONSTRAINTS = NEGATIVE_CONSTRAINTS;

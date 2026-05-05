@@ -1,5 +1,7 @@
 import {
   buildTitleBlockPanelArtifact,
+  computePanelSlotFitMetrics,
+  selectPanelContentViewBox,
   __projectGraphVerticalSliceInternals,
 } from "../../services/project/projectGraphVerticalSliceService.js";
 
@@ -163,7 +165,7 @@ describe("ProjectGraph A1 composer Phase 4", () => {
     expect(svg).toContain("AXONOMETRIC");
     expect(svg).toContain("INTERIOR VIEW");
     expect(svg).toContain("data:image/png;base64");
-    expect(svg).toContain("IMAGE2 / OPENAI EDIT");
+    expect(svg).toContain("IMAGE2 EDIT");
   });
 
   test("embedded panels use object-contain preserveAspectRatio behavior", () => {
@@ -279,6 +281,56 @@ describe("ProjectGraph A1 composer Phase 4", () => {
     expect(svg).toContain('<rect x="6" y="574" width="829" height="14"');
     expect(badgeMatch).toBeTruthy();
     expect(Number(badgeMatch[2])).toBeGreaterThanOrEqual(10);
-    expect(Number(badgeMatch[4])).toBeLessThanOrEqual(66);
+    expect(Number(badgeMatch[4])).toBeLessThanOrEqual(48);
+  });
+
+  test("presentation-v3 elevation embedding uses tight content bounds", () => {
+    const elevation = svgArtifact(
+      "elevation_east",
+      '<g id="tight-elevation"><path d="M120 220 H880 V480 H120 Z"/><text x="120" y="510">LEVEL 01</text><text x="760" y="510">SCALE 1:100</text></g>',
+      {
+        drawingType: "elevation",
+        technicalQualityMetadata: {
+          normalizedViewBox: "0 0 1000 700",
+          contentBounds: {
+            x: 100,
+            y: 220,
+            width: 820,
+            height: 260,
+            occupancyRatio: 0.3046,
+            widthRatio: 0.82,
+            heightRatio: 0.3714,
+          },
+        },
+      },
+    );
+    const viewBox = selectPanelContentViewBox({
+      panelType: "elevation_east",
+      artifact: elevation,
+      layoutTemplate: "presentation-v3",
+    });
+    const values = viewBox.split(/\s+/).map(Number);
+    const fit = computePanelSlotFitMetrics({
+      panelType: "elevation_east",
+      artifact: elevation,
+      placement: {
+        panelType: "elevation_east",
+        title: "East Elevation",
+        scale: "1:100",
+        x: 580,
+        y: 190,
+        width: 251,
+        height: 117,
+      },
+      layoutTemplate: "presentation-v3",
+    });
+
+    expect(values[0]).toBeCloseTo(87.7, 1);
+    expect(values[1]).toBeCloseTo(216.1, 1);
+    expect(values[2]).toBeCloseTo(844.6, 1);
+    expect(values[3]).toBeCloseTo(267.8, 1);
+    expect(fit.viewBox).toBe(viewBox);
+    expect(fit.occupancyRatio).toBeGreaterThanOrEqual(0.75);
+    expect(fit.occupancyRatio).toBeLessThanOrEqual(0.9);
   });
 });

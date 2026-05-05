@@ -124,11 +124,19 @@ function technicalArtifact(panelType, drawingType, title, body) {
     geometryHash: GEOMETRY_HASH,
     sourceGeometryHash: GEOMETRY_HASH,
     svgHash: computeCDSHashSync({ panelType, svgString, GEOMETRY_HASH }),
+    technicalDrawing: true,
+    renderer: "deterministic_svg",
+    source: "compiled_project_technical_panel",
+    providerUsed: "deterministic_svg",
     width: 1200,
     height: 800,
     svgString,
     metadata: {
-      source: "compiled_project_technical_pack",
+      source: "compiled_project_technical_panel",
+      renderer: "deterministic_svg",
+      sourceType: "deterministic_svg",
+      providerUsed: "deterministic_svg",
+      technicalDrawing: true,
       drawingType,
       geometryHash: GEOMETRY_HASH,
       sourceGeometryHash: GEOMETRY_HASH,
@@ -724,7 +732,7 @@ describe("Phase 6 golden A1 SVG + image2 ProjectGraph acceptance", () => {
     expect(sheetArtifact.svgString).toContain("FIRST FLOOR PLAN");
     expect(sheetArtifact.svgString).toContain("room-label");
     expect(sheetArtifact.svgString).toContain("data:image/png;base64");
-    expect(sheetArtifact.svgString).toContain("IMAGE2 / OPENAI EDIT");
+    expect(sheetArtifact.svgString).toContain("IMAGE2 EDIT");
     expect(sheetArtifact.svgString).toContain("TITLE BLOCK");
     expect(sheetArtifact.svgString).toContain(GEOMETRY_HASH);
     expect(sheetArtifact.svgString).toContain(VISUAL_MANIFEST.manifestHash);

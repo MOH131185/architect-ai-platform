@@ -268,6 +268,91 @@ test("title block and site panel use the current Scunthorpe site instead of stal
   expect(sitePanel.svgString).not.toMatch(/Birmingham|Bradford Street/i);
 });
 
+test("site panel labels a valid user-edited boundary as manual verified even when stale estimated flags remain", () => {
+  const site = {
+    local_boundary_polygon: [
+      { x: 0, y: 0 },
+      { x: 20, y: 0 },
+      { x: 20, y: 12 },
+      { x: 0, y: 12 },
+    ],
+    buildable_polygon: [
+      { x: 3, y: 3 },
+      { x: 17, y: 3 },
+      { x: 17, y: 9 },
+      { x: 3, y: 9 },
+    ],
+    area_m2: 240,
+    boundary_authoritative: false,
+    boundary_estimated: true,
+    boundary_source: "Intelligent Fallback",
+    boundary_confidence: 0.4,
+    boundary_warning_code: "SITE_BOUNDARY_ESTIMATED_NOT_AUTHORITATIVE",
+    userEditedBoundary: {
+      polygon: [
+        { lat: 51.5, lng: -0.1 },
+        { lat: 51.5, lng: -0.099 },
+        { lat: 51.499, lng: -0.099 },
+      ],
+    },
+    main_entry: { orientation: "south", source: "manual", bearingDeg: 180 },
+  };
+
+  const panel =
+    __projectGraphVerticalSliceInternals.buildSiteContextPanelArtifact({
+      projectGraphId: "project-user-edited-boundary",
+      site,
+      geometryHash: "geom-user-edited-boundary",
+    });
+
+  expect(panel.metadata.boundaryLabel).toBe("MANUAL VERIFIED BOUNDARY");
+  expect(panel.metadata.sitePlanMode).toBe("manual_verified_boundary");
+  expect(panel.metadata.boundaryAuthoritative).toBe(true);
+  expect(panel.metadata.boundaryEstimated).toBe(false);
+  expect(panel.metadata.boundaryWarningCode).toBeNull();
+  expect(panel.svgString).toContain("MANUAL VERIFIED BOUNDARY");
+  expect(panel.svgString).not.toContain("ESTIMATED / CONTEXTUAL - VERIFY");
+  expect(panel.svgString).not.toContain("Boundary estimated");
+});
+
+test("site panel keeps contextual estimated warning for auto-only boundaries", () => {
+  const site = {
+    local_boundary_polygon: [
+      { x: 0, y: 0 },
+      { x: 20, y: 0 },
+      { x: 20, y: 12 },
+      { x: 0, y: 12 },
+    ],
+    buildable_polygon: [
+      { x: 3, y: 3 },
+      { x: 17, y: 3 },
+      { x: 17, y: 9 },
+      { x: 3, y: 9 },
+    ],
+    area_m2: 240,
+    boundary_authoritative: false,
+    boundary_estimated: true,
+    boundary_source: "Intelligent Fallback",
+    boundary_confidence: 0.4,
+    boundary_warning_code: "SITE_BOUNDARY_ESTIMATED_NOT_AUTHORITATIVE",
+    main_entry: { orientation: "south", source: "fallback", bearingDeg: 180 },
+  };
+
+  const panel =
+    __projectGraphVerticalSliceInternals.buildSiteContextPanelArtifact({
+      projectGraphId: "project-contextual-boundary",
+      site,
+      geometryHash: "geom-contextual-boundary",
+    });
+
+  expect(panel.metadata.boundaryLabel).toBe("ESTIMATED / CONTEXTUAL - VERIFY");
+  expect(panel.metadata.sitePlanMode).toBe("contextual_estimated_boundary");
+  expect(panel.metadata.boundaryAuthoritative).toBe(false);
+  expect(panel.metadata.boundaryEstimated).toBe(true);
+  expect(panel.svgString).toContain("ESTIMATED / CONTEXTUAL - VERIFY");
+  expect(panel.svgString).toContain("Boundary estimated");
+});
+
 let kensingtonReferenceMatchBuildPromise = null;
 
 async function getKensingtonReferenceMatchResult() {
@@ -1731,12 +1816,17 @@ describe("projectGraphVerticalSliceService", () => {
     expect(result.projectGraph.site.area_m2).toBe(1040);
     expect(result.projectGraph.site.main_entry).toEqual(manualMainEntry);
     expect(result.artifacts.siteMap.metadata.boundaryLabel).toBe(
-      "MANUAL VERIFIED",
+      "MANUAL VERIFIED BOUNDARY",
+    );
+    expect(result.artifacts.siteMap.metadata.sitePlanMode).toBe(
+      "manual_verified_boundary",
     );
     expect(result.artifacts.siteMap.metadata.mainEntry).toEqual(
       manualMainEntry,
     );
-    expect(result.artifacts.siteMap.svgString).toContain("MANUAL VERIFIED");
+    expect(result.artifacts.siteMap.svgString).toContain(
+      "MANUAL VERIFIED BOUNDARY",
+    );
     expect(result.artifacts.siteMap.svgString).toContain("MAIN ENTRY");
     expect(result.artifacts.siteMap.svgString).toContain('stroke="#1976D2"');
     expect(result.visualManifest.mainEntry).toEqual(manualMainEntry);

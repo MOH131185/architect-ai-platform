@@ -1228,9 +1228,21 @@ function normalizeBrief(input = {}) {
     locationData.manualVerifiedBoundary ||
     locationData.manual_verified_boundary ||
     locationData.siteAnalysis?.manualVerifiedBoundary ||
+    locationData.userEditedBoundary ||
+    locationData.user_edited_boundary ||
+    locationData.siteAnalysis?.userEditedBoundary ||
+    input.manualVerifiedBoundary ||
+    input.manual_verified_boundary ||
+    input.userEditedBoundary ||
+    input.user_edited_boundary ||
     null;
-  const activeBoundaryGeojson =
+  const manualVerifiedBoundaryPolygon =
     manualVerifiedBoundary?.polygon ||
+    manualVerifiedBoundary?.sitePolygon ||
+    manualVerifiedBoundary?.siteBoundary ||
+    (Array.isArray(manualVerifiedBoundary) ? manualVerifiedBoundary : null);
+  const activeBoundaryGeojson =
+    manualVerifiedBoundaryPolygon ||
     locationData.sitePolygon ||
     locationData.siteBoundary ||
     siteInput.boundary_geojson ||
@@ -1294,11 +1306,12 @@ function normalizeBrief(input = {}) {
       ),
       coordinates: coordinates || null,
       boundary_geojson: activeBoundaryGeojson,
-      boundarySource:
-        locationData.boundarySource ||
-        locationData.siteAnalysis?.boundarySource ||
-        siteInput.boundarySource ||
-        null,
+      boundarySource: manualVerifiedBoundaryPolygon
+        ? "manual_verified"
+        : locationData.boundarySource ||
+          locationData.siteAnalysis?.boundarySource ||
+          siteInput.boundarySource ||
+          null,
       boundaryConfidence:
         locationData.boundaryConfidence ??
         locationData.siteAnalysis?.boundaryConfidence ??
@@ -4061,10 +4074,30 @@ function resolveSiteBoundarySanity(input = {}, brief = {}) {
     ...(input.sitePolygonMetrics || {}),
     ...(input.siteMetrics || {}),
   };
+  const rawManualBoundary =
+    input.locationData?.manualVerifiedBoundary ||
+    input.locationData?.manual_verified_boundary ||
+    input.locationData?.siteAnalysis?.manualVerifiedBoundary ||
+    input.locationData?.userEditedBoundary ||
+    input.locationData?.user_edited_boundary ||
+    input.locationData?.siteAnalysis?.userEditedBoundary ||
+    input.manualVerifiedBoundary ||
+    input.manual_verified_boundary ||
+    input.userEditedBoundary ||
+    input.user_edited_boundary ||
+    null;
+  const manualGeoBoundary = normalizeGeoPolygonForMap(
+    rawManualBoundary?.polygon ||
+      rawManualBoundary?.sitePolygon ||
+      rawManualBoundary?.siteBoundary ||
+      rawManualBoundary,
+  );
   const submittedGeoBoundary = normalizeGeoPolygonForMap(
-    input.sitePolygon ||
-      input.site_boundary ||
-      brief.site_input?.boundary_geojson,
+    manualGeoBoundary.length >= 3
+      ? manualGeoBoundary
+      : input.sitePolygon ||
+          input.site_boundary ||
+          brief.site_input?.boundary_geojson,
   );
   const estimatedGeoBoundary = normalizeGeoPolygonForMap(
     siteAnalysis.estimatedSiteBoundary ||
@@ -4076,13 +4109,16 @@ function resolveSiteBoundarySanity(input = {}, brief = {}) {
       input.siteSnapshot?.sitePolygon,
   );
   const boundarySource =
-    siteAnalysis.boundarySource ||
-    siteMetrics.boundarySource ||
-    input.locationData?.boundarySource ||
-    (submittedGeoBoundary.length >= 3
-      ? "site_polygon"
-      : "deterministic_context");
+    manualGeoBoundary.length >= 3
+      ? "manual_verified"
+      : siteAnalysis.boundarySource ||
+        siteMetrics.boundarySource ||
+        input.locationData?.boundarySource ||
+        (submittedGeoBoundary.length >= 3
+          ? "site_polygon"
+          : "deterministic_context");
   const manualVerifiedBoundary =
+    manualGeoBoundary.length >= 3 ||
     boundarySource === "manual_verified" ||
     siteAnalysis.boundarySource === "manual_verified" ||
     siteMetrics.boundarySource === "manual_verified" ||
@@ -5780,17 +5816,27 @@ function buildSiteContextPanelArtifact({
     Math.max(8, Number(buildableBbox.height || 0) * 0.36),
   );
   const proposedFootprintPath = polygonPath(proposedFootprint, bbox, 812, 646);
+  const manualVerifiedBoundary =
+    site?.boundary_source === "manual_verified" ||
+    site?.boundarySource === "manual_verified" ||
+    Boolean(site?.manualVerifiedBoundary) ||
+    Boolean(site?.manual_verified_boundary) ||
+    Boolean(site?.userEditedBoundary) ||
+    Boolean(site?.user_edited_boundary);
   const boundaryEstimated =
-    site?.boundary_authoritative === false || site?.boundary_estimated === true;
-  const boundaryLabel =
-    site?.boundary_source === "manual_verified"
-      ? "MANUAL VERIFIED"
-      : boundaryEstimated
-        ? "ESTIMATED / CONTEXTUAL - VERIFY"
-        : "AUTHORITATIVE";
-  const sitePlanMode = boundaryEstimated
-    ? "contextual_estimated_boundary"
-    : "authoritative_boundary";
+    !manualVerifiedBoundary &&
+    (site?.boundary_authoritative === false ||
+      site?.boundary_estimated === true);
+  const boundaryLabel = manualVerifiedBoundary
+    ? "MANUAL VERIFIED BOUNDARY"
+    : boundaryEstimated
+      ? "ESTIMATED / CONTEXTUAL - VERIFY"
+      : "AUTHORITATIVE";
+  const sitePlanMode = manualVerifiedBoundary
+    ? "manual_verified_boundary"
+    : boundaryEstimated
+      ? "contextual_estimated_boundary"
+      : "authoritative_boundary";
   const mainEntryArrowSvg = buildMainEntryArrowSvg(site, bbox);
   const hasMapImage = Boolean(siteSnapshot?.dataUrl);
   const mapSource = hasMapImage
@@ -5869,8 +5915,8 @@ function buildSiteContextPanelArtifact({
   <text x="450" y="104" font-family="Arial, sans-serif" font-size="26" font-weight="700" text-anchor="middle" fill="#111111">${boundaryLabel}</text>`;
   const areaLabel = boundaryEstimated
     ? `Site area: ${site.area_m2} m2 (context) | Boundary source: ${site.boundary_source || "estimated"} | Confidence: ${site.boundary_confidence ?? "n/a"} | Main entry: ${site.main_entry?.orientation || "north"} (${site.main_entry?.source || "fallback"})`
-    : `Site area: ${site.area_m2} m2 | Boundary source: ${site.boundary_source || "site_polygon"} | Confidence: ${site.boundary_confidence ?? "n/a"} | Main entry: ${site.main_entry?.orientation || "north"} (${site.main_entry?.source || "fallback"})`;
-  const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="site_context" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-site-map-source="${escapeXml(mapSource)}" data-site-map-image="${hasMapImage ? "true" : "false"}" data-boundary-source="${escapeXml(site.boundary_source || "")}" data-boundary-confidence="${escapeXml(String(site.boundary_confidence ?? ""))}" data-main-entry-orientation="${escapeXml(site.main_entry?.orientation || "")}">
+    : `Site area: ${site.area_m2} m2 | Boundary source: ${manualVerifiedBoundary ? "manual_verified" : site.boundary_source || "site_polygon"} | Confidence: ${site.boundary_confidence ?? "n/a"} | Main entry: ${site.main_entry?.orientation || "north"} (${site.main_entry?.source || "fallback"})`;
+  const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="site_context" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-site-map-source="${escapeXml(mapSource)}" data-site-map-image="${hasMapImage ? "true" : "false"}" data-boundary-source="${escapeXml(manualVerifiedBoundary ? "manual_verified" : site.boundary_source || "")}" data-boundary-confidence="${escapeXml(String(site.boundary_confidence ?? ""))}" data-main-entry-orientation="${escapeXml(site.main_entry?.orientation || "")}">
   <defs>
     <marker id="main-entry-arrowhead" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
       <path d="M 0 0 L 12 6 L 0 12 z" fill="#1976D2"/>
@@ -5925,13 +5971,18 @@ function buildSiteContextPanelArtifact({
       mapType: siteSnapshot?.mapType || null,
       attribution,
       sitePlanMode,
-      boundaryAuthoritative: site.boundary_authoritative === true,
+      boundaryAuthoritative:
+        manualVerifiedBoundary || site.boundary_authoritative === true,
       boundaryEstimated,
       boundaryConfidence: site.boundary_confidence ?? null,
-      boundarySource: site.boundary_source || null,
+      boundarySource: manualVerifiedBoundary
+        ? "manual_verified"
+        : site.boundary_source || null,
       siteAddress: siteAddress || null,
       boundaryLabel,
-      boundaryWarningCode: site.boundary_warning_code || null,
+      boundaryWarningCode: boundaryEstimated
+        ? site.boundary_warning_code || null
+        : null,
       fallbackReason: site.fallback_reason || null,
       siteAreaM2: site.area_m2 ?? null,
       mainEntry: site.main_entry || null,
@@ -7022,6 +7073,9 @@ function buildProjectGraphVisualContinuityBlock(visualManifest) {
   const manifest = visualManifest;
   const roofForm = manifest.roof?.form || "specified roof form";
   const roofMaterial = manifest.roof?.materialName || "specified roof material";
+  const rooflightInstruction = manifest.rooflights?.present
+    ? `- Preserve the rooflights/skylights exactly as specified (${manifest.rooflights.count || "specified"}); every exterior and axonometric control must agree.`
+    : "- Do not add rooflights or skylights; none are present in the locked exterior/elevation metadata.";
   const primaryMaterial =
     manifest.primaryFacadeMaterial?.name || "specified primary facade material";
   const secondaryMaterial =
@@ -7030,16 +7084,110 @@ function buildProjectGraphVisualContinuityBlock(visualManifest) {
   const windowRhythm = manifest.windowRhythm || "specified window rhythm";
   const entrance =
     manifest.entranceOrientation || "specified entrance position";
+  const attachmentType = manifest.attachmentType || "unknown";
 
   return [
     "VISUAL CONTINUITY CONSTRAINTS:",
     `- Preserve the exact ${manifest.storeyCount || "specified"} storey count, footprint proportions, silhouette, and roofline from the geometry reference.`,
+    `- Preserve attachment type "${attachmentType}" and party-wall sides: ${
+      Array.isArray(manifest.partyWallSides) && manifest.partyWallSides.length
+        ? manifest.partyWallSides.join(", ")
+        : "none"
+    }.`,
     `- Preserve roof form "${roofForm}" with ${roofMaterial}; do not flatten, steepen, rotate, or restyle the roof.`,
+    rooflightInstruction,
     `- Preserve facade material order: primary ${primaryMaterial}; secondary ${secondaryMaterial}; do not swap materials between panels.`,
     `- Preserve the ${windowRhythm} window rhythm, opening sizes, and opening positions from the reference geometry.`,
     `- Preserve the entrance at ${entrance}; do not relocate the front door.`,
-    "- Do not invent extra bays, extra storeys, neighbouring buildings, signage, diagram labels, or text overlays.",
+    "- Do not invent extra bays, extra storeys, unrelated neighbouring buildings, signage, diagram labels, or text overlays.",
   ].join("\n");
+}
+
+function buildVisualTypologyPromptBlock({ visualManifest, panelType }) {
+  if (!visualManifest || typeof visualManifest !== "object") return "";
+  const attachmentType = visualManifest.attachmentType || "unknown";
+  const partyWallSides =
+    Array.isArray(visualManifest.partyWallSides) &&
+    visualManifest.partyWallSides.length > 0
+      ? visualManifest.partyWallSides.join(", ")
+      : "none";
+  const typology =
+    visualManifest.buildingTypology ||
+    visualManifest.buildingType ||
+    "locked building typology";
+  const interiorLine =
+    panelType === "interior_3d"
+      ? "Interior-only view: inherit the same typology and material palette, but keep the camera inside the building and do not render an exterior facade."
+      : null;
+
+  if (attachmentType === "terraced") {
+    return [
+      "TYPOLOGY LOCK:",
+      `- Building typology: ${typology}.`,
+      `- Attachment type: terraced; party walls: ${partyWallSides}.`,
+      "- Must read as a terraced/row-house dwelling with party walls / attached neighbours or attached-row context.",
+      "- No freestanding detached house. No open space on both side elevations unless end-terrace is explicitly selected.",
+      "- Front facade follows terraced-house rhythm: narrow frontage, repeated vertical bays, continuous street wall.",
+      interiorLine,
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+  if (attachmentType === "end_terrace") {
+    return [
+      "TYPOLOGY LOCK:",
+      `- Building typology: ${typology}.`,
+      `- Attachment type: end_terrace; party walls: ${partyWallSides}.`,
+      "- Show one party-wall / attached-neighbour side and one exposed side elevation.",
+      "- Do not render a fully freestanding detached house.",
+      interiorLine,
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+  if (attachmentType === "semi_detached") {
+    return [
+      "TYPOLOGY LOCK:",
+      `- Building typology: ${typology}.`,
+      `- Attachment type: semi_detached; party walls: ${partyWallSides}.`,
+      "- Show one attached-neighbour / party-wall side, not a detached object in open space.",
+      "- Do not render a full terrace row.",
+      interiorLine,
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+  if (attachmentType === "detached") {
+    return [
+      "TYPOLOGY LOCK:",
+      `- Building typology: ${typology}.`,
+      "- Attachment type: detached; no party walls.",
+      "- Freestanding detached output is allowed.",
+      interiorLine,
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+  return interiorLine || "";
+}
+
+function buildVisualRenderStyleDirective(visualManifest) {
+  const base =
+    "STYLE: V-Ray + 3ds Max quality, octane-grade physically-based rendering, photoreal PBR materials, HDRI sky lighting, shallow depth of field, Dezeen / ArchDaily magazine cover quality, 8K, no watermark, no text, no diagrams.";
+  const attachmentType = visualManifest?.attachmentType || "unknown";
+  if (attachmentType === "terraced") {
+    return `${base} Attached-row / terraced-house context only; do not render a freestanding detached house.`;
+  }
+  if (attachmentType === "end_terrace") {
+    return `${base} End-terrace context with one attached side; do not render a fully freestanding detached house.`;
+  }
+  if (attachmentType === "semi_detached") {
+    return `${base} Semi-detached context with one attached side; do not render a fully freestanding detached house.`;
+  }
+  if (attachmentType === "detached") {
+    return `${base} Single freestanding detached building, no party walls.`;
+  }
+  return base;
 }
 
 // Build a climate + style + programme aware prompt for image-edit-based
@@ -7118,6 +7266,7 @@ function buildViewSpecificPromptBlock({
       : "the locked material palette";
   const roof =
     visualManifest?.roofForm ||
+    visualManifest?.roof?.form ||
     visualManifest?.roof?.type ||
     sheetDesignContext?.roofForm ||
     "the ProjectGraph roof form";
@@ -7125,6 +7274,12 @@ function buildViewSpecificPromptBlock({
     visualManifest?.windowRhythm ||
     visualManifest?.facadeRhythm ||
     "the locked opening rhythm";
+  const rooflightLine = visualManifest?.rooflights?.present
+    ? `Rooflights/skylights are present and must match all exterior/elevation metadata (${visualManifest.rooflights.count || "specified"}).`
+    : "No rooflights/skylights are present; do not add rooflights.";
+  const typologyLine = visualManifest?.buildingTypology
+    ? `Inherit the locked typology: ${visualManifest.buildingTypology}, attachment ${visualManifest.attachmentType || "unknown"}.`
+    : "";
 
   if (panelType === "interior_3d") {
     return [
@@ -7132,6 +7287,7 @@ function buildViewSpecificPromptBlock({
       "Render an indoor interior view only. Camera is inside the building, looking through the principal room or cutaway room volume.",
       "Do not show an exterior facade, a full outside building view, street frontage, roof massing, garden-only scene, or aerial exterior.",
       "Match the ProjectGraph room programme, room adjacency, stair/door logic, and window/opening positions visible from the selected interior.",
+      typologyLine,
       `Use the same material identity as the exterior panels: ${materials}.`,
     ].join("\n");
   }
@@ -7140,6 +7296,7 @@ function buildViewSpecificPromptBlock({
       "VIEW-SPECIFIC HARD BLOCK - AXONOMETRIC:",
       "Render a true axonometric/isometric architectural projection, not a street-level perspective photograph.",
       `Show exactly ${storeys} storey(s), the ${roof} roof, the locked footprint proportions, and the same window/opening rhythm: ${windowRhythm}.`,
+      rooflightLine,
       `Use the exact material palette from the visual identity lock: ${materials}.`,
     ].join("\n");
   }
@@ -7148,6 +7305,7 @@ function buildViewSpecificPromptBlock({
       `VIEW-SPECIFIC HARD BLOCK - ${panelType.toUpperCase()}:`,
       "Render an exterior architectural view only, with the full building facade/massing visible from the requested exterior camera.",
       `Show exactly ${storeys} storey(s), the ${roof} roof, and the locked window/opening rhythm: ${windowRhythm}.`,
+      rooflightLine,
       `Use the exact material palette from the visual identity lock: ${materials}.`,
     ].join("\n");
   }
@@ -7211,6 +7369,10 @@ export function buildProjectGraphRenderPrompt({
   ].join("\n");
   const visualContinuity =
     buildProjectGraphVisualContinuityBlock(visualManifest);
+  const typologyBlock = buildVisualTypologyPromptBlock({
+    visualManifest,
+    panelType,
+  });
   const viewSpecificBlock = buildViewSpecificPromptBlock({
     panelType,
     brief,
@@ -7342,12 +7504,13 @@ export function buildProjectGraphRenderPrompt({
     identityLock,
     authorityLine,
     visualContinuity,
+    typologyBlock,
     viewSpecificBlock,
     `Project: ${projectName} — ${buildingType}.`,
     intent,
     vernacularBlock,
     reasoning,
-    "STYLE: V-Ray + 3ds Max quality, octane-grade physically-based rendering, photoreal PBR materials, HDRI sky lighting, shallow depth of field, Dezeen / ArchDaily magazine cover quality, 8K, no watermark, no text, no diagrams. Single freestanding building, no neighbours.",
+    buildVisualRenderStyleDirective(visualManifest),
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -7360,6 +7523,126 @@ function controlViewTypeForPanelType(panelType = "") {
     return "exterior_massing_opening_control";
   }
   return null;
+}
+
+function buildVisualControlConsistencyMetadata(visualManifest = null) {
+  if (!visualManifest || typeof visualManifest !== "object") return null;
+  return {
+    buildingTypology:
+      visualManifest.buildingTypology || visualManifest.buildingType || null,
+    attachmentType: visualManifest.attachmentType || "unknown",
+    partyWallSides: Array.isArray(visualManifest.partyWallSides)
+      ? [...visualManifest.partyWallSides]
+      : [],
+    rooflightsPresent: visualManifest.rooflights?.present === true,
+    rooflightCount: visualManifest.rooflights?.count ?? 0,
+    roofForm: visualManifest.roof?.form || null,
+    roofMaterial: visualManifest.roof?.materialName || null,
+    materialSplit: {
+      primary: visualManifest.primaryFacadeMaterial?.name || null,
+      secondary: visualManifest.secondaryFacadeMaterial?.name || null,
+      roof: visualManifest.roof?.materialName || null,
+    },
+    windowRhythm: visualManifest.windowRhythm || null,
+    windowCount:
+      visualManifest.windowRhythmFingerprint?.totalWindowCount ?? null,
+    entrancePosition: visualManifest.entranceOrientation || null,
+    storeyCount: visualManifest.storeyCount || null,
+  };
+}
+
+function materialLabel(material, fallback = "as specified") {
+  return String(material || fallback).trim() || fallback;
+}
+
+function buildVisualControlOverlaySvg({
+  panelType,
+  visualManifest,
+  width,
+  height,
+  controlConsistency,
+}) {
+  if (!visualManifest || !controlConsistency) return "";
+  const w = Number(width || 1500);
+  const h = Number(height || 1050);
+  const x = Math.max(24, Math.round(w * 0.035));
+  const y = Math.max(36, Math.round(h * 0.045));
+  const lineHeight = Math.max(28, Math.round(h * 0.029));
+  const fontSize = Math.max(18, Math.round(h * 0.019));
+  const panelLabel = String(panelType || "control").toUpperCase();
+  const rooflightLabel = controlConsistency.rooflightsPresent
+    ? `ROOFLIGHTS: YES (${controlConsistency.rooflightCount || "SPECIFIED"})`
+    : "ROOFLIGHTS: NONE";
+  const labels = [
+    `${panelLabel} CONTROL - SAME BUILDING`,
+    `TYPOLOGY: ${controlConsistency.buildingTypology || "LOCKED"}`,
+    `ATTACHMENT: ${controlConsistency.attachmentType}; PARTY WALLS: ${
+      controlConsistency.partyWallSides.length
+        ? controlConsistency.partyWallSides.join("+")
+        : "NONE"
+    }`,
+    `ROOF: ${controlConsistency.roofForm || "LOCKED"}; ${rooflightLabel}`,
+    `BRICK ZONE: ${materialLabel(controlConsistency.materialSplit.primary)}`,
+    `RENDER ZONE: ${materialLabel(controlConsistency.materialSplit.secondary)}`,
+    `ENTRANCE: ${controlConsistency.entrancePosition || "LOCKED"}`,
+    `SAME WINDOW LOCATIONS: ${
+      controlConsistency.windowRhythm || "LOCKED RHYTHM"
+    }`,
+  ];
+  const markerWidth = Math.min(w * 0.52, Math.max(520, w * 0.36));
+  const markerHeight = lineHeight * labels.length + 24;
+  return `<g data-control-identity-markers="true" data-control-panel="${escapeXml(panelType)}" opacity="0.92">
+  <rect x="${round(x - 12, 2)}" y="${round(y - fontSize - 10, 2)}" width="${round(markerWidth, 2)}" height="${round(markerHeight, 2)}" rx="8" fill="#ffffff" stroke="#111111" stroke-width="2.2"/>
+  ${labels
+    .map(
+      (label, index) =>
+        `<text x="${round(x, 2)}" y="${round(y + index * lineHeight, 2)}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="700" fill="#111111">${escapeXml(label)}</text>`,
+    )
+    .join("\n  ")}
+</g>`;
+}
+
+function annotateVisualControlSvg({
+  svgString,
+  panelType,
+  visualManifest,
+  width,
+  height,
+}) {
+  if (
+    !svgString ||
+    !visualManifest ||
+    typeof svgString !== "string" ||
+    svgString.includes('data-control-identity-markers="true"')
+  ) {
+    return svgString;
+  }
+  const controlConsistency =
+    buildVisualControlConsistencyMetadata(visualManifest);
+  if (!controlConsistency) return svgString;
+  const rootAttrs = [
+    `data-visual-control-lock="true"`,
+    `data-building-typology="${escapeXml(controlConsistency.buildingTypology || "")}"`,
+    `data-attachment-type="${escapeXml(controlConsistency.attachmentType)}"`,
+    `data-party-wall-sides="${escapeXml(controlConsistency.partyWallSides.join(","))}"`,
+    `data-rooflights-present="${controlConsistency.rooflightsPresent ? "true" : "false"}"`,
+    `data-roof-form="${escapeXml(controlConsistency.roofForm || "")}"`,
+    `data-window-rhythm="${escapeXml(controlConsistency.windowRhythm || "")}"`,
+  ].join(" ");
+  const withAttrs = svgString.includes('data-visual-control-lock="true"')
+    ? svgString
+    : svgString.replace(/<svg\b/i, `<svg ${rootAttrs}`);
+  const overlay = buildVisualControlOverlaySvg({
+    panelType,
+    visualManifest,
+    width,
+    height,
+    controlConsistency,
+  });
+  if (/<\/svg>\s*$/i.test(withAttrs)) {
+    return withAttrs.replace(/<\/svg>\s*$/i, `${overlay}\n</svg>`);
+  }
+  return `${withAttrs}\n${overlay}`;
 }
 
 function wrapPngAsSvgPanel(pngBuffer, viewBox, width, height) {
@@ -7409,14 +7692,22 @@ export async function buildVisual3DPanelArtifacts({
   const entries = await Promise.all(
     REQUIRED_3D_A1_PANEL_TYPES.map(async (panelType) => {
       const renderInput = renderInputs[panelType] || {};
-      const deterministicSvgString = renderInput.svgString || "";
+      const baseDeterministicSvgString = renderInput.svgString || "";
       const width = renderInput.width || renderInput.metadata?.width || 1500;
       const height = renderInput.height || renderInput.metadata?.height || 1050;
       const viewBox =
         renderInput.metadata?.normalizedViewBox || `0 0 ${width} ${height}`;
+      const controlConsistency =
+        buildVisualControlConsistencyMetadata(visualManifest);
+      const deterministicSvgString = annotateVisualControlSvg({
+        svgString: baseDeterministicSvgString,
+        panelType,
+        visualManifest,
+        width,
+        height,
+      });
       const controlSvgHash = deterministicSvgString
-        ? renderInput.svgHash ||
-          computeCDSHashSync({
+        ? computeCDSHashSync({
             panelType,
             geometryHash,
             referenceSource: "compiled_3d_control_svg",
@@ -7569,6 +7860,7 @@ export async function buildVisual3DPanelArtifacts({
           visualManifestId: visualManifest?.manifestId || null,
           visualManifestHash: visualManifest?.manifestHash || null,
           visualIdentityLocked: Boolean(visualManifest?.manifestHash),
+          visualControlConsistency: controlConsistency,
           referenceSource: "compiled_3d_control_svg",
           controlViewType,
           provider,
@@ -7650,6 +7942,14 @@ export async function buildVisual3DPanelArtifacts({
             visualManifestId: visualManifest?.manifestId || null,
             visualManifestHash: visualManifest?.manifestHash || null,
             visualIdentityLocked: Boolean(visualManifest?.manifestHash),
+            buildingTypology: visualManifest?.buildingTypology || null,
+            attachmentType: visualManifest?.attachmentType || null,
+            partyWallSides: Array.isArray(visualManifest?.partyWallSides)
+              ? [...visualManifest.partyWallSides]
+              : [],
+            rooflightsPresent: visualManifest?.rooflights?.present === true,
+            rooflightCount: visualManifest?.rooflights?.count ?? 0,
+            visualControlConsistency: controlConsistency,
             // Phase 4 — extended identity metadata. Surfaces the
             // SheetDesignContext hash + cutaway flag + render prompt
             // identity version on every visual panel so QA, validators,
@@ -8579,7 +8879,9 @@ function applyUpstreamGateTechnicalBlockersToQa(qa, exportGate) {
 // padded normalizedViewBox so legends and decorative space stay visible.
 // board-v2 is unaffected — it always returns the existing viewBox chain.
 // Phase B closeout v2: shrink the safety padding so technical drawings
-// fill more of the slot. Bumped from 4–6% to 1.5–2.5% — contentBounds
+// fill more of the slot. Bumped from 4-6% to 1.5-2.5%; elevations now use
+// the same 1.5% tight bounds policy as plans so right-column elevations
+// do not sit as small drawings inside oversized source viewBoxes. contentBounds
 // already excludes the ink-free background rect, and the slot inner is
 // further padded by CAPTION_HORIZONTAL_PADDING_MM, so room labels and
 // dimension callouts still have breathing room.
@@ -8594,10 +8896,10 @@ const PRESENTATION_V3_PANEL_PADDING = {
   floor_plan_level7: 0.015,
   section_AA: 0.02,
   section_BB: 0.02,
-  elevation_north: 0.025,
-  elevation_south: 0.025,
-  elevation_east: 0.025,
-  elevation_west: 0.025,
+  elevation_north: 0.015,
+  elevation_south: 0.015,
+  elevation_east: 0.015,
+  elevation_west: 0.015,
 };
 
 function clampNumber(value, minimum, maximum) {
@@ -8851,7 +9153,7 @@ function buildVisualPanelStatusBadge(artifact = null) {
     };
   }
   return {
-    label: "IMAGE2 / OPENAI EDIT",
+    label: "IMAGE2 EDIT",
     providerUsed:
       artifactMetadataValue(artifact, "imageProviderUsed") || "openai",
     fallback: false,
@@ -8895,9 +9197,9 @@ function renderSheetPanel({
     placement.slotIndex ?? "",
   );
   const badgeWidth = Math.min(
-    66,
+    48,
     Math.max(
-      38,
+      30,
       Number(placement.width || 0) - CAPTION_HORIZONTAL_PADDING_MM * 2,
     ),
   );
@@ -8909,8 +9211,8 @@ function renderSheetPanel({
   const badgeY = Number(placement.y || 0) + 2.2;
   const badgeSvg = visualBadge
     ? `<g data-visual-provider-badge="true" clip-path="url(#${panelClipId})">
-  <rect x="${badgeX}" y="${badgeY}" width="${badgeWidth}" height="6.8" fill="${visualBadge.fallback ? "#fff4df" : "#eef8ff"}" stroke="${visualBadge.fallback ? "#b26b00" : "#0b5d7d"}" stroke-width="0.35"/>
-  <text x="${badgeX + badgeWidth / 2}" y="${badgeY + 5.2}" font-size="3.2" font-family="${EMBEDDED_FONT_STACK}" text-anchor="middle" fill="${visualBadge.fallback ? "#8a4b00" : "#0b5d7d"}">${escapeXml(visualBadge.label)}</text>
+  <rect x="${badgeX}" y="${badgeY}" width="${badgeWidth}" height="5.8" fill="${visualBadge.fallback ? "#fff4df" : "#eef8ff"}" stroke="${visualBadge.fallback ? "#b26b00" : "#0b5d7d"}" stroke-width="0.35"/>
+  <text x="${badgeX + badgeWidth / 2}" y="${badgeY + 4.45}" font-size="2.8" font-family="${EMBEDDED_FONT_STACK}" text-anchor="middle" textLength="${Math.max(8, badgeWidth - 4)}" lengthAdjust="spacingAndGlyphs" fill="${visualBadge.fallback ? "#8a4b00" : "#0b5d7d"}">${escapeXml(visualBadge.label)}</text>
 </g>`
     : "";
 
