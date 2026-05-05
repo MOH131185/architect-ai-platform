@@ -472,6 +472,11 @@ function renderLevelDatums(
         ? resolveFloorStageLabel(levelProfiles[index + 1])
         : "ROOF";
     labels.push(`
+      <line class="cad-elevation-ffl-datum-line cad-lineweight-detail" x1="${formatNumber(
+        baseX,
+      )}" y1="${formatNumber(topY)}" x2="${formatNumber(
+        baseX + widthPx,
+      )}" y2="${formatNumber(topY)}" stroke="${theme.lineMuted}" stroke-width="${datumStroke}" stroke-dasharray="9 5" data-datum-role="ffl" />
       <line x1="${formatNumber(baseX - 46)}" y1="${formatNumber(
         topY,
       )}" x2="${formatNumber(baseX - 6)}" y2="${formatNumber(
@@ -493,6 +498,11 @@ function renderLevelDatums(
   // Ground line: explicitly labelled "FFL GROUND +0.00m" so reviewers can
   // read the datum without inferring the stage from the absence of a name.
   labels.push(`
+    <line class="cad-elevation-ffl-ground-datum-line cad-lineweight-detail" x1="${formatNumber(
+      baseX,
+    )}" y1="${formatNumber(baseY)}" x2="${formatNumber(
+      baseX + widthPx,
+    )}" y2="${formatNumber(baseY)}" stroke="${theme.line}" stroke-width="${datumStroke}" data-datum-role="ffl" />
     <line x1="${formatNumber(baseX - 46)}" y1="${formatNumber(
       baseY,
     )}" x2="${formatNumber(baseX - 6)}" y2="${formatNumber(
@@ -512,6 +522,11 @@ function renderLevelDatums(
     const eavesY = baseY - Number(lastLevel.top_m) * scale;
     const eavesFont = polishSize(9, fontScale);
     labels.push(`
+      <line class="cad-eaves-datum cad-lineweight-detail" x1="${formatNumber(baseX)}" y1="${formatNumber(
+        eavesY,
+      )}" x2="${formatNumber(baseX + widthPx)}" y2="${formatNumber(
+        eavesY,
+      )}" stroke="${theme.lineMuted}" stroke-width="${guideStroke}" stroke-dasharray="9 5" data-datum-role="eaves" />
       <line class="cad-eaves-datum cad-lineweight-detail" x1="${formatNumber(baseX + widthPx + 6)}" y1="${formatNumber(
         eavesY,
       )}" x2="${formatNumber(baseX + widthPx + 44)}" y2="${formatNumber(
@@ -535,6 +550,11 @@ function renderLevelDatums(
     const ridgeY = ridgeInfo.y;
     const ridgeFont = polishSize(9, fontScale);
     labels.push(`
+      <line class="cad-ridge-datum cad-lineweight-detail" x1="${formatNumber(baseX)}" y1="${formatNumber(
+        ridgeY,
+      )}" x2="${formatNumber(baseX + widthPx)}" y2="${formatNumber(
+        ridgeY,
+      )}" stroke="${theme.line}" stroke-width="${datumStroke}" stroke-dasharray="9 5" data-datum-role="ridge" />
       <line x1="${formatNumber(baseX - 46)}" y1="${formatNumber(
         ridgeY,
       )}" x2="${formatNumber(baseX - 6)}" y2="${formatNumber(
@@ -1163,15 +1183,24 @@ function renderFacadeFeatures(
   };
 }
 
-function renderGroundLine(baseX, baseY, widthPx, theme) {
+function renderGroundLine(baseX, baseY, widthPx, theme, options = {}) {
+  const fullWidth = Number(options.fullWidth);
+  const groundX = Number.isFinite(fullWidth) && fullWidth > 0 ? 8 : baseX - 18;
+  const groundWidth =
+    Number.isFinite(fullWidth) && fullWidth > 0 ? fullWidth - 16 : widthPx + 36;
+  const lineX1 = Number.isFinite(fullWidth) && fullWidth > 0 ? 8 : baseX - 22;
+  const lineX2 =
+    Number.isFinite(fullWidth) && fullWidth > 0
+      ? fullWidth - 8
+      : baseX + widthPx + 22;
   return `
     <g id="phase8-ground-line" class="cad-layer-site-ground cad-lineweight-outline">
-      <rect x="${formatNumber(baseX - 18)}" y="${formatNumber(
+      <rect x="${formatNumber(groundX)}" y="${formatNumber(
         baseY,
-      )}" width="${formatNumber(widthPx + 36)}" height="24" fill="url(#phase8-elev-ground)" />
-      <line x1="${formatNumber(baseX - 22)}" y1="${formatNumber(
+      )}" width="${formatNumber(groundWidth)}" height="24" fill="url(#phase8-elev-ground)" />
+      <line x1="${formatNumber(lineX1)}" y1="${formatNumber(
         baseY,
-      )}" x2="${formatNumber(baseX + widthPx + 22)}" y2="${formatNumber(
+      )}" x2="${formatNumber(lineX2)}" y2="${formatNumber(
         baseY,
       )}" stroke="${theme.line}" stroke-width="1.8" />
     </g>
@@ -1432,7 +1461,7 @@ export function renderElevationSvg(
   const showInternalTitleBlock =
     !sheetMode || options.showInternalTitleBlock === true;
   const layout = sheetMode
-    ? { left: 34, top: 18, right: 38, bottom: 64 }
+    ? { left: 28, top: 16, right: 30, bottom: 38 }
     : { left: 80, top: 62, right: 94, bottom: 118 };
   const availableWidth = Math.max(1, width - layout.left - layout.right);
   const availableHeight = Math.max(1, height - layout.top - layout.bottom);
@@ -1765,7 +1794,9 @@ export function renderElevationSvg(
         )}</text>`
   }
   ${packLabelMarkup}
-  ${renderGroundLine(baseX, baseY, widthPx, theme)}
+  ${renderGroundLine(baseX, baseY, widthPx, theme, {
+    fullWidth: sheetMode ? width : 0,
+  })}
   ${semiBasementMarkup}
   ${materialZones.markup}
   ${articulation.markup}

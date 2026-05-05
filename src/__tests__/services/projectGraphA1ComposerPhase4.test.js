@@ -144,9 +144,23 @@ function buildFixtureSheet({ fallbackHero = false } = {}) {
   });
 }
 
+function withProvenanceFooter(fn) {
+  const previous = process.env.A1_SHOW_PROVENANCE_FOOTER;
+  process.env.A1_SHOW_PROVENANCE_FOOTER = "true";
+  try {
+    return fn();
+  } finally {
+    if (previous === undefined) {
+      delete process.env.A1_SHOW_PROVENANCE_FOOTER;
+    } else {
+      process.env.A1_SHOW_PROVENANCE_FOOTER = previous;
+    }
+  }
+}
+
 describe("ProjectGraph A1 composer Phase 4", () => {
   test("final sheet SVG embeds actual technical SVG content, not empty frames", () => {
-    const svg = buildFixtureSheet();
+    const svg = withProvenanceFooter(() => buildFixtureSheet());
 
     expect(svg).toContain("phase4-dimension-chain");
     expect(svg).toContain("Living Room");
@@ -156,7 +170,7 @@ describe("ProjectGraph A1 composer Phase 4", () => {
   });
 
   test("visual image panels are embedded when image2 artifacts are present", () => {
-    const svg = buildFixtureSheet();
+    const svg = withProvenanceFooter(() => buildFixtureSheet());
 
     expect(svg).toContain('data-panel-id="hero_3d"');
     expect(svg).toContain('data-panel-id="axonometric"');
@@ -169,7 +183,7 @@ describe("ProjectGraph A1 composer Phase 4", () => {
   });
 
   test("embedded panels use object-contain preserveAspectRatio behavior", () => {
-    const svg = buildFixtureSheet();
+    const svg = withProvenanceFooter(() => buildFixtureSheet());
     const wrappedPng = wrapPngAsSvgPanel(
       Buffer.from("phase4-png"),
       "0 0 1000 700",
@@ -201,7 +215,7 @@ describe("ProjectGraph A1 composer Phase 4", () => {
         date: "2026-05-05",
       },
     });
-    const svg = buildFixtureSheet();
+    const svg = withProvenanceFooter(() => buildFixtureSheet());
 
     expect(titleBlock.svgString).toContain(
       `geometryHash ${GEOMETRY_HASH.slice(0, 18)}`,
@@ -234,7 +248,9 @@ describe("ProjectGraph A1 composer Phase 4", () => {
   });
 
   test("fallback visual panels are labeled deterministic and do not claim OpenAI success", () => {
-    const svg = buildFixtureSheet({ fallbackHero: true });
+    const svg = withProvenanceFooter(() =>
+      buildFixtureSheet({ fallbackHero: true }),
+    );
 
     expect(svg).toContain('data-panel-id="hero_3d"');
     expect(svg).toContain('data-image-render-fallback="true"');
@@ -253,22 +269,24 @@ describe("ProjectGraph A1 composer Phase 4", () => {
       geometryHash: GEOMETRY_HASH,
       briefInputHash: "brief-hash-phase4",
     });
-    const svg = buildSheetSvg({
-      projectGraphId: "project-phase4",
-      brief: {
-        project_name: "Phase 4 Composer Test",
-        reference_match: false,
-        brief_input_hash: "brief-hash-phase4",
-      },
-      geometryHash: GEOMETRY_HASH,
-      panelPlacements,
-      panelArtifacts,
-      qaStatus: "pending",
-      sheetNumber: "A1-01",
-      sheetLabel: "Phase 4",
-      layoutTemplate: "presentation-v3",
-      visualManifest: VISUAL_MANIFEST,
-    });
+    const svg = withProvenanceFooter(() =>
+      buildSheetSvg({
+        projectGraphId: "project-phase4",
+        brief: {
+          project_name: "Phase 4 Composer Test",
+          reference_match: false,
+          brief_input_hash: "brief-hash-phase4",
+        },
+        geometryHash: GEOMETRY_HASH,
+        panelPlacements,
+        panelArtifacts,
+        qaStatus: "pending",
+        sheetNumber: "A1-01",
+        sheetLabel: "Phase 4",
+        layoutTemplate: "presentation-v3",
+        visualManifest: VISUAL_MANIFEST,
+      }),
+    );
     const lastPanelBottom = Math.max(
       ...panelPlacements.map((placement) => placement.y + placement.height),
     );
@@ -325,10 +343,10 @@ describe("ProjectGraph A1 composer Phase 4", () => {
       layoutTemplate: "presentation-v3",
     });
 
-    expect(values[0]).toBeCloseTo(87.7, 1);
-    expect(values[1]).toBeCloseTo(216.1, 1);
-    expect(values[2]).toBeCloseTo(844.6, 1);
-    expect(values[3]).toBeCloseTo(267.8, 1);
+    expect(values[0]).toBeCloseTo(79.5, 1);
+    expect(values[1]).toBeCloseTo(213.5, 1);
+    expect(values[2]).toBeCloseTo(861, 1);
+    expect(values[3]).toBeCloseTo(273, 1);
     expect(fit.viewBox).toBe(viewBox);
     expect(fit.occupancyRatio).toBeGreaterThanOrEqual(0.75);
     expect(fit.occupancyRatio).toBeLessThanOrEqual(0.9);

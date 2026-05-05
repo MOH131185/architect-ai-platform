@@ -201,7 +201,10 @@ function summarizePlanGeometry(rooms = [], walls = [], hasFootprint = false) {
 
 function uppercaseLabel(value, fallback = "ROOM") {
   const text = String(value || fallback).trim();
-  return (text || fallback).replace(/[_-]+/g, " ").toUpperCase();
+  return (text || fallback)
+    .replace(/[_-]\d+$/g, "")
+    .replace(/[_-]+/g, " ")
+    .toUpperCase();
 }
 
 function polygonPath(points = [], project) {
@@ -322,7 +325,7 @@ function buildTransform(bounds, width, height, layout = {}) {
   };
 }
 
-function renderRoomLabel(room = {}, project, theme) {
+function renderRoomLabel(room = {}, project, theme, options = {}) {
   const bbox = resolveRoomBBox(room);
   const centroid = pointFrom(room.centroid, {
     x: (Number(bbox.min_x) + Number(bbox.max_x)) / 2,
@@ -334,8 +337,12 @@ function renderRoomLabel(room = {}, project, theme) {
   const areaText = `${Number.isFinite(areaValue) ? areaValue.toFixed(1) : "0.0"} M2`;
   const dimensionText = getRoomDimensionText(room);
   const secondaryLine = dimensionText
-    ? `${areaText} · ${dimensionText}`
+    ? `${dimensionText} / ${areaText}`
     : areaText;
+  const fontScale = options.sheetMode ? 1.18 : 1;
+  const nameFontSize = round(13 * fontScale, 1);
+  const secondaryFontSize = round(10 * fontScale, 1);
+  const labelHeight = 38 * fontScale;
   const labelWidth = Math.max(
     110,
     name.length * 8.4,
@@ -345,24 +352,26 @@ function renderRoomLabel(room = {}, project, theme) {
   return `
     <g class="plan-room-label" data-room-id="${escapeXml(room.id || room.name || "")}" data-room-area-m2="${formatNumber(areaValue, 1)}">
       <rect x="${formatNumber(labelPoint.x - labelWidth / 2)}" y="${formatNumber(
-        labelPoint.y - 22,
-      )}" width="${formatNumber(labelWidth)}" height="38" fill="${theme.paper}" fill-opacity="0.95" stroke="${theme.guide}" stroke-width="0.95" rx="4" ry="4" class="cad-room-label-backplate cad-lineweight-detail"/>
+        labelPoint.y - labelHeight * 0.58,
+      )}" width="${formatNumber(labelWidth)}" height="${formatNumber(labelHeight)}" fill="${theme.paper}" fill-opacity="0.95" stroke="${theme.guide}" stroke-width="0.95" rx="4" ry="4" class="cad-room-label-backplate cad-lineweight-detail"/>
       <text x="${formatNumber(labelPoint.x)}" y="${formatNumber(
         labelPoint.y - 6,
-      )}" font-size="13" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" class="sheet-critical-label cad-room-name-label" data-text-role="critical">${name}</text>
+      )}" font-size="${nameFontSize}" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" class="sheet-critical-label cad-room-name-label" data-text-role="critical">${name}</text>
       <text x="${formatNumber(labelPoint.x)}" y="${formatNumber(
-        labelPoint.y + 10,
-      )}" font-size="10" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label room-area-label cad-text-room-area" data-text-role="critical">${escapeXml(
+        labelPoint.y + 11 * fontScale,
+      )}" font-size="${secondaryFontSize}" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label room-area-label cad-text-room-area" data-text-role="critical">${escapeXml(
         secondaryLine,
       )}</text>
     </g>
   `;
 }
 
-function renderFurnitureHints(rooms = [], project, theme) {
+function renderFurnitureHints(rooms = [], project, theme, options = {}) {
+  const minWidth = options.sheetMode ? 42 : 70;
+  const minHeight = options.sheetMode ? 34 : 56;
   const entries = sortByStableKey(rooms).flatMap((room) => {
     const rect = projectRoomRect(room, project);
-    if (!rect || rect.width < 70 || rect.height < 56) {
+    if (!rect || rect.width < minWidth || rect.height < minHeight) {
       return [];
     }
 
@@ -379,13 +388,15 @@ function renderFurnitureHints(rooms = [], project, theme) {
         `<rect x="${formatNumber(rect.x + 8)}" y="${formatNumber(rect.y + 8)}" width="${formatNumber(sofaW)}" height="${formatNumber(Math.max(6, sofaH * 0.38))}" fill="none" stroke="${guide}" stroke-width="0.8" rx="4" ry="4"/>`,
         `<rect x="${formatNumber(rect.x + rect.width * 0.52)}" y="${formatNumber(rect.y + rect.height * 0.56)}" width="${formatNumber(Math.min(30, rect.width * 0.22))}" height="${formatNumber(Math.min(18, rect.height * 0.16))}" fill="none" stroke="${guide}" stroke-width="0.8" rx="3" ry="3"/>`,
       );
-    } else if (name.includes("kitchen")) {
+    }
+    if (name.includes("kitchen")) {
       const counterDepth = Math.min(rect.height * 0.16, 16);
       furniture.push(
         `<rect x="${formatNumber(rect.x + 6)}" y="${formatNumber(rect.y + 6)}" width="${formatNumber(rect.width - 12)}" height="${formatNumber(counterDepth)}" fill="none" stroke="${stroke}" stroke-width="0.95"/>`,
         `<rect x="${formatNumber(rect.x + rect.width * 0.22)}" y="${formatNumber(rect.y + rect.height * 0.48)}" width="${formatNumber(Math.min(rect.width * 0.42, 68))}" height="${formatNumber(Math.min(rect.height * 0.2, 20))}" fill="none" stroke="${guide}" stroke-width="0.85" rx="3" ry="3"/>`,
       );
-    } else if (name.includes("bed")) {
+    }
+    if (name.includes("bed")) {
       const bedW = Math.min(rect.width * 0.46, 74);
       const bedH = Math.min(rect.height * 0.3, 44);
       furniture.push(
@@ -393,18 +404,21 @@ function renderFurnitureHints(rooms = [], project, theme) {
         `<line x1="${formatNumber(rect.x + 8 + bedW * 0.5)}" y1="${formatNumber(rect.y + 8)}" x2="${formatNumber(rect.x + 8 + bedW * 0.5)}" y2="${formatNumber(rect.y + 8 + bedH)}" stroke="${guide}" stroke-width="0.8"/>`,
         `<rect x="${formatNumber(rect.x + bedW + 14)}" y="${formatNumber(rect.y + 10)}" width="${formatNumber(Math.min(16, rect.width * 0.12))}" height="${formatNumber(Math.min(24, rect.height * 0.22))}" fill="none" stroke="${guide}" stroke-width="0.8"/>`,
       );
-    } else if (name.includes("study") || name.includes("office")) {
+    }
+    if (name.includes("study") || name.includes("office")) {
       furniture.push(
         `<rect x="${formatNumber(rect.x + 8)}" y="${formatNumber(rect.y + 8)}" width="${formatNumber(Math.min(rect.width * 0.42, 64))}" height="${formatNumber(Math.min(rect.height * 0.18, 18))}" fill="none" stroke="${stroke}" stroke-width="0.95"/>`,
         `<circle cx="${formatNumber(rect.x + rect.width * 0.34)}" cy="${formatNumber(rect.y + rect.height * 0.46)}" r="${formatNumber(Math.min(9, rect.width * 0.07), 1)}" fill="none" stroke="${guide}" stroke-width="0.8"/>`,
       );
-    } else if (name.includes("dining")) {
+    }
+    if (name.includes("dining")) {
       furniture.push(
         `<rect x="${formatNumber(rect.x + rect.width * 0.28)}" y="${formatNumber(rect.y + rect.height * 0.28)}" width="${formatNumber(Math.min(rect.width * 0.34, 54))}" height="${formatNumber(Math.min(rect.height * 0.2, 20))}" fill="none" stroke="${stroke}" stroke-width="0.95" rx="3" ry="3"/>`,
         `<circle cx="${formatNumber(rect.x + rect.width * 0.26)}" cy="${formatNumber(rect.y + rect.height * 0.38)}" r="3.2" fill="none" stroke="${guide}" stroke-width="0.8"/>`,
         `<circle cx="${formatNumber(rect.x + rect.width * 0.66)}" cy="${formatNumber(rect.y + rect.height * 0.38)}" r="3.2" fill="none" stroke="${guide}" stroke-width="0.8"/>`,
       );
-    } else if (name.includes("bath")) {
+    }
+    if (name.includes("bath")) {
       furniture.push(
         `<rect x="${formatNumber(rect.x + 8)}" y="${formatNumber(rect.y + 8)}" width="${formatNumber(Math.min(rect.width * 0.46, 60))}" height="${formatNumber(Math.min(rect.height * 0.22, 22))}" fill="none" stroke="${stroke}" stroke-width="0.95" rx="8" ry="8"/>`,
         `<rect x="${formatNumber(rect.x + rect.width * 0.64)}" y="${formatNumber(rect.y + 10)}" width="${formatNumber(Math.min(rect.width * 0.18, 18))}" height="${formatNumber(Math.min(rect.height * 0.18, 18))}" fill="none" stroke="${guide}" stroke-width="0.8"/>`,
@@ -995,7 +1009,7 @@ function renderExternalDimensions(
   });
 
   const markup = `
-    <g id="external-dimensions" class="cad-layer-dimensions cad-dimension-chain-overall cad-lineweight-detail" data-dimension-chain-types="overall bay opening internal">
+    <g id="external-dimensions" class="cad-layer-dimensions cad-dimension-chain cad-dimension-chain-overall cad-lineweight-detail" data-dimension-chain-types="overall bay opening internal">
       <line x1="${formatNumber(topLeft.x)}" y1="${formatNumber(
         topLeft.y,
       )}" x2="${formatNumber(topLeft.x)}" y2="${formatNumber(
@@ -1059,8 +1073,8 @@ function renderExternalDimensions(
       )} ${formatNumber(
         (topRight.y + bottomRight.y) / 2,
       )})" text-anchor="middle">${escapeXml(formatMeters(bounds.height))}</text>
-      ${horizontalChain.markup ? `<g class="dimension-chain horizontal"><g class="cad-dimension-chain cad-dimension-chain-bay cad-dimension-chain-internal">${horizontalChain.markup}</g></g>` : ""}
-      ${verticalChain.markup ? `<g class="dimension-chain vertical"><g class="cad-dimension-chain cad-dimension-chain-opening cad-dimension-chain-internal">${verticalChain.markup}</g></g>` : ""}
+      <g class="dimension-chain horizontal"><g class="cad-dimension-chain cad-dimension-chain-overall cad-dimension-chain-bay cad-dimension-chain-internal">${horizontalChain.markup}</g></g>
+      <g class="dimension-chain vertical"><g class="cad-dimension-chain cad-dimension-chain-overall cad-dimension-chain-opening cad-dimension-chain-internal">${verticalChain.markup}</g></g>
     </g>
   `;
 
@@ -1330,7 +1344,9 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
     .join("");
   const roomLabelMarkup = options.hideRoomLabels
     ? ""
-    : levelRooms.map((room) => renderRoomLabel(room, project, theme)).join("");
+    : levelRooms
+        .map((room) => renderRoomLabel(room, project, theme, { sheetMode }))
+        .join("");
   const wallMarkup = renderWallMarkup(levelWalls, project, theme);
   const doorEntries = (geometry.doors || []).filter(
     (door) => door.level_id === level.id,
@@ -1396,7 +1412,9 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
         boundsSource,
       })
     : "";
-  const furnitureHints = renderFurnitureHints(levelRooms, project, theme);
+  const furnitureHints = renderFurnitureHints(levelRooms, project, theme, {
+    sheetMode,
+  });
   // Section markers (A-A, B-B) — render the global section cuts on every
   // level's plan, which matches standard architectural practice (the cut
   // runs through the full building, not per-storey). When a section is
@@ -1409,7 +1427,39 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
   const callerSections = Array.isArray(options.sections)
     ? options.sections
     : null;
-  const candidateSections = callerSections || geometry.sections || [];
+  const fallbackSections = [
+    {
+      id: "section-aa-fallback",
+      sectionType: "longitudinal",
+      cutLine: {
+        from: {
+          x: (Number(bounds.min_x) + Number(bounds.max_x)) / 2,
+          y: Number(bounds.min_y),
+        },
+        to: {
+          x: (Number(bounds.min_x) + Number(bounds.max_x)) / 2,
+          y: Number(bounds.max_y),
+        },
+      },
+    },
+    {
+      id: "section-bb-fallback",
+      sectionType: "transverse",
+      cutLine: {
+        from: {
+          x: Number(bounds.min_x),
+          y: (Number(bounds.min_y) + Number(bounds.max_y)) / 2,
+        },
+        to: {
+          x: Number(bounds.max_x),
+          y: (Number(bounds.min_y) + Number(bounds.max_y)) / 2,
+        },
+      },
+    },
+  ];
+  const candidateSections = (callerSections || geometry.sections || []).length
+    ? callerSections || geometry.sections || []
+    : fallbackSections;
   const levelSections = candidateSections.filter((section) => {
     if (!section?.cutLine) return false;
     if (section.level_id && section.level_id !== level.id) return false;

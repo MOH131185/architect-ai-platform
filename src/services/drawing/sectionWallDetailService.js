@@ -30,6 +30,12 @@ function resolveWallTruthKind(wall = {}) {
   return kind;
 }
 
+function isInteriorBackgroundPocheZone(wall = {}) {
+  const width = Number(wall.width || 0);
+  const height = Number(wall.height || 0);
+  return width >= 56 && height >= 72;
+}
+
 export function buildSectionWallDetailMarkup({
   walls = [],
   lineweights = {},
@@ -52,7 +58,7 @@ export function buildSectionWallDetailMarkup({
       const truthKind = phase21 ? resolveWallTruthKind(wall) : null;
       const isCutFace = phase21 && truthKind === "cut_face";
       const isCutProfile = phase21 && truthKind === "cut_profile";
-      const pocheOpacity = isCutFace
+      const rawPocheOpacity = isCutFace
         ? 0.96
         : isCutProfile
           ? 0.86 + bandCoverage * 0.06
@@ -61,6 +67,10 @@ export function buildSectionWallDetailMarkup({
             : contextual
               ? 0.62
               : 0.76 + bandCoverage * 0.1;
+      const interiorBackgroundZone = isInteriorBackgroundPocheZone(wall);
+      const pocheOpacity = interiorBackgroundZone
+        ? Math.min(rawPocheOpacity, 0.38)
+        : rawPocheOpacity;
       const outlineWeight = isCutFace
         ? Math.max(2, (lineweights.cutOutline || 1.6) * 1.22)
         : isCutProfile
@@ -102,7 +112,7 @@ export function buildSectionWallDetailMarkup({
         : "";
       return `
         <g id="phase13-section-cut-wall-${escapeXml(wall.id || index)}" data-truth-kind="${escapeXml(truthKind || truthState)}">
-          <rect x="${wall.x}" y="${wall.y}" width="${wall.width}" height="${wall.height}" fill="#151515" fill-opacity="${pocheOpacity}" stroke="#111" stroke-width="${outlineWeight}"${dashArray} />
+          <rect x="${wall.x}" y="${wall.y}" width="${wall.width}" height="${wall.height}" data-poche-zone="${interiorBackgroundZone ? "interior-background" : "cut-wall"}" data-poche-opacity="${pocheOpacity}" fill="#151515" fill-opacity="${pocheOpacity}" stroke="#111" stroke-width="${outlineWeight}"${dashArray} />
           ${cutFaceReveal}
           <rect x="${wall.x + Math.max(1.5, wall.width * 0.08)}" y="${wall.y + 1.5}" width="${Math.max(2, wall.width - Math.max(3, wall.width * 0.16))}" height="${Math.max(6, wall.height - 3)}" fill="none" stroke="#f5f2ec" stroke-width="${isCutFace ? (lineweights.hatch || 0.7) * 1.2 : nearBoolean ? lineweights.hatch || 0.7 : lineweights.guide || 0.62}" stroke-opacity="${interiorHatchOpacity}"${interiorHatchDash} />
           <line x1="${wall.x + wall.width * 0.2}" y1="${wall.y}" x2="${wall.x + wall.width * 0.2}" y2="${wall.y + wall.height}" stroke="#f4f1eb" stroke-width="${lineweights.guide || 0.62}" stroke-opacity="${isCutFace ? 0.46 : contextual ? 0.2 : 0.35}" />
