@@ -439,7 +439,7 @@ function renderGroundHatch(
     );
   }
   return {
-    markup: `<g id="phase3-section-ground-hatch" data-grade-band="true">
+    markup: `<g id="phase3-section-ground-hatch" class="cad-layer-ground cad-ground-hatch" data-grade-band="true">
       <rect x="${formatNumber(startX)}" y="${formatNumber(startY)}" width="${formatNumber(bandWidth)}" height="${formatNumber(bandHeight)}" fill="${fill}" fill-opacity="${fillOpacity}"/>
       ${lines.join("")}
       <line id="ground-line" x1="${formatNumber(startX)}" y1="${formatNumber(startY)}" x2="${formatNumber(startX + bandWidth)}" y2="${formatNumber(startY)}" stroke="${SECTION_THEME.line}" stroke-width="1.1"/>
@@ -521,7 +521,7 @@ function renderOverallSectionDimensions(
   const guideStroke = polishSize(0.9, polish.strokeScale || 1);
   const primaryStroke = polishSize(1, polish.strokeScale || 1);
   return `
-    <g id="phase8-section-dimensions">
+    <g id="phase8-section-dimensions" class="cad-layer-dimensions cad-vertical-dimension-chain cad-dimension-chain-overall cad-lineweight-detail">
       <line x1="${formatNumber(baseX)}" y1="${formatNumber(
         baseY - heightPx,
       )}" x2="${formatNumber(baseX)}" y2="${formatNumber(
@@ -597,6 +597,7 @@ function renderLevelDatums(
   scale,
   lineweights = {},
   polish = {},
+  options = {},
 ) {
   const lines = [];
   const labels = [];
@@ -612,7 +613,7 @@ function renderLevelDatums(
     const midY =
       baseY - (level.bottom_m + Number(level.height_m || 3.2) / 2) * scale;
     lines.push(
-      `<line x1="${baseX}" y1="${topY}" x2="${baseX + widthPx}" y2="${topY}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${datumWeight}" stroke-dasharray="10 6" />`,
+      `<line class="cad-section-ceiling-datum cad-lineweight-detail" x1="${baseX}" y1="${topY}" x2="${baseX + widthPx}" y2="${topY}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${datumWeight}" stroke-dasharray="10 6" data-datum-role="ceiling" />`,
     );
     labels.push(`
       <g class="phase8-section-level-label">
@@ -630,14 +631,38 @@ function renderLevelDatums(
   });
 
   labels.push(`
-    <line x1="${baseX - 52}" y1="${baseY}" x2="${baseX - 6}" y2="${baseY}" stroke="${SECTION_THEME.line}" stroke-width="${secondaryStroke}" />
+    <line class="cad-section-ffl-datum" x1="${baseX - 52}" y1="${baseY}" x2="${baseX - 6}" y2="${baseY}" stroke="${SECTION_THEME.line}" stroke-width="${secondaryStroke}" data-datum-role="ffl" />
     <rect x="${baseX - 144}" y="${baseY - 11}" width="86" height="16" rx="3" ry="3" fill="${SECTION_THEME.paper}" fill-opacity="0.94" stroke="${SECTION_THEME.guide}" stroke-width="${labelStroke}" />
-    <text x="${baseX - 134}" y="${baseY + 1}" font-size="${primaryLabelFont}" font-family="Arial, sans-serif" font-weight="700" text-anchor="start" class="sheet-critical-label" data-text-role="critical">FFL +0.00m</text>
+    <text x="${baseX - 134}" y="${baseY + 1}" font-size="${primaryLabelFont}" font-family="Arial, sans-serif" font-weight="700" text-anchor="start" class="sheet-critical-label" data-text-role="critical" data-datum-role="ffl">FFL +0.00m</text>
   `);
 
+  let eavesDatumCount = 0;
+  const eavesHeightM = Number(options.eavesHeightM);
+  if (Number.isFinite(eavesHeightM) && eavesHeightM > 0) {
+    const eavesY = baseY - eavesHeightM * scale;
+    labels.push(`
+      <line class="cad-section-eaves-datum cad-lineweight-detail" x1="${baseX + widthPx + 6}" y1="${eavesY}" x2="${baseX + widthPx + 48}" y2="${eavesY}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${secondaryStroke}" data-datum-role="eaves" />
+      <text class="cad-section-eaves-datum-label" x="${baseX + widthPx + 54}" y="${eavesY + 1}" font-size="${primaryLabelFont}" font-family="Arial, sans-serif" font-weight="700" data-datum-role="eaves">EAVES +${eavesHeightM.toFixed(2)}m</text>
+    `);
+    eavesDatumCount = 1;
+  }
+
+  let ridgeDatumCount = 0;
+  const ridgeHeightM = Number(options.ridgeHeightM);
+  if (Number.isFinite(ridgeHeightM) && ridgeHeightM > eavesHeightM) {
+    const ridgeY = baseY - ridgeHeightM * scale;
+    labels.push(`
+      <line class="cad-section-ridge-datum cad-lineweight-detail" x1="${baseX + widthPx + 6}" y1="${ridgeY}" x2="${baseX + widthPx + 48}" y2="${ridgeY}" stroke="${SECTION_THEME.line}" stroke-width="${secondaryStroke}" data-datum-role="ridge" />
+      <text class="cad-section-ridge-datum-label" x="${baseX + widthPx + 54}" y="${ridgeY + 1}" font-size="${primaryLabelFont}" font-family="Arial, sans-serif" font-weight="700" data-datum-role="ridge">RIDGE +${ridgeHeightM.toFixed(2)}m</text>
+    `);
+    ridgeDatumCount = 1;
+  }
+
   return {
-    markup: `<g id="phase8-section-datums">${lines.join("")}${labels.join("")}</g>`,
-    count: levelProfiles.length + 1,
+    markup: `<g id="phase8-section-datums" class="cad-layer-datums cad-section-datums">${lines.join("")}${labels.join("")}</g>`,
+    count: levelProfiles.length + 1 + eavesDatumCount + ridgeDatumCount,
+    hasEaves: eavesDatumCount > 0,
+    hasRidge: ridgeDatumCount > 0,
   };
 }
 
@@ -732,7 +757,7 @@ function renderFoundation(
     return `<path d="M ${startX} ${y} L ${startX + 8} ${y + 4} L ${startX + 16} ${y} L ${startX + 24} ${y + 4}" fill="none" stroke="${SECTION_THEME.guide}" stroke-width="${lineweights.guide || 0.72}" />`;
   }).join("");
   return `
-    <g id="phase8-section-foundation" data-truth="${quality}" data-truth-mode="${truthMode}" data-truth-state="${truthState}">
+    <g id="phase8-section-foundation" class="cad-layer-foundation cad-foundation-build-up" data-truth="${quality}" data-truth-mode="${truthMode}" data-truth-state="${truthState}">
       <rect x="${baseX - 10}" y="${baseY}" width="${widthPx + 20}" height="42" fill="${SECTION_THEME.paper}" fill-opacity="${fillOpacity}" />
       <rect x="${baseX - 14}" y="${baseY + 12}" width="${widthPx + 28}" height="18" fill="${SECTION_THEME.fillSoft}" fill-opacity="0.24" />
       ${bandMarkup}
@@ -863,7 +888,7 @@ function renderRoof(
     .join("");
   if (flat) {
     return `
-      <g id="phase14-section-roof" data-truth="${quality}" data-truth-mode="${truthMode}" data-truth-state="${truthState}" ${renderRoofPitchDataAttributes(
+      <g id="phase14-section-roof" class="cad-layer-roof cad-roof-build-up cad-lineweight-outline" data-truth="${quality}" data-truth-mode="${truthMode}" data-truth-state="${truthState}" ${renderRoofPitchDataAttributes(
         {
           ...roofPitchInfo,
           status: "flat",
@@ -911,7 +936,7 @@ function renderRoof(
     roofPitchInfo,
   );
   return `
-    <g id="phase14-section-roof" data-truth="${quality}" data-truth-mode="${truthMode}" data-truth-state="${truthState}" ${renderRoofPitchDataAttributes(roofPitchInfo)}>
+    <g id="phase14-section-roof" class="cad-layer-roof cad-roof-build-up cad-lineweight-outline" data-truth="${quality}" data-truth-mode="${truthMode}" data-truth-state="${truthState}" ${renderRoofPitchDataAttributes(roofPitchInfo)}>
     <path d="M ${roofX - 4} ${topY} L ${roofX + roofWidth / 2} ${ridgeY} L ${roofX + roofWidth + 4} ${topY} L ${roofX + roofWidth - 12} ${topY} L ${roofX + roofWidth / 2} ${undersideY} L ${roofX + 12} ${topY} Z" fill="${SECTION_THEME.fillSoft}" fill-opacity="${quality === "blocked" ? 0.42 : quality === "weak" ? 0.66 : 0.92}" stroke="${SECTION_THEME.lineMuted}" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.primary || 1.4}"${dasharray} />
     <path d="M ${roofX} ${topY} L ${roofX + roofWidth / 2} ${ridgeY} L ${roofX + roofWidth} ${topY}" fill="none" stroke="${SECTION_THEME.line}" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.cutOutline || 2}"${dasharray} />
     <path d="M ${roofX + 12} ${topY} L ${roofX + roofWidth / 2} ${undersideY} L ${roofX + roofWidth - 12} ${topY}" fill="none" stroke="${SECTION_THEME.lineMuted}" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.primary || 1.2}"${dasharray} />
@@ -987,7 +1012,7 @@ function renderCutRooms(
       const areaY = y + heightPx / 2 + (nameLines.length > 1 ? 18 : 11);
 
       return `
-        <g class="phase8-cut-room">
+        <g class="phase8-cut-room cad-section-room-label">
           <rect x="${x}" y="${y}" width="${widthPx}" height="${heightPx}" fill="${SECTION_THEME.paper}" stroke="${SECTION_THEME.line}" stroke-width="${roomStroke}" />
           <line x1="${x}" y1="${y + heightPx}" x2="${x + widthPx}" y2="${y + heightPx}" stroke="${SECTION_THEME.line}" stroke-width="${roomCutStroke}" />
           <line x1="${x}" y1="${y}" x2="${x}" y2="${y + heightPx}" stroke="${SECTION_THEME.line}" stroke-width="${roomCutStroke}" />
@@ -999,7 +1024,7 @@ function renderCutRooms(
     .join("");
 
   return {
-    markup: `<g id="phase8-section-cut-rooms">${markup}</g>`,
+    markup: `<g id="phase8-section-cut-rooms" class="cad-layer-room-cuts">${markup}</g>`,
     count: cutRooms.length,
   };
 }
@@ -1074,11 +1099,11 @@ function renderStairCut(
       )} L ${formatNumber(arrowEnd.x + 4)} ${formatNumber(arrowEnd.y + 2)} Z`;
 
       return `
-        <g id="phase8-section-stair-${escapeXml(stair.id || "stair")}" data-truth-state="${truthState}">
+        <g id="phase8-section-stair-${escapeXml(stair.id || "stair")}" class="cad-section-stair-cut" data-truth-state="${truthState}">
           <rect x="${x}" y="${y}" width="${widthPx}" height="${heightPx}" fill="${SECTION_THEME.paper}" fill-opacity="${fillOpacity}" stroke="${SECTION_THEME.line}" stroke-width="1.6"${strokeDash} />
           <line x1="${x + 3}" y1="${y + 4}" x2="${x + 3}" y2="${y + heightPx - 4}" stroke="${SECTION_THEME.line}" stroke-width="1.15"${strokeDash} />
           ${treads}
-          <line x1="${formatNumber(arrowStart.x)}" y1="${formatNumber(
+          <line class="cad-stair-section-arrow" x1="${formatNumber(arrowStart.x)}" y1="${formatNumber(
             arrowStart.y,
           )}" x2="${formatNumber(arrowEnd.x)}" y2="${formatNumber(
             arrowEnd.y,
@@ -1096,7 +1121,7 @@ function renderStairCut(
     .join("");
 
   return {
-    markup: `<g id="phase8-section-stair-cuts">${markup}</g>`,
+    markup: `<g id="phase8-section-stair-cuts" class="cad-layer-stair-cuts">${markup}</g>`,
     count: (stairs || []).length,
     treadCount: (stairs || []).reduce(
       (sum, stair) => sum + Number(stair.treadCount || 7),
@@ -1132,7 +1157,7 @@ function renderSlabCuts(
       );
       const edgeInset = Math.min(6, Math.max(3, slab.width * 0.04));
       return `
-        <g id="phase14-section-slab-${escapeXml(slab.level?.id || slab.id)}" data-truth="${quality}" data-truth-state="${truthState}">
+        <g id="phase14-section-slab-${escapeXml(slab.level?.id || slab.id)}" class="cad-layer-slab cad-slab-build-up" data-truth="${quality}" data-truth-state="${truthState}">
           <rect x="${slab.x || 0}" y="${slab.y}" width="${slab.width}" height="${buildUpDepth}" fill="${SECTION_THEME.fillSoft}" fill-opacity="${fillOpacity}" stroke="${SECTION_THEME.line}" stroke-width="${lineweights.primary || 1.2}"${dasharray} />
           <line x1="${slab.x || 0}" y1="${slab.y}" x2="${(slab.x || 0) + slab.width}" y2="${slab.y}" stroke="${SECTION_THEME.line}" stroke-width="${lineweights.cutOutline || 1.8}"${dasharray} />
           <line x1="${slab.x || 0}" y1="${slab.y}" x2="${slab.x || 0}" y2="${slab.y + buildUpDepth}" stroke="${SECTION_THEME.line}" stroke-width="${lineweights.secondary || 1}" />
@@ -1143,7 +1168,7 @@ function renderSlabCuts(
     })
     .join("");
   return {
-    markup: `<g id="phase14-section-slabs">${markup}</g>`,
+    markup: `<g id="phase14-section-slabs" class="cad-layer-slab-build-up">${markup}</g>`,
     count: (slabs || []).length,
   };
 }
@@ -1189,7 +1214,7 @@ function renderCutWalls(
         truthState === "direct" ? "" : ' stroke-dasharray="7 4"';
 
       return `
-        <g id="phase13-section-cut-wall-${escapeXml(wall.id || index)}" data-truth-state="${truthState}">
+        <g id="phase13-section-cut-wall-${escapeXml(wall.id || index)}" class="cad-section-cut-poche cad-lineweight-cut" data-truth-state="${truthState}">
           <rect x="${x}" y="${y}" width="${widthPx}" height="${heightPx}" fill="${SECTION_THEME.poche}" fill-opacity="${fillOpacity}" stroke="${SECTION_THEME.line}" stroke-width="${lineweights.cutOutline || 1.8}"${strokeDash} />
           <line x1="${x}" y1="${y + 3}" x2="${x}" y2="${y + heightPx - 3}" stroke="${SECTION_THEME.line}" stroke-width="${lineweights.primary || 1.2}"${strokeDash} />
           <line x1="${x + widthPx}" y1="${y + 3}" x2="${x + widthPx}" y2="${y + heightPx - 3}" stroke="${SECTION_THEME.line}" stroke-width="${lineweights.primary || 1.2}"${strokeDash} />
@@ -1204,7 +1229,7 @@ function renderCutWalls(
     .join("");
 
   return {
-    markup: `<g id="phase13-section-cut-walls">${markup}</g>`,
+    markup: `<g id="phase13-section-cut-walls" class="cad-layer-cut-poche">${markup}</g>`,
     count: (walls || []).length,
   };
 }
@@ -1283,6 +1308,7 @@ export function renderSectionSvg(
   const width = options.width || 1200;
   const height = options.height || 760;
   const sheetMode = options.sheetMode === true;
+  const blueprintGrade = isFeatureEnabled("blueprintGradeTechnicalRenderer");
   const sheetPolish = resolveSectionPolish(sheetMode);
   const showInternalTitleBlock =
     !sheetMode || options.showInternalTitleBlock === true;
@@ -1492,6 +1518,14 @@ export function renderSectionSvg(
     };
   }
 
+  const sectionEavesHeightM = totalHeight;
+  const sectionRidgeHeightM =
+    Number.isFinite(Number(roofPitchInfoBase.riseM)) &&
+    Number(roofPitchInfoBase.riseM) > 0
+      ? totalHeight + Number(roofPitchInfoBase.riseM)
+      : packParapet
+        ? totalHeight + 0.45
+        : null;
   const datums = renderLevelDatums(
     baseX,
     baseY,
@@ -1500,6 +1534,10 @@ export function renderSectionSvg(
     scale,
     lineweights,
     sheetPolish,
+    {
+      eavesHeightM: sectionEavesHeightM,
+      ridgeHeightM: sectionRidgeHeightM,
+    },
   );
   const foundation = renderFoundation(
     baseX,
@@ -1708,8 +1746,9 @@ export function renderSectionSvg(
       )}" data-pack-parapet="${packParapet}"`
     : "";
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-theme="${SECTION_THEME.name}" data-bounds-source="${envelopeBounds.source}" data-a1-quality-polish="${sheetMode ? "section_datums_dimensions_v2" : "section_standard"}" data-section-edge-clearance-status="${sectionVisualMetrics.edgeClearanceStatus}" data-section-body-occupancy="${sectionVisualMetrics.bodyOccupancyRatio}"${packDataAttrs}>
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-theme="${SECTION_THEME.name}" data-bounds-source="${envelopeBounds.source}" data-a1-quality-polish="${sheetMode ? "section_datums_dimensions_v2" : "section_standard"}" data-section-edge-clearance-status="${sectionVisualMetrics.edgeClearanceStatus}" data-section-body-occupancy="${sectionVisualMetrics.bodyOccupancyRatio}" data-blueprint-grade="${blueprintGrade ? "true" : "false"}"${packDataAttrs}>
   <rect width="${width}" height="${height}" fill="${SECTION_THEME.paper}" />
+  ${blueprintGrade ? '<g class="cad-lineweight-registry cad-lineweight-cut cad-lineweight-projection cad-lineweight-detail" data-cad-layer="lineweight-registry"/>' : ""}
   ${stairMarkup.defs || ""}
   ${
     sheetMode
@@ -1729,9 +1768,13 @@ export function renderSectionSvg(
   ${datums.markup}
   ${slabMarkup.markup}
   ${cutRoomMarkup.markup}
-  ${wallMarkup.markup}
-  ${openingMarkup.markup}
-  ${stairMarkup.markup}
+  ${
+    wallMarkup.markup
+      ? `<g class="cad-layer-cut-poche cad-section-cut-poche cad-lineweight-cut">${wallMarkup.markup}</g>`
+      : ""
+  }
+  ${openingMarkup.markup ? `<g class="cad-layer-openings">${openingMarkup.markup}</g>` : ""}
+  ${stairMarkup.markup ? `<g class="cad-layer-stair-cuts">${stairMarkup.markup}</g>` : ""}
   ${renderOverallSectionDimensions(
     baseX,
     baseY,
@@ -1774,6 +1817,9 @@ export function renderSectionSvg(
       foundation_marker_count: 1,
       ground_hatch_band_lines: groundHatch.count,
       ground_hatch_visible: groundHatch.count > 0,
+      vertical_dimension_chain_count: 1,
+      eaves_datum_count: datums.hasEaves ? 1 : 0,
+      ridge_datum_count: datums.hasRidge ? 1 : 0,
       stair_tread_count: stairMarkup.treadCount,
       roof_profile_visible: true,
       roof_pitch_degrees: roofPitchInfo.pitchDeg,
@@ -1813,6 +1859,25 @@ export function renderSectionSvg(
       section_edge_clearance_status: sectionVisualMetrics.edgeClearanceStatus,
       section_edge_clearances_px: sectionVisualMetrics.edgeClearancesPx,
       section_min_edge_clearance_px: sectionVisualMetrics.minEdgeClearancePx,
+      cad_grade_renderer: blueprintGrade,
+      cad_layer_classes: [
+        "cad-layer-ground",
+        "cad-layer-foundation",
+        "cad-layer-slab-build-up",
+        "cad-layer-cut-poche",
+        "cad-layer-room-cuts",
+        "cad-layer-stair-cuts",
+        "cad-layer-datums",
+        "cad-layer-dimensions",
+      ],
+      cad_lineweight_classes: [
+        "cad-lineweight-cut",
+        "cad-lineweight-projection",
+        "cad-lineweight-detail",
+      ],
+      has_cad_layer_classes: blueprintGrade,
+      has_cad_lineweight_classes: blueprintGrade,
+      has_vertical_dimension_chain: true,
       slot_occupancy_ratio: slotOccupancyRatio,
       scale_bar_meters: scaleBar.barMeters,
       section_evidence_quality:

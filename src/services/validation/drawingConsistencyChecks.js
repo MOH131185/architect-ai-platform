@@ -1,3 +1,5 @@
+import { isFeatureEnabled } from "../../config/featureFlags.js";
+
 function hasSvgPayload(entry) {
   return Boolean(entry?.svg && String(entry.svg).includes("<svg"));
 }
@@ -29,6 +31,130 @@ function numberFromEntry(entry, keys = []) {
     }
   }
   return 0;
+}
+
+function valueFromEntry(entry, keys = []) {
+  for (const key of keys) {
+    const value =
+      entry?.[key] ??
+      entry?.metadata?.[key] ??
+      entry?.technicalQualityMetadata?.[key] ??
+      entry?.technical_quality_metadata?.[key] ??
+      entry?.metadata?.technicalQualityMetadata?.[key] ??
+      entry?.metadata?.technical_quality_metadata?.[key];
+    if (value !== undefined && value !== null) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function hasAnyClassToken(svg, tokens = []) {
+  return tokens.some((token) => svgHasClassToken(svg, token));
+}
+
+function hasCadLineweightClasses(entry, svg) {
+  const classes = valueFromEntry(entry, ["cad_lineweight_classes"]);
+  return (
+    (Array.isArray(classes) && classes.length > 0) ||
+    hasAnyClassToken(svg, [
+      "cad-lineweight-cut",
+      "cad-lineweight-outline",
+      "cad-lineweight-primary",
+      "cad-lineweight-secondary",
+      "cad-lineweight-projection",
+      "cad-lineweight-detail",
+    ])
+  );
+}
+
+function hasCadLayerClasses(entry, svg) {
+  const classes = valueFromEntry(entry, ["cad_layer_classes"]);
+  return (
+    (Array.isArray(classes) && classes.length > 0) ||
+    hasAnyClassToken(svg, [
+      "cad-layer-walls",
+      "cad-layer-material-hatches",
+      "cad-layer-ground",
+      "cad-layer-dimensions",
+      "cad-layer-datums",
+    ])
+  );
+}
+
+function hasPlanRoomAreas(entry, svg) {
+  return (
+    numberFromEntry(entry, ["area_label_count"]) > 0 ||
+    valueFromEntry(entry, ["has_room_area_labels"]) === true ||
+    svgHasClassToken(svg, "room-area-label") ||
+    /data-room-area-m2=/i.test(String(svg || ""))
+  );
+}
+
+function hasPlanSectionMarkers(entry, svg) {
+  return (
+    numberFromEntry(entry, ["section_marker_count"]) > 0 ||
+    svgHasId(svg, "plan-section-markers") ||
+    svgHasClassToken(svg, "section-marker")
+  );
+}
+
+function hasElevationDatum(entry, svg, datumRole) {
+  const normalized = String(datumRole || "").toLowerCase();
+  if (normalized === "eaves") {
+    return (
+      numberFromEntry(entry, ["eaves_datum_count"]) > 0 ||
+      /data-datum-role=["']eaves["']/i.test(String(svg || ""))
+    );
+  }
+  if (normalized === "ridge") {
+    return (
+      numberFromEntry(entry, ["ridge_datum_count"]) > 0 ||
+      /data-datum-role=["']ridge["']/i.test(String(svg || ""))
+    );
+  }
+  return /data-datum-role=["']ffl(?:-ground)?["']|FFL/i.test(String(svg || ""));
+}
+
+function hasSectionVerticalDimension(entry, svg) {
+  return (
+    numberFromEntry(entry, ["vertical_dimension_chain_count"]) > 0 ||
+    valueFromEntry(entry, ["has_vertical_dimension_chain"]) === true ||
+    svgHasClassToken(svg, "cad-vertical-dimension-chain")
+  );
+}
+
+function collectPlanSectionLabels(entries = []) {
+  const labels = new Set();
+  for (const entry of entries || []) {
+    const metaLabels = valueFromEntry(entry, ["section_marker_labels"]);
+    if (Array.isArray(metaLabels)) {
+      metaLabels.forEach((label) => labels.add(String(label).toUpperCase()));
+    }
+    const svg = String(entry?.svg || "");
+    const matches = svg.matchAll(/data-section-label=["']([^"']+)["']/gi);
+    for (const match of matches) {
+      labels.add(String(match[1] || "").toUpperCase());
+    }
+  }
+  return labels;
+}
+
+function normalizeSectionLabel(entry = {}) {
+  const normalized = String(entry.section_id || entry.panel_type || "")
+    .replace(/^SECTION[_ -]?/i, "")
+    .replace(/^section[_ -]?/i, "")
+    .replace(/_/g, "-")
+    .toUpperCase();
+  const compact = normalized.replace(/[^A-Z]/g, "");
+  if (
+    compact.length === 2 &&
+    compact[0] === compact[1] &&
+    !normalized.includes("-")
+  ) {
+    return `${compact[0]}-${compact[1]}`;
+  }
+  return normalized;
 }
 
 function hasPlanScaleBar(entry, svg) {
@@ -364,6 +490,135 @@ function validateCrossViewConsistency({ drawings = {}, projectGeometry = {} }) {
   return warnings;
 }
 
+function validateCadGradeTechnicalQa({ drawings = {}, projectGeometry = {} }) {
+  const warnings = [];
+  const planEntries = drawings.plan || [];
+  const elevationEntries = drawings.elevation || [];
+  const sectionEntries = drawings.section || [];
+
+  planEntries.forEach((entry, index) => {
+    const svg = String(entry?.svg || "");
+    if (svg && !hasPlanRoomLabels(entry, svg)) {
+      warnings.push(
+        `CAD_QA_PLAN_ROOM_LABELS: drawings.plan[${index}] has no room labels.`,
+      );
+    }
+    if (svg && !hasPlanRoomAreas(entry, svg)) {
+      warnings.push(
+        `CAD_QA_PLAN_ROOM_AREAS: drawings.plan[${index}] has no room area labels.`,
+      );
+    }
+    if (svg && !hasDimensionChain(entry, svg)) {
+      warnings.push(
+        `CAD_QA_PLAN_DIMENSIONS: drawings.plan[${index}] has no dimension chain.`,
+      );
+    }
+    if (svg && !hasPlanSectionMarkers(entry, svg)) {
+      warnings.push(
+        `CAD_QA_SECTION_MARKERS_MISSING: drawings.plan[${index}] has no coordinated section markers.`,
+      );
+    }
+    if (
+      svg &&
+      (!hasCadLayerClasses(entry, svg) || !hasCadLineweightClasses(entry, svg))
+    ) {
+      warnings.push(
+        `CAD_QA_LINEWEIGHT_CLASSES: drawings.plan[${index}] is missing CAD layer or line-weight classes.`,
+      );
+    }
+  });
+
+  elevationEntries.forEach((entry, index) => {
+    const svg = String(entry?.svg || "");
+    if (svg && !hasElevationDatum(entry, svg, "ffl")) {
+      warnings.push(
+        `CAD_QA_ELEVATION_FFL_DATUM: drawings.elevation[${index}] has no FFL datum.`,
+      );
+    }
+    if (svg && !hasElevationDatum(entry, svg, "eaves")) {
+      warnings.push(
+        `CAD_QA_ELEVATION_EAVES_DATUM: drawings.elevation[${index}] has no eaves datum.`,
+      );
+    }
+    if (svg && !hasElevationDatum(entry, svg, "ridge")) {
+      warnings.push(
+        `CAD_QA_ELEVATION_RIDGE_DATUM: drawings.elevation[${index}] has no ridge/parapet datum.`,
+      );
+    }
+    if (
+      svg &&
+      (!hasCadLayerClasses(entry, svg) || !hasCadLineweightClasses(entry, svg))
+    ) {
+      warnings.push(
+        `CAD_QA_LINEWEIGHT_CLASSES: drawings.elevation[${index}] is missing CAD layer or line-weight classes.`,
+      );
+    }
+  });
+
+  sectionEntries.forEach((entry, index) => {
+    const svg = String(entry?.svg || "");
+    if (svg && !hasGroundLine(entry, svg)) {
+      warnings.push(
+        `CAD_QA_SECTION_GROUND_LINE: drawings.section[${index}] has no ground line or hatch.`,
+      );
+    }
+    if (svg && !hasSectionVerticalDimension(entry, svg)) {
+      warnings.push(
+        `CAD_QA_SECTION_VERTICAL_DIMENSION: drawings.section[${index}] has no vertical dimension chain.`,
+      );
+    }
+    if (
+      svg &&
+      (!hasCadLayerClasses(entry, svg) || !hasCadLineweightClasses(entry, svg))
+    ) {
+      warnings.push(
+        `CAD_QA_LINEWEIGHT_CLASSES: drawings.section[${index}] is missing CAD layer or line-weight classes.`,
+      );
+    }
+  });
+
+  const expectedOpenings =
+    (projectGeometry.windows || []).length +
+    (projectGeometry.doors || []).length;
+  const planOpenings = planEntries.reduce(
+    (sum, entry) =>
+      sum +
+      Number(entry?.window_count || 0) +
+      numberFromEntry(entry, ["door_count"]),
+    0,
+  );
+  const elevationOpenings = elevationEntries.reduce(
+    (sum, entry) =>
+      sum +
+      Number(entry?.window_count || 0) +
+      numberFromEntry(entry, ["door_count"]),
+    0,
+  );
+  if (
+    expectedOpenings > 0 &&
+    ((planOpenings > 0 && planOpenings !== expectedOpenings) ||
+      (elevationOpenings > 0 && elevationOpenings !== expectedOpenings))
+  ) {
+    warnings.push(
+      `CAD_QA_OPENING_COUNT_ALIGNMENT: ProjectGraph has ${expectedOpenings} openings, plans report ${planOpenings}, elevations report ${elevationOpenings}.`,
+    );
+  }
+
+  const planSectionLabels = collectPlanSectionLabels(planEntries);
+  if (sectionEntries.length && planSectionLabels.size) {
+    sectionEntries.forEach((entry, index) => {
+      const label = normalizeSectionLabel(entry);
+      if (label && !planSectionLabels.has(label)) {
+        warnings.push(
+          `CAD_QA_SECTION_MARKER_ALIGNMENT: drawings.section[${index}] (${label}) has no matching plan section marker.`,
+        );
+      }
+    });
+  }
+
+  return warnings;
+}
+
 export function runDrawingConsistencyChecks({
   projectGeometry,
   drawings = {},
@@ -406,6 +661,16 @@ export function runDrawingConsistencyChecks({
     warnings.push(...crossViewWarnings);
   }
 
+  const cadGradeTechnicalQa = isFeatureEnabled("cadGradeTechnicalQa");
+  if (cadGradeTechnicalQa) {
+    warnings.push(
+      ...validateCadGradeTechnicalQa({
+        drawings,
+        projectGeometry,
+      }),
+    );
+  }
+
   return {
     valid: errors.length === 0,
     warnings,
@@ -414,6 +679,8 @@ export function runDrawingConsistencyChecks({
       requestedTypes: drawingTypes,
       levelCount,
       crossViewChecks: enableCrossViewChecks,
+      cadGradeTechnicalQa,
+      cadGradeTechnicalQaBlocking: false,
       counts: {
         plan: (drawings.plan || []).length,
         elevation: (drawings.elevation || []).length,

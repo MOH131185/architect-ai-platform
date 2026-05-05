@@ -317,12 +317,14 @@ function renderRoof(
     roofLanguage.includes("flat") || roofLanguage.includes("parapet");
   if (flatRoof) {
     return `
-      <g id="phase14-section-roof" ${renderRoofPitchDataAttributes({
-        ...roofPitchInfo,
-        status: "flat",
-        pitchDeg: null,
-        riseM: null,
-      })}>
+      <g id="phase14-section-roof" class="cad-layer-roof cad-lineweight-outline" ${renderRoofPitchDataAttributes(
+        {
+          ...roofPitchInfo,
+          status: "flat",
+          pitchDeg: null,
+          riseM: null,
+        },
+      )}>
         <rect x="${formatNumber(baseX)}" y="${formatNumber(
           topY - 18,
         )}" width="${formatNumber(widthPx)}" height="4" fill="${theme.paper}" stroke="${theme.line}" stroke-width="1.2" />
@@ -359,7 +361,7 @@ function renderRoof(
     polish,
   );
   return `
-    <g id="phase14-section-roof" ${renderRoofPitchDataAttributes(roofPitchInfo)}>
+      <g id="phase14-section-roof" class="cad-layer-roof cad-lineweight-outline" ${renderRoofPitchDataAttributes(roofPitchInfo)}>
       <path d="M ${formatNumber(baseX - 6)} ${formatNumber(
         topY,
       )} L ${formatNumber(baseX + widthPx / 2)} ${formatNumber(
@@ -504,6 +506,26 @@ function renderLevelDatums(
   // Phase 3 — optional RIDGE datum. Caller passes `{ y, heightM }` when the
   // ridge height is known so the elevation matches the goal sheet's
   // "RIDGE +X.XXm" label band.
+  let eavesDatumCount = 0;
+  const lastLevel = levelProfiles[levelProfiles.length - 1] || null;
+  if (lastLevel && Number.isFinite(Number(lastLevel.top_m))) {
+    const eavesY = baseY - Number(lastLevel.top_m) * scale;
+    const eavesFont = polishSize(9, fontScale);
+    labels.push(`
+      <line class="cad-eaves-datum cad-lineweight-detail" x1="${formatNumber(baseX + widthPx + 6)}" y1="${formatNumber(
+        eavesY,
+      )}" x2="${formatNumber(baseX + widthPx + 44)}" y2="${formatNumber(
+        eavesY,
+      )}" stroke="${theme.lineMuted}" stroke-width="${guideStroke}" />
+      <text class="cad-eaves-datum-label" x="${formatNumber(
+        baseX + widthPx + 50,
+      )}" y="${formatNumber(eavesY + 4)}" font-size="${eavesFont}" font-family="Arial, sans-serif" font-weight="700" data-datum-role="eaves">${escapeXml(
+        `EAVES +${Number(lastLevel.top_m).toFixed(2)}m`,
+      )}</text>
+    `);
+    eavesDatumCount = 1;
+  }
+
   let ridgeDatumCount = 0;
   if (
     ridgeInfo &&
@@ -528,8 +550,10 @@ function renderLevelDatums(
   }
 
   return {
-    markup: `<g id="phase8-elevation-datums">${lines.join("")}${labels.join("")}</g>`,
-    count: levelProfiles.length + 1 + ridgeDatumCount,
+    markup: `<g id="phase8-elevation-datums" class="cad-layer-datums cad-elevation-datums">${lines.join("")}${labels.join("")}</g>`,
+    count: levelProfiles.length + 1 + eavesDatumCount + ridgeDatumCount,
+    hasEaves: eavesDatumCount > 0,
+    hasRidge: ridgeDatumCount > 0,
   };
 }
 
@@ -548,7 +572,7 @@ function renderProjectedOpenings(
     .sort(
       (left, right) => Number(left.center_m || 0) - Number(right.center_m || 0),
     )
-    .map((windowElement) => {
+    .map((windowElement, index) => {
       const level = levelProfiles.find(
         (entry) => entry.id === windowElement.levelId,
       );
@@ -571,6 +595,7 @@ function renderProjectedOpenings(
               sillY - 2,
             )}" stroke="${theme.lineLight}" stroke-width="1" />`
           : "";
+      const tag = `W${String(index + 1).padStart(2, "0")}`;
       return `
         <g class="phase8-window">
           <rect x="${formatNumber(x)}" y="${formatNumber(headY)}" width="${formatNumber(
@@ -586,12 +611,12 @@ function renderProjectedOpenings(
           )}" x2="${formatNumber(x + widthPx)}" y2="${formatNumber(
             sillY,
           )}" stroke="${theme.guide}" stroke-width="0.9" />
-          <line x1="${formatNumber(x)}" y1="${formatNumber(
+          <line class="cad-window-sill-line" x1="${formatNumber(x)}" y1="${formatNumber(
             sillY,
           )}" x2="${formatNumber(x + widthPx)}" y2="${formatNumber(
             sillY,
           )}" stroke="${theme.lineMuted}" stroke-width="1.05" />
-          <line x1="${formatNumber(x)}" y1="${formatNumber(
+          <line class="cad-window-head-line" x1="${formatNumber(x)}" y1="${formatNumber(
             headY,
           )}" x2="${formatNumber(x + widthPx)}" y2="${formatNumber(
             headY,
@@ -607,6 +632,7 @@ function renderProjectedOpenings(
             headY + 4,
           )}" stroke="${theme.guide}" stroke-width="0.8" />
           ${mullionMarkup}
+          <text class="cad-opening-tag cad-window-tag" x="${formatNumber(x + widthPx / 2)}" y="${formatNumber(headY - 4)}" font-size="8" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" fill="${theme.lineMuted}">${escapeXml(tag)}</text>
         </g>
       `;
     })
@@ -616,13 +642,14 @@ function renderProjectedOpenings(
     .sort(
       (left, right) => Number(left.center_m || 0) - Number(right.center_m || 0),
     )
-    .map((door) => {
+    .map((door, index) => {
       const level = levelProfiles.find((entry) => entry.id === door.levelId);
       if (!level) return "";
       const widthPx = Math.max(24, Number(door.width_m || 1.1) * scale);
       const x = baseX + Number(door.center_m || 0) * scale - widthPx / 2;
       const headY = projectY(level, door.head_height_m || 2.2);
       const heightPx = Math.max(26, baseY - headY);
+      const tag = `D${String(index + 1).padStart(2, "0")}`;
       return `
         <g class="phase8-door">
           <rect x="${formatNumber(x)}" y="${formatNumber(headY)}" width="${formatNumber(
@@ -638,6 +665,7 @@ function renderProjectedOpenings(
           )}" x2="${formatNumber(x + widthPx)}" y2="${formatNumber(
             baseY,
           )}" stroke="${theme.guide}" stroke-width="0.9" />
+          <text class="cad-opening-tag cad-door-tag" x="${formatNumber(x + widthPx / 2)}" y="${formatNumber(headY - 4)}" font-size="8" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" fill="${theme.lineMuted}">${escapeXml(tag)}</text>
           <line x1="${formatNumber(x)}" y1="${formatNumber(
             headY,
           )}" x2="${formatNumber(x + widthPx)}" y2="${formatNumber(
@@ -659,7 +687,7 @@ function renderProjectedOpenings(
     .join("");
 
   return {
-    markup: `<g id="phase9-elevation-openings">${windowMarkup}${doorMarkup}</g>`,
+    markup: `<g id="phase9-elevation-openings" class="cad-layer-openings cad-lineweight-secondary">${windowMarkup}${doorMarkup}</g>`,
     windowCount: (sideFacade.projectedWindows || []).length,
     doorCount: (sideFacade.projectedDoors || []).length,
   };
@@ -706,7 +734,7 @@ function renderRhythmGuides(
       ].map((centerM) => baseX + centerM * scale);
   const guides = guidePositions
     .map((x) => {
-      return `<line x1="${formatNumber(x)}" y1="${formatNumber(
+      return `<line class="cad-facade-rhythm-cue cad-lineweight-detail" x1="${formatNumber(x)}" y1="${formatNumber(
         baseY - heightPx,
       )}" x2="${formatNumber(x)}" y2="${formatNumber(
         baseY,
@@ -715,7 +743,7 @@ function renderRhythmGuides(
     .join("");
 
   return {
-    markup: `<g id="phase8-elevation-rhythm">${guides}</g>`,
+    markup: `<g id="phase8-elevation-rhythm" class="cad-layer-rhythm">${guides}</g>`,
     count: guidePositions.length,
   };
 }
@@ -784,7 +812,7 @@ function renderMaterialZones(
       );
       const labelX = x + zoneWidthPx / 2;
       return `
-        <g class="phase8-elevation-material-zone" data-zone-index="${index}">
+        <g class="phase8-elevation-material-zone cad-material-hatch" data-zone-index="${index}" data-material-hatch="${escapeXml(String(materialKey || ""))}">
           <rect x="${formatNumber(x)}" y="${formatNumber(
             baseY - heightPx,
           )}" width="${formatNumber(zoneWidthPx)}" height="${formatNumber(
@@ -814,7 +842,7 @@ function renderMaterialZones(
 
   return {
     markup: `
-      <g id="phase8-elevation-material-zones">
+      <g id="phase8-elevation-material-zones" class="cad-layer-material-hatches">
         ${markup}
         <rect x="${formatNumber(baseX)}" y="${formatNumber(
           baseY - heightPx,
@@ -1137,7 +1165,7 @@ function renderFacadeFeatures(
 
 function renderGroundLine(baseX, baseY, widthPx, theme) {
   return `
-    <g id="phase8-ground-line">
+    <g id="phase8-ground-line" class="cad-layer-site-ground cad-lineweight-outline">
       <rect x="${formatNumber(baseX - 18)}" y="${formatNumber(
         baseY,
       )}" width="${formatNumber(widthPx + 36)}" height="24" fill="url(#phase8-elev-ground)" />
@@ -1167,7 +1195,7 @@ function renderOverallDimensions(
   const guideStroke = polishSize(0.9, polish.strokeScale || 1);
   const primaryStroke = polishSize(1, polish.strokeScale || 1);
   return `
-    <g id="phase8-elevation-dimensions">
+    <g id="phase8-elevation-dimensions" class="cad-layer-dimensions cad-dimension-chain-overall cad-vertical-dimension-chain cad-lineweight-detail">
       <line x1="${formatNumber(baseX)}" y1="${formatNumber(
         baseY - heightPx,
       )}" x2="${formatNumber(baseX)}" y2="${formatNumber(
@@ -1399,6 +1427,7 @@ export function renderElevationSvg(
   const width = options.width || 1200;
   const height = options.height || 760;
   const sheetMode = options.sheetMode === true;
+  const blueprintGrade = isFeatureEnabled("blueprintGradeTechnicalRenderer");
   const sheetPolish = resolveElevationPolish(sheetMode);
   const showInternalTitleBlock =
     !sheetMode || options.showInternalTitleBlock === true;
@@ -1694,7 +1723,7 @@ export function renderElevationSvg(
   const semiBasementMarkup =
     packSemiBasement && semiBasementHeightPx > 0
       ? `
-  <g data-vernacular-feature="semi_basement">
+  <g data-vernacular-feature="semi_basement" class="cad-plinth-base cad-semi-basement-cue">
     <rect x="${formatNumber(baseX)}" y="${formatNumber(baseY)}" width="${formatNumber(
       widthPx,
     )}" height="${formatNumber(semiBasementHeightPx)}" fill="${theme.paperMuted || theme.paper}" stroke="${theme.line}" stroke-width="0.7" stroke-dasharray="4 2" />
@@ -1713,9 +1742,10 @@ export function renderElevationSvg(
     : "";
 
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-theme="${theme.name}" data-bounds-source="${envelope.source}"${packDataAttrs}>
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-theme="${theme.name}" data-bounds-source="${envelope.source}" data-blueprint-grade="${blueprintGrade ? "true" : "false"}"${packDataAttrs}>
   ${buildMaterialPatternDefs(theme)}
   <rect width="${width}" height="${height}" fill="${theme.paper}" />
+  ${blueprintGrade ? '<g class="cad-lineweight-registry cad-lineweight-outline cad-lineweight-projection cad-lineweight-detail" data-cad-layer="lineweight-registry"/>' : ""}
   ${
     sheetMode
       ? ""
@@ -1784,6 +1814,8 @@ export function renderElevationSvg(
       shading_count: facadeOrientation?.shading_elements?.length || 0,
       material_zone_count: materialZones.count,
       ffl_marker_count: datums.count,
+      eaves_datum_count: datums.hasEaves ? 1 : 0,
+      ridge_datum_count: datums.hasRidge ? 1 : 0,
       sill_lintel_count: openings.windowCount * 2 + openings.doorCount,
       feature_count: featureMarkup.count,
       facade_richness_score: facadeRichnessScore,
@@ -1821,6 +1853,24 @@ export function renderElevationSvg(
       vernacular_pack_semi_basement: packSemiBasement,
       vernacular_pack_window_language: packWindowLanguageRaw || null,
       vernacular_pack_has_stucco: packHasStucco,
+      cad_grade_renderer: blueprintGrade,
+      cad_layer_classes: [
+        "cad-layer-material-hatches",
+        "cad-layer-datums",
+        "cad-layer-openings",
+        "cad-layer-rhythm",
+        "cad-layer-dimensions",
+      ],
+      cad_lineweight_classes: [
+        "cad-lineweight-outline",
+        "cad-lineweight-projection",
+        "cad-lineweight-detail",
+      ],
+      has_cad_layer_classes: blueprintGrade,
+      has_cad_lineweight_classes: blueprintGrade,
+      has_eaves_datum: datums.hasEaves,
+      has_ridge_datum: datums.hasRidge,
+      has_opening_tags: openings.windowCount + openings.doorCount > 0,
     },
   };
 }

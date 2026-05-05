@@ -587,6 +587,44 @@ describe("projectGraphVerticalSliceService", () => {
         (q) => q.code === "CONTEXT_PROVIDERS_OFFLINE",
       ),
     ).toBe(true);
+    expect(result.architectReasoningManifest).toEqual(
+      expect.objectContaining({
+        asset_type: "architect_reasoning_manifest_json",
+        schema_version: "architect-reasoning-manifest-v1",
+        source_model_hash: result.geometryHash,
+        geometryHash: result.geometryHash,
+        authoritySource: "project_graph_compiled_geometry",
+        deterministic: true,
+        manifestHash: expect.any(String),
+      }),
+    );
+    expect(
+      result.architectReasoningManifest.prompt_splice_lines.length,
+    ).toBeGreaterThanOrEqual(6);
+    expect(
+      result.architectReasoningManifest.prompt_splice_lines.length,
+    ).toBeLessThanOrEqual(8);
+    expect(result.architectReasoningManifest.design_rationale).toEqual(
+      expect.objectContaining({
+        site_orientation: expect.any(String),
+        zoning: expect.any(String),
+        circulation: expect.any(String),
+        daylight: expect.any(String),
+        facade_vernacular: expect.any(String),
+        section_cut: expect.any(String),
+        material: expect.any(String),
+        qa_caveats: expect.any(String),
+      }),
+    );
+    expect(result.artifacts.architectReasoningManifest).toEqual(
+      result.architectReasoningManifest,
+    );
+    expect(result.artifacts.architectReasoningManifestHash).toBe(
+      result.architectReasoningManifest.manifestHash,
+    );
+    expect(result.artifacts.panelMap.key_notes.svgString).toContain(
+      "Design rationale",
+    );
     // Phase 5B — visual identity validation report attached to artifacts
     // and to sheet metadata. Deterministic-fallback path must not fail.
     // The validator is report-only; it never modifies the export gate
@@ -2366,6 +2404,10 @@ describe("projectGraphVerticalSliceService", () => {
       createReadingRoomBrief(),
     );
 
+    expect(second.geometryHash).toBe(first.geometryHash);
+    expect(second.architectReasoningManifest.manifestHash).toBe(
+      first.architectReasoningManifest.manifestHash,
+    );
     expect(second.artifacts.a1Pdf.renderedPngHash).toBe(
       first.artifacts.a1Pdf.renderedPngHash,
     );

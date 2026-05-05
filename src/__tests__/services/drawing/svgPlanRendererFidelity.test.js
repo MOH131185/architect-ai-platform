@@ -156,7 +156,13 @@ function fixture(extra = {}) {
         head_height_m: 2.1,
       },
     ],
-    stairs: [],
+    stairs: [
+      {
+        id: "main-stair",
+        level_id: "ground",
+        bbox: { min_x: 16.3, min_y: 8.4, max_x: 18.6, max_y: 15.4 },
+      },
+    ],
     sections: [
       {
         id: "section-long",
@@ -316,6 +322,40 @@ describe("renderPlanSvg — Phase 1 fidelity features", () => {
     expect(result.svg).toContain('class="furniture-garage"');
     expect(result.svg).toContain('class="furniture-utility"');
     expect(result.svg).toContain('class="furniture-wardrobe"');
+  });
+
+  test("emits blueprint-grade CAD layers, line weights, tags and dimensions", () => {
+    const result = renderPlanSvg(fixture(), { width: 1200, height: 900 });
+    const meta = result.technical_quality_metadata;
+
+    expect(result.svg).toContain('data-blueprint-grade="true"');
+    expect(result.svg).toContain("cad-layer-walls");
+    expect(result.svg).toContain("cad-wall-poche");
+    expect(result.svg).toContain("cad-lineweight-cut");
+    expect(result.svg).toContain("cad-lineweight-primary");
+    expect(result.svg).toContain("room-area-label");
+    expect(result.svg).toContain("data-room-area-m2");
+    expect(result.svg).toContain("cad-window-tag");
+    expect(result.svg).toContain("cad-door-tag");
+    expect(result.svg).toContain("cad-stair-arrow");
+    expect(result.svg).toContain("cad-stair-label");
+    expect(result.svg).toContain(
+      'data-dimension-chain-types="overall bay opening internal"',
+    );
+    expect(result.svg).toContain("cad-dimension-chain-bay");
+    expect(result.svg).toContain("cad-dimension-chain-opening");
+    expect(result.svg).toContain("cad-section-marker");
+    expect(result.svg).toContain('data-section-label="A-A"');
+    expect(meta.cad_grade_renderer).toBe(true);
+    expect(meta.has_room_area_labels).toBe(true);
+    expect(meta.has_cad_layer_classes).toBe(true);
+    expect(meta.has_cad_lineweight_classes).toBe(true);
+    expect(meta.cad_layer_classes).toEqual(
+      expect.arrayContaining(["cad-layer-walls", "cad-layer-dimensions"]),
+    );
+    expect(meta.dimension_chain_types).toEqual(
+      expect.arrayContaining(["overall", "bay", "opening", "internal"]),
+    );
   });
 });
 
