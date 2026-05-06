@@ -49,6 +49,78 @@ const ALLOWED_OPENAI_SIZES = new Set([
   "1792x1024",
 ]);
 
+function parsePositiveInt(value, fallback, { min = 1 } = {}) {
+  const parsed = Number.parseInt(value || "", 10);
+  if (!Number.isFinite(parsed) || parsed < min) {
+    return fallback;
+  }
+  return parsed;
+}
+
+function createOpenAIRequestTimeoutSignal(timeoutMs, externalSignal) {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return {
+      signal: externalSignal,
+      dispose: () => {},
+    };
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort(
+      Object.assign(
+        new Error(`OpenAI request timed out after ${timeoutMs}ms`),
+        {
+          name: "AbortError",
+          code: "OPENAI_REQUEST_TIMEOUT",
+        },
+      ),
+    );
+  }, timeoutMs);
+
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      clearTimeout(timeoutId);
+      controller.abort(externalSignal.reason);
+    } else {
+      externalSignal.addEventListener(
+        "abort",
+        () => {
+          clearTimeout(timeoutId);
+          controller.abort(externalSignal.reason);
+        },
+        { once: true },
+      );
+    }
+  }
+
+  return {
+    signal: controller.signal,
+    dispose: () => clearTimeout(timeoutId),
+  };
+}
+
+async function fetchWithTimeout(
+  url,
+  options = {},
+  timeoutMs = 120_000,
+  { fetchImpl = global.fetch } = {},
+) {
+  const { signal: externalSignal, ...restOptions } = options;
+  const requestTimeout = createOpenAIRequestTimeoutSignal(
+    timeoutMs,
+    externalSignal,
+  );
+  try {
+    return await fetchImpl(url, {
+      ...restOptions,
+      signal: requestTimeout.signal,
+    });
+  } finally {
+    requestTimeout.dispose();
+  }
+}
+
 function resolveImageGenEnabled(env = process.env) {
   return openaiEnv.isTruthy(
     openaiEnv.readEnv(env, "PROJECT_GRAPH_IMAGE_GEN_ENABLED"),
@@ -70,6 +142,25 @@ function resolveImageModel(env = process.env) {
 function resolveSize(panelType) {
   const target = PANEL_TYPE_TO_SIZE[panelType] || "1024x1024";
   return ALLOWED_OPENAI_SIZES.has(target) ? target : "1024x1024";
+}
+
+function resolveOpenAIImageTimeoutMs(env = process.env) {
+  return parsePositiveInt(
+    openaiEnv.readEnv(env, "OPENAI_IMAGE_FETCH_TIMEOUT_MS"),
+    parsePositiveInt(
+      openaiEnv.readEnv(env, "OPENAI_REASONING_FETCH_TIMEOUT_MS"),
+      120_000,
+    ),
+    { min: 1000 },
+  );
+}
+
+function resolveOpenAIImageDownloadTimeoutMs(env = process.env) {
+  return parsePositiveInt(
+    openaiEnv.readEnv(env, "OPENAI_IMAGE_DOWNLOAD_TIMEOUT_MS"),
+    resolveOpenAIImageTimeoutMs(env),
+    { min: 1000 },
+  );
 }
 
 export function getProjectGraphImageProviderConfig(env = process.env) {
@@ -221,11 +312,16 @@ async function callOpenAIImageEdit({ imageBuffer, prompt, panelType, env }) {
     ...openaiEnv.getOpenAIOrgProjectDiagnostics(env),
   });
 
-  const response = await fetch("https://api.openai.com/v1/images/edits", {
-    method: "POST",
-    headers: openaiEnv.buildOpenAIRequestHeaders(keyInfo, env),
-    body: form,
-  });
+  const response = await fetchWithTimeout(
+    "https://api.openai.com/v1/images/edits",
+    {
+      method: "POST",
+      headers: openaiEnv.buildOpenAIRequestHeaders(keyInfo, env),
+      body: form,
+    },
+    resolveOpenAIImageTimeoutMs(env),
+    { fetchImpl: global.fetch },
+  );
 
   const requestId =
     response.headers?.get?.("x-request-id") ||
@@ -263,7 +359,12 @@ async function callOpenAIImageEdit({ imageBuffer, prompt, panelType, env }) {
   if (entry.b64_json) {
     pngBuffer = Buffer.from(entry.b64_json, "base64");
   } else {
-    const fetchResp = await fetch(entry.url);
+    const fetchResp = await fetchWithTimeout(
+      entry.url,
+      { method: "GET" },
+      resolveOpenAIImageDownloadTimeoutMs(env),
+      { fetchImpl: global.fetch },
+    );
     if (!fetchResp.ok) {
       throw new Error(
         `Failed to download generated image: ${fetchResp.status}`,

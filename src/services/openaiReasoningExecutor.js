@@ -96,6 +96,78 @@ function safeJson(value, maxLength = 5000) {
   }
 }
 
+function parsePositiveInt(value, fallback, { min = 1 } = {}) {
+  const parsed = Number.parseInt(value || "", 10);
+  if (!Number.isFinite(parsed) || parsed < min) {
+    return fallback;
+  }
+  return parsed;
+}
+
+function createOpenAIRequestTimeoutSignal(timeoutMs, externalSignal) {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return {
+      signal: externalSignal,
+      dispose: () => {},
+    };
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort(
+      Object.assign(
+        new Error(`OpenAI request timed out after ${timeoutMs}ms`),
+        {
+          name: "AbortError",
+          code: "OPENAI_REQUEST_TIMEOUT",
+        },
+      ),
+    );
+  }, timeoutMs);
+
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      clearTimeout(timeoutId);
+      controller.abort(externalSignal.reason);
+    } else {
+      externalSignal.addEventListener(
+        "abort",
+        () => {
+          clearTimeout(timeoutId);
+          controller.abort(externalSignal.reason);
+        },
+        { once: true },
+      );
+    }
+  }
+
+  return {
+    signal: controller.signal,
+    dispose: () => clearTimeout(timeoutId),
+  };
+}
+
+async function fetchWithTimeout(
+  fetchImpl,
+  url,
+  options = {},
+  timeoutMs = 120_000,
+) {
+  const { signal: externalSignal, ...restOptions } = options;
+  const requestTimeout = createOpenAIRequestTimeoutSignal(
+    timeoutMs,
+    externalSignal,
+  );
+  try {
+    return await fetchImpl(url, {
+      ...restOptions,
+      signal: requestTimeout.signal,
+    });
+  } finally {
+    requestTimeout.dispose();
+  }
+}
+
 function baseCall(route, overrides = {}) {
   return {
     stepId: route.stepId,
@@ -315,12 +387,14 @@ async function postOpenAIChatCompletion({
   env,
   fetchImpl,
   context,
+  timeoutMs,
 }) {
   const baseUrl = readEnv(env, "OPENAI_BASE_URL") || DEFAULT_OPENAI_BASE_URL;
   const maxTokens =
     Number.parseInt(readEnv(env, "PROJECT_GRAPH_OPENAI_MAX_TOKENS"), 10) ||
     DEFAULT_MAX_COMPLETION_TOKENS;
-  const response = await fetchImpl(
+  const response = await fetchWithTimeout(
+    fetchImpl,
     `${baseUrl.replace(/\/$/, "")}/chat/completions`,
     {
       method: "POST",
@@ -333,6 +407,10 @@ async function postOpenAIChatCompletion({
         max_completion_tokens: maxTokens,
       }),
     },
+    parsePositiveInt(
+      readEnv(env, "OPENAI_REASONING_FETCH_TIMEOUT_MS"),
+      timeoutMs,
+    ),
   );
   const requestId =
     response.headers?.get?.("x-request-id") ||
@@ -388,6 +466,10 @@ export async function executeProjectGraphReasoningSteps({
   const keyInfo = openaiEnv.resolveOpenAIReasoningApiKeyInfo(env);
   const fetchImpl = execution.fetchImpl || execution.fetch || global.fetch;
   const calls = [];
+  const openAIFetchTimeoutMs = parsePositiveInt(
+    readEnv(env, "OPENAI_REASONING_FETCH_TIMEOUT_MS"),
+    120_000,
+  );
 
   for (const route of modelRoutes) {
     if (!REASONING_STEP_SET.has(route.stepId)) {
@@ -465,6 +547,7 @@ export async function executeProjectGraphReasoningSteps({
           keyInfo,
           env,
           fetchImpl,
+          timeoutMs: openAIFetchTimeoutMs,
           context,
         }),
       );
