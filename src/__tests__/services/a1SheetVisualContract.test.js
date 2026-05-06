@@ -231,6 +231,7 @@ test("terraced-house A1 sheet carries the visual contract chrome and technical S
 
   try {
     const brief = {
+      project_name: "ARCHIAI PROJECT",
       programme: "Terraced House",
       property_type: "terraced-house",
       site_input: { address: "17 Kensington Road, Scunthorpe DN15 8BQ" },
@@ -349,6 +350,9 @@ test("terraced-house A1 sheet carries the visual contract chrome and technical S
 
     expect(svg).toContain('data-layout-template="presentation-v3"');
     expect(svg).toContain('data-sheet-title-bar="true"');
+    expect(svg).toContain(
+      'data-sheet-project-title="TERRACED HOUSE — 17 KENSINGTON ROAD, SCUNTHORPE"',
+    );
     expect(svg).not.toContain('data-provenance-footer="true"');
     expect(
       (svg.match(/cad-dimension-chain/g) || []).length,
@@ -374,7 +378,7 @@ test("terraced-house A1 sheet carries the visual contract chrome and technical S
   }
 });
 
-test("section wall detail caps broad interior poche opacity while preserving cut-wall hierarchy", () => {
+test("section wall detail keeps broad interior poche label-readable while preserving cut-wall hierarchy", () => {
   const { markup } = buildSectionWallDetailMarkup({
     walls: [
       {
@@ -406,15 +410,17 @@ test("section wall detail caps broad interior poche opacity while preserving cut
   });
 
   const backgroundMatch = markup.match(
-    /id="phase13-section-cut-wall-broad-upper-room-zone"[\s\S]*?data-poche-zone="interior-background" data-poche-opacity="([^"]+)"/,
+    /id="phase13-section-cut-wall-broad-upper-room-zone"[\s\S]*?data-poche-zone="interior-background" data-poche-fill-role="label-readable-background" data-poche-opacity="([^"]+)" fill="([^"]+)"/,
   );
   const cutWallMatch = markup.match(
-    /id="phase13-section-cut-wall-thin-cut-wall"[\s\S]*?data-poche-zone="cut-wall" data-poche-opacity="([^"]+)"/,
+    /id="phase13-section-cut-wall-thin-cut-wall"[\s\S]*?data-poche-zone="cut-wall" data-poche-fill-role="section-cut" data-poche-opacity="([^"]+)" fill="([^"]+)"/,
   );
 
   expect(backgroundMatch).toBeTruthy();
-  expect(Number(backgroundMatch[1])).toBeLessThanOrEqual(0.38);
+  expect(Number(backgroundMatch[1])).toBeGreaterThanOrEqual(0.85);
+  expect(backgroundMatch[2]).toBe("#f4f5f6");
   expect(cutWallMatch).toBeTruthy();
   expect(Number(cutWallMatch[1])).toBeGreaterThan(0.7);
+  expect(cutWallMatch[2]).toBe("#151515");
   expect(markup).toContain('stroke="#111"');
 });
