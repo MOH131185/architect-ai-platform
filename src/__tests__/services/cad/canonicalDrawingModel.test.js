@@ -370,6 +370,34 @@ describe("CanonicalDrawingModel", () => {
     expect(codes).toContain("CAD_MODEL_TITLE_BLOCK_MISSING");
   });
 
+  test("CAD QA requires sheet date while generated models keep a default fallback", () => {
+    const model = buildCanonicalDrawingModelFromCompiledProject({
+      compiledProject: fixtureCompiledProject(),
+    });
+    expect(model.paperSpace.sheets[0].date).toBe("undated");
+
+    const result = validateCanonicalDrawingModel({
+      ...model,
+      paperSpace: {
+        ...model.paperSpace,
+        sheets: model.paperSpace.sheets.map((sheet, index) =>
+          index === 0 ? { ...sheet, date: null } : sheet,
+        ),
+      },
+    });
+    const codes = result.errors.map((error) => error.code);
+
+    expect(result.valid).toBe(false);
+    expect(codes).toContain("CAD_MODEL_SHEET_FIELD_MISSING");
+    expect(result.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          details: expect.objectContaining({ field: "date" }),
+        }),
+      ]),
+    );
+  });
+
   test("CAD QA can fail missing dimensions in strict mode", () => {
     const model = buildCanonicalDrawingModelFromCompiledProject({
       compiledProject: fixtureCompiledProject(),

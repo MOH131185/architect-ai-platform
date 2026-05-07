@@ -1722,6 +1722,7 @@ export function validateCanonicalDrawingModel(model = {}, options = {}) {
       "jurisdiction",
       "revision",
       "status",
+      "date",
       "author",
       "company",
     ].forEach((field) => {

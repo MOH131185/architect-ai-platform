@@ -158,4 +158,50 @@ describe("exportCanonicalDrawingModelToDXF", () => {
       }),
     ).toThrow(/CAD_MODEL_GEOMETRY_HASH_MISSING/);
   });
+
+  test("strictValidation blocks DXF export when dimensions are missing", () => {
+    const model = buildCanonicalDrawingModelFromCompiledProject({
+      compiledProject: fixtureCompiledProject(),
+    });
+    const modelWithoutDimensions = {
+      ...model,
+      modelSpace: {
+        ...model.modelSpace,
+        entities: model.modelSpace.entities.filter(
+          (entity) => entity.type !== "DIMENSION",
+        ),
+      },
+    };
+
+    expect(() =>
+      exportCanonicalDrawingModelToDXF({
+        canonicalDrawingModel: modelWithoutDimensions,
+        strictValidation: true,
+      }),
+    ).toThrow(/CAD_MODEL_DIMENSIONS_MISSING/);
+  });
+
+  test("non-strict DXF export allows missing dimensions as a warning-policy case", () => {
+    const model = buildCanonicalDrawingModelFromCompiledProject({
+      compiledProject: fixtureCompiledProject(),
+    });
+    const modelWithoutDimensions = {
+      ...model,
+      modelSpace: {
+        ...model.modelSpace,
+        entities: model.modelSpace.entities.filter(
+          (entity) => entity.type !== "DIMENSION",
+        ),
+      },
+    };
+
+    const dxf = exportCanonicalDrawingModelToDXF({
+      canonicalDrawingModel: modelWithoutDimensions,
+      strictValidation: false,
+    });
+
+    expect(dxf).toContain("SECTION");
+    expect(dxf).toMatch(/  0\nEOF\n$/);
+    expect(dxf).not.toContain("DIMENSION");
+  });
 });

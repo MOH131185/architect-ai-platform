@@ -76,15 +76,33 @@ Deliverables:
   `S-GRID`, `S-NOTES`.
 - MEP layers: `M-DUCT`, `M-PIPE`, `P-DRAIN`, `E-LIGHT`, `E-POWER`,
   `E-SWITCH`, `F-FIRE`.
-- Paper-space layouts, model-space geometry, dimensions, title blocks, blocks,
-  hatches, and CTB/STB plot metadata.
+- Deterministic paper-space-marked layout entities, model-space geometry,
+  dimensions, title blocks, blocks, and hatches.
+- CTB/STB plot-style mapping metadata remains a planned CAD-fidelity step and
+  must not be reported as complete until emitted in the DXF export.
 - Documented DWG conversion adapter seam for ODA File Converter, ODA SDK, or
   Autodesk APS. DXF remains the guaranteed output.
+
+Known limitations after this PR:
+
+- Paper-space entities are bound with `67=1` and `410=<layout>`, but the full
+  native AutoCAD layout ownership graph is still future work.
+- `OBJECTS` / `LAYOUT` records are currently minimal and do not yet include full
+  `AcDbLayout` ownership, plot settings, page setup dictionaries, or block
+  ownership references.
+- Viewport frames are represented as paper-space geometry; native DXF
+  `0/VIEWPORT` entities are not yet implemented.
+- CTB/STB plot metadata is not yet emitted.
+- DWG remains conversion-only and unavailable unless a real converter is
+  configured.
+- DXF is the guaranteed CAD output.
+- The next CAD fidelity PR should add native `VIEWPORT` entities, the full
+  `LAYOUT` object graph, plot/page setup metadata, and CTB/STB mapping.
 
 Acceptance criteria:
 
 - DXF contains expected layers, dimensions, title blocks, model-space entities,
-  and paper-space layouts.
+  and paper-space layout metadata.
 - DXF contains no rasterized technical drawings.
 - Export fails when `geometryHash` is missing.
 

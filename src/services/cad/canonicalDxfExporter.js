@@ -689,7 +689,9 @@ export function exportCanonicalDrawingModelToDXF({
       "CanonicalDrawingModel schema_version is required for DXF export.",
     );
   }
-  const validation = validateCanonicalDrawingModel(canonicalDrawingModel);
+  const validation = validateCanonicalDrawingModel(canonicalDrawingModel, {
+    dimensionPolicy: strictValidation ? "error" : "warn",
+  });
   if (strictValidation && !validation.valid) {
     const codes = validation.errors.map((error) => error.code).join(", ");
     throw new Error(`CanonicalDrawingModel failed DXF validation: ${codes}`);
