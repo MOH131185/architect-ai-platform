@@ -133,6 +133,12 @@ class SheetExportService {
   async exportDWG(designProject, format = "dwg") {
     logger.info(`📐 Exporting ${format.toUpperCase()}...`);
 
+    if (String(format).toLowerCase() === "dwg") {
+      throw new Error(
+        "Native DWG export requires a configured ODA or Autodesk APS conversion provider. Export DXF instead.",
+      );
+    }
+
     const { masterDNA, geometry } = designProject;
 
     if (!geometry && !masterDNA) {
@@ -147,11 +153,10 @@ class SheetExportService {
       );
       return new Blob([cadContent], { type: "application/x-dwg" });
     } catch (error) {
-      console.warn("⚠️  BIM service export failed, using placeholder:", error);
-
-      // Fallback: generate placeholder DWG text
-      const placeholder = this.generateDWGPlaceholder(masterDNA, designProject);
-      return new Blob([placeholder], { type: "text/plain" });
+      console.warn("⚠️  BIM service CAD export failed:", error);
+      throw new Error(
+        `${format.toUpperCase()} export failed. Placeholder CAD output is disabled; use the compiled-project DXF export path.`,
+      );
     }
   }
 

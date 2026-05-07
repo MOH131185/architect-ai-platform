@@ -327,20 +327,9 @@ class ExportService {
       return this.exportDXF(sheet);
     }
 
-    // Fallback for other formats
-    const content = this.generateCADContent(sheet, format);
-    const blob = new Blob([content], { type: "application/octet-stream" });
-    const url = URL.createObjectURL(blob);
-    const filename = this.generateFilename(sheet, format.toLowerCase());
-
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = filename;
-    link.click();
-    URL.revokeObjectURL(url);
-
-    logger.success("CAD export complete", { filename, format });
-    return { success: true, url, filename, format };
+    throw new Error(
+      `${format} export requires a configured DWG conversion provider. DXF is the guaranteed CAD output.`,
+    );
   }
 
   /**

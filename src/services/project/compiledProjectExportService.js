@@ -3,6 +3,8 @@ import {
   createCostWorkbookManifest,
   UK_RESIDENTIAL_V2_PIPELINE_VERSION,
 } from "./v2ProjectContracts.js";
+import { buildCanonicalDrawingModelFromCompiledProject } from "../cad/canonicalDrawingModel.js";
+import { exportCanonicalDrawingModelToDXF } from "../cad/canonicalDxfExporter.js";
 
 function round(value, precision = 3) {
   const numeric = Number(value);
@@ -214,163 +216,15 @@ export function exportCompiledProjectToDXF({
       "Compiled project with geometryHash is required for DXF export.",
     );
   }
-
-  const levels =
-    Array.isArray(compiledProject.levels) && compiledProject.levels.length
-      ? compiledProject.levels
-      : [{ id: "level-0", level_number: 0, name: "Ground" }];
-  const levelTags = levels.map((level, index) => levelPrefix(level, index));
-
-  let dxf = "";
-  dxf += dxfPair(0, "SECTION");
-  dxf += dxfPair(2, "HEADER");
-  dxf += dxfPair(9, "$ACADVER");
-  dxf += dxfPair(1, "AC1024");
-  dxf += dxfPair(9, "$INSUNITS");
-  dxf += dxfPair(70, "6"); // 6 = metres
-  dxf += dxfPair(9, "$LIMMIN");
-  dxf += dxfPair(10, "-50.0");
-  dxf += dxfPair(20, "-50.0");
-  dxf += dxfPair(9, "$LIMMAX");
-  dxf += dxfPair(10, "50.0");
-  dxf += dxfPair(20, "50.0");
-  dxf += dxfPair(0, "ENDSEC");
-  dxf += buildLayerTable(levelTags);
-  dxf += dxfPair(0, "SECTION");
-  dxf += dxfPair(2, "ENTITIES");
-
-  // Site boundary on A-SITE (level-agnostic).
-  const siteBoundary = compiledProject.site?.boundary_polygon || [];
-  if (Array.isArray(siteBoundary) && siteBoundary.length >= 3) {
-    dxf += drawPolyline(siteBoundary, "A-SITE", true);
-  }
-  // Buildable polygon (dashed surrogate via A-DIMS-style yellow).
-  const buildablePolygon = compiledProject.site?.buildable_polygon || [];
-  if (Array.isArray(buildablePolygon) && buildablePolygon.length >= 3) {
-    dxf += drawPolyline(buildablePolygon, "A-SITE", true);
-  }
-
-  // North arrow at the top-left of the site bbox.
-  let northX = 0;
-  let northY = 0;
-  if (Array.isArray(siteBoundary) && siteBoundary.length >= 3) {
-    const xs = siteBoundary.map((p) => Number(p.x || 0));
-    const ys = siteBoundary.map((p) => Number(p.y || 0));
-    northX = Math.min(...xs) - 1.2;
-    northY = Math.max(...ys) - 0.6;
-  }
-  dxf += drawNorthArrow(northX, northY);
-
-  // Per-level entity emission.
-  levels.forEach((level, index) => {
-    const tag = levelTags[index];
-    const inLevel = (entity) => entity.levelId === level.id;
-    const slabs = (compiledProject.slabs || []).filter(inLevel);
-    const walls = (compiledProject.walls || []).filter(inLevel);
-    const rooms = (compiledProject.rooms || []).filter(inLevel);
-    const openings = (compiledProject.openings || []).filter(inLevel);
-    const stairs = (compiledProject.stairs || []).filter(inLevel);
-    const columns = (compiledProject.columns || []).filter(inLevel);
-
-    slabs.forEach((slab) => {
-      dxf += drawPolyline(slab.polygon, levelLayerName("A-SLAB", tag), true);
-    });
-    walls.forEach((wall) => {
-      const layer = wall.exterior
-        ? levelLayerName("A-WALL-EXT", tag)
-        : levelLayerName("A-WALL", tag);
-      dxf += drawLine(wall.start, wall.end, layer);
-    });
-    columns.forEach((column) => {
-      if (column?.position) {
-        const x = Number(column.position.x || 0);
-        const y = Number(column.position.y || 0);
-        const half = Number(column.width_m || column.depth_m || 0.3) / 2;
-        const layer = levelLayerName("A-COLU", tag);
-        dxf += drawPolyline(
-          [
-            { x: x - half, y: y - half },
-            { x: x + half, y: y - half },
-            { x: x + half, y: y + half },
-            { x: x - half, y: y + half },
-          ],
-          layer,
-          true,
-        );
-      }
-    });
-    rooms.forEach((room) => {
-      const roomLayer = levelLayerName("A-ROOM", tag);
-      const areaLayer = levelLayerName("A-AREA", tag);
-      dxf += drawPolyline(room.polygon, roomLayer, true);
-      const bbox = room.bbox || {};
-      const cx = Number((bbox.min_x + bbox.max_x) / 2 || 0);
-      const cy = Number((bbox.min_y + bbox.max_y) / 2 || 0);
-      dxf += drawText(cx, cy, room.name || room.type || "ROOM", areaLayer);
-      dxf += drawText(
-        cx,
-        cy - 0.35,
-        `${round(room.actual_area_m2 || room.target_area_m2 || 0, 1)} m2`,
-        areaLayer,
-        0.16,
-      );
-    });
-    openings.forEach((opening) => {
-      const position = opening.position_m || opening.position || { x: 0, y: 0 };
-      const half = Number(opening.width_m || 0.9) / 2;
-      const start = {
-        x: Number(position.x || 0) - half,
-        y: Number(position.y || 0),
-      };
-      const end = {
-        x: Number(position.x || 0) + half,
-        y: Number(position.y || 0),
-      };
-      const baseLayer =
-        opening.type === "window" || opening.kind === "window"
-          ? "A-WINDOW"
-          : opening.type === "door" ||
-              opening.kind === "door" ||
-              opening.kind === "main_entrance"
-            ? "A-DOOR"
-            : "A-DOOR"; // unknown openings default to A-DOOR (more conservative than A-WINDOW)
-      dxf += drawLine(start, end, levelLayerName(baseLayer, tag));
-    });
-    stairs.forEach((stair) => {
-      const layer = levelLayerName("A-STAIR", tag);
-      if (Array.isArray(stair.polygon) && stair.polygon.length >= 3) {
-        dxf += drawPolyline(stair.polygon, layer, true);
-      } else if (stair.start && stair.end) {
-        dxf += drawLine(stair.start, stair.end, layer);
-      }
-    });
+  const canonicalDrawingModel = buildCanonicalDrawingModelFromCompiledProject({
+    compiledProject,
+    projectName,
   });
-
-  const footprint = compiledProject.footprint?.polygon || [];
-  if (footprint.length) {
-    dxf += drawPolyline(
-      footprint,
-      levelLayerName("A-WALL-EXT", levelTags[0] || "L00"),
-      true,
-    );
-  }
-
-  // Provenance metadata on a hidden A-METADATA layer (text below origin).
-  const metadataLines = [
-    `PROJECT: ${projectName}`,
-    `GEOMETRY_HASH: ${compiledProject.geometryHash}`,
-    sourceModelHash ? `SOURCE_MODEL_HASH: ${sourceModelHash}` : null,
-    pipelineVersion ? `PIPELINE: ${pipelineVersion}` : null,
-    `LEVELS: ${levels.length}`,
-    `EXPORT_VERSION: dxf-archi-v2`,
-  ].filter(Boolean);
-  metadataLines.forEach((line, idx) => {
-    dxf += drawText(0, -1.2 - idx * 0.4, line, "A-METADATA", 0.18);
+  return exportCanonicalDrawingModelToDXF({
+    canonicalDrawingModel,
+    sourceModelHash,
+    pipelineVersion,
   });
-
-  dxf += dxfPair(0, "ENDSEC");
-  dxf += dxfPair(0, "EOF");
-  return dxf;
 }
 
 export function exportCompiledProjectToIFC({
