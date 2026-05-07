@@ -199,6 +199,9 @@ describe("CanonicalDrawingModel", () => {
         "TITLE_BLOCK_A1",
         "DOOR_SINGLE",
         "WINDOW_SYMBOL",
+        "NORTH_ARROW",
+        "SECTION_MARKER",
+        "LEVEL_DATUM",
       ]),
     );
     expect(model.hatches.map((hatch) => hatch.name)).toEqual(
@@ -208,6 +211,71 @@ describe("CanonicalDrawingModel", () => {
       "ARCH_100",
     );
     expect(model.textStyles.map((style) => style.name)).toContain("ARCH_BODY");
+  });
+
+  test("carries explicit paper-space sheets, viewports, title block fields, and drawing scales", () => {
+    const model = buildCanonicalDrawingModelFromCompiledProject({
+      compiledProject: fixtureCompiledProject(),
+    });
+    const planSheet = model.paperSpace.sheets.find(
+      (sheet) => sheet.sheetId === "A-101",
+    );
+
+    expect(planSheet).toEqual(
+      expect.objectContaining({
+        sheetId: "A-101",
+        sheetNumber: "A-101",
+        drawingNumber: "A-101",
+        paperSize: "A1",
+        orientation: "landscape",
+        scale: "1:100",
+        titleBlock: "TITLE_BLOCK_A1",
+        geometryHash: model.geometryHash,
+        sourceProjectGraphHash: model.sourceProjectGraphHash,
+        jurisdiction: "uk",
+        revision: "P01",
+        status: "Preliminary",
+        date: "undated",
+        author: "Architect AI Platform",
+        company: "Architect AI Platform",
+      }),
+    );
+    expect(planSheet.viewports).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          viewportId: "vp-floor_plan_ground",
+          viewId: "floor_plan_ground",
+          viewType: "floor_plan",
+          scale: "1:100",
+          geometryHash: model.geometryHash,
+          sourceProjectGraphHash: model.sourceProjectGraphHash,
+        }),
+      ]),
+    );
+    expect(planSheet.modelViews).toContain("floor_plan_ground");
+    expect(planSheet.drawingIndex).toEqual(
+      expect.objectContaining({
+        sheetNumber: "A-101",
+        title: "Ground Floor Plan",
+        scale: "1:100",
+      }),
+    );
+    expect(model.titleBlocks[0]).toEqual(
+      expect.objectContaining({
+        name: "TITLE_BLOCK_A1",
+        fields: expect.arrayContaining([
+          "projectName",
+          "drawingNumber",
+          "title",
+          "revision",
+          "status",
+          "scale",
+        ]),
+      }),
+    );
+    expect(model.drawingScales.map((scale) => scale.ratio)).toEqual(
+      expect.arrayContaining(["1:500", "1:100", "1:20", "1:5"]),
+    );
   });
 
   test("declares the required professional CAD layers", () => {
@@ -283,6 +351,45 @@ describe("CanonicalDrawingModel", () => {
     expect(result.errors).toEqual([]);
     expect(result.checks.entityCount).toBe(model.modelSpace.entities.length);
     expect(result.checks.imageProviderUsed).toBe("none");
+    expect(result.checks.hasTitleBlock).toBe(true);
+    expect(result.checks.hasPaperSpace).toBe(true);
+    expect(result.checks.hasDimensions).toBe(true);
+  });
+
+  test("CAD QA fails when title blocks are missing", () => {
+    const model = buildCanonicalDrawingModelFromCompiledProject({
+      compiledProject: fixtureCompiledProject(),
+    });
+    const result = validateCanonicalDrawingModel({
+      ...model,
+      titleBlocks: [],
+    });
+    const codes = result.errors.map((error) => error.code);
+
+    expect(result.valid).toBe(false);
+    expect(codes).toContain("CAD_MODEL_TITLE_BLOCK_MISSING");
+  });
+
+  test("CAD QA can fail missing dimensions in strict mode", () => {
+    const model = buildCanonicalDrawingModelFromCompiledProject({
+      compiledProject: fixtureCompiledProject(),
+    });
+    const result = validateCanonicalDrawingModel(
+      {
+        ...model,
+        modelSpace: {
+          ...model.modelSpace,
+          entities: model.modelSpace.entities.filter(
+            (entity) => entity.type !== "DIMENSION",
+          ),
+        },
+      },
+      { dimensionPolicy: "error" },
+    );
+    const codes = result.errors.map((error) => error.code);
+
+    expect(result.valid).toBe(false);
+    expect(codes).toContain("CAD_MODEL_DIMENSIONS_MISSING");
   });
 
   test("fails closed when geometry authority or vector-only guarantees are broken", () => {

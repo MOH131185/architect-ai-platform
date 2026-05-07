@@ -274,11 +274,19 @@ const DEFAULT_DIMENSION_STYLES = Object.freeze([
     name: "ARCH_100",
     textHeight: 2.5,
     arrowSize: 2.5,
+    arrowStyle: "architectural_tick",
+    tickSize: 2.5,
     extensionOffset: 1.25,
     units: "meters",
     precision: 2,
   },
 ]);
+
+const ISO_PAPER_SIZES_MM = Object.freeze({
+  A1: { width: 841, height: 594 },
+  A2: { width: 594, height: 420 },
+  A3: { width: 420, height: 297 },
+});
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -523,6 +531,8 @@ function dimensionEntity({
       offset: point2(offset),
       text: String(text || ""),
       styleName: "ARCH_100",
+      arrowStyle: "architectural_tick",
+      layer: "A-DIMS",
     },
     metadata,
   });
@@ -1140,121 +1150,356 @@ function defaultBlocks(geometryHash) {
     ]),
     block("DOOR_SINGLE", "Single door plan symbol", []),
     block("WINDOW_SYMBOL", "Window plan symbol", []),
+    block("NORTH_ARROW", "North arrow symbol", [
+      {
+        type: "LINE",
+        layer: "A-TITLE",
+        geometry: { start: { x: 0, y: 0 }, end: { x: 0, y: 12 } },
+      },
+      {
+        type: "LINE",
+        layer: "A-TITLE",
+        geometry: { start: { x: 0, y: 12 }, end: { x: -3, y: 2 } },
+      },
+      {
+        type: "LINE",
+        layer: "A-TITLE",
+        geometry: { start: { x: 0, y: 12 }, end: { x: 3, y: 2 } },
+      },
+      {
+        type: "TEXT",
+        layer: "A-TITLE",
+        geometry: { point: { x: -2, y: 14 }, height: 2.5, text: "N" },
+      },
+    ]),
+    block("SECTION_MARKER", "Section cut marker symbol", [
+      {
+        type: "LINE",
+        layer: "A-DIMS",
+        geometry: { start: { x: -6, y: 0 }, end: { x: 6, y: 0 } },
+      },
+      {
+        type: "TEXT",
+        layer: "A-DIMS",
+        geometry: { point: { x: -1.5, y: 2 }, height: 2.5, text: "A" },
+      },
+    ]),
+    block("LEVEL_DATUM", "Level datum marker symbol", [
+      {
+        type: "LINE",
+        layer: "A-DIMS",
+        geometry: { start: { x: -8, y: 0 }, end: { x: 8, y: 0 } },
+      },
+      {
+        type: "TEXT",
+        layer: "A-DIMS",
+        geometry: { point: { x: 9, y: -1 }, height: 2.5, text: "LVL" },
+      },
+    ]),
     block("SANITARY_WC", "Sanitary WC symbol", []),
     block("ELECTRICAL_LIGHT", "Electrical light symbol", []),
     block("ELECTRICAL_SOCKET", "Electrical socket symbol", []),
   ];
 }
 
-function buildPaperSpaceSheets(
+function sheetDateOf(compiledProject = {}) {
+  return (
+    compiledProject.metadata?.drawingDate ||
+    compiledProject.metadata?.date ||
+    compiledProject.drawingDate ||
+    "undated"
+  );
+}
+
+function authorOf(compiledProject = {}) {
+  return (
+    compiledProject.metadata?.author ||
+    compiledProject.author ||
+    "Architect AI Platform"
+  );
+}
+
+function companyOf(compiledProject = {}) {
+  return (
+    compiledProject.metadata?.company ||
+    compiledProject.company ||
+    "Architect AI Platform"
+  );
+}
+
+function buildSheetMetadata({
+  compiledProject = {},
+  projectName,
+  geometryHash,
+  sourceProjectGraphHash,
+  jurisdiction,
+  units,
+  sheetNumber,
+  title,
+  scale,
+  discipline = "architectural",
+  paperSize = "A1",
+  orientation = "landscape",
+} = {}) {
+  return {
+    projectName,
+    drawingNumber: sheetNumber,
+    title,
+    discipline,
+    geometryHash,
+    sourceProjectGraphHash,
+    jurisdiction,
+    units,
+    revision: compiledProject.metadata?.revision || "P01",
+    status: compiledProject.metadata?.status || "Preliminary",
+    date: sheetDateOf(compiledProject),
+    author: authorOf(compiledProject),
+    company: companyOf(compiledProject),
+    paperSize,
+    orientation,
+    scale,
+  };
+}
+
+function createViewport({
+  viewportId,
+  viewId,
+  viewType,
+  scale,
+  origin,
+  size,
+  geometryHash,
+  sourceProjectGraphHash,
+  modelSpaceUnits = "meters",
+  paperUnits = "mm",
+} = {}) {
+  return {
+    viewportId,
+    viewId,
+    viewType,
+    scale,
+    origin,
+    size,
+    modelSpaceUnits,
+    paperUnits,
+    geometryHash,
+    sourceProjectGraphHash,
+  };
+}
+
+function createSheet({
+  compiledProject = {},
+  sheetId,
+  sheetNumber,
+  title,
+  discipline = "architectural",
+  scale = "1:100",
+  paperSize = "A1",
+  orientation = "landscape",
+  titleBlock = "TITLE_BLOCK_A1",
+  viewports = [],
+  modelViews = [],
+  projectName,
+  geometryHash,
+  sourceProjectGraphHash,
+  jurisdiction,
+  units,
+} = {}) {
+  const revision = compiledProject.metadata?.revision || "P01";
+  const status = compiledProject.metadata?.status || "Preliminary";
+  return {
+    sheetId,
+    sheetNumber,
+    drawingNumber: sheetNumber,
+    title,
+    discipline,
+    paperSize,
+    paperSizeMm: ISO_PAPER_SIZES_MM[paperSize] || ISO_PAPER_SIZES_MM.A1,
+    orientation,
+    scale,
+    titleBlock,
+    viewports,
+    modelViews,
+    drawingIndex: {
+      sheetId,
+      sheetNumber,
+      title,
+      scale,
+      discipline,
+      revision,
+      status,
+    },
+    geometryHash,
+    sourceProjectGraphHash,
+    jurisdiction,
+    revision,
+    status,
+    date: sheetDateOf(compiledProject),
+    author: authorOf(compiledProject),
+    company: companyOf(compiledProject),
+    sheetMetadata: buildSheetMetadata({
+      compiledProject,
+      projectName,
+      geometryHash,
+      sourceProjectGraphHash,
+      jurisdiction,
+      units,
+      sheetNumber,
+      title,
+      scale,
+      discipline,
+      paperSize,
+      orientation,
+    }),
+  };
+}
+
+function buildPaperSpaceSheets({
   compiledProject = {},
   geometryHash,
+  sourceProjectGraphHash,
+  jurisdiction,
+  units,
   projectName,
-) {
+}) {
   const levels = toArray(compiledProject.levels).length
     ? toArray(compiledProject.levels)
     : [{ id: "level-0", level_number: 0, name: "Ground Floor" }];
-  const baseMetadata = {
-    projectName,
-    geometryHash,
-    revision: "P01",
-    status: "Preliminary",
-    paperSize: "A1",
-  };
   const sheets = [
-    {
+    createSheet({
+      compiledProject,
       sheetId: "A-000",
-      drawingNumber: "A-000",
+      sheetNumber: "A-000",
       title: "Cover Sheet / Drawing Index",
       discipline: "architectural",
       scale: "NTS",
-      titleBlock: "TITLE_BLOCK_A1",
-      sheetMetadata: baseMetadata,
+      modelViews: [],
       viewports: [],
-    },
-    {
+      projectName,
+      geometryHash,
+      sourceProjectGraphHash,
+      jurisdiction,
+      units,
+    }),
+    createSheet({
+      compiledProject,
       sheetId: "A-100",
-      drawingNumber: "A-100",
+      sheetNumber: "A-100",
       title: "Site Plan",
       discipline: "architectural",
       scale: "1:500",
-      titleBlock: "TITLE_BLOCK_A1",
-      sheetMetadata: baseMetadata,
+      modelViews: ["site_plan"],
       viewports: [
-        {
+        createViewport({
           viewportId: "vp-site-plan",
           viewId: "site_plan",
           viewType: "site_plan",
           scale: "1:500",
           origin: { x: 30, y: 60 },
           size: { width: 520, height: 360 },
-        },
+          geometryHash,
+          sourceProjectGraphHash,
+        }),
       ],
-    },
+      projectName,
+      geometryHash,
+      sourceProjectGraphHash,
+      jurisdiction,
+      units,
+    }),
   ];
 
   levels.forEach((level, index) => {
     const viewId = levelViewId(level, index);
     const number = 101 + index;
-    sheets.push({
-      sheetId: `A-${number}`,
-      drawingNumber: `A-${number}`,
-      title: `${level.name || `Level ${index}`} Plan`,
-      discipline: "architectural",
-      scale: "1:100",
-      titleBlock: "TITLE_BLOCK_A1",
-      sheetMetadata: baseMetadata,
-      viewports: [
-        {
-          viewportId: `vp-${viewId}`,
-          viewId,
-          viewType: "floor_plan",
-          scale: "1:100",
-          origin: { x: 30, y: 60 },
-          size: { width: 520, height: 360 },
-        },
-      ],
-    });
+    sheets.push(
+      createSheet({
+        compiledProject,
+        sheetId: `A-${number}`,
+        sheetNumber: `A-${number}`,
+        title: `${level.name || `Level ${index}`} Plan`,
+        discipline: "architectural",
+        scale: "1:100",
+        modelViews: [viewId],
+        viewports: [
+          createViewport({
+            viewportId: `vp-${viewId}`,
+            viewId,
+            viewType: "floor_plan",
+            scale: "1:100",
+            origin: { x: 30, y: 60 },
+            size: { width: 520, height: 360 },
+            geometryHash,
+            sourceProjectGraphHash,
+          }),
+        ],
+        projectName,
+        geometryHash,
+        sourceProjectGraphHash,
+        jurisdiction,
+        units,
+      }),
+    );
   });
 
   sheets.push(
-    {
+    createSheet({
+      compiledProject,
       sheetId: "A-200",
-      drawingNumber: "A-200",
+      sheetNumber: "A-200",
       title: "Elevations",
       discipline: "architectural",
       scale: "1:100",
-      titleBlock: "TITLE_BLOCK_A1",
-      sheetMetadata: baseMetadata,
-      viewports: ["north", "south", "east", "west"].map((direction, index) => ({
-        viewportId: `vp-elevation-${direction}`,
-        viewId: `elevation_${direction}`,
-        viewType: "elevation",
-        scale: "1:100",
-        origin: {
-          x: 30 + (index % 2) * 270,
-          y: 60 + Math.floor(index / 2) * 180,
-        },
-        size: { width: 240, height: 150 },
-      })),
-    },
-    {
+      modelViews: ["north", "south", "east", "west"].map(
+        (direction) => `elevation_${direction}`,
+      ),
+      viewports: ["north", "south", "east", "west"].map((direction, index) =>
+        createViewport({
+          viewportId: `vp-elevation-${direction}`,
+          viewId: `elevation_${direction}`,
+          viewType: "elevation",
+          scale: "1:100",
+          origin: {
+            x: 30 + (index % 2) * 270,
+            y: 60 + Math.floor(index / 2) * 180,
+          },
+          size: { width: 240, height: 150 },
+          geometryHash,
+          sourceProjectGraphHash,
+        }),
+      ),
+      projectName,
+      geometryHash,
+      sourceProjectGraphHash,
+      jurisdiction,
+      units,
+    }),
+    createSheet({
+      compiledProject,
       sheetId: "A-300",
-      drawingNumber: "A-300",
+      sheetNumber: "A-300",
       title: "Sections",
       discipline: "architectural",
       scale: "1:100",
-      titleBlock: "TITLE_BLOCK_A1",
-      sheetMetadata: baseMetadata,
-      viewports: ["section_AA", "section_BB"].map((viewId, index) => ({
-        viewportId: `vp-${viewId}`,
-        viewId,
-        viewType: "section",
-        scale: "1:100",
-        origin: { x: 30, y: 60 + index * 180 },
-        size: { width: 520, height: 150 },
-      })),
-    },
+      modelViews: ["section_AA", "section_BB"],
+      viewports: ["section_AA", "section_BB"].map((viewId, index) =>
+        createViewport({
+          viewportId: `vp-${viewId}`,
+          viewId,
+          viewType: "section",
+          scale: "1:100",
+          origin: { x: 30, y: 60 + index * 180 },
+          size: { width: 520, height: 150 },
+          geometryHash,
+          sourceProjectGraphHash,
+        }),
+      ),
+      projectName,
+      geometryHash,
+      sourceProjectGraphHash,
+      jurisdiction,
+      units,
+    }),
   );
 
   return sheets;
@@ -1297,11 +1542,14 @@ export function buildCanonicalDrawingModelFromCompiledProject({
     ...buildSectionEntities(compiledProject, geometryHash),
     ...buildStructuralPrimitiveEntities(compiledProject, geometryHash),
   ];
-  const sheets = buildPaperSpaceSheets(
+  const sheets = buildPaperSpaceSheets({
     compiledProject,
     geometryHash,
-    resolvedProjectName,
-  );
+    sourceProjectGraphHash,
+    jurisdiction: resolvedJurisdiction,
+    units,
+    projectName: resolvedProjectName,
+  });
 
   return {
     schema_version: CANONICAL_DRAWING_MODEL_VERSION,
@@ -1339,8 +1587,14 @@ export function buildCanonicalDrawingModelFromCompiledProject({
           "revision",
           "status",
           "scale",
+          "date",
+          "author",
+          "company",
+          "geometryHash",
+          "sourceProjectGraphHash",
         ],
         geometryHash,
+        sourceProjectGraphHash,
       },
     ],
     viewports: sheets.flatMap((sheet) =>
@@ -1358,6 +1612,9 @@ export function buildCanonicalDrawingModelFromCompiledProject({
       units,
       revision: "P01",
       status: "Preliminary",
+      date: sheetDateOf(compiledProject),
+      author: authorOf(compiledProject),
+      company: companyOf(compiledProject),
     },
     metadata: {
       createdBy: "architect-ai-platform",
@@ -1385,9 +1642,10 @@ function entityUsesRaster(entity = {}) {
   );
 }
 
-export function validateCanonicalDrawingModel(model = {}) {
+export function validateCanonicalDrawingModel(model = {}, options = {}) {
   const errors = [];
   const warnings = [];
+  const dimensionPolicy = options.dimensionPolicy || "warn";
 
   if (model.schema_version !== CANONICAL_DRAWING_MODEL_VERSION) {
     errors.push(
@@ -1441,6 +1699,61 @@ export function validateCanonicalDrawingModel(model = {}) {
       ),
     );
   }
+  if (!toArray(model.titleBlocks).length) {
+    errors.push(
+      validationError(
+        "CAD_MODEL_TITLE_BLOCK_MISSING",
+        "CanonicalDrawingModel requires at least one title block definition.",
+      ),
+    );
+  }
+
+  sheets.forEach((sheet, index) => {
+    [
+      "sheetId",
+      "sheetNumber",
+      "title",
+      "paperSize",
+      "orientation",
+      "scale",
+      "titleBlock",
+      "geometryHash",
+      "sourceProjectGraphHash",
+      "jurisdiction",
+      "revision",
+      "status",
+      "author",
+      "company",
+    ].forEach((field) => {
+      if (!sheet?.[field]) {
+        errors.push(
+          validationError(
+            "CAD_MODEL_SHEET_FIELD_MISSING",
+            `paperSpace.sheets[${index}] is missing ${field}.`,
+            { sheetIndex: index, field },
+          ),
+        );
+      }
+    });
+    if (!Array.isArray(sheet.viewports)) {
+      errors.push(
+        validationError(
+          "CAD_MODEL_SHEET_VIEWPORTS_MISSING",
+          `paperSpace.sheets[${index}] must define viewports.`,
+          { sheetIndex: index },
+        ),
+      );
+    }
+    if (sheet.geometryHash && sheet.geometryHash !== model.geometryHash) {
+      errors.push(
+        validationError(
+          "CAD_MODEL_SHEET_GEOMETRY_HASH_MISMATCH",
+          `paperSpace.sheets[${index}] does not share the model geometryHash.`,
+          { sheetIndex: index, sheetGeometryHash: sheet.geometryHash },
+        ),
+      );
+    }
+  });
 
   const layerNames = new Set(toArray(model.layers).map((layer) => layer.name));
   REQUIRED_CANONICAL_CAD_LAYERS.forEach((layerName) => {
@@ -1505,12 +1818,15 @@ export function validateCanonicalDrawingModel(model = {}) {
     entities.map((entity) => String(entity.type || "").toUpperCase()),
   );
   if (!entityTypes.has("DIMENSION")) {
-    warnings.push(
-      validationError(
-        "CAD_MODEL_DIMENSIONS_MISSING",
-        "CanonicalDrawingModel has no DIMENSION entities.",
-      ),
+    const issue = validationError(
+      "CAD_MODEL_DIMENSIONS_MISSING",
+      "CanonicalDrawingModel has no DIMENSION entities.",
     );
+    if (dimensionPolicy === "error") {
+      errors.push(issue);
+    } else {
+      warnings.push(issue);
+    }
   }
 
   return {
@@ -1525,6 +1841,9 @@ export function validateCanonicalDrawingModel(model = {}) {
       hasGeometryHash: Boolean(model.geometryHash),
       hasSourceProjectGraphHash: Boolean(model.sourceProjectGraphHash),
       imageProviderUsed: "none",
+      hasTitleBlock: toArray(model.titleBlocks).length > 0,
+      hasPaperSpace: sheets.length > 0,
+      hasDimensions: entityTypes.has("DIMENSION"),
     },
   };
 }

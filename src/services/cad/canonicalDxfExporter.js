@@ -58,6 +58,17 @@ function point(value = {}) {
   };
 }
 
+function writeSpaceMarkers(entity = {}) {
+  let dxf = "";
+  if (entity.paperSpace === true) {
+    dxf += dxfPair(67, 1);
+  }
+  if (entity.paperSpaceLayout) {
+    dxf += dxfPair(410, entity.paperSpaceLayout);
+  }
+  return dxf;
+}
+
 function levelTagFromEntity(entity = {}) {
   const candidates = [
     entity.levelId,
@@ -241,6 +252,7 @@ function writePolyline(entity = {}, layerName) {
   let dxf = "";
   dxf += dxfPair(0, "LWPOLYLINE");
   dxf += dxfPair(8, layerName);
+  dxf += writeSpaceMarkers(entity);
   dxf += dxfPair(90, points.length);
   dxf += dxfPair(70, entity.geometry?.closed === false ? 0 : 1);
   points.forEach((rawPoint) => {
@@ -257,6 +269,7 @@ function writeLine(entity = {}, layerName) {
   let dxf = "";
   dxf += dxfPair(0, "LINE");
   dxf += dxfPair(8, layerName);
+  dxf += writeSpaceMarkers(entity);
   dxf += dxfPair(10, start.x);
   dxf += dxfPair(20, start.y);
   dxf += dxfPair(30, start.z);
@@ -271,6 +284,7 @@ function writeText(entity = {}, layerName) {
   let dxf = "";
   dxf += dxfPair(0, "TEXT");
   dxf += dxfPair(8, layerName);
+  dxf += writeSpaceMarkers(entity);
   dxf += dxfPair(10, p.x);
   dxf += dxfPair(20, p.y);
   dxf += dxfPair(40, round(entity.geometry?.height || 0.22));
@@ -284,6 +298,7 @@ function writeMText(entity = {}, layerName) {
   let dxf = "";
   dxf += dxfPair(0, "MTEXT");
   dxf += dxfPair(8, layerName);
+  dxf += writeSpaceMarkers(entity);
   dxf += dxfPair(10, p.x);
   dxf += dxfPair(20, p.y);
   dxf += dxfPair(40, round(entity.geometry?.height || 0.22));
@@ -297,6 +312,7 @@ function writeInsert(entity = {}, layerName) {
   let dxf = "";
   dxf += dxfPair(0, "INSERT");
   dxf += dxfPair(8, layerName);
+  dxf += writeSpaceMarkers(entity);
   dxf += dxfPair(2, entity.geometry?.blockName || "BLOCK");
   dxf += dxfPair(10, p.x);
   dxf += dxfPair(20, p.y);
@@ -313,6 +329,7 @@ function writeDimension(entity = {}, layerName) {
   let dxf = "";
   dxf += dxfPair(0, "DIMENSION");
   dxf += dxfPair(8, layerName);
+  dxf += writeSpaceMarkers(entity);
   dxf += dxfPair(10, offset.x);
   dxf += dxfPair(20, offset.y);
   dxf += dxfPair(11, offset.x);
@@ -333,6 +350,7 @@ function writeHatch(entity = {}, layerName) {
   let dxf = "";
   dxf += dxfPair(0, "HATCH");
   dxf += dxfPair(8, layerName);
+  dxf += writeSpaceMarkers(entity);
   dxf += dxfPair(10, 0);
   dxf += dxfPair(20, 0);
   dxf += dxfPair(30, 0);
@@ -396,24 +414,14 @@ function northArrowEntities(model = {}) {
   const y = Number(extents.max_y || 0) - 0.6;
   return [
     {
-      type: "LINE",
+      type: "INSERT",
       layer: "A-NORTH",
-      geometry: { start: { x, y }, end: { x, y: y + 0.6 } },
-    },
-    {
-      type: "LINE",
-      layer: "A-NORTH",
-      geometry: { start: { x, y: y + 0.6 }, end: { x: x - 0.18, y: y - 0.05 } },
-    },
-    {
-      type: "LINE",
-      layer: "A-NORTH",
-      geometry: { start: { x, y: y + 0.6 }, end: { x: x + 0.18, y: y - 0.05 } },
-    },
-    {
-      type: "TEXT",
-      layer: "A-NORTH",
-      geometry: { point: { x, y: y + 0.75 }, height: 0.25, text: "N" },
+      geometry: {
+        blockName: "NORTH_ARROW",
+        point: { x, y },
+        scale: 0.05,
+        rotation: 0,
+      },
     },
   ];
 }
@@ -429,6 +437,186 @@ function titleBlockInsertEntities(model = {}) {
       rotation: 0,
     },
   }));
+}
+
+function paperSpaceEntity(entity = {}, sheet = {}) {
+  return {
+    ...entity,
+    paperSpace: true,
+    paperSpaceLayout: sheet.sheetId || sheet.sheetNumber || "Layout1",
+  };
+}
+
+function paperSpaceTextEntity(sheet, text, x, y, height = 3.2) {
+  return paperSpaceEntity(
+    {
+      type: "TEXT",
+      layer: "A-TITLE",
+      geometry: {
+        point: { x, y },
+        height,
+        text,
+        styleName: "ARCH_BODY",
+      },
+    },
+    sheet,
+  );
+}
+
+function paperSpacePolylineEntity(sheet, points, layer = "A-TITLE") {
+  return paperSpaceEntity(
+    {
+      type: "LWPOLYLINE",
+      layer,
+      geometry: {
+        points,
+        closed: true,
+      },
+    },
+    sheet,
+  );
+}
+
+function paperSpaceInsertEntity(sheet, blockName, x, y, scale = 1) {
+  return paperSpaceEntity(
+    {
+      type: "INSERT",
+      layer: "A-TITLE",
+      geometry: {
+        blockName,
+        point: { x, y },
+        scale,
+        rotation: 0,
+      },
+    },
+    sheet,
+  );
+}
+
+function buildPaperSpaceEntities(model = {}) {
+  const entities = [];
+  toArray(model.paperSpace?.sheets).forEach((sheet, sheetIndex) => {
+    const size =
+      sheet.paperSizeMm ||
+      (sheet.orientation === "portrait"
+        ? { width: 594, height: 841 }
+        : { width: 841, height: 594 });
+    const width = Number(size.width || 841);
+    const height = Number(size.height || 594);
+    const layoutName =
+      sheet.sheetId || sheet.sheetNumber || `Sheet-${sheetIndex + 1}`;
+    const titleOriginY = 24;
+    entities.push(
+      paperSpacePolylineEntity(sheet, [
+        { x: 10, y: 10 },
+        { x: width - 10, y: 10 },
+        { x: width - 10, y: height - 10 },
+        { x: 10, y: height - 10 },
+      ]),
+    );
+    entities.push(
+      paperSpaceInsertEntity(
+        sheet,
+        sheet.titleBlock || "TITLE_BLOCK_A1",
+        width - 200,
+        15,
+        1,
+      ),
+    );
+    entities.push(
+      paperSpaceTextEntity(
+        sheet,
+        `PAPER_SPACE_LAYOUT: ${layoutName}`,
+        18,
+        height - 20,
+        2.6,
+      ),
+      paperSpaceTextEntity(
+        sheet,
+        `DRAWING_NUMBER: ${sheet.sheetNumber || sheet.drawingNumber}`,
+        width - 190,
+        60,
+        3.2,
+      ),
+      paperSpaceTextEntity(
+        sheet,
+        `TITLE: ${sheet.title}`,
+        width - 190,
+        52,
+        3.2,
+      ),
+      paperSpaceTextEntity(
+        sheet,
+        `SCALE: ${sheet.scale}`,
+        width - 190,
+        44,
+        2.8,
+      ),
+      paperSpaceTextEntity(
+        sheet,
+        `REVISION: ${sheet.revision}`,
+        width - 190,
+        36,
+        2.8,
+      ),
+      paperSpaceTextEntity(
+        sheet,
+        `STATUS: ${sheet.status}`,
+        width - 190,
+        28,
+        2.8,
+      ),
+      paperSpaceTextEntity(
+        sheet,
+        `GEOMETRY_HASH: ${sheet.geometryHash}`,
+        18,
+        titleOriginY,
+        2.2,
+      ),
+      paperSpaceTextEntity(
+        sheet,
+        `SOURCE_PROJECT_GRAPH_HASH: ${sheet.sourceProjectGraphHash}`,
+        18,
+        titleOriginY - 7,
+        2.2,
+      ),
+    );
+    toArray(sheet.viewports).forEach((viewport, viewportIndex) => {
+      const origin = viewport.origin || { x: 30, y: 60 };
+      const viewportSize = viewport.size || { width: 520, height: 360 };
+      entities.push(
+        paperSpacePolylineEntity(sheet, [
+          origin,
+          { x: origin.x + viewportSize.width, y: origin.y },
+          {
+            x: origin.x + viewportSize.width,
+            y: origin.y + viewportSize.height,
+          },
+          { x: origin.x, y: origin.y + viewportSize.height },
+        ]),
+      );
+      entities.push(
+        paperSpaceTextEntity(
+          sheet,
+          `VIEWPORT: ${viewport.viewId} ${viewport.scale}`,
+          origin.x,
+          origin.y - 6 - viewportIndex * 4,
+          2.4,
+        ),
+      );
+    });
+    if (sheet.sheetId === "A-100") {
+      entities.push(
+        paperSpaceInsertEntity(sheet, "NORTH_ARROW", 40, height - 70, 1),
+      );
+    }
+    if (sheet.sheetId === "A-101") {
+      entities.push(
+        paperSpaceInsertEntity(sheet, "SECTION_MARKER", 75, 110, 1),
+      );
+    }
+  });
+  return entities;
 }
 
 function writeEntitiesSection({
@@ -455,6 +643,9 @@ function writeEntitiesSection({
     dxf += writeEntity(entity, { fallbackLayer: entity.layer });
   });
   titleBlockInsertEntities(model).forEach((entity) => {
+    dxf += writeEntity(entity, { fallbackLayer: entity.layer });
+  });
+  buildPaperSpaceEntities(model).forEach((entity) => {
     dxf += writeEntity(entity, { fallbackLayer: entity.layer });
   });
   metadataLines.forEach((line, index) => {

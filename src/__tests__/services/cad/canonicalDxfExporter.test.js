@@ -91,13 +91,57 @@ describe("exportCanonicalDrawingModelToDXF", () => {
     expect(dxf).toContain("HATCH");
     expect(dxf).toContain("INSERT");
     expect(dxf).toContain("TITLE_BLOCK_A1");
+    expect(dxf).toContain("NORTH_ARROW");
+    expect(dxf).toContain("SECTION_MARKER");
     expect(dxf).toContain("L00-A-WALL-EXT");
     expect(dxf).toContain("L00-A-DOOR");
     expect(dxf).toContain("A-METADATA");
+    expect(dxf).toContain("PAPER_SPACE_LAYOUT: A-101");
+    expect(dxf).toContain("DRAWING_NUMBER: A-101");
+    expect(dxf).toContain("TITLE: Ground Plan");
+    expect(dxf).toContain("SCALE: 1:100");
+    expect(dxf).toContain("REVISION: P01");
+    expect(dxf).toContain("VIEWPORT: floor_plan_ground 1:100");
+    expect(dxf).toContain("  67\n1\n");
+    expect(dxf).toContain("  410\nA-101\n");
     expect(dxf).toContain("GEOMETRY_HASH: geometry-hash-dxf-model-001");
+    expect(dxf).toContain(
+      "SOURCE_PROJECT_GRAPH_HASH: project-graph-hash-dxf-model-001",
+    );
     expect(dxf).toContain("SOURCE_MODEL_HASH: source-model-1");
     expect(dxf).toContain("PIPELINE: test-pipeline");
     expect(dxf).toMatch(/  0\nEOF\n$/);
+  });
+
+  test("emits professional CAD dimensions on A-DIMS with dimension text", () => {
+    const model = buildCanonicalDrawingModelFromCompiledProject({
+      compiledProject: fixtureCompiledProject(),
+    });
+    const dxf = exportCanonicalDrawingModelToDXF({
+      canonicalDrawingModel: model,
+    });
+
+    expect(dxf).toContain("DIMENSION");
+    expect(dxf).toContain("L00-A-DIMS");
+    expect(dxf).toContain("10 m");
+    expect(dxf).toContain("7 m");
+    expect(dxf).toContain("3.2 m");
+    expect(dxf).toContain("ARCH_100");
+  });
+
+  test("emits sheet border, viewport frame, and title block as paper-space entities", () => {
+    const model = buildCanonicalDrawingModelFromCompiledProject({
+      compiledProject: fixtureCompiledProject(),
+    });
+    const dxf = exportCanonicalDrawingModelToDXF({
+      canonicalDrawingModel: model,
+    });
+
+    expect(dxf).toContain("PAPER_SPACE_LAYOUT: A-100");
+    expect(dxf).toContain("VIEWPORT: site_plan 1:500");
+    expect(dxf).toContain("TITLE_BLOCK_A1");
+    expect(dxf).toContain("DRAWING_NUMBER: A-100");
+    expect(dxf).toContain("SCALE: 1:500");
   });
 
   test("fails closed when the drawing model is invalid", () => {
