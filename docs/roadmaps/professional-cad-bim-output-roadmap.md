@@ -21,10 +21,12 @@ contracts and should fail closed when geometry provenance is missing.
 - Canonical CAD export now carries model space, paper-space-marked sheets,
   title blocks, blocks, true DXF dimensions, geometry hashes, and source
   ProjectGraph hashes.
-- The native AutoCAD fidelity slice adds deterministic DXF `VIEWPORT` entities
-  with `AcDbViewport` records, `AcDbLayout` records, `AcDbPlotSettings`
-  records, layout dictionary entries, deterministic handles/ownership
-  references, and CTB plot-style metadata.
+- The native AutoCAD layout fidelity slice implements deterministic DXF
+  `0/VIEWPORT` entities with `AcDbViewport` records, per-sheet `AcDbLayout`
+  records, `AcDbPlotSettings` records, layout dictionary entries,
+  deterministic layout/viewport handles and owner references, CAD QA checks for
+  native layouts/viewports/plot settings/plot-style metadata, and the CTB
+  plot-style metadata reference `archiai-monochrome.ctb`.
 - DWG remains conversion-only and unavailable unless a real converter is
   configured. DXF is the guaranteed CAD output.
 - Structural helpers exist, but there is no full deterministic structural
@@ -88,27 +90,22 @@ Deliverables:
 - `AcDbLayout` and `AcDbPlotSettings` records in `OBJECTS`.
 - Layout dictionary entries, deterministic handles, owner references, and
   page/plot setup metadata.
-- CTB plot-style mapping metadata emitted as deterministic DXF metadata using
-  `archiai-monochrome.ctb`. No binary `.ctb` file is generated yet.
+- CAD QA checks for native layouts, native viewports, plot settings, and
+  plot-style metadata.
+- CTB plot-style mapping metadata emitted as a deterministic DXF metadata
+  reference using `archiai-monochrome.ctb`. No binary `.ctb` file is generated
+  yet.
 - Documented DWG conversion adapter seam for ODA File Converter, ODA SDK, or
   Autodesk APS. DXF remains the guaranteed output.
 
 Known limitations after this PR:
 
-- Paper-space entities remain bound with `67=1` and `410=<layout>` and are now
-  paired with native DXF `0/VIEWPORT` entities.
-- `OBJECTS` includes `AcDbLayout` and `AcDbPlotSettings` records, but the full
-  AutoCAD ownership graph across every `BLOCK_RECORD`, layout dictionary,
-  page setup dictionary, and plot-settings dictionary still needs viewer-driven
-  hardening.
-- Viewports are native DXF entities with `AcDbViewport` records, but advanced
-  AutoCAD viewport fidelity is still future work: frozen layer lists, clipping
-  boundaries, view twist, viewport locking, visual style references, and
-  non-rectangular clips are not complete yet.
-- CTB plot-style metadata is emitted as a deterministic reference/mapping, but
-  a real `.ctb`/`.stb` binary sidecar is not generated yet.
-- Plot settings are emitted deterministically, but still need validation in
-  AutoCAD, BricsCAD, and ODA Viewer.
+- Ownership references are improved, but the export is not yet a complete
+  AutoCAD-grade `BLOCK_RECORD` / table ownership graph across every DXF table.
+- Plot/page setup metadata is emitted deterministically, but still needs manual
+  validation in AutoCAD, BricsCAD, or ODA Viewer.
+- CTB metadata is emitted as a plot-style reference/metadata, not a generated
+  `.ctb` binary file.
 - DWG remains conversion-only and unavailable unless a real converter is
   configured.
 - DXF is the guaranteed CAD output.
