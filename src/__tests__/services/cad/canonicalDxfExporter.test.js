@@ -88,6 +88,11 @@ describe("exportCanonicalDrawingModelToDXF", () => {
     expect(dxf).toContain("OBJECTS");
     expect(dxf).toContain("LWPOLYLINE");
     expect(dxf).toContain("DIMENSION");
+    expect(dxf).toMatch(/  0\nVIEWPORT\n/);
+    expect(dxf).toContain("AcDbViewport");
+    expect(dxf).toContain("AcDbLayout");
+    expect(dxf).toContain("AcDbPlotSettings");
+    expect(dxf).toContain("ACAD_LAYOUT");
     expect(dxf).toContain("HATCH");
     expect(dxf).toContain("INSERT");
     expect(dxf).toContain("TITLE_BLOCK_A1");
@@ -104,6 +109,11 @@ describe("exportCanonicalDrawingModelToDXF", () => {
     expect(dxf).toContain("VIEWPORT: floor_plan_ground 1:100");
     expect(dxf).toContain("  67\n1\n");
     expect(dxf).toContain("  410\nA-101\n");
+    expect(dxf).toContain("PLOT_CONFIGURATION: DWG To PDF.pc3");
+    expect(dxf).toContain("CANONICAL_MEDIA_NAME: ISO_full_bleed_A1");
+    expect(dxf).toContain("PLOT_STYLE_TABLE: archiai-monochrome.ctb");
+    expect(dxf).toContain("PLOT_STYLE_METADATA: mode=ctb");
+    expect(dxf).toContain("CTB_STB_MAPPING: layer-weight-to-ctb");
     expect(dxf).toContain("GEOMETRY_HASH: geometry-hash-dxf-model-001");
     expect(dxf).toContain(
       "SOURCE_PROJECT_GRAPH_HASH: project-graph-hash-dxf-model-001",

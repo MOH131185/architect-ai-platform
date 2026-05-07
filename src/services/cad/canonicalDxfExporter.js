@@ -50,6 +50,16 @@ function toArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function stableHexHandle(...parts) {
+  const input = JSON.stringify(parts);
+  let hash = 2166136261;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).toUpperCase().padStart(6, "0");
+}
+
 function point(value = {}) {
   return {
     x: round(value.x),
@@ -344,6 +354,35 @@ function writeDimension(entity = {}, layerName) {
   return dxf;
 }
 
+function writeViewport(entity = {}, layerName) {
+  const p = point(entity.geometry?.center);
+  const viewCenter = point(entity.geometry?.viewCenter);
+  let dxf = "";
+  dxf += dxfPair(0, "VIEWPORT");
+  dxf += dxfPair(5, entity.handle || stableHexHandle("viewport", entity.id));
+  if (entity.ownerHandle) {
+    dxf += dxfPair(330, entity.ownerHandle);
+  }
+  dxf += dxfPair(100, "AcDbEntity");
+  dxf += dxfPair(8, layerName);
+  dxf += writeSpaceMarkers(entity);
+  dxf += dxfPair(100, "AcDbViewport");
+  dxf += dxfPair(10, p.x);
+  dxf += dxfPair(20, p.y);
+  dxf += dxfPair(30, 0);
+  dxf += dxfPair(40, round(entity.geometry?.width || 0));
+  dxf += dxfPair(41, round(entity.geometry?.height || 0));
+  dxf += dxfPair(68, entity.geometry?.status || 1);
+  dxf += dxfPair(69, entity.geometry?.viewportNumber || 1);
+  dxf += dxfPair(12, viewCenter.x);
+  dxf += dxfPair(22, viewCenter.y);
+  dxf += dxfPair(45, round(entity.geometry?.viewHeight || 1));
+  dxf += dxfPair(51, 0);
+  dxf += dxfPair(90, 0);
+  dxf += dxfPair(1, dxfText(entity.geometry?.name || entity.id || "VIEWPORT"));
+  return dxf;
+}
+
 function writeHatch(entity = {}, layerName) {
   const boundary = toArray(entity.geometry?.boundary);
   if (boundary.length < 3) return "";
@@ -388,6 +427,8 @@ function writeEntity(entity = {}, options = {}) {
       return writeInsert(entity, layerName);
     case "DIMENSION":
       return writeDimension(entity, layerName);
+    case "VIEWPORT":
+      return writeViewport(entity, layerName);
     case "HATCH":
       return writeHatch(entity, layerName);
     default:
@@ -487,6 +528,37 @@ function paperSpaceInsertEntity(sheet, blockName, x, y, scale = 1) {
         point: { x, y },
         scale,
         rotation: 0,
+      },
+    },
+    sheet,
+  );
+}
+
+function nativeViewportEntity(sheet, viewport = {}, viewportIndex = 0) {
+  const nativeViewport = viewport.nativeViewport || {};
+  const viewportSize = viewport.size || { width: 520, height: 360 };
+  const origin = viewport.origin || { x: 30, y: 60 };
+  return paperSpaceEntity(
+    {
+      id: viewport.viewportId || `viewport-${viewportIndex + 1}`,
+      type: "VIEWPORT",
+      layer: "A-TITLE",
+      handle:
+        nativeViewport.viewportHandle ||
+        stableHexHandle("viewport", sheet.sheetId, viewport.viewportId),
+      ownerHandle: sheet.nativeLayout?.blockRecordHandle,
+      geometry: {
+        name: viewport.viewId || viewport.viewportId || "VIEWPORT",
+        center: nativeViewport.center || {
+          x: origin.x + viewportSize.width / 2,
+          y: origin.y + viewportSize.height / 2,
+        },
+        width: nativeViewport.width || viewportSize.width,
+        height: nativeViewport.height || viewportSize.height,
+        viewCenter: nativeViewport.viewCenter || { x: 0, y: 0 },
+        viewHeight: nativeViewport.viewHeight || 1,
+        viewportNumber: viewportIndex + 1,
+        status: 1,
       },
     },
     sheet,
@@ -604,6 +676,7 @@ function buildPaperSpaceEntities(model = {}) {
           2.4,
         ),
       );
+      entities.push(nativeViewportEntity(sheet, viewport, viewportIndex));
     });
     if (sheet.sheetId === "A-100") {
       entities.push(
@@ -657,17 +730,133 @@ function writeEntitiesSection({
   return dxf;
 }
 
+function sheetSizeMm(sheet = {}) {
+  return (
+    sheet.paperSizeMm ||
+    (sheet.orientation === "portrait"
+      ? { width: 594, height: 841 }
+      : { width: 841, height: 594 })
+  );
+}
+
+function layoutNameOf(sheet = {}, index = 0) {
+  return (
+    sheet.layoutName ||
+    sheet.sheetId ||
+    sheet.sheetNumber ||
+    sheet.drawingNumber ||
+    `Sheet-${index + 1}`
+  );
+}
+
+function writeLayoutObject(sheet = {}, index = 0, layoutDictionaryHandle) {
+  const layoutName = layoutNameOf(sheet, index);
+  const nativeLayout = sheet.nativeLayout || {};
+  const plotSettings = sheet.plotSettings || nativeLayout.plotSettings || {};
+  const size = sheetSizeMm(sheet);
+  const layoutHandle =
+    nativeLayout.layoutHandle || stableHexHandle("layout", layoutName);
+  const blockRecordHandle =
+    nativeLayout.blockRecordHandle ||
+    stableHexHandle("block-record", layoutName);
+  let dxf = "";
+  dxf += dxfPair(0, "LAYOUT");
+  dxf += dxfPair(5, layoutHandle);
+  dxf += dxfPair(330, layoutDictionaryHandle);
+  dxf += dxfPair(100, "AcDbPlotSettings");
+  dxf += dxfPair(1, plotSettings.plotConfigurationName || "DWG To PDF.pc3");
+  dxf += dxfPair(2, plotSettings.canonicalMediaName || sheet.paperSize || "A1");
+  dxf += dxfPair(4, plotSettings.plotStyleTable || "archiai-monochrome.ctb");
+  dxf += dxfPair(6, plotSettings.plotPaperUnits || "mm");
+  dxf += dxfPair(40, 0);
+  dxf += dxfPair(41, 0);
+  dxf += dxfPair(42, 0);
+  dxf += dxfPair(43, 0);
+  dxf += dxfPair(44, 0);
+  dxf += dxfPair(45, 0);
+  dxf += dxfPair(46, round(size.width));
+  dxf += dxfPair(47, round(size.height));
+  dxf += dxfPair(48, round(size.width));
+  dxf += dxfPair(49, round(size.height));
+  dxf += dxfPair(70, 688);
+  dxf += dxfPair(72, plotSettings.plotRotation || 0);
+  dxf += dxfPair(74, 5);
+  dxf += dxfPair(100, "AcDbLayout");
+  dxf += dxfPair(1, layoutName);
+  dxf += dxfPair(70, 1);
+  dxf += dxfPair(71, nativeLayout.tabOrder || index + 1);
+  dxf += dxfPair(10, 0);
+  dxf += dxfPair(20, 0);
+  dxf += dxfPair(11, round(size.width));
+  dxf += dxfPair(21, round(size.height));
+  dxf += dxfPair(12, 0);
+  dxf += dxfPair(22, 0);
+  dxf += dxfPair(32, 0);
+  dxf += dxfPair(14, 0);
+  dxf += dxfPair(24, 0);
+  dxf += dxfPair(34, 0);
+  dxf += dxfPair(15, 1);
+  dxf += dxfPair(25, 0);
+  dxf += dxfPair(35, 0);
+  dxf += dxfPair(146, 0);
+  dxf += dxfPair(13, 0);
+  dxf += dxfPair(23, 0);
+  dxf += dxfPair(33, 0);
+  dxf += dxfPair(16, 0);
+  dxf += dxfPair(26, 1);
+  dxf += dxfPair(36, 0);
+  dxf += dxfPair(17, 0);
+  dxf += dxfPair(27, 0);
+  dxf += dxfPair(37, 1);
+  dxf += dxfPair(76, 0);
+  dxf += dxfPair(330, blockRecordHandle);
+  dxf += dxfPair(
+    999,
+    `PLOT_CONFIGURATION: ${plotSettings.plotConfigurationName || "DWG To PDF.pc3"}`,
+  );
+  dxf += dxfPair(
+    999,
+    `CANONICAL_MEDIA_NAME: ${plotSettings.canonicalMediaName || sheet.paperSize || "A1"}`,
+  );
+  dxf += dxfPair(
+    999,
+    `PLOT_STYLE_TABLE: ${plotSettings.plotStyleTable || "archiai-monochrome.ctb"}`,
+  );
+  return dxf;
+}
+
 function writeObjectsSection(model = {}) {
+  const sheets = toArray(model.paperSpace?.sheets);
+  const namedObjectDictionaryHandle = stableHexHandle("named-objects");
+  const layoutDictionaryHandle = stableHexHandle("layout-dictionary");
+  const plotStyleMetadata = model.plotStyleMetadata || {};
   let dxf = "";
   dxf += dxfPair(0, "SECTION");
   dxf += dxfPair(2, "OBJECTS");
-  toArray(model.paperSpace?.sheets).forEach((sheet) => {
-    dxf += dxfPair(0, "LAYOUT");
-    dxf += dxfPair(1, sheet.sheetId || sheet.drawingNumber || "Sheet");
-    dxf += dxfPair(70, 1);
-    dxf += dxfPair(71, 1);
-    dxf += dxfPair(10, 0);
-    dxf += dxfPair(20, 0);
+  dxf += dxfPair(
+    999,
+    `PLOT_STYLE_METADATA: mode=${plotStyleMetadata.mode || "ctb"} ctb=${plotStyleMetadata.ctbFile || "archiai-monochrome.ctb"} stb=${plotStyleMetadata.stbFile || "none"}`,
+  );
+  dxf += dxfPair(999, "CTB_STB_MAPPING: layer-weight-to-ctb");
+  dxf += dxfPair(0, "DICTIONARY");
+  dxf += dxfPair(5, namedObjectDictionaryHandle);
+  dxf += dxfPair(100, "AcDbDictionary");
+  dxf += dxfPair(3, "ACAD_LAYOUT");
+  dxf += dxfPair(350, layoutDictionaryHandle);
+  dxf += dxfPair(0, "DICTIONARY");
+  dxf += dxfPair(5, layoutDictionaryHandle);
+  dxf += dxfPair(330, namedObjectDictionaryHandle);
+  dxf += dxfPair(100, "AcDbDictionary");
+  sheets.forEach((sheet, index) => {
+    dxf += dxfPair(3, layoutNameOf(sheet, index));
+    dxf += dxfPair(
+      350,
+      sheet.nativeLayout?.layoutHandle ||
+        stableHexHandle("layout", layoutNameOf(sheet, index)),
+    );
+  });
+  sheets.forEach((sheet, index) => {
+    dxf += writeLayoutObject(sheet, index, layoutDictionaryHandle);
   });
   dxf += dxfPair(0, "ENDSEC");
   return dxf;

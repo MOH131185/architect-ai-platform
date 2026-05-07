@@ -211,6 +211,12 @@ describe("CanonicalDrawingModel", () => {
       "ARCH_100",
     );
     expect(model.textStyles.map((style) => style.name)).toContain("ARCH_BODY");
+    expect(model.plotStyleMetadata).toEqual(
+      expect.objectContaining({
+        mode: "ctb",
+        ctbFile: "archiai-monochrome.ctb",
+      }),
+    );
   });
 
   test("carries explicit paper-space sheets, viewports, title block fields, and drawing scales", () => {
@@ -226,6 +232,7 @@ describe("CanonicalDrawingModel", () => {
         sheetId: "A-101",
         sheetNumber: "A-101",
         drawingNumber: "A-101",
+        layoutName: "A-101",
         paperSize: "A1",
         orientation: "landscape",
         scale: "1:100",
@@ -247,10 +254,31 @@ describe("CanonicalDrawingModel", () => {
           viewId: "floor_plan_ground",
           viewType: "floor_plan",
           scale: "1:100",
+          nativeViewport: expect.objectContaining({
+            entityType: "VIEWPORT",
+            className: "AcDbViewport",
+            viewportHandle: expect.any(String),
+          }),
           geometryHash: model.geometryHash,
           sourceProjectGraphHash: model.sourceProjectGraphHash,
         }),
       ]),
+    );
+    expect(planSheet.nativeLayout).toEqual(
+      expect.objectContaining({
+        className: "AcDbLayout",
+        layoutName: "A-101",
+        layoutHandle: expect.any(String),
+        blockRecordHandle: expect.any(String),
+      }),
+    );
+    expect(planSheet.plotSettings).toEqual(
+      expect.objectContaining({
+        plotConfigurationName: "DWG To PDF.pc3",
+        paperSize: "A1",
+        orientation: "landscape",
+        plotStyleTable: "archiai-monochrome.ctb",
+      }),
     );
     expect(planSheet.modelViews).toContain("floor_plan_ground");
     expect(planSheet.drawingIndex).toEqual(
@@ -354,6 +382,10 @@ describe("CanonicalDrawingModel", () => {
     expect(result.checks.hasTitleBlock).toBe(true);
     expect(result.checks.hasPaperSpace).toBe(true);
     expect(result.checks.hasDimensions).toBe(true);
+    expect(result.checks.hasNativeLayouts).toBe(true);
+    expect(result.checks.hasNativeViewports).toBe(true);
+    expect(result.checks.hasPlotSettings).toBe(true);
+    expect(result.checks.hasPlotStyleMetadata).toBe(true);
   });
 
   test("CAD QA fails when title blocks are missing", () => {
@@ -394,6 +426,43 @@ describe("CanonicalDrawingModel", () => {
         expect.objectContaining({
           details: expect.objectContaining({ field: "date" }),
         }),
+      ]),
+    );
+  });
+
+  test("CAD QA validates native layouts, viewports, plot settings, and plot styles", () => {
+    const model = buildCanonicalDrawingModelFromCompiledProject({
+      compiledProject: fixtureCompiledProject(),
+    });
+    const result = validateCanonicalDrawingModel({
+      ...model,
+      plotStyleMetadata: null,
+      paperSpace: {
+        ...model.paperSpace,
+        sheets: model.paperSpace.sheets.map((sheet) =>
+          sheet.sheetId === "A-101"
+            ? {
+                ...sheet,
+                nativeLayout: null,
+                plotSettings: null,
+                viewports: sheet.viewports.map((viewport) => ({
+                  ...viewport,
+                  nativeViewport: null,
+                })),
+              }
+            : sheet,
+        ),
+      },
+    });
+    const codes = result.errors.map((error) => error.code);
+
+    expect(result.valid).toBe(false);
+    expect(codes).toEqual(
+      expect.arrayContaining([
+        "CAD_MODEL_NATIVE_LAYOUT_MISSING",
+        "CAD_MODEL_NATIVE_VIEWPORT_MISSING",
+        "CAD_MODEL_PLOT_SETTINGS_MISSING",
+        "CAD_MODEL_PLOT_STYLE_METADATA_MISSING",
       ]),
     );
   });

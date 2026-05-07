@@ -17,11 +17,16 @@ contracts and should fail closed when geometry provenance is missing.
 - Project generation routes through the ProjectGraph vertical slice.
 - Technical panels are deterministic SVG and carry geometry authority metadata.
 - Image2 panels are presentation-only geometry-locked renders.
-- DXF and IFC export endpoints exist, but the current DXF exporter is still a
-  direct CompiledProject writer rather than a full CAD drawing-model pipeline.
-- CAD helpers exist under `src/services/cad`, but there is no complete
-  CanonicalDrawingModel with model space, paper space, blocks, dimensions,
-  title blocks, plot metadata, and multi-sheet layout authority.
+- DXF export routes through `CanonicalDrawingModel -> canonicalDxfExporter`.
+- Canonical CAD export now carries model space, paper-space-marked sheets,
+  title blocks, blocks, true DXF dimensions, geometry hashes, and source
+  ProjectGraph hashes.
+- The native AutoCAD fidelity slice adds deterministic DXF `VIEWPORT` entities
+  with `AcDbViewport` records, `AcDbLayout` records, `AcDbPlotSettings`
+  records, layout dictionary entries, deterministic handles/ownership
+  references, and CTB plot-style metadata.
+- DWG remains conversion-only and unavailable unless a real converter is
+  configured. DXF is the guaranteed CAD output.
 - Structural helpers exist, but there is no full deterministic structural
   drawing package.
 - There is no MEP model, no detail library, and no versioned UK/France/Algeria
@@ -78,31 +83,48 @@ Deliverables:
   `E-SWITCH`, `F-FIRE`.
 - Deterministic paper-space-marked layout entities, model-space geometry,
   dimensions, title blocks, blocks, and hatches.
-- CTB/STB plot-style mapping metadata remains a planned CAD-fidelity step and
-  must not be reported as complete until emitted in the DXF export.
+- Native DXF `VIEWPORT` entities with `AcDbViewport` records for sheet
+  viewports.
+- `AcDbLayout` and `AcDbPlotSettings` records in `OBJECTS`.
+- Layout dictionary entries, deterministic handles, owner references, and
+  page/plot setup metadata.
+- CTB plot-style mapping metadata emitted as deterministic DXF metadata using
+  `archiai-monochrome.ctb`. No binary `.ctb` file is generated yet.
 - Documented DWG conversion adapter seam for ODA File Converter, ODA SDK, or
   Autodesk APS. DXF remains the guaranteed output.
 
 Known limitations after this PR:
 
-- Paper-space entities are bound with `67=1` and `410=<layout>`, but the full
-  native AutoCAD layout ownership graph is still future work.
-- `OBJECTS` / `LAYOUT` records are currently minimal and do not yet include full
-  `AcDbLayout` ownership, plot settings, page setup dictionaries, or block
-  ownership references.
-- Viewport frames are represented as paper-space geometry; native DXF
-  `0/VIEWPORT` entities are not yet implemented.
-- CTB/STB plot metadata is not yet emitted.
+- Paper-space entities remain bound with `67=1` and `410=<layout>` and are now
+  paired with native DXF `0/VIEWPORT` entities.
+- `OBJECTS` includes `AcDbLayout` and `AcDbPlotSettings` records, but the full
+  AutoCAD ownership graph across every `BLOCK_RECORD`, layout dictionary,
+  page setup dictionary, and plot-settings dictionary still needs viewer-driven
+  hardening.
+- Viewports are native DXF entities with `AcDbViewport` records, but advanced
+  AutoCAD viewport fidelity is still future work: frozen layer lists, clipping
+  boundaries, view twist, viewport locking, visual style references, and
+  non-rectangular clips are not complete yet.
+- CTB plot-style metadata is emitted as a deterministic reference/mapping, but
+  a real `.ctb`/`.stb` binary sidecar is not generated yet.
+- Plot settings are emitted deterministically, but still need validation in
+  AutoCAD, BricsCAD, and ODA Viewer.
 - DWG remains conversion-only and unavailable unless a real converter is
   configured.
 - DXF is the guaranteed CAD output.
-- The next CAD fidelity PR should add native `VIEWPORT` entities, the full
-  `LAYOUT` object graph, plot/page setup metadata, and CTB/STB mapping.
+- The next CAD fidelity PR should validate the DXF in AutoCAD-compatible
+  viewers, complete the layout/block ownership graph, add page setup
+  dictionaries, generate or export CTB/STB sidecars, and harden advanced
+  viewport properties.
 
 Acceptance criteria:
 
 - DXF contains expected layers, dimensions, title blocks, model-space entities,
   and paper-space layout metadata.
+- DXF contains native `0/VIEWPORT` entities with `AcDbViewport` records for
+  sheet viewports.
+- DXF contains `AcDbLayout` and `AcDbPlotSettings` records with layout names,
+  page setup metadata, and CTB plot-style references.
 - DXF contains no rasterized technical drawings.
 - Export fails when `geometryHash` is missing.
 

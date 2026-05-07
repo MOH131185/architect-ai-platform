@@ -17,6 +17,7 @@ export const CANONICAL_DRAWING_ENTITY_TYPES = Object.freeze([
   "DIMENSION",
   "BLOCK",
   "INSERT",
+  "VIEWPORT",
 ]);
 
 export const REQUIRED_CANONICAL_CAD_LAYERS = Object.freeze([
@@ -286,6 +287,47 @@ const ISO_PAPER_SIZES_MM = Object.freeze({
   A1: { width: 841, height: 594 },
   A2: { width: 594, height: 420 },
   A3: { width: 420, height: 297 },
+});
+
+const DEFAULT_PLOT_STYLE_METADATA = Object.freeze({
+  version: "cad-plot-style-v1",
+  mode: "ctb",
+  ctbFile: "archiai-monochrome.ctb",
+  stbFile: null,
+  colorPolicy: "aci-by-layer",
+  lineweightPolicy: "layer-weight-to-ctb",
+  mappings: [
+    {
+      layerPattern: "A-WALL-*",
+      color: 7,
+      lineweightMm: 0.35,
+      plotStyle: "Black_035",
+    },
+    {
+      layerPattern: "A-DIMS",
+      color: 3,
+      lineweightMm: 0.18,
+      plotStyle: "Black_018",
+    },
+    {
+      layerPattern: "A-TEXT",
+      color: 7,
+      lineweightMm: 0.18,
+      plotStyle: "Black_018",
+    },
+    {
+      layerPattern: "A-TITLE",
+      color: 7,
+      lineweightMm: 0.25,
+      plotStyle: "Black_025",
+    },
+    {
+      layerPattern: "A-METADATA",
+      color: 8,
+      lineweightMm: 0.13,
+      plotStyle: "Grey_013",
+    },
+  ],
 });
 
 function clone(value) {
@@ -1261,6 +1303,81 @@ function buildSheetMetadata({
   };
 }
 
+function cadHandle(...parts) {
+  const hash = String(createStableHash(parts)).replace(/[^a-fA-F0-9]/g, "");
+  return (hash.slice(0, 12) || "1").toUpperCase();
+}
+
+function scaleDenominator(scale = "1:100") {
+  const [, denominator] = String(scale).split(":");
+  const numeric = Number(denominator);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : 100;
+}
+
+function buildPlotSettings({
+  sheetId,
+  paperSize = "A1",
+  orientation = "landscape",
+  scale = "1:100",
+} = {}) {
+  const paper = ISO_PAPER_SIZES_MM[paperSize] || ISO_PAPER_SIZES_MM.A1;
+  return {
+    plotSettingsId: createStableId(
+      "cad-plot-settings",
+      sheetId,
+      paperSize,
+      orientation,
+      scale,
+    ),
+    plotConfigurationName: "DWG To PDF.pc3",
+    canonicalMediaName: `ISO_full_bleed_${paperSize}_(${paper.width.toFixed(2)}_x_${paper.height.toFixed(2)}_MM)`,
+    paperSize,
+    paperSizeMm: paper,
+    orientation,
+    plotPaperUnits: "mm",
+    plotRotation: orientation === "portrait" ? 1 : 0,
+    standardScale: scale,
+    customPrintScale: {
+      numerator: 1,
+      denominator: scaleDenominator(scale),
+    },
+    plotOrigin: { x: 0, y: 0 },
+    plotWindowArea: {
+      min: { x: 0, y: 0 },
+      max: { x: paper.width, y: paper.height },
+    },
+    plotStyleTable: DEFAULT_PLOT_STYLE_METADATA.ctbFile,
+    plotType: "layout",
+    useStandardScale: true,
+    shadePlotMode: "as_displayed",
+  };
+}
+
+function nativeLayoutMetadata({
+  sheetId,
+  sheetNumber,
+  paperSize,
+  orientation,
+  scale,
+} = {}) {
+  const layoutName = sheetId || sheetNumber || "Sheet";
+  return {
+    className: "AcDbLayout",
+    layoutName,
+    tabOrder: Number(String(sheetNumber || "").replace(/[^0-9]/g, "")) || 1,
+    layoutHandle: cadHandle("layout", layoutName),
+    blockRecordHandle: cadHandle("block-record", layoutName),
+    ownerDictionaryHandle: cadHandle("layout-dictionary", "ACAD_LAYOUT"),
+    paperSpaceBlockName: `*Paper_Space_${layoutName}`,
+    plotSettings: buildPlotSettings({
+      sheetId: layoutName,
+      paperSize,
+      orientation,
+      scale,
+    }),
+  };
+}
+
 function createViewport({
   viewportId,
   viewId,
@@ -1273,15 +1390,39 @@ function createViewport({
   modelSpaceUnits = "meters",
   paperUnits = "mm",
 } = {}) {
+  const normalizedOrigin = point2(origin);
+  const normalizedSize = {
+    width: finiteMetric(size?.width, 0),
+    height: finiteMetric(size?.height, 0),
+  };
+  const center = {
+    x: finiteMetric(normalizedOrigin.x + normalizedSize.width / 2),
+    y: finiteMetric(normalizedOrigin.y + normalizedSize.height / 2),
+  };
   return {
     viewportId,
     viewId,
     viewType,
     scale,
-    origin,
-    size,
+    origin: normalizedOrigin,
+    size: normalizedSize,
     modelSpaceUnits,
     paperUnits,
+    nativeViewport: {
+      entityType: "VIEWPORT",
+      className: "AcDbViewport",
+      viewportHandle: cadHandle("viewport", viewportId, viewId, geometryHash),
+      center,
+      width: normalizedSize.width,
+      height: normalizedSize.height,
+      viewCenter: { x: 0, y: 0 },
+      viewHeight: finiteMetric(
+        normalizedSize.height / scaleDenominator(scale),
+        1,
+      ),
+      status: "active",
+      frozenLayers: [],
+    },
     geometryHash,
     sourceProjectGraphHash,
   };
@@ -1307,10 +1448,19 @@ function createSheet({
 } = {}) {
   const revision = compiledProject.metadata?.revision || "P01";
   const status = compiledProject.metadata?.status || "Preliminary";
+  const layoutName = sheetId || sheetNumber || "Sheet";
+  const nativeLayout = nativeLayoutMetadata({
+    sheetId: layoutName,
+    sheetNumber,
+    paperSize,
+    orientation,
+    scale,
+  });
   return {
     sheetId,
     sheetNumber,
     drawingNumber: sheetNumber,
+    layoutName,
     title,
     discipline,
     paperSize,
@@ -1320,6 +1470,8 @@ function createSheet({
     titleBlock,
     viewports,
     modelViews,
+    plotSettings: nativeLayout.plotSettings,
+    nativeLayout,
     drawingIndex: {
       sheetId,
       sheetNumber,
@@ -1567,7 +1719,9 @@ export function buildCanonicalDrawingModelFromCompiledProject({
     paperSpace: {
       defaultPaperSize: "A1",
       sheets,
+      nativeLayouts: sheets.map((sheet) => sheet.nativeLayout),
     },
+    plotStyleMetadata: clone(DEFAULT_PLOT_STYLE_METADATA),
     layers: clone(DEFAULT_CANONICAL_CAD_LAYERS),
     blocks: defaultBlocks(geometryHash),
     hatches: clone(DEFAULT_HATCHES),
@@ -1712,11 +1866,14 @@ export function validateCanonicalDrawingModel(model = {}, options = {}) {
     [
       "sheetId",
       "sheetNumber",
+      "layoutName",
       "title",
       "paperSize",
       "orientation",
       "scale",
       "titleBlock",
+      "plotSettings",
+      "nativeLayout",
       "geometryHash",
       "sourceProjectGraphHash",
       "jurisdiction",
@@ -1741,6 +1898,45 @@ export function validateCanonicalDrawingModel(model = {}, options = {}) {
         validationError(
           "CAD_MODEL_SHEET_VIEWPORTS_MISSING",
           `paperSpace.sheets[${index}] must define viewports.`,
+          { sheetIndex: index },
+        ),
+      );
+    }
+    const viewportDefinitions = toArray(sheet.viewports);
+    const requiresNativeViewport =
+      toArray(sheet.modelViews).length > 0 || viewportDefinitions.length > 0;
+    if (
+      requiresNativeViewport &&
+      !viewportDefinitions.some(
+        (viewport) => viewport.nativeViewport?.entityType === "VIEWPORT",
+      )
+    ) {
+      errors.push(
+        validationError(
+          "CAD_MODEL_NATIVE_VIEWPORT_MISSING",
+          `paperSpace.sheets[${index}] must define native VIEWPORT metadata.`,
+          { sheetIndex: index },
+        ),
+      );
+    }
+    if (sheet.nativeLayout?.className !== "AcDbLayout") {
+      errors.push(
+        validationError(
+          "CAD_MODEL_NATIVE_LAYOUT_MISSING",
+          `paperSpace.sheets[${index}] must define an AcDbLayout native layout record.`,
+          { sheetIndex: index },
+        ),
+      );
+    }
+    if (
+      !sheet.plotSettings?.plotConfigurationName ||
+      !sheet.plotSettings?.canonicalMediaName ||
+      !sheet.plotSettings?.plotStyleTable
+    ) {
+      errors.push(
+        validationError(
+          "CAD_MODEL_PLOT_SETTINGS_MISSING",
+          `paperSpace.sheets[${index}] must define plot/page setup metadata.`,
           { sheetIndex: index },
         ),
       );
@@ -1830,6 +2026,35 @@ export function validateCanonicalDrawingModel(model = {}, options = {}) {
     }
   }
 
+  if (!model.plotStyleMetadata?.ctbFile && !model.plotStyleMetadata?.stbFile) {
+    errors.push(
+      validationError(
+        "CAD_MODEL_PLOT_STYLE_METADATA_MISSING",
+        "CanonicalDrawingModel requires CTB/STB plot style metadata.",
+      ),
+    );
+  }
+
+  const hasNativeLayouts =
+    sheets.length > 0 &&
+    sheets.every((sheet) => sheet.nativeLayout?.className === "AcDbLayout");
+  const hasNativeViewports = sheets.some((sheet) =>
+    toArray(sheet.viewports).some(
+      (viewport) => viewport.nativeViewport?.entityType === "VIEWPORT",
+    ),
+  );
+  const hasPlotSettings =
+    sheets.length > 0 &&
+    sheets.every(
+      (sheet) =>
+        sheet.plotSettings?.plotConfigurationName &&
+        sheet.plotSettings?.canonicalMediaName &&
+        sheet.plotSettings?.plotStyleTable,
+    );
+  const hasPlotStyleMetadata = Boolean(
+    model.plotStyleMetadata?.ctbFile || model.plotStyleMetadata?.stbFile,
+  );
+
   return {
     valid: errors.length === 0,
     errors,
@@ -1845,6 +2070,10 @@ export function validateCanonicalDrawingModel(model = {}, options = {}) {
       hasTitleBlock: toArray(model.titleBlocks).length > 0,
       hasPaperSpace: sheets.length > 0,
       hasDimensions: entityTypes.has("DIMENSION"),
+      hasNativeLayouts,
+      hasNativeViewports,
+      hasPlotSettings,
+      hasPlotStyleMetadata,
     },
   };
 }
