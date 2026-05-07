@@ -159,6 +159,7 @@ const REQUIRED_3D_A1_PANEL_TYPES = [
   "axonometric",
   "interior_3d",
 ];
+const REQUIRED_3D_A1_PANEL_TYPE_SET = new Set(REQUIRED_3D_A1_PANEL_TYPES);
 const REQUIRED_A1_TEXT_PROOF_LABELS = [
   "SITE PLAN",
   "GROUND FLOOR PLAN",
@@ -8299,6 +8300,18 @@ export async function buildVisual3DPanelArtifacts({
   return Object.fromEntries(entries);
 }
 
+function sheetPlanRequiresVisual3d(sheetPlan = null) {
+  const sheetPanelTypes = Array.isArray(sheetPlan?.panel_types)
+    ? sheetPlan.panel_types
+    : null;
+  return (
+    sheetPanelTypes === null ||
+    sheetPanelTypes.some((panelType) =>
+      REQUIRED_3D_A1_PANEL_TYPE_SET.has(panelType),
+    )
+  );
+}
+
 async function buildSheetPanelArtifacts({
   projectGraphId,
   site,
@@ -8319,6 +8332,7 @@ async function buildSheetPanelArtifacts({
   // eslint-disable-next-line no-unused-vars
   sheetDesignContext = null,
   architectReasoningManifest = null,
+  visual3dArtifacts = null,
   // Optional partial QA summary precomputed before panels (programme
   // adjacency + quantitative metrics — both pure functions of compiledProject
   // and projectGraph and therefore safe to compute pre-panel). Surfaces on
@@ -8363,18 +8377,22 @@ async function buildSheetPanelArtifacts({
     sheetDesignContext,
     visualManifest,
   });
-  const visual3d = await buildVisual3DPanelArtifacts({
-    compiledProject,
-    geometryHash,
-    brief,
-    climate,
-    localStyle,
-    styleDNA,
-    programmeSummary,
-    region,
-    visualManifest,
-    sheetDesignContext,
-  });
+  const sheetNeedsVisual3d = sheetPlanRequiresVisual3d(sheetPlan);
+  const visual3d = sheetNeedsVisual3d
+    ? visual3dArtifacts ||
+      (await buildVisual3DPanelArtifacts({
+        compiledProject,
+        geometryHash,
+        brief,
+        climate,
+        localStyle,
+        styleDNA,
+        programmeSummary,
+        region,
+        visualManifest,
+        sheetDesignContext,
+      }))
+    : {};
   return {
     [siteContext.asset_id]: siteContext,
     [materialPalette.asset_id]: materialPalette,
@@ -9767,6 +9785,7 @@ async function buildA1Sheet({
   // function does not yet hard-depend on it.
   sheetDesignContext = null,
   architectReasoningManifest = null,
+  visual3dArtifacts = null,
 }) {
   const __a1sheetStart = Date.now();
   const __a1sheetLog = (step, sinceMs, extra = "") => {
@@ -9862,6 +9881,7 @@ async function buildA1Sheet({
     visualManifest,
     sheetDesignContext,
     architectReasoningManifest,
+    visual3dArtifacts,
     qaSummary: panelQaSummary,
   });
   __a1mark = __a1sheetLog("build_panel_artifacts", __a1mark);
@@ -12983,11 +13003,38 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       `lines=${architectReasoningManifest.prompt_splice_lines.length}`,
     );
   }
+  let sharedVisual3dArtifacts = null;
+  const getSharedVisual3dArtifacts = async () => {
+    if (!sharedVisual3dArtifacts) {
+      const visualStart = Date.now();
+      sharedVisual3dArtifacts = await buildVisual3DPanelArtifacts({
+        compiledProject,
+        geometryHash: compiledProject.geometryHash,
+        brief,
+        climate,
+        localStyle,
+        styleDNA: localStyle?.styleDNA || localStyle?.style_dna || null,
+        programmeSummary,
+        region,
+        visualManifest,
+        sheetDesignContext,
+      });
+      __vsLog(
+        "build_shared_visual_3d_panels",
+        visualStart,
+        `panel_count=${Object.keys(sharedVisual3dArtifacts || {}).length}`,
+      );
+    }
+    return sharedVisual3dArtifacts;
+  };
   const renderedSheets = [];
   for (const sheetPlan of splitDecision.sheets) {
     const sheetIndex = renderedSheets.length;
     const sheetTag = `sheet_${sheetIndex}`;
     const sheetStart = Date.now();
+    const visual3dArtifacts = sheetPlanRequiresVisual3d(sheetPlan)
+      ? await getSharedVisual3dArtifacts()
+      : null;
     const sheetResult = await buildA1Sheet({
       projectGraphId,
       brief,
@@ -13008,17 +13055,23 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       visualManifest,
       sheetDesignContext,
       architectReasoningManifest,
+      visual3dArtifacts,
     });
     __vsMark = __vsLog(`build_a1_sheet[${sheetTag}]`, __vsMark);
     const pdfStart = Date.now();
+    const pdfRenderIntent = sheetIndex === 0 ? "final_a1" : "preview";
     const pdf = await buildA1PdfArtifact({
       projectGraphId,
       brief,
       geometryHash: compiledProject.geometryHash,
       sheetArtifact: sheetResult.sheetArtifact,
-      renderIntent: "final_a1",
+      renderIntent: pdfRenderIntent,
     });
-    __vsMark = __vsLog(`build_a1_pdf[${sheetTag}]`, pdfStart);
+    __vsMark = __vsLog(
+      `build_a1_pdf[${sheetTag}]`,
+      pdfStart,
+      `render_intent=${pdfRenderIntent}`,
+    );
     __vsLog(`sheet_total[${sheetTag}]`, sheetStart);
     sheetResult.sheetArtifact.renderProof = pdf.renderedProof;
     sheetResult.sheetArtifact.metadata = {
@@ -13037,8 +13090,9 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       pdf,
     });
   }
-  // The first rendered sheet is the primary export; the rest are companion
-  // sheets surfaced in sheets[].sheets and artifacts.companionSheets/Pdfs.
+  // The first rendered sheet is the primary final export; companion sheets
+  // are surfaced with explicit PDF render metadata because the synchronous
+  // API path may use preview-density PDFs to stay inside serverless budgets.
   const primary = renderedSheets[0];
   const sheetArtifact = primary.sheetArtifact;
   const pdfArtifact = primary.pdf;
@@ -13509,6 +13563,9 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       svgHash: renderedSheetArtifact.svgHash || null,
       renderedPngHash: pdf.renderedPngHash || null,
       pdfHash: pdf.pdfHash || null,
+      pdfRenderIntent: pdf.pdfMetadata?.renderIntent || null,
+      pdfRenderMode: pdf.pdfMetadata?.pdfRenderMode || null,
+      pdfDpi: pdf.pdfMetadata?.dpi || null,
       requiredPanelSummary: pdf.renderedProof?.panelSummary || [],
       status: pdf.renderedProof?.passed === true ? "ready" : "blocked",
     }),
@@ -13519,6 +13576,9 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       ...sheet,
       asset_ids: [...new Set([...(sheet.asset_ids || []), rendered.asset_id])],
       exported_pdf_asset_id: rendered.asset_id,
+      exported_pdf_render_intent: rendered.pdfMetadata?.renderIntent || null,
+      exported_pdf_render_mode: rendered.pdfMetadata?.pdfRenderMode || null,
+      exported_pdf_dpi: rendered.pdfMetadata?.dpi || null,
     })),
     split_decision: splitDecision,
   };
@@ -13579,6 +13639,9 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
         sheet_artifact_id: sa.asset_id,
         pdf_asset_id: pdf.asset_id,
         pdf_data_url: pdf.dataUrl,
+        pdf_render_intent: pdf.pdfMetadata?.renderIntent || null,
+        pdf_render_mode: pdf.pdfMetadata?.pdfRenderMode || null,
+        pdf_dpi: pdf.pdfMetadata?.dpi || null,
       }),
     ),
     sheetSplitDecision: splitDecision,

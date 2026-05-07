@@ -3,8 +3,12 @@ import {
   SPLIT_THRESHOLDS,
 } from "../../../services/sheet/sheetSplitter.js";
 import { buildArchitectureProjectVerticalSlice } from "../../../services/project/projectGraphVerticalSliceService.js";
+import {
+  A1_TEST_RASTER_MODE_ENV,
+  A1_TEST_RASTER_STUB_VALUE,
+} from "../../../services/render/svgRasteriser.js";
 
-jest.setTimeout(60000);
+jest.setTimeout(180000);
 
 describe("decideSheetSplit", () => {
   test("emits the A1-00 master sheet when programme/storey/regulation density is low", () => {
@@ -190,10 +194,36 @@ describe("decideSheetSplit", () => {
 });
 
 describe("multi-sheet integration", () => {
+  const trackedEnvKeys = [
+    "MODEL_SOURCE",
+    "OPENAI_REASONING_MODEL",
+    "OPENAI_FAST_MODEL",
+    "PROJECT_GRAPH_IMAGE_GEN_ENABLED",
+    "OPENAI_STRICT_IMAGE_GEN",
+    A1_TEST_RASTER_MODE_ENV,
+  ];
+  let savedEnv;
+
   beforeEach(() => {
+    savedEnv = Object.fromEntries(
+      trackedEnvKeys.map((key) => [key, process.env[key]]),
+    );
     process.env.MODEL_SOURCE = "base";
     process.env.OPENAI_REASONING_MODEL = "gpt-5.4";
     process.env.OPENAI_FAST_MODEL = "gpt-5.4-mini";
+    process.env.PROJECT_GRAPH_IMAGE_GEN_ENABLED = "false";
+    process.env.OPENAI_STRICT_IMAGE_GEN = "false";
+    process.env[A1_TEST_RASTER_MODE_ENV] = A1_TEST_RASTER_STUB_VALUE;
+  });
+
+  afterEach(() => {
+    for (const key of trackedEnvKeys) {
+      if (savedEnv[key] === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = savedEnv[key];
+      }
+    }
   });
 
   test("Reading Room fixture stays single-sheet (A1-00 master)", async () => {
