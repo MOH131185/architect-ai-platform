@@ -217,6 +217,12 @@ Next MEP fidelity PR:
 ## PR 5: Detail library
 
 Add a deterministic construction detail library.
+This package is opt-in: construction detail drawing panels and CAD/DXF detail
+entities are included only when `DETAIL_DRAWINGS_ENABLED=true` or an explicit
+`includeDetailDrawings` option is passed. Existing architectural, structural,
+and MEP CAD/DXF exports remain unchanged by default. All details are
+preliminary coordination information and require responsible architect/engineer
+review before construction, tender, permit, or code-compliance use.
 
 Deliverables:
 
@@ -230,8 +236,33 @@ Deliverables:
 Acceptance criteria:
 
 - Detail sheets contain expected details.
-- Details export to DXF.
+- Details export to deterministic SVG and DXF only when detail drawings are
+  enabled.
+- Default CanonicalDrawingModel/DXF export does not emit detail library data,
+  detail sheets, detail callouts, or detail layers/entities.
+- Detail library and detail sheets carry deterministic hashes, no image-provider
+  technical drawing path, and architect/engineer review disclaimers.
+- Detail QA requires required detail types, detail hashes, matching geometry
+  hash, material hatches, dimensions, callouts, review disclaimer, and no false
+  code-compliance or construction-approval claims.
 - No image generation is used for details.
+
+Current limitations after this slice:
+
+- Preliminary construction-detail coordination library only.
+- Details are not code-certified or approved for construction.
+- No jurisdiction-specific construction detail packs yet.
+- No fire/acoustic/thermal/waterproofing calculations or product-certified
+  assembly data.
+- No engineer-sealed structural connections, reinforcement, or fixings design.
+- DWG remains conversion-only and unavailable unless a real converter is
+  configured; DXF remains the guaranteed CAD output.
+
+Next detail fidelity PR:
+
+- Add jurisdiction-specific detail packs for UK, France, and Algeria with
+  reviewable code assumptions, localized notations, and material/assembly
+  variants.
 
 ## PR 6: Jurisdiction packs
 

@@ -210,6 +210,8 @@ export function exportCompiledProjectToDXF({
   projectName = "ArchiAI_Project",
   sourceModelHash = null,
   pipelineVersion = null,
+  includeDetailDrawings = false,
+  detailDrawingsEnabled = false,
 } = {}) {
   if (!compiledProject?.geometryHash) {
     throw new Error(
@@ -219,6 +221,11 @@ export function exportCompiledProjectToDXF({
   const canonicalDrawingModel = buildCanonicalDrawingModelFromCompiledProject({
     compiledProject,
     projectName,
+    includeDetailDrawings:
+      includeDetailDrawings === true ||
+      detailDrawingsEnabled === true ||
+      String(process.env.DETAIL_DRAWINGS_ENABLED || "").toLowerCase() ===
+        "true",
   });
   return exportCanonicalDrawingModelToDXF({
     canonicalDrawingModel,

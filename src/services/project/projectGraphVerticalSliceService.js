@@ -14,6 +14,7 @@ import {
 import { buildCompiledProjectTechnicalPanels } from "../canonical/compiledProjectTechnicalPackBuilder.js";
 import { buildStructuralDrawingPanelsFromCompiledProject } from "../structure/structuralModelService.js";
 import { buildMepDrawingPanelsFromCompiledProject } from "../mep/mepModelService.js";
+import { buildConstructionDetailPanelsFromCompiledProject } from "../details/constructionDetailLibrary.js";
 import { compileProject } from "../compiler/index.js";
 import { ensureCompiledProjectRenderInputs } from "../compiler/compiledProjectRenderInputs.js";
 import { resolveArchitectureModelRegistry } from "../modelStepResolver.js";
@@ -5290,6 +5291,7 @@ function drawingTypeForPanel(panelType) {
     return "structural";
   }
   if (panelType.startsWith("mep_")) return "mep";
+  if (panelType.startsWith("detail_")) return "detail";
   if (panelType.startsWith("floor_plan_")) return "floor_plan";
   if (panelType.startsWith("section_")) return "section";
   if (panelType.startsWith("elevation_")) return "elevation";
@@ -5313,6 +5315,14 @@ function mepDrawingsEnabled(options = {}) {
   );
 }
 
+function detailDrawingsEnabled(options = {}) {
+  return (
+    options.detailDrawingsEnabled === true ||
+    options.includeDetailDrawings === true ||
+    String(process.env.DETAIL_DRAWINGS_ENABLED || "").toLowerCase() === "true"
+  );
+}
+
 function buildDrawingSet(compiledProject, options = {}) {
   // Pass layoutTemplate through so the technical pack renders at the slot
   // aspect of the active sheet template (presentation-v3 for residential,
@@ -5331,10 +5341,14 @@ function buildDrawingSet(compiledProject, options = {}) {
   const mepBuild = mepDrawingsEnabled(options)
     ? buildMepDrawingPanelsFromCompiledProject({ compiledProject })
     : { mepModel: null, mepPanels: {} };
+  const detailBuild = detailDrawingsEnabled(options)
+    ? buildConstructionDetailPanelsFromCompiledProject({ compiledProject })
+    : { detailLibrary: null, detailPanels: {} };
   const technicalPanels = {
     ...(technicalBuild.technicalPanels || {}),
     ...(structuralBuild.structuralPanels || {}),
     ...(mepBuild.mepPanels || {}),
+    ...(detailBuild.detailPanels || {}),
   };
   const drawingViews = Object.entries(technicalPanels).map(
     ([panelType, panel]) => {
@@ -5375,7 +5389,9 @@ function buildDrawingSet(compiledProject, options = {}) {
                 ? "structural_model"
                 : drawingType === "mep"
                   ? "mep_model"
-                  : "compiled_project",
+                  : drawingType === "detail"
+                    ? "construction_detail_library"
+                    : "compiled_project",
             entity_ids: [
               ...(compiledProject.rooms || []).map(
                 (room) => room.sourceId || room.id,
@@ -5387,6 +5403,9 @@ function buildDrawingSet(compiledProject, options = {}) {
                 : []),
               ...(drawingType === "mep"
                 ? mepBuild.mepModel?.memberIds || []
+                : []),
+              ...(drawingType === "detail"
+                ? detailBuild.detailLibrary?.detailIds || []
                 : []),
             ],
           },
@@ -5457,6 +5476,11 @@ function buildDrawingSet(compiledProject, options = {}) {
                 null,
               mepModelHash:
                 panel.mepModelHash || panel.metadata?.mepModelHash || null,
+              detailLibraryHash:
+                panel.detailLibraryHash ||
+                panel.metadata?.detailLibraryHash ||
+                null,
+              detailHashes: panel.detailHashes || [],
               reviewRequired: panel.reviewRequired || false,
             },
           },
@@ -5469,6 +5493,8 @@ function buildDrawingSet(compiledProject, options = {}) {
       structuralPanels: structuralBuild.structuralPanels || {},
       mepModel: mepBuild.mepModel || null,
       mepPanels: mepBuild.mepPanels || {},
+      detailLibrary: detailBuild.detailLibrary || null,
+      detailPanels: detailBuild.detailPanels || {},
     },
   };
 }

@@ -197,6 +197,12 @@ describe("exportCanonicalDrawingModelToDXF", () => {
     expect(dxf).not.toContain("M-VENT");
     expect(dxf).not.toContain("MEP-NOTES");
     expect(dxf).not.toContain("PRELIMINARY MEP INFORMATION ONLY");
+    expect(dxf).not.toContain("A-DETAIL");
+    expect(dxf).not.toContain("D-CONCRETE");
+    expect(dxf).not.toContain("Wall/Foundation Junction");
+    expect(dxf).not.toContain(
+      "PRELIMINARY CONSTRUCTION DETAIL INFORMATION ONLY",
+    );
   });
 
   test("emits structural CAD layers, grid, foundations, roof framing, notes, and no raster entities", () => {
@@ -251,6 +257,41 @@ describe("exportCanonicalDrawingModelToDXF", () => {
     expect(dxf).toContain("MEP_EXTRACT_FAN");
     expect(dxf).toContain("PRELIMINARY MEP INFORMATION ONLY");
     expect(dxf).toContain("MEP coordination route");
+    expect(dxf).not.toMatch(/  0\nIMAGE\n/);
+    expect(dxf).not.toMatch(/  0\nRASTER\n/);
+  });
+
+  test("emits opt-in construction detail CAD layers, hatches, dimensions, sheets, callouts, and no raster entities", () => {
+    const model = buildCanonicalDrawingModelFromCompiledProject({
+      compiledProject: fixtureCompiledProject(),
+      includeDetailDrawings: true,
+    });
+    const dxf = exportCanonicalDrawingModelToDXF({
+      canonicalDrawingModel: model,
+    });
+
+    expect(dxf).toContain("A-DETAIL");
+    expect(dxf).toContain("A-DETAIL-DIMS");
+    expect(dxf).toContain("A-DETAIL-TEXT");
+    expect(dxf).toContain("A-DETAIL-HATCH");
+    expect(dxf).toContain("A-CALLOUT");
+    expect(dxf).toContain("D-CONCRETE");
+    expect(dxf).toContain("D-MASONRY");
+    expect(dxf).toContain("D-INSULATION");
+    expect(dxf).toContain("D-TIMBER");
+    expect(dxf).toContain("D-MEMBRANE");
+    expect(dxf).toContain("D-EARTH");
+    expect(dxf).toContain("D-GLAZING");
+    expect(dxf).toContain("D-METAL");
+    expect(dxf).toContain("DETAIL_CALLOUT");
+    expect(dxf).toContain("Wall/Foundation Junction");
+    expect(dxf).toContain("Roof Eaves Detail");
+    expect(dxf).toContain("Drainage Inspection Chamber");
+    expect(dxf).toContain("PAPER_SPACE_LAYOUT: D-501");
+    expect(dxf).toContain("CALLOUT construction-detail");
+    expect(dxf).toContain("PRELIMINARY CONSTRUCTION DETAIL INFORMATION ONLY");
+    expect(dxf).toContain("DIMENSION");
+    expect(dxf).toContain("HATCH");
     expect(dxf).not.toMatch(/  0\nIMAGE\n/);
     expect(dxf).not.toMatch(/  0\nRASTER\n/);
   });
