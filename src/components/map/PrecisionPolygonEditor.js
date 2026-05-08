@@ -451,8 +451,32 @@ export class PrecisionPolygonEditor {
       return;
     }
 
+    this._updatePolygonOverlayPath();
+    this._updatePolygonOverlayStyle();
+  }
+
+  /**
+   * Hot-path setter — called from _processDrag / _processTranslate at RAF
+   * frequency. Only `paths` mutates per frame; the visual style does not.
+   * Splitting this out of `_updatePolygonOverlay` removes a `setOptions`
+   * call per frame that was forcing Google Maps to recomposite the overlay
+   * layer (the visible flicker on the map + page background).
+   * @private
+   */
+  _updatePolygonOverlayPath() {
+    if (!this.polygonOverlay) return;
+    if (this.vertices.length < 3) return;
     const path = this.vertices.map((v) => ({ lat: v[1], lng: v[0] }));
     this.polygonOverlay.setPath(path);
+  }
+
+  /**
+   * Cold-path setter — called only when focus / placeholder state changes,
+   * not per drag frame.
+   * @private
+   */
+  _updatePolygonOverlayStyle() {
+    if (!this.polygonOverlay) return;
     const style = this._getPolygonOverlayStyle();
     try {
       this.polygonOverlay.setOptions({
@@ -762,6 +786,11 @@ export class PrecisionPolygonEditor {
         className: "ppe-edge-label",
       },
     });
+    // Cache the last-emitted text on the marker so per-frame updates can
+    // skip `setLabel` when the rounded text is unchanged. setLabel forces
+    // Google Maps to recreate the marker's label DOM, which compounds the
+    // per-frame overlay-recompose cost during drag.
+    marker.__lastLabelText = text || " ";
 
     return marker;
   }
@@ -794,10 +823,16 @@ export class PrecisionPolygonEditor {
         lng: (start[0] + end[0]) / 2,
       });
       const live = liveLengthAndBearing(start, end);
-      const text = formatEdgeLength(live.lengthM);
+      const text = formatEdgeLength(live.lengthM) || " ";
+      // Only re-issue setLabel when the rendered text actually changes —
+      // setLabel forces Google Maps to rebuild the marker's label DOM,
+      // which is one of the per-frame mutations contributing to flicker
+      // during corner drag.
+      if (marker.__lastLabelText === text) return;
+      marker.__lastLabelText = text;
       const currentLabel = marker.getLabel();
       marker.setLabel({
-        text: text || " ",
+        text,
         color: currentLabel?.color || "#0F172A",
         fontSize: currentLabel?.fontSize || "11px",
         fontWeight: currentLabel?.fontWeight || "700",
@@ -934,8 +969,8 @@ export class PrecisionPolygonEditor {
     // Update internal state
     this.vertices[index] = newCoord;
 
-    // Update polygon overlay
-    this._updatePolygonOverlay();
+    // Update polygon overlay (path only — style is unchanged during drag).
+    this._updatePolygonOverlayPath();
 
     // Live-update the two edge-length labels adjacent to the dragged vertex.
     this._updateEdgeLabelsForVertex(index);
@@ -1260,7 +1295,7 @@ export class PrecisionPolygonEditor {
       ];
     }
 
-    this._updatePolygonOverlay();
+    this._updatePolygonOverlayPath();
     this._updateAllEdgeLabelPositions();
 
     this._emitSnapHint(this.shiftPressed ? "ortho" : null);

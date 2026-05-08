@@ -178,8 +178,12 @@ export function BoundaryDynamicInput({
   const cardClassName = [
     "pointer-events-auto",
     "select-none",
-    "bg-white/95",
-    "backdrop-blur",
+    // Solid white instead of `bg-white/95 + backdrop-blur` — backdrop-blur
+    // is GPU-recomputed on every cursor move (the overlay slides over the
+    // satellite tiles), which combined with marker/polygon updates flickers
+    // the map on mid-range hardware. The chip is small and floats above
+    // the map, so a fully-opaque card is visually fine.
+    "bg-white",
     "shadow-md",
     "rounded-md",
     "px-3",
