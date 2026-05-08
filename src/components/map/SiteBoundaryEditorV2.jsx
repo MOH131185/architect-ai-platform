@@ -96,6 +96,7 @@ export function SiteBoundaryEditorV2({
   const drawingManagerRef = useRef(null);
   const polygonOverlayRef = useRef(null);
   const contextualBoundaryOverlayRef = useRef(null);
+  const contextualBoundaryClickListenerRef = useRef(null);
 
   // State
   const [mode, setMode] = useState(MODES.IDLE);
@@ -573,6 +574,10 @@ export function SiteBoundaryEditorV2({
       // stroke + lower fill opacity than the authoritative blue overlay so
       // the user can tell at a glance it is non-authoritative — colour
       // matches the A1 site-plan boundary for end-to-end consistency.
+      // Clickable: a confirm dialog lets the user *adopt* the contextual
+      // outline as their editable site boundary so they don't need to
+      // redraw it from scratch. Adoption is opt-in (never silent) because
+      // the contextual shape is non-authoritative.
       contextualBoundaryOverlayRef.current = new google.maps.Polygon({
         paths: contextualBoundaryPolygon,
         strokeColor: "#1976D2",
@@ -580,13 +585,38 @@ export function SiteBoundaryEditorV2({
         strokeWeight: 2,
         fillColor: "#1976D2",
         fillOpacity: 0.08,
-        clickable: false,
+        clickable: true,
+        cursor: "pointer",
         zIndex: 1,
         map,
       });
+      contextualBoundaryClickListenerRef.current =
+        contextualBoundaryOverlayRef.current.addListener("click", () => {
+          if (
+            !Array.isArray(contextualBoundaryPolygon) ||
+            contextualBoundaryPolygon.length < 3
+          ) {
+            return;
+          }
+          const ok = window.confirm(
+            "Adopt this contextual outline as your site boundary?\n\n" +
+              "It becomes a draggable polygon you can refine corner-by-corner. " +
+              "The original detection is preserved for context.",
+          );
+          if (!ok) return;
+          setPolygon(contextualBoundaryPolygon);
+          setMode(MODES.SELECTED);
+          setIsPolygonFocused(true);
+        });
     }
 
     return () => {
+      if (contextualBoundaryClickListenerRef.current && google?.maps?.event) {
+        google.maps.event.removeListener(
+          contextualBoundaryClickListenerRef.current,
+        );
+        contextualBoundaryClickListenerRef.current = null;
+      }
       if (contextualBoundaryOverlayRef.current) {
         contextualBoundaryOverlayRef.current.setMap(null);
         contextualBoundaryOverlayRef.current = null;
@@ -600,6 +630,7 @@ export function SiteBoundaryEditorV2({
     map,
     polygon,
     polygonLength,
+    setPolygon,
   ]);
 
   // The PrecisionPolygonEditor now renders ANY present polygon (auto-detected
