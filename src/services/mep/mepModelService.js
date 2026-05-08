@@ -5,6 +5,7 @@ import {
   createStableId,
   roundMetric,
 } from "../cad/projectGeometrySchema.js";
+import { summarizeJurisdictionPack } from "../jurisdiction/jurisdictionPackService.js";
 
 export const MEP_MODEL_VERSION = "mep-model-v1";
 export const MEP_DRAWING_PANEL_VERSION = "mep-drawing-panel-v1";
@@ -462,6 +463,7 @@ function buildSchedules(mepModelDraft) {
 export function buildMepModelFromCompiledProject({
   compiledProject,
   jurisdiction = null,
+  jurisdictionPack = null,
 } = {}) {
   if (!compiledProject?.geometryHash) {
     throw new Error(
@@ -474,11 +476,23 @@ export function buildMepModelFromCompiledProject({
   const electrical = buildElectricalLayouts(rooms);
   const hydraulic = buildPlumbingAndDrainage(rooms, risers);
   const ventilation = buildVentilation(rooms, risers);
+  const jurisdictionPackSummary = jurisdictionPack
+    ? summarizeJurisdictionPack(jurisdictionPack)
+    : null;
+  const disclaimers = [
+    MEP_REVIEW_DISCLAIMER,
+    jurisdictionPackSummary?.disclaimers?.mep,
+    jurisdictionPackSummary?.disclaimers?.preliminaryAdvisory,
+  ].filter(Boolean);
   const draft = {
     version: MEP_MODEL_VERSION,
     geometryHash: compiledProject.geometryHash,
     sourceProjectGraphHash: sourceProjectGraphHashOf(compiledProject),
-    jurisdiction: jurisdictionOf(compiledProject, jurisdiction),
+    jurisdiction:
+      jurisdictionPackSummary?.jurisdictionId ||
+      jurisdictionOf(compiledProject, jurisdiction),
+    jurisdictionPack: jurisdictionPackSummary,
+    jurisdictionPackVersion: jurisdictionPackSummary?.version || null,
     designBasis: {
       status: "preliminary",
       outputType: "coordination_model",
@@ -491,7 +505,7 @@ export function buildMepModelFromCompiledProject({
       "No pipe sizing, pressure drop, ventilation duty, circuit loading, discrimination, or code compliance calculations are performed.",
       "Fixture counts and routes are preliminary placeholders for qualified MEP engineer review.",
     ],
-    disclaimers: [MEP_REVIEW_DISCLAIMER],
+    disclaimers,
     reviewRequired: true,
     imageProviderUsed: "none",
     technicalDrawing: true,
@@ -799,10 +813,12 @@ export function buildMepDrawingPanelsFromMepModel(mepModel = {}) {
 export function buildMepDrawingPanelsFromCompiledProject({
   compiledProject,
   jurisdiction = null,
+  jurisdictionPack = null,
 } = {}) {
   const mepModel = buildMepModelFromCompiledProject({
     compiledProject,
     jurisdiction,
+    jurisdictionPack,
   });
   return buildMepDrawingPanelsFromMepModel(mepModel);
 }

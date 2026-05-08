@@ -504,6 +504,10 @@ function paperSpaceTextEntity(sheet, text, x, y, height = 3.2) {
   );
 }
 
+function titleBlockLabel(sheet = {}, key, fallback) {
+  return sheet.titleBlockLabels?.[key] || fallback;
+}
+
 function paperSpacePolylineEntity(sheet, points, layer = "A-TITLE") {
   return paperSpaceEntity(
     {
@@ -605,35 +609,35 @@ function buildPaperSpaceEntities(model = {}) {
       ),
       paperSpaceTextEntity(
         sheet,
-        `DRAWING_NUMBER: ${sheet.sheetNumber || sheet.drawingNumber}`,
+        `${titleBlockLabel(sheet, "drawingNumber", "DRAWING_NUMBER")}: ${sheet.sheetNumber || sheet.drawingNumber}`,
         width - 190,
         60,
         3.2,
       ),
       paperSpaceTextEntity(
         sheet,
-        `TITLE: ${sheet.title}`,
+        `${titleBlockLabel(sheet, "title", "TITLE")}: ${sheet.title}`,
         width - 190,
         52,
         3.2,
       ),
       paperSpaceTextEntity(
         sheet,
-        `SCALE: ${sheet.scale}`,
+        `${titleBlockLabel(sheet, "scale", "SCALE")}: ${sheet.scale}`,
         width - 190,
         44,
         2.8,
       ),
       paperSpaceTextEntity(
         sheet,
-        `REVISION: ${sheet.revision}`,
+        `${titleBlockLabel(sheet, "revision", "REVISION")}: ${sheet.revision}`,
         width - 190,
         36,
         2.8,
       ),
       paperSpaceTextEntity(
         sheet,
-        `STATUS: ${sheet.status}`,
+        `${titleBlockLabel(sheet, "status", "STATUS")}: ${sheet.status}`,
         width - 190,
         28,
         2.8,
@@ -703,6 +707,18 @@ function writeEntitiesSection({
     `SOURCE_PROJECT_GRAPH_HASH: ${model.sourceProjectGraphHash}`,
     sourceModelHash ? `SOURCE_MODEL_HASH: ${sourceModelHash}` : null,
     pipelineVersion ? `PIPELINE: ${pipelineVersion}` : null,
+    model.jurisdictionPack?.jurisdictionId
+      ? `JURISDICTION_ID: ${model.jurisdictionPack.jurisdictionId}`
+      : null,
+    model.jurisdictionPack?.countryCode
+      ? `JURISDICTION_COUNTRY_CODE: ${model.jurisdictionPack.countryCode}`
+      : null,
+    model.jurisdictionPack?.version
+      ? `JURISDICTION_PACK_VERSION: ${model.jurisdictionPack.version}`
+      : null,
+    model.jurisdictionPack?.disclaimers?.preliminaryAdvisory
+      ? `JURISDICTION_DISCLAIMER: ${model.jurisdictionPack.disclaimers.preliminaryAdvisory}`
+      : null,
     `EXPORT_VERSION: ${DXF_EXPORT_VERSION}`,
     `DRAWING_MODEL_VERSION: ${model.schema_version}`,
   ].filter(Boolean);

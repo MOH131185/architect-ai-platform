@@ -15,6 +15,10 @@ import { buildCompiledProjectTechnicalPanels } from "../canonical/compiledProjec
 import { buildStructuralDrawingPanelsFromCompiledProject } from "../structure/structuralModelService.js";
 import { buildMepDrawingPanelsFromCompiledProject } from "../mep/mepModelService.js";
 import { buildConstructionDetailPanelsFromCompiledProject } from "../details/constructionDetailLibrary.js";
+import {
+  resolveJurisdictionPack,
+  summarizeJurisdictionPack,
+} from "../jurisdiction/jurisdictionPackService.js";
 import { compileProject } from "../compiler/index.js";
 import { ensureCompiledProjectRenderInputs } from "../compiler/compiledProjectRenderInputs.js";
 import { resolveArchitectureModelRegistry } from "../modelStepResolver.js";
@@ -4618,13 +4622,14 @@ function applyRegulationRules(regulations, ctx) {
   };
 }
 
-function buildLocalStylePack(brief, site, climate) {
+function buildLocalStylePack(brief, site, climate, jurisdictionPack = null) {
   // Plan §6.5 weighted blend: local 40 / user 25 / climate 20 / portfolio 15
   // modulated by user_intent.local_blend_strength and innovation_strength.
   return buildLocalStylePackV2({
     brief,
     site,
     climate,
+    jurisdictionPack,
     createStableId,
     paletteSize: 6,
   });
@@ -5323,6 +5328,62 @@ function detailDrawingsEnabled(options = {}) {
   );
 }
 
+function resolveProjectGraphJurisdictionPack({
+  brief = null,
+  compiledProject = null,
+  site = null,
+  input = null,
+  explicitPack = null,
+  explicitResolution = null,
+} = {}) {
+  if (explicitPack?.version) {
+    return {
+      pack: explicitPack,
+      jurisdictionId: explicitPack.jurisdictionId || null,
+      source: "explicit_option",
+      warnings: explicitResolution?.warnings || [],
+      sourceGaps: explicitResolution?.sourceGaps || [],
+    };
+  }
+  if (explicitResolution?.pack?.version) return explicitResolution;
+  return resolveJurisdictionPack({
+    address:
+      compiledProject?.locationData?.address ||
+      compiledProject?.metadata?.address ||
+      brief?.site_input?.address ||
+      input?.siteAddress ||
+      input?.locationData?.address ||
+      null,
+    country:
+      compiledProject?.metadata?.country ||
+      compiledProject?.locationData?.country ||
+      site?.country ||
+      input?.country ||
+      input?.locationData?.country ||
+      null,
+    countryCode:
+      compiledProject?.metadata?.countryCode ||
+      compiledProject?.locationData?.countryCode ||
+      input?.countryCode ||
+      input?.locationData?.countryCode ||
+      null,
+    coordinates:
+      compiledProject?.locationData?.coordinates ||
+      site?.coordinates ||
+      (site?.lat && site?.lon ? { lat: site.lat, lng: site.lon } : null),
+    locale: brief?.locale || input?.locale || null,
+    brief: {
+      ...(brief || {}),
+      ...(compiledProject?.jurisdiction
+        ? { jurisdiction: compiledProject.jurisdiction }
+        : {}),
+      ...(compiledProject?.metadata?.jurisdiction
+        ? { jurisdiction: compiledProject.metadata.jurisdiction }
+        : {}),
+    },
+  });
+}
+
 function buildDrawingSet(compiledProject, options = {}) {
   // Pass layoutTemplate through so the technical pack renders at the slot
   // aspect of the active sheet template (presentation-v3 for residential,
@@ -5331,18 +5392,38 @@ function buildDrawingSet(compiledProject, options = {}) {
     typeof options.layoutTemplate === "string" && options.layoutTemplate
       ? options.layoutTemplate
       : "board-v2";
+  const jurisdictionResolution = resolveProjectGraphJurisdictionPack({
+    brief: options.brief || compiledProject?.brief || null,
+    compiledProject,
+    site: options.site || null,
+    input: options.input || null,
+    explicitPack: options.jurisdictionPack || null,
+    explicitResolution: options.jurisdictionPackResolution || null,
+  });
+  const jurisdictionPack = jurisdictionResolution.pack;
+  const jurisdictionPackSummary = summarizeJurisdictionPack(jurisdictionPack);
   const technicalBuild = buildCompiledProjectTechnicalPanels(compiledProject, {
     layoutTemplate,
     vernacularPack: options.vernacularPack || null,
+    jurisdictionPack: jurisdictionPackSummary,
   });
   const structuralBuild = structuralDrawingsEnabled(options)
-    ? buildStructuralDrawingPanelsFromCompiledProject({ compiledProject })
+    ? buildStructuralDrawingPanelsFromCompiledProject({
+        compiledProject,
+        jurisdictionPack,
+      })
     : { structuralModel: null, structuralPanels: {} };
   const mepBuild = mepDrawingsEnabled(options)
-    ? buildMepDrawingPanelsFromCompiledProject({ compiledProject })
+    ? buildMepDrawingPanelsFromCompiledProject({
+        compiledProject,
+        jurisdictionPack,
+      })
     : { mepModel: null, mepPanels: {} };
   const detailBuild = detailDrawingsEnabled(options)
-    ? buildConstructionDetailPanelsFromCompiledProject({ compiledProject })
+    ? buildConstructionDetailPanelsFromCompiledProject({
+        compiledProject,
+        jurisdictionPack,
+      })
     : { detailLibrary: null, detailPanels: {} };
   const technicalPanels = {
     ...(technicalBuild.technicalPanels || {}),
@@ -5416,6 +5497,7 @@ function buildDrawingSet(compiledProject, options = {}) {
         contentBounds: panel.contentBounds || null,
         normalizedViewBox: panel.normalizedViewBox || null,
         status: panel.status || "ready",
+        jurisdictionPack: jurisdictionPackSummary,
       };
     },
   );
@@ -5424,6 +5506,13 @@ function buildDrawingSet(compiledProject, options = {}) {
     drawingSet: {
       model_version_id: `model-${compiledProject.geometryHash.slice(0, 12)}`,
       drawings: drawingViews,
+      jurisdictionPack: jurisdictionPackSummary,
+      jurisdictionPackResolution: {
+        source: jurisdictionResolution.source,
+        warnings: jurisdictionResolution.warnings || [],
+        sourceGaps: jurisdictionResolution.sourceGaps || [],
+      },
+      titleBlockLabels: jurisdictionPackSummary?.titleBlockLabels || {},
     },
     drawingArtifacts: Object.fromEntries(
       Object.entries(technicalPanels).map(([panelType, panel]) => {
@@ -5482,6 +5571,13 @@ function buildDrawingSet(compiledProject, options = {}) {
                 null,
               detailHashes: panel.detailHashes || [],
               reviewRequired: panel.reviewRequired || false,
+              jurisdictionPack: jurisdictionPackSummary,
+              jurisdictionPackResolution: {
+                source: jurisdictionResolution.source,
+                warnings: jurisdictionResolution.warnings || [],
+                sourceGaps: jurisdictionResolution.sourceGaps || [],
+              },
+              titleBlockLabels: jurisdictionPackSummary?.titleBlockLabels || {},
             },
           },
         ];
@@ -5495,6 +5591,12 @@ function buildDrawingSet(compiledProject, options = {}) {
       mepPanels: mepBuild.mepPanels || {},
       detailLibrary: detailBuild.detailLibrary || null,
       detailPanels: detailBuild.detailPanels || {},
+      jurisdictionPack: jurisdictionPackSummary,
+      jurisdictionPackResolution: {
+        source: jurisdictionResolution.source,
+        warnings: jurisdictionResolution.warnings || [],
+        sourceGaps: jurisdictionResolution.sourceGaps || [],
+      },
     },
   };
 }
@@ -7315,6 +7417,7 @@ export function buildTitleBlockPanelArtifact({
   sheetPlan,
   sheetDesignContext = null,
   visualManifest = null,
+  jurisdictionPack = null,
 }) {
   const width = 620;
   const height = 900;
@@ -7358,23 +7461,31 @@ export function buildTitleBlockPanelArtifact({
     visualManifest?.manifestHash ||
     sheetDesignContext?.visualManifestHash ||
     null;
+  const titleBlockLabels =
+    jurisdictionPack?.a1TitleBlockLabels ||
+    jurisdictionPack?.titleBlockLabels ||
+    {};
+  const labelFor = (key, fallback) => titleBlockLabels[key] || fallback;
   const disclaimerLines = splitNoteLines(PROFESSIONAL_REVIEW_DISCLAIMER, 64, 3);
   // Phase 2 — broader RIBA-style metadata. The first 5 rows preserve the
   // existing data source (so existing tests and downstream readers continue
   // working). The new rows surface RIBA Stage / Status / Revision / Date /
   // Drawing No. so reviewers get the full set on the sheet.
   const rows = [
-    ["Project", resolveProjectTitle(brief, sheetDesignContext)],
-    ["Scale", sheetPlan?.scale || "As noted"],
-    ["Status", status],
-    ["Date", dateLabel],
-    ["Drawing No.", drawingNumber],
-    ["Rev", revision],
-    ["Location", location],
-    ["Programme", programmeLabel],
+    [
+      labelFor("project", "Project"),
+      resolveProjectTitle(brief, sheetDesignContext),
+    ],
+    [labelFor("scale", "Scale"), sheetPlan?.scale || "As noted"],
+    [labelFor("status", "Status"), status],
+    [labelFor("date", "Date"), dateLabel],
+    [labelFor("drawingNumber", "Drawing No."), drawingNumber],
+    [labelFor("revision", "Rev"), revision],
+    [labelFor("location", "Location"), location],
+    [labelFor("programme", "Programme"), programmeLabel],
     ["Target GIA", `${round(brief?.target_gia_m2 || 0, 1)} m²`],
     ["Storeys", `${brief?.target_storeys || 1}`],
-    ["RIBA Stage", ribaStageLabel],
+    [labelFor("ribaStage", "RIBA Stage"), ribaStageLabel],
   ];
   const rowStartY = 232;
   const rowGap = 50;
@@ -7477,6 +7588,8 @@ export function buildTitleBlockPanelArtifact({
       studioFooter,
       visualManifestHash,
       rowKeys: rows.map((r) => r[0]),
+      jurisdictionPack: summarizeJurisdictionPack(jurisdictionPack),
+      titleBlockLabels,
       sheetDesignContextHash: sheetDesignContext?.contextHash || null,
       sourceContext: sheetDesignContext
         ? "sheet_design_context"
@@ -8416,6 +8529,7 @@ async function buildSheetPanelArtifacts({
   siteSnapshot = null,
   sheetPlan = null,
   visualManifest = null,
+  jurisdictionPack = null,
   // Phase 1: optional SheetDesignContext. Reserved for downstream
   // consumers; not consumed by the existing data-panel builders yet.
   // eslint-disable-next-line no-unused-vars
@@ -8465,6 +8579,7 @@ async function buildSheetPanelArtifacts({
     sheetPlan,
     sheetDesignContext,
     visualManifest,
+    jurisdictionPack,
   });
   const sheetNeedsVisual3d = sheetPlanRequiresVisual3d(sheetPlan);
   const visual3d = sheetNeedsVisual3d
@@ -9870,6 +9985,7 @@ async function buildA1Sheet({
   siteSnapshot = null,
   sheetPlan = null,
   visualManifest = null,
+  jurisdictionPack = null,
   // Phase 1: optional SheetDesignContext. Existing callers may omit it; the
   // function does not yet hard-depend on it.
   sheetDesignContext = null,
@@ -9962,6 +10078,7 @@ async function buildA1Sheet({
     compiledProject,
     geometryHash,
     siteSnapshot,
+    jurisdictionPack,
     sheetPlan: {
       ...(sheetPlan || {}),
       sheet_number: drawingNumber,
@@ -12839,9 +12956,21 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
   __vsMark = __vsLog("site_context", __vsMark);
   const siteMapSnapshot = await resolveSiteMapSnapshot({ input, brief, site });
   __vsMark = __vsLog("site_map_snapshot", __vsMark);
+  const jurisdictionPackResolution = resolveProjectGraphJurisdictionPack({
+    brief,
+    site,
+    input,
+  });
+  const jurisdictionPack = jurisdictionPackResolution.pack;
+  const jurisdictionPackSummary = summarizeJurisdictionPack(jurisdictionPack);
   const climate = buildClimatePack(brief, site, { weather });
   const regulationsMetadata = buildRegulationPack(brief);
-  const localStyle = buildLocalStylePack(brief, site, climate);
+  const localStyle = buildLocalStylePack(
+    brief,
+    site,
+    climate,
+    jurisdictionPack,
+  );
   const draftProgramme = buildProgramme({
     brief,
     programSpaces: input.programSpaces || input.programmeSpaces || [],
@@ -12911,6 +13040,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     },
   });
   compiledProject.generationSeed = brief.generation_seed;
+  compiledProject.jurisdiction = jurisdictionPack?.jurisdictionId || null;
   compiledProject.seedSource = brief.seedSource || null;
   compiledProject.variationMode = brief.variationMode || null;
   compiledProject.metadata = {
@@ -12919,6 +13049,12 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     seedSource: brief.seedSource || null,
     variationMode: brief.variationMode || null,
     generationLifecycle: brief.generation_lifecycle || null,
+    jurisdictionPack: jurisdictionPackSummary,
+    jurisdictionPackResolution: {
+      source: jurisdictionPackResolution.source,
+      warnings: jurisdictionPackResolution.warnings || [],
+      sourceGaps: jurisdictionPackResolution.sourceGaps || [],
+    },
   };
   __vsMark = __vsLog("compile_project", __vsMark);
   // Compiled-project QA. Catches geometry layers losing a level (e.g. the
@@ -12955,6 +13091,11 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     {
       layoutTemplate: drawingSetLayoutTemplate,
       vernacularPack: localStyle?.style_provenance || null,
+      jurisdictionPack,
+      jurisdictionPackResolution,
+      brief,
+      site,
+      input,
     },
   );
   __vsMark = __vsLog(
@@ -13142,6 +13283,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       siteSnapshot: siteMapSnapshot,
       sheetPlan,
       visualManifest,
+      jurisdictionPack,
       sheetDesignContext,
       architectReasoningManifest,
       visual3dArtifacts,
@@ -13941,6 +14083,12 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       generationLifecycle,
       geometryHash: compiledProject.geometryHash,
       visualManifestHash: visualManifest.manifestHash,
+      jurisdictionPack: jurisdictionPackSummary,
+      jurisdictionPackResolution: {
+        source: jurisdictionPackResolution.source,
+        warnings: jurisdictionPackResolution.warnings || [],
+        sourceGaps: jurisdictionPackResolution.sourceGaps || [],
+      },
     },
     projectTypeSupport: brief.project_type_support || null,
     projectGraph: finalGraph,

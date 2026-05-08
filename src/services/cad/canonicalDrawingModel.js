@@ -11,6 +11,12 @@ import {
   buildConstructionDetailLibraryFromCompiledProject,
   REQUIRED_CONSTRUCTION_DETAIL_TYPES,
 } from "../details/constructionDetailLibrary.js";
+import {
+  packHasFalseComplianceClaim,
+  resolveJurisdictionPack,
+  summarizeJurisdictionPack,
+  validateJurisdictionPack,
+} from "../jurisdiction/jurisdictionPackService.js";
 
 export const CANONICAL_DRAWING_MODEL_VERSION = "canonical-drawing-model-v1";
 
@@ -632,6 +638,70 @@ function jurisdictionOf(compiledProject = {}, fallback = "generic") {
     compiledProject.metadata?.jurisdiction ||
     fallback
   );
+}
+
+function projectAddressOf(compiledProject = {}) {
+  return (
+    compiledProject.locationData?.address ||
+    compiledProject.location_data?.address ||
+    compiledProject.site?.address ||
+    compiledProject.metadata?.address ||
+    compiledProject.metadata?.location ||
+    ""
+  );
+}
+
+function countryOf(compiledProject = {}) {
+  return (
+    compiledProject.countryCode ||
+    compiledProject.country_code ||
+    compiledProject.country ||
+    compiledProject.locationData?.countryCode ||
+    compiledProject.locationData?.country ||
+    compiledProject.metadata?.countryCode ||
+    compiledProject.metadata?.country_code ||
+    compiledProject.metadata?.country ||
+    null
+  );
+}
+
+function resolveCadJurisdictionPack({
+  compiledProject = {},
+  jurisdiction = null,
+  jurisdictionPack = null,
+} = {}) {
+  if (jurisdictionPack?.titleBlockLabels && jurisdictionPack?.version) {
+    return {
+      pack: jurisdictionPack,
+      summary: summarizeJurisdictionPack(jurisdictionPack),
+      source: "explicit_option",
+      warnings: [],
+      sourceGaps: [],
+    };
+  }
+  const explicitJurisdiction =
+    jurisdiction ||
+    compiledProject.jurisdiction ||
+    compiledProject.regulations?.jurisdiction ||
+    compiledProject.metadata?.jurisdiction ||
+    null;
+  const resolution = resolveJurisdictionPack({
+    address: projectAddressOf(compiledProject),
+    country: countryOf(compiledProject),
+    coordinates:
+      compiledProject.locationData?.coordinates ||
+      compiledProject.site?.coordinates ||
+      null,
+    locale: compiledProject.locale || compiledProject.metadata?.locale || null,
+    brief: {
+      ...(compiledProject.brief || compiledProject.metadata?.brief || {}),
+      ...(explicitJurisdiction ? { jurisdiction: explicitJurisdiction } : {}),
+    },
+  });
+  return {
+    ...resolution,
+    summary: summarizeJurisdictionPack(resolution.pack),
+  };
 }
 
 function entityHash(parts = []) {
@@ -1737,12 +1807,14 @@ function buildStructuralPrimitiveEntities(
   compiledProject = {},
   geometryHash,
   includeStructuralDrawings = false,
+  jurisdictionPack = null,
 ) {
   if (!includeStructuralDrawings) {
     return [];
   }
   const structuralModel = buildStructuralModelFromCompiledProject({
     compiledProject,
+    jurisdictionPack,
   });
   const entities = buildStructuralModelEntities(structuralModel, geometryHash);
   return entities;
@@ -2128,12 +2200,14 @@ function buildMepPrimitiveEntities(
   compiledProject = {},
   geometryHash,
   includeMepDrawings = false,
+  jurisdictionPack = null,
 ) {
   if (!includeMepDrawings) {
     return [];
   }
   const mepModel = buildMepModelFromCompiledProject({
     compiledProject,
+    jurisdictionPack,
   });
   return buildMepModelEntities(mepModel, geometryHash);
 }
@@ -2292,12 +2366,14 @@ function buildConstructionDetailPrimitiveEntities(
   compiledProject = {},
   geometryHash,
   includeDetailDrawings = false,
+  jurisdictionPack = null,
 ) {
   if (!includeDetailDrawings) {
     return [];
   }
   const detailLibrary = buildConstructionDetailLibraryFromCompiledProject({
     compiledProject,
+    jurisdictionPack,
   });
   return buildConstructionDetailEntities(detailLibrary, geometryHash);
 }
@@ -2433,6 +2509,7 @@ function buildSheetMetadata({
   geometryHash,
   sourceProjectGraphHash,
   jurisdiction,
+  jurisdictionPack = null,
   units,
   sheetNumber,
   title,
@@ -2449,6 +2526,10 @@ function buildSheetMetadata({
     geometryHash,
     sourceProjectGraphHash,
     jurisdiction,
+    jurisdictionPack: summarizeJurisdictionPack(jurisdictionPack),
+    titleBlockLabels: clone(jurisdictionPack?.titleBlockLabels || {}),
+    drawingStatusLabels: clone(jurisdictionPack?.drawingStatusLabels || {}),
+    disclaimer: jurisdictionPack?.disclaimers?.preliminaryAdvisory || null,
     units,
     revision: compiledProject.metadata?.revision || "P01",
     status: compiledProject.metadata?.status || "Preliminary",
@@ -2602,6 +2683,7 @@ function createSheet({
   geometryHash,
   sourceProjectGraphHash,
   jurisdiction,
+  jurisdictionPack = null,
   units,
 } = {}) {
   const revision = compiledProject.metadata?.revision || "P01";
@@ -2642,6 +2724,10 @@ function createSheet({
     geometryHash,
     sourceProjectGraphHash,
     jurisdiction,
+    jurisdictionPack: summarizeJurisdictionPack(jurisdictionPack),
+    titleBlockLabels: clone(jurisdictionPack?.titleBlockLabels || {}),
+    drawingStatusLabels: clone(jurisdictionPack?.drawingStatusLabels || {}),
+    disclaimer: jurisdictionPack?.disclaimers?.preliminaryAdvisory || null,
     revision,
     status,
     date: sheetDateOf(compiledProject),
@@ -2653,6 +2739,7 @@ function createSheet({
       geometryHash,
       sourceProjectGraphHash,
       jurisdiction,
+      jurisdictionPack,
       units,
       sheetNumber,
       title,
@@ -2669,6 +2756,7 @@ function buildPaperSpaceSheets({
   geometryHash,
   sourceProjectGraphHash,
   jurisdiction,
+  jurisdictionPack = null,
   units,
   projectName,
 }) {
@@ -2689,6 +2777,7 @@ function buildPaperSpaceSheets({
       geometryHash,
       sourceProjectGraphHash,
       jurisdiction,
+      jurisdictionPack,
       units,
     }),
     createSheet({
@@ -2715,6 +2804,7 @@ function buildPaperSpaceSheets({
       geometryHash,
       sourceProjectGraphHash,
       jurisdiction,
+      jurisdictionPack,
       units,
     }),
   ];
@@ -2747,6 +2837,7 @@ function buildPaperSpaceSheets({
         geometryHash,
         sourceProjectGraphHash,
         jurisdiction,
+        jurisdictionPack,
         units,
       }),
     );
@@ -2782,6 +2873,7 @@ function buildPaperSpaceSheets({
       geometryHash,
       sourceProjectGraphHash,
       jurisdiction,
+      jurisdictionPack,
       units,
     }),
     createSheet({
@@ -2808,6 +2900,7 @@ function buildPaperSpaceSheets({
       geometryHash,
       sourceProjectGraphHash,
       jurisdiction,
+      jurisdictionPack,
       units,
     }),
   );
@@ -2835,6 +2928,7 @@ function buildDetailPaperSpaceSheets({
   geometryHash,
   sourceProjectGraphHash,
   jurisdiction,
+  jurisdictionPack = null,
   units,
 } = {}) {
   if (!baseSheet || !detailLibrary) {
@@ -2897,6 +2991,10 @@ function buildDetailPaperSpaceSheets({
       geometryHash,
       sourceProjectGraphHash,
       jurisdiction,
+      jurisdictionPack: summarizeJurisdictionPack(jurisdictionPack),
+      titleBlockLabels: clone(jurisdictionPack?.titleBlockLabels || {}),
+      drawingStatusLabels: clone(jurisdictionPack?.drawingStatusLabels || {}),
+      disclaimer: jurisdictionPack?.disclaimers?.preliminaryAdvisory || null,
       units,
       modelViews: [sheet.panelType],
       detailLibraryHash: detailLibrary.detailLibraryHash,
@@ -2965,6 +3063,7 @@ export function buildCanonicalDrawingModelFromCompiledProject({
   compiledProject,
   projectName = null,
   jurisdiction = null,
+  jurisdictionPack = null,
   units = "meters",
   includeStructuralDrawings = false,
   structuralDrawingsEnabled = false,
@@ -2981,7 +3080,17 @@ export function buildCanonicalDrawingModelFromCompiledProject({
 
   const geometryHash = compiledProject.geometryHash;
   const resolvedProjectName = projectName || projectNameOf(compiledProject);
-  const resolvedJurisdiction = jurisdiction || jurisdictionOf(compiledProject);
+  const jurisdictionResolution = resolveCadJurisdictionPack({
+    compiledProject,
+    jurisdiction,
+    jurisdictionPack,
+  });
+  const resolvedJurisdictionPack = jurisdictionResolution.pack;
+  const jurisdictionPackSummary = jurisdictionResolution.summary;
+  const resolvedJurisdiction =
+    resolvedJurisdictionPack?.jurisdictionId ||
+    jurisdiction ||
+    jurisdictionOf(compiledProject);
   const sourceProjectGraphHash = sourceProjectGraphHashOf(compiledProject);
   const shouldIncludeStructuralDrawings =
     includeStructuralDrawings === true || structuralDrawingsEnabled === true;
@@ -2993,18 +3102,21 @@ export function buildCanonicalDrawingModelFromCompiledProject({
     ? buildStructuralModelFromCompiledProject({
         compiledProject,
         jurisdiction: resolvedJurisdiction,
+        jurisdictionPack: resolvedJurisdictionPack,
       })
     : null;
   const mepModel = shouldIncludeMepDrawings
     ? buildMepModelFromCompiledProject({
         compiledProject,
         jurisdiction: resolvedJurisdiction,
+        jurisdictionPack: resolvedJurisdictionPack,
       })
     : null;
   const detailLibrary = shouldIncludeDetailDrawings
     ? buildConstructionDetailLibraryFromCompiledProject({
         compiledProject,
         jurisdiction: resolvedJurisdiction,
+        jurisdictionPack: resolvedJurisdictionPack,
       })
     : null;
   const modelSpaceEntities = [
@@ -3016,16 +3128,19 @@ export function buildCanonicalDrawingModelFromCompiledProject({
       compiledProject,
       geometryHash,
       shouldIncludeStructuralDrawings,
+      resolvedJurisdictionPack,
     ),
     ...buildMepPrimitiveEntities(
       compiledProject,
       geometryHash,
       shouldIncludeMepDrawings,
+      resolvedJurisdictionPack,
     ),
     ...buildConstructionDetailPrimitiveEntities(
       compiledProject,
       geometryHash,
       shouldIncludeDetailDrawings,
+      resolvedJurisdictionPack,
     ),
   ];
   const architecturalSheets = buildPaperSpaceSheets({
@@ -3033,6 +3148,7 @@ export function buildCanonicalDrawingModelFromCompiledProject({
     geometryHash,
     sourceProjectGraphHash,
     jurisdiction: resolvedJurisdiction,
+    jurisdictionPack: resolvedJurisdictionPack,
     units,
     projectName: resolvedProjectName,
   });
@@ -3044,6 +3160,7 @@ export function buildCanonicalDrawingModelFromCompiledProject({
       geometryHash,
       sourceProjectGraphHash,
       jurisdiction: resolvedJurisdiction,
+      jurisdictionPack: resolvedJurisdictionPack,
       units,
     }),
   ];
@@ -3055,6 +3172,12 @@ export function buildCanonicalDrawingModelFromCompiledProject({
     geometryHash,
     sourceProjectGraphHash,
     jurisdiction: resolvedJurisdiction,
+    jurisdictionPack: jurisdictionPackSummary,
+    jurisdictionPackResolution: {
+      source: jurisdictionResolution.source,
+      warnings: jurisdictionResolution.warnings || [],
+      sourceGaps: jurisdictionResolution.sourceGaps || [],
+    },
     units,
     modelSpace: {
       units,
@@ -3067,6 +3190,12 @@ export function buildCanonicalDrawingModelFromCompiledProject({
       nativeLayouts: sheets.map((sheet) => sheet.nativeLayout),
     },
     plotStyleMetadata: clone(DEFAULT_PLOT_STYLE_METADATA),
+    materialHatchPreferences: clone(
+      resolvedJurisdictionPack?.materialHatchPreferences || {},
+    ),
+    cadLayerPreferences: clone(
+      resolvedJurisdictionPack?.cadLayerPreferences || {},
+    ),
     ...(structuralModel ? { structuralModel } : {}),
     ...(mepModel ? { mepModel } : {}),
     ...(detailLibrary ? { detailLibrary } : {}),
@@ -3105,6 +3234,8 @@ export function buildCanonicalDrawingModelFromCompiledProject({
         ],
         geometryHash,
         sourceProjectGraphHash,
+        labels: clone(resolvedJurisdictionPack?.titleBlockLabels || {}),
+        jurisdictionPack: jurisdictionPackSummary,
       },
     ],
     viewports: sheets.flatMap((sheet) =>
@@ -3113,12 +3244,23 @@ export function buildCanonicalDrawingModelFromCompiledProject({
         sheetId: sheet.sheetId,
       })),
     ),
-    drawingScales: buildDrawingScales(),
+    drawingScales:
+      resolvedJurisdictionPack?.drawingScales?.map((ratio) => ({
+        name: `jurisdiction_${String(ratio).replace(/[^0-9]+/g, "_")}`,
+        ratio,
+        paperUnits: "mm",
+        modelUnits: "m",
+      })) || buildDrawingScales(),
     sheetMetadata: {
       projectName: resolvedProjectName,
       geometryHash,
       sourceProjectGraphHash,
       jurisdiction: resolvedJurisdiction,
+      jurisdictionPack: jurisdictionPackSummary,
+      titleBlockLabels: clone(resolvedJurisdictionPack?.titleBlockLabels || {}),
+      drawingStatusLabels: clone(
+        resolvedJurisdictionPack?.drawingStatusLabels || {},
+      ),
       units,
       revision: "P01",
       status: "Preliminary",
@@ -3132,6 +3274,12 @@ export function buildCanonicalDrawingModelFromCompiledProject({
       technicalDrawing: true,
       imageProviderUsed: "none",
       source: "compiled_project",
+      jurisdictionPack: jurisdictionPackSummary,
+      jurisdictionPackResolution: {
+        source: jurisdictionResolution.source,
+        warnings: jurisdictionResolution.warnings || [],
+        sourceGaps: jurisdictionResolution.sourceGaps || [],
+      },
     },
   };
 }
@@ -3192,6 +3340,39 @@ export function validateCanonicalDrawingModel(model = {}, options = {}) {
       validationError(
         "CAD_MODEL_UNITS_MISSING",
         "CanonicalDrawingModel requires units.",
+      ),
+    );
+  }
+  const jurisdictionPackValidation = model.jurisdictionPack
+    ? validateJurisdictionPack(model.jurisdictionPack)
+    : null;
+  if (!model.jurisdictionPack) {
+    warnings.push(
+      validationError(
+        "CAD_MODEL_JURISDICTION_PACK_MISSING",
+        "CanonicalDrawingModel has no jurisdiction pack metadata.",
+      ),
+    );
+  } else if (!jurisdictionPackValidation.valid) {
+    jurisdictionPackValidation.errors.forEach((issue) => {
+      errors.push(
+        validationError(
+          issue.code || "CAD_MODEL_JURISDICTION_PACK_INVALID",
+          issue.message ||
+            "CanonicalDrawingModel jurisdiction pack is invalid.",
+          issue.details || {},
+        ),
+      );
+    });
+  }
+  if (
+    model.jurisdictionPack &&
+    packHasFalseComplianceClaim(model.jurisdictionPack)
+  ) {
+    errors.push(
+      validationError(
+        "CAD_MODEL_JURISDICTION_FALSE_COMPLIANCE_CLAIM",
+        "Jurisdiction metadata must not claim legal/code compliance or construction approval.",
       ),
     );
   }
@@ -3744,6 +3925,15 @@ export function validateCanonicalDrawingModel(model = {}, options = {}) {
       hasNativeViewports,
       hasPlotSettings,
       hasPlotStyleMetadata,
+      hasJurisdictionPack: Boolean(model.jurisdictionPack?.version),
+      jurisdictionPackId: model.jurisdictionPack?.jurisdictionId || null,
+      jurisdictionCountryCode: model.jurisdictionPack?.countryCode || null,
+      jurisdictionPackVersion: model.jurisdictionPack?.version || null,
+      hasJurisdictionDisclaimer: Boolean(
+        model.jurisdictionPack?.disclaimers?.preliminaryAdvisory,
+      ),
+      jurisdictionSourceGaps:
+        model.metadata?.jurisdictionPackResolution?.sourceGaps || [],
       hasStructuralModelHash,
       hasStructuralDisclaimer: Boolean(hasStructuralDisclaimer),
       structuralReviewRequired: model.structuralModel?.reviewRequired === true,
@@ -3775,6 +3965,13 @@ export function summarizeCanonicalDrawingModel(model = {}) {
     sourceProjectGraphHash: model.sourceProjectGraphHash || null,
     units: model.units || null,
     jurisdiction: model.jurisdiction || null,
+    jurisdictionPack: model.jurisdictionPack
+      ? {
+          jurisdictionId: model.jurisdictionPack.jurisdictionId || null,
+          countryCode: model.jurisdictionPack.countryCode || null,
+          version: model.jurisdictionPack.version || null,
+        }
+      : null,
     entityCount: entities.length,
     sheetCount: toArray(model.paperSpace?.sheets).length,
     layerCount: toArray(model.layers).length,

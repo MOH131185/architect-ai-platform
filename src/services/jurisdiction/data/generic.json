@@ -1,0 +1,120 @@
+{
+  "jurisdictionId": "generic",
+  "countryCode": "INT",
+  "countryName": "International / Unresolved",
+  "version": "jurisdiction-pack-generic-v1",
+  "languages": ["en"],
+  "defaultLanguage": "en",
+  "units": {
+    "length": "m",
+    "area": "m2",
+    "paper": "mm"
+  },
+  "drawingScales": ["1:500", "1:200", "1:100", "1:50", "1:20", "1:10", "1:5"],
+  "titleBlockLabels": {
+    "project": "Project",
+    "drawingNumber": "DRAWING_NUMBER",
+    "title": "TITLE",
+    "scale": "SCALE",
+    "revision": "REVISION",
+    "status": "STATUS",
+    "date": "Date",
+    "author": "Author",
+    "company": "Company",
+    "location": "Location",
+    "programme": "Programme",
+    "ribaStage": "Design Stage"
+  },
+  "a1TitleBlockLabels": {
+    "project": "Project",
+    "scale": "Scale",
+    "status": "Status",
+    "date": "Date",
+    "drawingNumber": "Drawing No.",
+    "revision": "Rev",
+    "location": "Location",
+    "programme": "Programme",
+    "ribaStage": "Design Stage"
+  },
+  "drawingStatusLabels": {
+    "preliminary": "Preliminary",
+    "draft": "Draft for review",
+    "information": "For information",
+    "review": "For professional review"
+  },
+  "cadLayerPreferences": {
+    "naming": "current_archiai_ascii_layers",
+    "keepCurrentArchitecturalLayers": true,
+    "aliases": {}
+  },
+  "defaultCadLayers": [
+    "A-WALL",
+    "A-WALL-EXT",
+    "A-DOOR",
+    "A-WINDOW",
+    "A-STAIR",
+    "A-ROOM",
+    "A-DIMS",
+    "A-TEXT",
+    "A-HATCH",
+    "A-SITE",
+    "A-TITLE"
+  ],
+  "materialHatchPreferences": {
+    "masonry": "BRICK",
+    "concrete": "CONCRETE",
+    "timber": "TIMBER",
+    "insulation": "INSULATION"
+  },
+  "climateAssumptions": {
+    "climateZone": "unknown",
+    "rainfall": "verify local climate assumptions",
+    "overheating": "verify local solar and ventilation assumptions"
+  },
+  "localStyleDefaults": {
+    "source": "generic_jurisdiction_pack",
+    "materials": [
+      "neutral render",
+      "local masonry",
+      "timber accent",
+      "durable roof finish"
+    ],
+    "facadeCues": ["locally verified material palette"],
+    "climateResponses": ["verify climate response locally"],
+    "vernacularPackHints": []
+  },
+  "planningRegulatoryChecklist": {
+    "status": "source_gap",
+    "items": [
+      "local planning context",
+      "professional review",
+      "local authority verification"
+    ],
+    "sourceNote": "Preliminary advisory checklist - verify with local authority and licensed professionals."
+  },
+  "structuralAssumptions": {
+    "basis": "generic preliminary structural coordination assumptions",
+    "review": "licensed structural engineer review required"
+  },
+  "mepAssumptions": {
+    "basis": "generic preliminary MEP coordination assumptions",
+    "review": "qualified MEP engineer review required"
+  },
+  "disclaimers": {
+    "preliminaryAdvisory": "Preliminary advisory checklist - verify with local authority and licensed professionals.",
+    "structural": "Preliminary structural information only - licensed structural engineer review is required.",
+    "mep": "Preliminary MEP information only - qualified MEP engineer review is required.",
+    "details": "Preliminary construction details only - responsible architect and engineer review is required."
+  },
+  "reviewRequirements": {
+    "architect": true,
+    "structuralEngineer": true,
+    "mepEngineer": true,
+    "localAuthority": true
+  },
+  "exportNamingConventions": {
+    "drawingPrefix": "A",
+    "technicalSetPrefix": "INT",
+    "fileSlug": "generic"
+  }
+}

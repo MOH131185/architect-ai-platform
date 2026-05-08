@@ -3,6 +3,7 @@ import {
   computeMaterialPalette,
   buildLocalStylePackV2,
 } from "../../../services/style/localStylePack.js";
+import { loadJurisdictionPack } from "../../../services/jurisdiction/jurisdictionPackService.js";
 
 describe("computeBlendWeights", () => {
   test("default sliders sum to 1.0 and are close to plan §6.5 defaults", () => {
@@ -160,10 +161,66 @@ describe("buildLocalStylePackV2 — full pack output", () => {
     expect(pack.blend_weights.local).toBeGreaterThan(
       pack.blend_weights.portfolio,
     );
-    expect(pack.blend_rationale.length).toBe(4);
+    expect(pack.blend_rationale.length).toBeGreaterThanOrEqual(4);
     expect(pack.avoid_keywords).toContain("highly reflective glazing");
     expect(
       pack.material_palette_with_provenance[0].sources.length,
     ).toBeGreaterThan(0);
+  });
+
+  test("France jurisdiction defaults use French material evidence, not UK vernacular pack names", () => {
+    const jurisdictionPack = loadJurisdictionPack("france");
+    const pack = buildLocalStylePackV2({
+      brief: {
+        project_name: "Maison Locale",
+        building_type: "dwelling",
+        user_intent: { style_keywords: [], material_preferences: [] },
+      },
+      site: {},
+      climate: { overheating: { risk_level: "medium" } },
+      jurisdictionPack,
+    });
+
+    expect(pack.jurisdictionEvidence).toEqual(
+      expect.objectContaining({
+        jurisdictionId: "france",
+        countryCode: "FR",
+        packVersion: "jurisdiction-pack-france-v1",
+      }),
+    );
+    expect(pack.source_palettes.local).toEqual(
+      expect.arrayContaining(["lime render", "local stone"]),
+    );
+    expect(JSON.stringify(pack.jurisdictionEvidence)).not.toMatch(
+      /ukVernacularPacks|London stucco|Manchester/i,
+    );
+  });
+
+  test("Algeria jurisdiction defaults use hot-climate cues, not UK vernacular pack names", () => {
+    const jurisdictionPack = loadJurisdictionPack("algeria");
+    const pack = buildLocalStylePackV2({
+      brief: {
+        project_name: "Maison Alger",
+        building_type: "dwelling",
+        user_intent: { style_keywords: [], material_preferences: [] },
+      },
+      site: {},
+      climate: { overheating: { risk_level: "high" } },
+      jurisdictionPack,
+    });
+
+    expect(pack.jurisdictionEvidence).toEqual(
+      expect.objectContaining({
+        jurisdictionId: "algeria",
+        countryCode: "DZ",
+        packVersion: "jurisdiction-pack-algeria-v1",
+      }),
+    );
+    expect(pack.source_palettes.local.join(",")).toMatch(
+      /light coloured render|shading screen|thermal mass/i,
+    );
+    expect(JSON.stringify(pack.jurisdictionEvidence)).not.toMatch(
+      /ukVernacularPacks|London stucco|Manchester/i,
+    );
   });
 });

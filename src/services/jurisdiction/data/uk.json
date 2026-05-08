@@ -1,0 +1,148 @@
+{
+  "jurisdictionId": "uk",
+  "countryCode": "GB",
+  "countryName": "United Kingdom",
+  "version": "jurisdiction-pack-uk-v1",
+  "languages": ["en"],
+  "defaultLanguage": "en",
+  "units": {
+    "length": "m",
+    "area": "m2",
+    "paper": "mm"
+  },
+  "drawingScales": ["1:500", "1:200", "1:100", "1:50", "1:20", "1:10", "1:5"],
+  "titleBlockLabels": {
+    "project": "Project",
+    "drawingNumber": "DRAWING_NUMBER",
+    "title": "TITLE",
+    "scale": "SCALE",
+    "revision": "REVISION",
+    "status": "STATUS",
+    "date": "Date",
+    "author": "Author",
+    "company": "Company",
+    "location": "Location",
+    "programme": "Programme",
+    "ribaStage": "RIBA Stage"
+  },
+  "a1TitleBlockLabels": {
+    "project": "Project",
+    "scale": "Scale",
+    "status": "Status",
+    "date": "Date",
+    "drawingNumber": "Drawing No.",
+    "revision": "Rev",
+    "location": "Location",
+    "programme": "Programme",
+    "ribaStage": "RIBA Stage"
+  },
+  "drawingStatusLabels": {
+    "preliminary": "Preliminary",
+    "draft": "Draft for review",
+    "information": "For information",
+    "review": "For professional review"
+  },
+  "cadLayerPreferences": {
+    "naming": "current_archiai_ascii_layers",
+    "keepCurrentArchitecturalLayers": true,
+    "aliases": {}
+  },
+  "defaultCadLayers": [
+    "A-WALL",
+    "A-WALL-EXT",
+    "A-DOOR",
+    "A-WINDOW",
+    "A-STAIR",
+    "A-ROOM",
+    "A-DIMS",
+    "A-TEXT",
+    "A-HATCH",
+    "A-SITE",
+    "A-TITLE",
+    "S-FOUNDATION",
+    "S-COLUMN",
+    "S-BEAM",
+    "S-SLAB",
+    "S-ROOF",
+    "S-GRID",
+    "S-NOTES",
+    "S-DIMS",
+    "E-LIGHT",
+    "E-POWER",
+    "P-WATER",
+    "P-DRAIN",
+    "M-VENT",
+    "MEP-NOTES",
+    "A-DETAIL",
+    "A-CALLOUT"
+  ],
+  "materialHatchPreferences": {
+    "masonry": "BRICK",
+    "concrete": "CONCRETE",
+    "timber": "TIMBER",
+    "insulation": "INSULATION",
+    "earth": "EARTH"
+  },
+  "climateAssumptions": {
+    "climateZone": "temperate_maritime",
+    "rainfall": "wind-driven rain should be reviewed locally",
+    "overheating": "cross ventilation and shading should be reviewed for dwellings"
+  },
+  "localStyleDefaults": {
+    "source": "uk_jurisdiction_pack",
+    "materials": [
+      "warm stock brick",
+      "render with detailed reveals",
+      "timber boarding",
+      "concrete tile",
+      "slate"
+    ],
+    "facadeCues": [
+      "masonry rhythm",
+      "robust rain detailing",
+      "recessed openings"
+    ],
+    "climateResponses": [
+      "rain protection",
+      "moderate solar control",
+      "thermal continuity"
+    ],
+    "vernacularPackHints": ["ukVernacularPacks"]
+  },
+  "planningRegulatoryChecklist": {
+    "status": "preliminary_advisory",
+    "items": [
+      "planning context",
+      "neighbour amenity",
+      "access",
+      "fire strategy review",
+      "building control review"
+    ],
+    "sourceNote": "Preliminary advisory checklist - verify with local authority and licensed professionals."
+  },
+  "structuralAssumptions": {
+    "basis": "preliminary UK residential coordination assumptions",
+    "review": "licensed structural engineer review required"
+  },
+  "mepAssumptions": {
+    "basis": "preliminary UK MEP coordination assumptions",
+    "review": "qualified MEP engineer review required"
+  },
+  "disclaimers": {
+    "preliminaryAdvisory": "Preliminary advisory checklist - verify with local authority and licensed professionals.",
+    "structural": "Preliminary structural information only - licensed structural engineer review is required.",
+    "mep": "Preliminary MEP information only - qualified MEP engineer review is required.",
+    "details": "Preliminary construction details only - responsible architect and engineer review is required."
+  },
+  "reviewRequirements": {
+    "architect": true,
+    "structuralEngineer": true,
+    "mepEngineer": true,
+    "localAuthority": true
+  },
+  "exportNamingConventions": {
+    "drawingPrefix": "A",
+    "technicalSetPrefix": "UK",
+    "fileSlug": "uk"
+  }
+}
