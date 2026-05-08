@@ -5,6 +5,7 @@ import {
   createStableId,
   roundMetric,
 } from "./projectGeometrySchema.js";
+import { buildStructuralModelFromCompiledProject } from "../structure/structuralModelService.js";
 
 export const CANONICAL_DRAWING_MODEL_VERSION = "canonical-drawing-model-v1";
 
@@ -32,6 +33,8 @@ export const REQUIRED_CANONICAL_CAD_LAYERS = Object.freeze([
   "A-HATCH",
   "A-SITE",
   "A-TITLE",
+  "A-COLU",
+  "A-SLAB",
   "S-FOUNDATION",
   "S-COLUMN",
   "S-BEAM",
@@ -39,6 +42,7 @@ export const REQUIRED_CANONICAL_CAD_LAYERS = Object.freeze([
   "S-ROOF",
   "S-GRID",
   "S-NOTES",
+  "S-DIMS",
   "M-DUCT",
   "M-PIPE",
   "P-DRAIN",
@@ -46,6 +50,17 @@ export const REQUIRED_CANONICAL_CAD_LAYERS = Object.freeze([
   "E-POWER",
   "E-SWITCH",
   "F-FIRE",
+]);
+
+const STRUCTURAL_CANONICAL_CAD_LAYER_NAMES = new Set([
+  "S-FOUNDATION",
+  "S-COLUMN",
+  "S-BEAM",
+  "S-SLAB",
+  "S-ROOF",
+  "S-GRID",
+  "S-NOTES",
+  "S-DIMS",
 ]);
 
 export const DEFAULT_CANONICAL_CAD_LAYERS = Object.freeze([
@@ -127,6 +142,20 @@ export const DEFAULT_CANONICAL_CAD_LAYERS = Object.freeze([
     linetype: "CONTINUOUS",
   },
   {
+    name: "A-COLU",
+    discipline: "architectural",
+    color: 1,
+    lineweight: 50,
+    linetype: "CONTINUOUS",
+  },
+  {
+    name: "A-SLAB",
+    discipline: "architectural",
+    color: 3,
+    lineweight: 25,
+    linetype: "CONTINUOUS",
+  },
+  {
     name: "S-FOUNDATION",
     discipline: "structural",
     color: 1,
@@ -172,6 +201,13 @@ export const DEFAULT_CANONICAL_CAD_LAYERS = Object.freeze([
     name: "S-NOTES",
     discipline: "structural",
     color: 7,
+    lineweight: 18,
+    linetype: "CONTINUOUS",
+  },
+  {
+    name: "S-DIMS",
+    discipline: "structural",
+    color: 2,
     lineweight: 18,
     linetype: "CONTINUOUS",
   },
@@ -551,6 +587,7 @@ function dimensionEntity({
   end,
   offset,
   text,
+  layer = "A-DIMS",
   viewType,
   viewId,
   geometryHash,
@@ -560,7 +597,7 @@ function dimensionEntity({
 }) {
   return createEntity({
     type: "DIMENSION",
-    layer: "A-DIMS",
+    layer,
     viewType,
     viewId,
     geometryHash,
@@ -574,7 +611,7 @@ function dimensionEntity({
       text: String(text || ""),
       styleName: "ARCH_100",
       arrowStyle: "architectural_tick",
-      layer: "A-DIMS",
+      layer,
     },
     metadata,
   });
@@ -727,7 +764,7 @@ function buildFloorPlanEntities(compiledProject = {}, geometryHash) {
         entities.push(
           polylineEntity({
             points: slab.polygon,
-            layer: "S-SLAB",
+            layer: "A-SLAB",
             viewType: "floor_plan",
             viewId,
             geometryHash,
@@ -873,7 +910,7 @@ function buildFloorPlanEntities(compiledProject = {}, geometryHash) {
             { x: position.x + half, y: position.y + half },
             { x: position.x - half, y: position.y + half },
           ],
-          layer: "S-COLUMN",
+          layer: "A-COLU",
           viewType: "floor_plan",
           viewId,
           geometryHash,
@@ -890,7 +927,7 @@ function buildFloorPlanEntities(compiledProject = {}, geometryHash) {
           lineEntity({
             start: beam.start,
             end: beam.end,
-            layer: "S-BEAM",
+            layer: "A-SLAB",
             viewType: "floor_plan",
             viewId,
             geometryHash,
@@ -1038,7 +1075,7 @@ function buildSectionEntities(compiledProject = {}, geometryHash) {
         lineEntity({
           start: { x: 0, y },
           end: { x: width, y },
-          layer: "S-SLAB",
+          layer: "A-SLAB",
           viewType: "section",
           viewId,
           geometryHash,
@@ -1128,40 +1165,381 @@ function buildSiteEntities(compiledProject = {}, geometryHash) {
   return entities;
 }
 
-function buildStructuralPrimitiveEntities(compiledProject = {}, geometryHash) {
+function buildStructuralModelEntities(structuralModel = {}, geometryHash) {
   const entities = [];
-  toArray(compiledProject.foundations).forEach((foundation, index) => {
-    if (hasUsablePolygon(foundation.polygon)) {
+  toArray(structuralModel.foundationSystem?.foundations).forEach(
+    (foundation, index) => {
+      if (hasUsablePolygon(foundation.polygon)) {
+        entities.push(
+          polylineEntity({
+            points: foundation.polygon,
+            layer: "S-FOUNDATION",
+            viewType: "structural_plan",
+            viewId: "foundation_plan",
+            geometryHash,
+            sourceId: foundation.id || `foundation-${index}`,
+            levelId: foundation.levelId || levelIdOf(foundation),
+            metadata: {
+              role: "foundation_outline",
+              memberId: foundation.memberId,
+              structuralModelHash: structuralModel.structuralModelHash,
+            },
+          }),
+          hatchEntity({
+            boundary: foundation.polygon,
+            layer: "S-FOUNDATION",
+            pattern: "CONCRETE",
+            viewType: "structural_plan",
+            viewId: "foundation_plan",
+            geometryHash,
+            sourceId: `${foundation.id || `foundation-${index}`}-hatch`,
+            levelId: foundation.levelId || levelIdOf(foundation),
+            metadata: {
+              role: "foundation_hatch",
+              memberId: foundation.memberId,
+              structuralModelHash: structuralModel.structuralModelHash,
+            },
+          }),
+        );
+        const center = computeCentroid(foundation.polygon);
+        entities.push(
+          textEntity({
+            point: center,
+            text: foundation.memberId || foundation.id || `FND-${index + 1}`,
+            layer: "S-NOTES",
+            viewType: "structural_plan",
+            viewId: "foundation_plan",
+            geometryHash,
+            sourceId: `${foundation.id || index}-tag`,
+            levelId: foundation.levelId || levelIdOf(foundation),
+            height: 0.28,
+            metadata: {
+              role: "member_tag",
+              structuralModelHash: structuralModel.structuralModelHash,
+            },
+          }),
+        );
+      }
+    },
+  );
+
+  toArray(structuralModel.slabs).forEach((slab, index) => {
+    const viewId =
+      Number(String(slab.levelId || "").replace(/[^0-9]/g, "")) > 0
+        ? "structural_upper_floor"
+        : "structural_ground_floor";
+    if (hasUsablePolygon(slab.polygon)) {
       entities.push(
         polylineEntity({
-          points: foundation.polygon,
-          layer: "S-FOUNDATION",
+          points: slab.polygon,
+          layer: "S-SLAB",
           viewType: "structural_plan",
-          viewId: "foundation_plan",
+          viewId,
           geometryHash,
-          sourceId: foundation.id || `foundation-${index}`,
-          levelId: levelIdOf(foundation),
-          metadata: { role: "foundation_outline" },
+          sourceId: slab.id || `structural-slab-${index}`,
+          levelId: slab.levelId,
+          metadata: {
+            role: "structural_slab",
+            memberId: slab.memberId,
+            structuralModelHash: structuralModel.structuralModelHash,
+          },
         }),
       );
     }
   });
-  toArray(compiledProject.roof_primitives).forEach((roof, index) => {
-    if (hasUsablePolygon(roof.polygon)) {
+
+  toArray(structuralModel.structuralGrid?.x_axes).forEach((axis) => {
+    const bbox = structuralModel.roofFraming?.outline
+      ? buildBoundingBoxFromPolygon(structuralModel.roofFraming.outline)
+      : null;
+    if (!bbox) return;
+    entities.push(
+      lineEntity({
+        start: { x: axis.position_m, y: bbox.min_y },
+        end: { x: axis.position_m, y: bbox.max_y },
+        layer: "S-GRID",
+        viewType: "structural_plan",
+        viewId: "structural_ground_floor",
+        geometryHash,
+        sourceId: `grid-x-${axis.label}`,
+        metadata: {
+          role: "structural_grid",
+          gridLabel: axis.label,
+          structuralModelHash: structuralModel.structuralModelHash,
+        },
+      }),
+    );
+    entities.push(
+      textEntity({
+        point: { x: axis.position_m, y: bbox.max_y + 0.4 },
+        text: axis.label,
+        layer: "S-NOTES",
+        viewType: "structural_plan",
+        viewId: "structural_ground_floor",
+        geometryHash,
+        sourceId: `grid-x-${axis.label}-label`,
+        height: 0.25,
+        metadata: { role: "grid_bubble" },
+      }),
+    );
+  });
+
+  toArray(structuralModel.structuralGrid?.y_axes).forEach((axis) => {
+    const bbox = structuralModel.roofFraming?.outline
+      ? buildBoundingBoxFromPolygon(structuralModel.roofFraming.outline)
+      : null;
+    if (!bbox) return;
+    entities.push(
+      lineEntity({
+        start: { x: bbox.min_x, y: axis.position_m },
+        end: { x: bbox.max_x, y: axis.position_m },
+        layer: "S-GRID",
+        viewType: "structural_plan",
+        viewId: "structural_ground_floor",
+        geometryHash,
+        sourceId: `grid-y-${axis.label}`,
+        metadata: {
+          role: "structural_grid",
+          gridLabel: axis.label,
+          structuralModelHash: structuralModel.structuralModelHash,
+        },
+      }),
+    );
+    entities.push(
+      textEntity({
+        point: { x: bbox.min_x - 0.4, y: axis.position_m },
+        text: axis.label,
+        layer: "S-NOTES",
+        viewType: "structural_plan",
+        viewId: "structural_ground_floor",
+        geometryHash,
+        sourceId: `grid-y-${axis.label}-label`,
+        height: 0.25,
+        metadata: { role: "grid_bubble" },
+      }),
+    );
+  });
+
+  toArray(structuralModel.beams).forEach((beam, index) => {
+    if (beam.start && beam.end) {
       entities.push(
-        polylineEntity({
-          points: roof.polygon,
-          layer: "S-ROOF",
+        lineEntity({
+          start: beam.start,
+          end: beam.end,
+          layer: "S-BEAM",
           viewType: "structural_plan",
-          viewId: "roof_framing_plan",
+          viewId: "structural_ground_floor",
           geometryHash,
-          sourceId: roof.id || `roof-${index}`,
-          levelId: levelIdOf(roof),
-          metadata: { role: "roof_primitive" },
+          sourceId: beam.id || `structural-beam-${index}`,
+          levelId: beam.levelId,
+          metadata: {
+            role: "structural_beam",
+            memberId: beam.memberId,
+            structuralModelHash: structuralModel.structuralModelHash,
+          },
+        }),
+        textEntity({
+          point: {
+            x: (Number(beam.start.x || 0) + Number(beam.end.x || 0)) / 2,
+            y: (Number(beam.start.y || 0) + Number(beam.end.y || 0)) / 2,
+          },
+          text: beam.memberId || `BM-${index + 1}`,
+          layer: "S-NOTES",
+          viewType: "structural_plan",
+          viewId: "structural_ground_floor",
+          geometryHash,
+          sourceId: `${beam.id || index}-tag`,
+          levelId: beam.levelId,
+          height: 0.24,
+          metadata: { role: "member_tag" },
         }),
       );
     }
   });
+
+  toArray(structuralModel.columns).forEach((column, index) => {
+    const position = column.position;
+    if (!position) return;
+    const half = finiteMetric(column.width_m || column.depth_m, 0.3) / 2;
+    entities.push(
+      polylineEntity({
+        points: [
+          { x: position.x - half, y: position.y - half },
+          { x: position.x + half, y: position.y - half },
+          { x: position.x + half, y: position.y + half },
+          { x: position.x - half, y: position.y + half },
+        ],
+        layer: "S-COLUMN",
+        viewType: "structural_plan",
+        viewId: "structural_ground_floor",
+        geometryHash,
+        sourceId: column.id || `structural-column-${index}`,
+        levelId: column.levelId,
+        metadata: {
+          role: "structural_column",
+          memberId: column.memberId,
+          structuralModelHash: structuralModel.structuralModelHash,
+        },
+      }),
+      textEntity({
+        point: { x: position.x + half + 0.12, y: position.y + half + 0.12 },
+        text: column.memberId || `COL-${index + 1}`,
+        layer: "S-NOTES",
+        viewType: "structural_plan",
+        viewId: "structural_ground_floor",
+        geometryHash,
+        sourceId: `${column.id || index}-tag`,
+        levelId: column.levelId,
+        height: 0.22,
+        metadata: { role: "member_tag" },
+      }),
+    );
+  });
+
+  toArray(structuralModel.loadBearingWalls).forEach((wall, index) => {
+    entities.push(
+      lineEntity({
+        start: wall.start,
+        end: wall.end,
+        layer: "S-BEAM",
+        viewType: "structural_plan",
+        viewId: "structural_ground_floor",
+        geometryHash,
+        sourceId: wall.id || `load-bearing-wall-${index}`,
+        levelId: wall.levelId,
+        metadata: {
+          role: "load_bearing_wall",
+          memberId: wall.memberId,
+          structuralModelHash: structuralModel.structuralModelHash,
+        },
+      }),
+    );
+  });
+
+  const roof = structuralModel.roofFraming || {};
+  if (hasUsablePolygon(roof.outline)) {
+    entities.push(
+      polylineEntity({
+        points: roof.outline,
+        layer: "S-ROOF",
+        viewType: "structural_plan",
+        viewId: "roof_framing_plan",
+        geometryHash,
+        sourceId: roof.id || "roof-framing",
+        levelId: roof.levelId,
+        metadata: {
+          role: "roof_framing_outline",
+          memberId: roof.memberId,
+          structuralModelHash: structuralModel.structuralModelHash,
+        },
+      }),
+    );
+  }
+  toArray(roof.rafters).forEach((rafter, index) => {
+    const rafterMemberId =
+      rafter.memberId ||
+      rafter.id ||
+      `RFT-${String(index + 1).padStart(3, "0")}`;
+    entities.push(
+      lineEntity({
+        start: rafter.start,
+        end: rafter.end,
+        layer: "S-ROOF",
+        viewType: "structural_plan",
+        viewId: "roof_framing_plan",
+        geometryHash,
+        sourceId: rafter.id || `rafter-${index}`,
+        levelId: roof.levelId,
+        metadata: {
+          role: "roof_rafter",
+          memberId: rafter.memberId,
+          structuralModelHash: structuralModel.structuralModelHash,
+        },
+      }),
+      textEntity({
+        point: {
+          x: ((rafter.start?.x ?? 0) + (rafter.end?.x ?? 0)) / 2,
+          y: ((rafter.start?.y ?? 0) + (rafter.end?.y ?? 0)) / 2,
+        },
+        text: rafterMemberId,
+        layer: "S-NOTES",
+        viewType: "structural_plan",
+        viewId: "roof_framing_plan",
+        geometryHash,
+        sourceId: `${rafter.id || `rafter-${index}`}-tag`,
+        levelId: roof.levelId,
+        height: 0.22,
+        metadata: {
+          role: "roof_rafter_tag",
+          memberId: rafterMemberId,
+          structuralModelHash: structuralModel.structuralModelHash,
+        },
+      }),
+    );
+  });
+
+  const notes = [
+    ...toArray(structuralModel.preliminaryLoadPathNotes),
+    ...toArray(structuralModel.disclaimers),
+  ];
+  notes.slice(0, 6).forEach((note, index) => {
+    entities.push(
+      textEntity({
+        point: { x: 0, y: -2 - index * 0.45 },
+        text: note,
+        layer: "S-NOTES",
+        viewType: "structural_notes",
+        viewId: "structural_notes",
+        geometryHash,
+        sourceId: `structural-note-${index}`,
+        height: 0.2,
+        metadata: {
+          role:
+            index === notes.length - 1
+              ? "review_disclaimer"
+              : "structural_note",
+          structuralModelHash: structuralModel.structuralModelHash,
+        },
+      }),
+    );
+  });
+
+  const foundation = toArray(structuralModel.foundationSystem?.foundations)[0];
+  if (foundation?.polygon) {
+    const bbox = buildBoundingBoxFromPolygon(foundation.polygon);
+    entities.push(
+      dimensionEntity({
+        start: { x: bbox.min_x, y: bbox.min_y },
+        end: { x: bbox.max_x, y: bbox.min_y },
+        offset: { x: bbox.min_x, y: bbox.min_y - 0.8 },
+        text: dimensionText(bbox.width),
+        layer: "S-DIMS",
+        viewType: "structural_plan",
+        viewId: "foundation_plan",
+        geometryHash,
+        sourceId: "foundation-width-dim",
+        metadata: {
+          role: "foundation_dimension",
+          structuralModelHash: structuralModel.structuralModelHash,
+        },
+      }),
+    );
+  }
+  return entities;
+}
+
+function buildStructuralPrimitiveEntities(
+  compiledProject = {},
+  geometryHash,
+  includeStructuralDrawings = false,
+) {
+  if (!includeStructuralDrawings) {
+    return [];
+  }
+  const structuralModel = buildStructuralModelFromCompiledProject({
+    compiledProject,
+  });
+  const entities = buildStructuralModelEntities(structuralModel, geometryHash);
   return entities;
 }
 
@@ -1676,6 +2054,8 @@ export function buildCanonicalDrawingModelFromCompiledProject({
   projectName = null,
   jurisdiction = null,
   units = "meters",
+  includeStructuralDrawings = false,
+  structuralDrawingsEnabled = false,
 } = {}) {
   if (!compiledProject?.geometryHash) {
     throw new Error(
@@ -1687,12 +2067,24 @@ export function buildCanonicalDrawingModelFromCompiledProject({
   const resolvedProjectName = projectName || projectNameOf(compiledProject);
   const resolvedJurisdiction = jurisdiction || jurisdictionOf(compiledProject);
   const sourceProjectGraphHash = sourceProjectGraphHashOf(compiledProject);
+  const shouldIncludeStructuralDrawings =
+    includeStructuralDrawings === true || structuralDrawingsEnabled === true;
+  const structuralModel = shouldIncludeStructuralDrawings
+    ? buildStructuralModelFromCompiledProject({
+        compiledProject,
+        jurisdiction: resolvedJurisdiction,
+      })
+    : null;
   const modelSpaceEntities = [
     ...buildSiteEntities(compiledProject, geometryHash),
     ...buildFloorPlanEntities(compiledProject, geometryHash),
     ...buildElevationEntities(compiledProject, geometryHash),
     ...buildSectionEntities(compiledProject, geometryHash),
-    ...buildStructuralPrimitiveEntities(compiledProject, geometryHash),
+    ...buildStructuralPrimitiveEntities(
+      compiledProject,
+      geometryHash,
+      shouldIncludeStructuralDrawings,
+    ),
   ];
   const sheets = buildPaperSpaceSheets({
     compiledProject,
@@ -1722,7 +2114,12 @@ export function buildCanonicalDrawingModelFromCompiledProject({
       nativeLayouts: sheets.map((sheet) => sheet.nativeLayout),
     },
     plotStyleMetadata: clone(DEFAULT_PLOT_STYLE_METADATA),
-    layers: clone(DEFAULT_CANONICAL_CAD_LAYERS),
+    ...(structuralModel ? { structuralModel } : {}),
+    layers: clone(DEFAULT_CANONICAL_CAD_LAYERS).filter(
+      (layer) =>
+        shouldIncludeStructuralDrawings ||
+        !STRUCTURAL_CANONICAL_CAD_LAYER_NAMES.has(layer.name),
+    ),
     blocks: defaultBlocks(geometryHash),
     hatches: clone(DEFAULT_HATCHES),
     lineweights: clone(DEFAULT_LINEWEIGHTS),
@@ -1800,6 +2197,8 @@ export function validateCanonicalDrawingModel(model = {}, options = {}) {
   const errors = [];
   const warnings = [];
   const dimensionPolicy = options.dimensionPolicy || "warn";
+  const shouldValidateStructuralModel =
+    Boolean(model.structuralModel) || options.requireStructuralModel === true;
 
   if (model.schema_version !== CANONICAL_DRAWING_MODEL_VERSION) {
     errors.push(
@@ -1953,7 +2352,12 @@ export function validateCanonicalDrawingModel(model = {}, options = {}) {
   });
 
   const layerNames = new Set(toArray(model.layers).map((layer) => layer.name));
-  REQUIRED_CANONICAL_CAD_LAYERS.forEach((layerName) => {
+  const requiredLayerNames = REQUIRED_CANONICAL_CAD_LAYERS.filter(
+    (layerName) =>
+      shouldValidateStructuralModel ||
+      !STRUCTURAL_CANONICAL_CAD_LAYER_NAMES.has(layerName),
+  );
+  requiredLayerNames.forEach((layerName) => {
     if (!layerNames.has(layerName)) {
       errors.push(
         validationError(
@@ -2035,6 +2439,81 @@ export function validateCanonicalDrawingModel(model = {}, options = {}) {
     );
   }
 
+  if (
+    shouldValidateStructuralModel &&
+    !model.structuralModel?.structuralModelHash
+  ) {
+    errors.push(
+      validationError(
+        "CAD_MODEL_STRUCTURAL_MODEL_HASH_MISSING",
+        "CanonicalDrawingModel requires structuralModel.structuralModelHash.",
+      ),
+    );
+  }
+  if (
+    shouldValidateStructuralModel &&
+    model.structuralModel?.geometryHash &&
+    model.geometryHash &&
+    model.structuralModel.geometryHash !== model.geometryHash
+  ) {
+    errors.push(
+      validationError(
+        "CAD_MODEL_STRUCTURAL_GEOMETRY_HASH_MISMATCH",
+        "StructuralModel geometryHash must match CanonicalDrawingModel geometryHash.",
+        {
+          structuralGeometryHash: model.structuralModel.geometryHash,
+          geometryHash: model.geometryHash,
+        },
+      ),
+    );
+  }
+  if (
+    shouldValidateStructuralModel &&
+    model.structuralModel?.reviewRequired !== true
+  ) {
+    errors.push(
+      validationError(
+        "CAD_MODEL_STRUCTURAL_REVIEW_REQUIRED_MISSING",
+        "StructuralModel must be marked reviewRequired=true.",
+      ),
+    );
+  }
+  if (
+    shouldValidateStructuralModel &&
+    !toArray(model.structuralModel?.disclaimers)
+      .join(" ")
+      .match(/licensed structural engineer/i)
+  ) {
+    errors.push(
+      validationError(
+        "CAD_MODEL_STRUCTURAL_DISCLAIMER_MISSING",
+        "StructuralModel requires licensed structural engineer review disclaimer.",
+      ),
+    );
+  }
+  if (
+    shouldValidateStructuralModel &&
+    !toArray(model.structuralModel?.foundationSystem?.foundations).length
+  ) {
+    errors.push(
+      validationError(
+        "CAD_MODEL_STRUCTURAL_FOUNDATIONS_MISSING",
+        "StructuralModel requires preliminary foundations for applicable buildings.",
+      ),
+    );
+  }
+  if (
+    shouldValidateStructuralModel &&
+    model.structuralModel?.imageProviderUsed !== "none"
+  ) {
+    errors.push(
+      validationError(
+        "CAD_MODEL_STRUCTURAL_IMAGE_PROVIDER_FORBIDDEN",
+        "StructuralModel must not use image generation.",
+      ),
+    );
+  }
+
   const hasNativeLayouts =
     sheets.length > 0 &&
     sheets.every((sheet) => sheet.nativeLayout?.className === "AcDbLayout");
@@ -2054,6 +2533,12 @@ export function validateCanonicalDrawingModel(model = {}, options = {}) {
   const hasPlotStyleMetadata = Boolean(
     model.plotStyleMetadata?.ctbFile || model.plotStyleMetadata?.stbFile,
   );
+  const hasStructuralModelHash = Boolean(
+    model.structuralModel?.structuralModelHash,
+  );
+  const hasStructuralDisclaimer = toArray(model.structuralModel?.disclaimers)
+    .join(" ")
+    .match(/licensed structural engineer/i);
 
   return {
     valid: errors.length === 0,
@@ -2074,6 +2559,11 @@ export function validateCanonicalDrawingModel(model = {}, options = {}) {
       hasNativeViewports,
       hasPlotSettings,
       hasPlotStyleMetadata,
+      hasStructuralModelHash,
+      hasStructuralDisclaimer: Boolean(hasStructuralDisclaimer),
+      structuralReviewRequired: model.structuralModel?.reviewRequired === true,
+      structuralImageProviderUsed:
+        model.structuralModel?.imageProviderUsed || null,
     },
   };
 }

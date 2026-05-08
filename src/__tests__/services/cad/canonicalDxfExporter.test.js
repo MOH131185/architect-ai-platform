@@ -154,6 +154,44 @@ describe("exportCanonicalDrawingModelToDXF", () => {
     expect(dxf).toContain("SCALE: 1:500");
   });
 
+  test("keeps default DXF export architectural-only without structural opt-in", () => {
+    const model = buildCanonicalDrawingModelFromCompiledProject({
+      compiledProject: fixtureCompiledProject(),
+    });
+    const dxf = exportCanonicalDrawingModelToDXF({
+      canonicalDrawingModel: model,
+    });
+
+    expect(dxf).not.toContain("S-FOUNDATION");
+    expect(dxf).not.toContain("S-BEAM");
+    expect(dxf).not.toContain("S-GRID");
+    expect(dxf).not.toContain("PRELIMINARY STRUCTURAL INFORMATION ONLY");
+  });
+
+  test("emits structural CAD layers, grid, foundations, roof framing, notes, and no raster entities", () => {
+    const model = buildCanonicalDrawingModelFromCompiledProject({
+      compiledProject: fixtureCompiledProject(),
+      includeStructuralDrawings: true,
+    });
+    const dxf = exportCanonicalDrawingModelToDXF({
+      canonicalDrawingModel: model,
+    });
+
+    expect(dxf).toContain("S-FOUNDATION");
+    expect(dxf).toContain("S-COLUMN");
+    expect(dxf).toContain("S-BEAM");
+    expect(dxf).toContain("S-SLAB");
+    expect(dxf).toContain("S-ROOF");
+    expect(dxf).toContain("S-GRID");
+    expect(dxf).toContain("S-NOTES");
+    expect(dxf).toContain("S-DIMS");
+    expect(dxf).toContain("PRELIMINARY STRUCTURAL INFORMATION ONLY");
+    expect(dxf).toContain("FND-001");
+    expect(dxf).toContain("RFT-001");
+    expect(dxf).not.toMatch(/  0\nIMAGE\n/);
+    expect(dxf).not.toMatch(/  0\nRASTER\n/);
+  });
+
   test("fails closed when the drawing model is invalid", () => {
     const model = buildCanonicalDrawingModelFromCompiledProject({
       compiledProject: fixtureCompiledProject(),

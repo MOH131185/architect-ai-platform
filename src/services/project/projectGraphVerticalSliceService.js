@@ -12,6 +12,7 @@ import {
   roundMetric,
 } from "../cad/projectGeometrySchema.js";
 import { buildCompiledProjectTechnicalPanels } from "../canonical/compiledProjectTechnicalPackBuilder.js";
+import { buildStructuralDrawingPanelsFromCompiledProject } from "../structure/structuralModelService.js";
 import { compileProject } from "../compiler/index.js";
 import { ensureCompiledProjectRenderInputs } from "../compiler/compiledProjectRenderInputs.js";
 import { resolveArchitectureModelRegistry } from "../modelStepResolver.js";
@@ -5278,10 +5279,27 @@ function buildSelectedDesign(compiledProject, programme) {
 }
 
 function drawingTypeForPanel(panelType) {
+  if (
+    panelType === "foundation_plan" ||
+    panelType === "roof_framing_plan" ||
+    panelType === "structural_section" ||
+    panelType === "structural_notes" ||
+    panelType.startsWith("structural_")
+  ) {
+    return "structural";
+  }
   if (panelType.startsWith("floor_plan_")) return "floor_plan";
   if (panelType.startsWith("section_")) return "section";
   if (panelType.startsWith("elevation_")) return "elevation";
   return "diagram";
+}
+
+function structuralDrawingsEnabled(options = {}) {
+  return (
+    options.structuralDrawingsEnabled === true ||
+    String(process.env.STRUCTURAL_DRAWINGS_ENABLED || "").toLowerCase() ===
+      "true"
+  );
 }
 
 function buildDrawingSet(compiledProject, options = {}) {
@@ -5296,7 +5314,13 @@ function buildDrawingSet(compiledProject, options = {}) {
     layoutTemplate,
     vernacularPack: options.vernacularPack || null,
   });
-  const technicalPanels = technicalBuild.technicalPanels || {};
+  const structuralBuild = structuralDrawingsEnabled(options)
+    ? buildStructuralDrawingPanelsFromCompiledProject({ compiledProject })
+    : { structuralModel: null, structuralPanels: {} };
+  const technicalPanels = {
+    ...(technicalBuild.technicalPanels || {}),
+    ...(structuralBuild.structuralPanels || {}),
+  };
   const drawingViews = Object.entries(technicalPanels).map(
     ([panelType, panel]) => {
       const drawingType = drawingTypeForPanel(panelType);
@@ -5331,13 +5355,19 @@ function buildDrawingSet(compiledProject, options = {}) {
         layers: [
           {
             layer_id: `${panelType}-geometry`,
-            source: "compiled_project",
+            source:
+              drawingType === "structural"
+                ? "structural_model"
+                : "compiled_project",
             entity_ids: [
               ...(compiledProject.rooms || []).map(
                 (room) => room.sourceId || room.id,
               ),
               ...(compiledProject.walls || []).map((wall) => wall.id),
               ...(compiledProject.openings || []).map((opening) => opening.id),
+              ...(drawingType === "structural"
+                ? structuralBuild.structuralModel?.memberIds || []
+                : []),
             ],
           },
         ],
@@ -5401,12 +5431,21 @@ function buildDrawingSet(compiledProject, options = {}) {
               normalizedViewBox: panel.normalizedViewBox || null,
               viewBoxNormalization: panel.viewBoxNormalization || null,
               technicalQualityMetadata: panel.technicalQualityMetadata || null,
+              structuralModelHash:
+                panel.structuralModelHash ||
+                panel.metadata?.structuralModelHash ||
+                null,
+              reviewRequired: panel.reviewRequired || false,
             },
           },
         ];
       }),
     ),
-    technicalBuild,
+    technicalBuild: {
+      ...technicalBuild,
+      structuralModel: structuralBuild.structuralModel || null,
+      structuralPanels: structuralBuild.structuralPanels || {},
+    },
   };
 }
 
