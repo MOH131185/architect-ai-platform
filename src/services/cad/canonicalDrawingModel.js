@@ -6,6 +6,7 @@ import {
   roundMetric,
 } from "./projectGeometrySchema.js";
 import { buildStructuralModelFromCompiledProject } from "../structure/structuralModelService.js";
+import { buildMepModelFromCompiledProject } from "../mep/mepModelService.js";
 
 export const CANONICAL_DRAWING_MODEL_VERSION = "canonical-drawing-model-v1";
 
@@ -44,12 +45,18 @@ export const REQUIRED_CANONICAL_CAD_LAYERS = Object.freeze([
   "S-NOTES",
   "S-DIMS",
   "M-DUCT",
-  "M-PIPE",
   "P-DRAIN",
   "E-LIGHT",
   "E-POWER",
   "E-SWITCH",
-  "F-FIRE",
+  "E-DATA",
+  "P-WATER",
+  "P-SANITARY",
+  "M-VENT",
+  "M-EQUIP",
+  "MEP-RISER",
+  "MEP-NOTES",
+  "MEP-DIMS",
 ]);
 
 const STRUCTURAL_CANONICAL_CAD_LAYER_NAMES = new Set([
@@ -61,6 +68,24 @@ const STRUCTURAL_CANONICAL_CAD_LAYER_NAMES = new Set([
   "S-GRID",
   "S-NOTES",
   "S-DIMS",
+]);
+
+const MEP_CANONICAL_CAD_LAYER_NAMES = new Set([
+  "M-DUCT",
+  "M-PIPE",
+  "P-DRAIN",
+  "E-LIGHT",
+  "E-POWER",
+  "E-SWITCH",
+  "E-DATA",
+  "P-WATER",
+  "P-SANITARY",
+  "M-VENT",
+  "M-EQUIP",
+  "MEP-RISER",
+  "MEP-NOTES",
+  "MEP-DIMS",
+  "F-FIRE",
 ]);
 
 export const DEFAULT_CANONICAL_CAD_LAYERS = Object.freeze([
@@ -249,6 +274,62 @@ export const DEFAULT_CANONICAL_CAD_LAYERS = Object.freeze([
   {
     name: "E-SWITCH",
     discipline: "electrical",
+    color: 2,
+    lineweight: 18,
+    linetype: "CONTINUOUS",
+  },
+  {
+    name: "E-DATA",
+    discipline: "electrical",
+    color: 4,
+    lineweight: 18,
+    linetype: "CONTINUOUS",
+  },
+  {
+    name: "P-WATER",
+    discipline: "plumbing",
+    color: 5,
+    lineweight: 25,
+    linetype: "CONTINUOUS",
+  },
+  {
+    name: "P-SANITARY",
+    discipline: "plumbing",
+    color: 6,
+    lineweight: 25,
+    linetype: "CONTINUOUS",
+  },
+  {
+    name: "M-VENT",
+    discipline: "mechanical",
+    color: 5,
+    lineweight: 25,
+    linetype: "DASHED",
+  },
+  {
+    name: "M-EQUIP",
+    discipline: "mechanical",
+    color: 7,
+    lineweight: 25,
+    linetype: "CONTINUOUS",
+  },
+  {
+    name: "MEP-RISER",
+    discipline: "mep",
+    color: 4,
+    lineweight: 35,
+    linetype: "CONTINUOUS",
+  },
+  {
+    name: "MEP-NOTES",
+    discipline: "mep",
+    color: 7,
+    lineweight: 18,
+    linetype: "CONTINUOUS",
+  },
+  {
+    name: "MEP-DIMS",
+    discipline: "mep",
     color: 2,
     lineweight: 18,
     linetype: "CONTINUOUS",
@@ -1543,6 +1624,396 @@ function buildStructuralPrimitiveEntities(
   return entities;
 }
 
+function buildMepModelEntities(mepModel = {}, geometryHash) {
+  const entities = [];
+  const mepModelHash = mepModel.mepModelHash;
+  const addTag = ({
+    text,
+    point,
+    sourceId,
+    viewType,
+    viewId,
+    layer = "MEP-NOTES",
+    role = "mep_tag",
+  }) => {
+    entities.push(
+      textEntity({
+        text,
+        point,
+        height: 0.18,
+        layer,
+        viewType,
+        viewId,
+        geometryHash,
+        sourceId,
+        metadata: {
+          role,
+          mepModelHash,
+        },
+      }),
+    );
+  };
+
+  toArray(mepModel.electricalLightingLayout?.fixtures).forEach(
+    (fixture, index) => {
+      const point = fixture.point || { x: 0, y: 0 };
+      entities.push(
+        insertEntity({
+          blockName: "MEP_LIGHT_CEILING",
+          point,
+          layer: "E-LIGHT",
+          viewType: "mep_lighting_plan",
+          viewId: fixture.levelId || "mep_lighting_plan",
+          geometryHash,
+          sourceId: fixture.id || `mep-light-${index + 1}`,
+          metadata: {
+            role: "mep_light_fixture",
+            fixtureId: fixture.id || null,
+            roomId: fixture.roomId || null,
+            mepModelHash,
+          },
+        }),
+      );
+      addTag({
+        text: fixture.tag || fixture.id || `L${index + 1}`,
+        point: { x: point.x + 0.25, y: point.y + 0.25 },
+        sourceId: `${fixture.id || `mep-light-${index + 1}`}-tag`,
+        viewType: "mep_lighting_plan",
+        viewId: fixture.levelId || "mep_lighting_plan",
+        role: "mep_light_fixture_tag",
+      });
+    },
+  );
+
+  toArray(mepModel.electricalPowerSocketLayout?.switches).forEach(
+    (switchPoint, index) => {
+      entities.push(
+        insertEntity({
+          blockName: "MEP_SWITCH",
+          point: switchPoint.point || { x: 0, y: 0 },
+          layer: "E-SWITCH",
+          viewType: "mep_power_plan",
+          viewId: switchPoint.levelId || "mep_power_plan",
+          geometryHash,
+          sourceId: switchPoint.id || `mep-switch-${index + 1}`,
+          metadata: {
+            role: "mep_switch",
+            switchId: switchPoint.id || null,
+            roomId: switchPoint.roomId || null,
+            mepModelHash,
+          },
+        }),
+      );
+    },
+  );
+
+  toArray(mepModel.electricalPowerSocketLayout?.outlets).forEach(
+    (outlet, index) => {
+      const point = outlet.point || { x: 0, y: 0 };
+      entities.push(
+        insertEntity({
+          blockName: "MEP_SOCKET",
+          point,
+          layer: "E-POWER",
+          viewType: "mep_power_plan",
+          viewId: outlet.levelId || "mep_power_plan",
+          geometryHash,
+          sourceId: outlet.id || `mep-socket-${index + 1}`,
+          metadata: {
+            role: "mep_power_outlet",
+            outletId: outlet.id || null,
+            roomId: outlet.roomId || null,
+            mepModelHash,
+          },
+        }),
+      );
+    },
+  );
+
+  toArray(mepModel.electricalPowerSocketLayout?.dataPoints).forEach(
+    (dataPoint, index) => {
+      entities.push(
+        insertEntity({
+          blockName: "MEP_DATA_POINT",
+          point: dataPoint.point || { x: 0, y: 0 },
+          layer: "E-DATA",
+          viewType: "mep_power_plan",
+          viewId: dataPoint.levelId || "mep_power_plan",
+          geometryHash,
+          sourceId: dataPoint.id || `mep-data-${index + 1}`,
+          metadata: {
+            role: "mep_data_point",
+            dataPointId: dataPoint.id || null,
+            roomId: dataPoint.roomId || null,
+            mepModelHash,
+          },
+        }),
+      );
+    },
+  );
+
+  toArray(mepModel.plumbingSupplyLayout?.lines).forEach((line, index) => {
+    entities.push(
+      lineEntity({
+        start: line.start || { x: 0, y: 0 },
+        end: line.end || { x: 0, y: 0 },
+        layer: "P-WATER",
+        viewType: "mep_plumbing_plan",
+        viewId: line.levelId || "mep_plumbing_plan",
+        geometryHash,
+        sourceId: line.id || `mep-water-${index + 1}`,
+        metadata: {
+          role: "mep_plumbing_supply",
+          lineId: line.id || null,
+          roomId: line.roomId || null,
+          mepModelHash,
+        },
+      }),
+    );
+  });
+
+  toArray(mepModel.plumbingSupplyLayout?.fixtures).forEach((fixture, index) => {
+    entities.push(
+      insertEntity({
+        blockName: "MEP_SANITARY_FIXTURE",
+        point: fixture.point || { x: 0, y: 0 },
+        layer: "P-SANITARY",
+        viewType: "mep_plumbing_plan",
+        viewId: fixture.levelId || "mep_plumbing_plan",
+        geometryHash,
+        sourceId: fixture.id || `mep-sanitary-${index + 1}`,
+        metadata: {
+          role: "mep_sanitary_fixture",
+          fixtureId: fixture.id || null,
+          roomId: fixture.roomId || null,
+          mepModelHash,
+        },
+      }),
+    );
+  });
+
+  toArray(mepModel.drainageWasteLayout?.lines).forEach((line, index) => {
+    entities.push(
+      lineEntity({
+        start: line.start || { x: 0, y: 0 },
+        end: line.end || { x: 0, y: 0 },
+        layer: "P-DRAIN",
+        viewType: "mep_drainage_plan",
+        viewId: line.levelId || "mep_drainage_plan",
+        geometryHash,
+        sourceId: line.id || `mep-drain-${index + 1}`,
+        metadata: {
+          role: "mep_drainage_waste",
+          lineId: line.id || null,
+          roomId: line.roomId || null,
+          mepModelHash,
+        },
+      }),
+    );
+  });
+
+  toArray(mepModel.drainageWasteLayout?.fixtures).forEach((fixture, index) => {
+    entities.push(
+      insertEntity({
+        blockName: "MEP_SANITARY_FIXTURE",
+        point: fixture.point || { x: 0, y: 0 },
+        layer: "P-SANITARY",
+        viewType: "mep_drainage_plan",
+        viewId: fixture.levelId || "mep_drainage_plan",
+        geometryHash,
+        sourceId: fixture.id || `mep-drain-fixture-${index + 1}`,
+        metadata: {
+          role: "mep_drainage_fixture",
+          fixtureId: fixture.id || null,
+          roomId: fixture.roomId || null,
+          mepModelHash,
+        },
+      }),
+    );
+  });
+
+  toArray(mepModel.ventilationHvacLayout?.routes).forEach((route, index) => {
+    entities.push(
+      lineEntity({
+        start: route.start || { x: 0, y: 0 },
+        end: route.end || { x: 0, y: 0 },
+        layer: "M-VENT",
+        viewType: "mep_ventilation_plan",
+        viewId: route.levelId || "mep_ventilation_plan",
+        geometryHash,
+        sourceId: route.id || `mep-vent-${index + 1}`,
+        metadata: {
+          role: "mep_ventilation_route",
+          routeId: route.id || null,
+          roomId: route.roomId || null,
+          mepModelHash,
+        },
+      }),
+    );
+    entities.push(
+      lineEntity({
+        start: {
+          x: (route.start?.x || 0) + 0.08,
+          y: (route.start?.y || 0) + 0.08,
+        },
+        end: {
+          x: (route.end?.x || 0) + 0.08,
+          y: (route.end?.y || 0) + 0.08,
+        },
+        layer: "M-DUCT",
+        viewType: "mep_ventilation_plan",
+        viewId: route.levelId || "mep_ventilation_plan",
+        geometryHash,
+        sourceId: `${route.id || `mep-vent-${index + 1}`}-duct`,
+        metadata: {
+          role: "mep_duct_route",
+          routeId: route.id || null,
+          roomId: route.roomId || null,
+          mepModelHash,
+        },
+      }),
+    );
+  });
+
+  toArray(mepModel.ventilationHvacLayout?.extractFans).forEach((fan, index) => {
+    entities.push(
+      insertEntity({
+        blockName: "MEP_EXTRACT_FAN",
+        point: fan.point || { x: 0, y: 0 },
+        layer: "M-VENT",
+        viewType: "mep_ventilation_plan",
+        viewId: fan.levelId || "mep_ventilation_plan",
+        geometryHash,
+        sourceId: fan.id || `mep-extract-${index + 1}`,
+        metadata: {
+          role: "mep_extract_fan",
+          fanId: fan.id || null,
+          roomId: fan.roomId || null,
+          mepModelHash,
+        },
+      }),
+    );
+  });
+
+  toArray(mepModel.risersShafts).forEach((riser, index) => {
+    const point = riser.position || riser.point || { x: 0, y: 0 };
+    entities.push(
+      insertEntity({
+        blockName: "MEP_RISER",
+        point,
+        layer: "MEP-RISER",
+        viewType: "mep_plumbing_plan",
+        viewId: riser.levelId || "mep_plumbing_plan",
+        geometryHash,
+        sourceId: riser.id || `mep-riser-${index + 1}`,
+        metadata: {
+          role: "mep_riser",
+          riserId: riser.id || null,
+          mepModelHash,
+        },
+      }),
+    );
+    addTag({
+      text: riser.tag || riser.id || `R${index + 1}`,
+      point: { x: point.x + 0.3, y: point.y + 0.3 },
+      sourceId: `${riser.id || `mep-riser-${index + 1}`}-tag`,
+      viewType: "mep_plumbing_plan",
+      viewId: riser.levelId || "mep_plumbing_plan",
+      role: "mep_riser_tag",
+    });
+  });
+
+  toArray(mepModel.equipmentPlantLocations).forEach((equipment, index) => {
+    const point = equipment.position || equipment.point || { x: 0, y: 0 };
+    entities.push(
+      insertEntity({
+        blockName: "MEP_EQUIPMENT",
+        point,
+        layer: "M-EQUIP",
+        viewType: "mep_schematic_notes",
+        viewId: equipment.levelId || "mep_schematic_notes",
+        geometryHash,
+        sourceId: equipment.id || `mep-equipment-${index + 1}`,
+        metadata: {
+          role: "mep_equipment",
+          equipmentId: equipment.id || null,
+          mepModelHash,
+        },
+      }),
+    );
+    addTag({
+      text: equipment.tag || equipment.id || `EQ${index + 1}`,
+      point: { x: point.x + 0.35, y: point.y + 0.25 },
+      sourceId: `${equipment.id || `mep-equipment-${index + 1}`}-tag`,
+      viewType: "mep_schematic_notes",
+      viewId: equipment.levelId || "mep_schematic_notes",
+      role: "mep_equipment_tag",
+    });
+  });
+
+  toArray(mepModel.coordinationNotes).forEach((note, index) => {
+    addTag({
+      text: note,
+      point: { x: 1, y: -1 - index * 0.28 },
+      sourceId: `mep-coordination-note-${index + 1}`,
+      viewType: "mep_schematic_notes",
+      viewId: "mep_schematic_notes",
+      role: "mep_coordination_note",
+    });
+  });
+
+  toArray(mepModel.disclaimers).forEach((disclaimer, index) => {
+    addTag({
+      text: disclaimer,
+      point: { x: 1, y: -2.25 - index * 0.28 },
+      sourceId: `mep-review-disclaimer-${index + 1}`,
+      viewType: "mep_schematic_notes",
+      viewId: "mep_schematic_notes",
+      role: "review_disclaimer",
+    });
+  });
+
+  const firstSupplyLine = toArray(mepModel.plumbingSupplyLayout?.lines)[0];
+  if (firstSupplyLine?.start && firstSupplyLine?.end) {
+    entities.push(
+      dimensionEntity({
+        start: firstSupplyLine.start,
+        end: firstSupplyLine.end,
+        offset: {
+          x: firstSupplyLine.start.x,
+          y: firstSupplyLine.start.y - 0.35,
+        },
+        text: "MEP coordination route",
+        layer: "MEP-DIMS",
+        viewType: "mep_plumbing_plan",
+        viewId: firstSupplyLine.levelId || "mep_plumbing_plan",
+        geometryHash,
+        sourceId: "mep-primary-route-dim",
+        metadata: {
+          role: "mep_clearance_dimension",
+          mepModelHash,
+        },
+      }),
+    );
+  }
+
+  return entities;
+}
+
+function buildMepPrimitiveEntities(
+  compiledProject = {},
+  geometryHash,
+  includeMepDrawings = false,
+) {
+  if (!includeMepDrawings) {
+    return [];
+  }
+  const mepModel = buildMepModelFromCompiledProject({
+    compiledProject,
+  });
+  return buildMepModelEntities(mepModel, geometryHash);
+}
+
 function defaultBlocks(geometryHash) {
   const block = (name, description, entities = []) => ({
     name,
@@ -1619,6 +2090,14 @@ function defaultBlocks(geometryHash) {
     block("SANITARY_WC", "Sanitary WC symbol", []),
     block("ELECTRICAL_LIGHT", "Electrical light symbol", []),
     block("ELECTRICAL_SOCKET", "Electrical socket symbol", []),
+    block("MEP_LIGHT_CEILING", "MEP ceiling light symbol", []),
+    block("MEP_SWITCH", "MEP switch symbol", []),
+    block("MEP_SOCKET", "MEP socket outlet symbol", []),
+    block("MEP_DATA_POINT", "MEP data point symbol", []),
+    block("MEP_SANITARY_FIXTURE", "MEP sanitary fixture symbol", []),
+    block("MEP_EXTRACT_FAN", "MEP extract fan symbol", []),
+    block("MEP_RISER", "MEP riser symbol", []),
+    block("MEP_EQUIPMENT", "MEP equipment symbol", []),
   ];
 }
 
@@ -2056,6 +2535,8 @@ export function buildCanonicalDrawingModelFromCompiledProject({
   units = "meters",
   includeStructuralDrawings = false,
   structuralDrawingsEnabled = false,
+  includeMepDrawings = false,
+  mepDrawingsEnabled = false,
 } = {}) {
   if (!compiledProject?.geometryHash) {
     throw new Error(
@@ -2069,8 +2550,16 @@ export function buildCanonicalDrawingModelFromCompiledProject({
   const sourceProjectGraphHash = sourceProjectGraphHashOf(compiledProject);
   const shouldIncludeStructuralDrawings =
     includeStructuralDrawings === true || structuralDrawingsEnabled === true;
+  const shouldIncludeMepDrawings =
+    includeMepDrawings === true || mepDrawingsEnabled === true;
   const structuralModel = shouldIncludeStructuralDrawings
     ? buildStructuralModelFromCompiledProject({
+        compiledProject,
+        jurisdiction: resolvedJurisdiction,
+      })
+    : null;
+  const mepModel = shouldIncludeMepDrawings
+    ? buildMepModelFromCompiledProject({
         compiledProject,
         jurisdiction: resolvedJurisdiction,
       })
@@ -2084,6 +2573,11 @@ export function buildCanonicalDrawingModelFromCompiledProject({
       compiledProject,
       geometryHash,
       shouldIncludeStructuralDrawings,
+    ),
+    ...buildMepPrimitiveEntities(
+      compiledProject,
+      geometryHash,
+      shouldIncludeMepDrawings,
     ),
   ];
   const sheets = buildPaperSpaceSheets({
@@ -2115,10 +2609,13 @@ export function buildCanonicalDrawingModelFromCompiledProject({
     },
     plotStyleMetadata: clone(DEFAULT_PLOT_STYLE_METADATA),
     ...(structuralModel ? { structuralModel } : {}),
+    ...(mepModel ? { mepModel } : {}),
     layers: clone(DEFAULT_CANONICAL_CAD_LAYERS).filter(
       (layer) =>
-        shouldIncludeStructuralDrawings ||
-        !STRUCTURAL_CANONICAL_CAD_LAYER_NAMES.has(layer.name),
+        (shouldIncludeStructuralDrawings ||
+          !STRUCTURAL_CANONICAL_CAD_LAYER_NAMES.has(layer.name)) &&
+        (shouldIncludeMepDrawings ||
+          !MEP_CANONICAL_CAD_LAYER_NAMES.has(layer.name)),
     ),
     blocks: defaultBlocks(geometryHash),
     hatches: clone(DEFAULT_HATCHES),
@@ -2199,6 +2696,8 @@ export function validateCanonicalDrawingModel(model = {}, options = {}) {
   const dimensionPolicy = options.dimensionPolicy || "warn";
   const shouldValidateStructuralModel =
     Boolean(model.structuralModel) || options.requireStructuralModel === true;
+  const shouldValidateMepModel =
+    Boolean(model.mepModel) || options.requireMepModel === true;
 
   if (model.schema_version !== CANONICAL_DRAWING_MODEL_VERSION) {
     errors.push(
@@ -2354,8 +2853,9 @@ export function validateCanonicalDrawingModel(model = {}, options = {}) {
   const layerNames = new Set(toArray(model.layers).map((layer) => layer.name));
   const requiredLayerNames = REQUIRED_CANONICAL_CAD_LAYERS.filter(
     (layerName) =>
-      shouldValidateStructuralModel ||
-      !STRUCTURAL_CANONICAL_CAD_LAYER_NAMES.has(layerName),
+      (shouldValidateStructuralModel ||
+        !STRUCTURAL_CANONICAL_CAD_LAYER_NAMES.has(layerName)) &&
+      (shouldValidateMepModel || !MEP_CANONICAL_CAD_LAYER_NAMES.has(layerName)),
   );
   requiredLayerNames.forEach((layerName) => {
     if (!layerNames.has(layerName)) {
@@ -2514,6 +3014,85 @@ export function validateCanonicalDrawingModel(model = {}, options = {}) {
     );
   }
 
+  if (shouldValidateMepModel && !model.mepModel?.mepModelHash) {
+    errors.push(
+      validationError(
+        "CAD_MODEL_MEP_MODEL_HASH_MISSING",
+        "CanonicalDrawingModel requires mepModel.mepModelHash when MEP output is enabled.",
+      ),
+    );
+  }
+  if (
+    shouldValidateMepModel &&
+    model.mepModel?.geometryHash &&
+    model.geometryHash &&
+    model.mepModel.geometryHash !== model.geometryHash
+  ) {
+    errors.push(
+      validationError(
+        "CAD_MODEL_MEP_GEOMETRY_HASH_MISMATCH",
+        "MepModel geometryHash must match CanonicalDrawingModel geometryHash.",
+        {
+          mepGeometryHash: model.mepModel.geometryHash,
+          geometryHash: model.geometryHash,
+        },
+      ),
+    );
+  }
+  if (shouldValidateMepModel && model.mepModel?.reviewRequired !== true) {
+    errors.push(
+      validationError(
+        "CAD_MODEL_MEP_REVIEW_REQUIRED_MISSING",
+        "MepModel must be marked reviewRequired=true.",
+      ),
+    );
+  }
+  if (
+    shouldValidateMepModel &&
+    !toArray(model.mepModel?.disclaimers)
+      .join(" ")
+      .match(/qualified MEP engineer/i)
+  ) {
+    errors.push(
+      validationError(
+        "CAD_MODEL_MEP_DISCLAIMER_MISSING",
+        "MepModel requires qualified MEP engineer review disclaimer.",
+      ),
+    );
+  }
+  if (
+    shouldValidateMepModel &&
+    toArray(model.mepModel?.roomFixtureMapping?.wetRooms).length > 0 &&
+    !toArray(model.mepModel?.drainageWasteLayout?.lines).length
+  ) {
+    errors.push(
+      validationError(
+        "CAD_MODEL_MEP_WET_ROOM_DRAINAGE_MISSING",
+        "MepModel requires drainage/waste routes when wet rooms are present.",
+      ),
+    );
+  }
+  if (
+    shouldValidateMepModel &&
+    toArray(model.mepModel?.roomFixtureMapping?.habitableRooms).length > 0 &&
+    !toArray(model.mepModel?.electricalLightingLayout?.fixtures).length
+  ) {
+    errors.push(
+      validationError(
+        "CAD_MODEL_MEP_HABITABLE_LIGHTING_MISSING",
+        "MepModel requires lighting fixtures when habitable rooms are present.",
+      ),
+    );
+  }
+  if (shouldValidateMepModel && model.mepModel?.imageProviderUsed !== "none") {
+    errors.push(
+      validationError(
+        "CAD_MODEL_MEP_IMAGE_PROVIDER_FORBIDDEN",
+        "MepModel must not use image generation.",
+      ),
+    );
+  }
+
   const hasNativeLayouts =
     sheets.length > 0 &&
     sheets.every((sheet) => sheet.nativeLayout?.className === "AcDbLayout");
@@ -2539,6 +3118,10 @@ export function validateCanonicalDrawingModel(model = {}, options = {}) {
   const hasStructuralDisclaimer = toArray(model.structuralModel?.disclaimers)
     .join(" ")
     .match(/licensed structural engineer/i);
+  const hasMepModelHash = Boolean(model.mepModel?.mepModelHash);
+  const hasMepDisclaimer = toArray(model.mepModel?.disclaimers)
+    .join(" ")
+    .match(/qualified MEP engineer/i);
 
   return {
     valid: errors.length === 0,
@@ -2564,6 +3147,10 @@ export function validateCanonicalDrawingModel(model = {}, options = {}) {
       structuralReviewRequired: model.structuralModel?.reviewRequired === true,
       structuralImageProviderUsed:
         model.structuralModel?.imageProviderUsed || null,
+      hasMepModelHash,
+      hasMepDisclaimer: Boolean(hasMepDisclaimer),
+      mepReviewRequired: model.mepModel?.reviewRequired === true,
+      mepImageProviderUsed: model.mepModel?.imageProviderUsed || null,
     },
   };
 }

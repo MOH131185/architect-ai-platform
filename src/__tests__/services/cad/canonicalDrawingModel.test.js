@@ -69,11 +69,24 @@ function fixtureCompiledProject() {
         id: "room-kitchen",
         levelId: "level-0",
         name: "Kitchen",
+        type: "kitchen",
         polygon: [
           { x: 8, y: 3 },
+          { x: 11, y: 3 },
+          { x: 11, y: 7 },
+          { x: 8, y: 7 },
+        ],
+      },
+      {
+        id: "room-bath",
+        levelId: "level-0",
+        name: "Bathroom",
+        type: "bathroom",
+        polygon: [
+          { x: 11, y: 3 },
           { x: 13, y: 3 },
-          { x: 13, y: 10 },
-          { x: 8, y: 10 },
+          { x: 13, y: 7 },
+          { x: 11, y: 7 },
         ],
       },
     ],
@@ -176,6 +189,22 @@ function entityTypes(entities) {
   return new Set(entities.map((entity) => entity.type));
 }
 
+const MEP_LAYER_NAMES = [
+  "E-LIGHT",
+  "E-POWER",
+  "E-SWITCH",
+  "E-DATA",
+  "P-WATER",
+  "P-DRAIN",
+  "P-SANITARY",
+  "M-DUCT",
+  "M-VENT",
+  "M-EQUIP",
+  "MEP-RISER",
+  "MEP-NOTES",
+  "MEP-DIMS",
+];
+
 describe("CanonicalDrawingModel", () => {
   test("throws when CompiledProject geometryHash is missing", () => {
     expect(() =>
@@ -218,9 +247,15 @@ describe("CanonicalDrawingModel", () => {
       }),
     );
     expect(model.structuralModel).toBeUndefined();
+    expect(model.mepModel).toBeUndefined();
     expect(
       model.modelSpace.entities.filter((entity) =>
         String(entity.layer || "").startsWith("S-"),
+      ),
+    ).toEqual([]);
+    expect(
+      model.modelSpace.entities.filter((entity) =>
+        MEP_LAYER_NAMES.includes(entity.layer),
       ),
     ).toEqual([]);
   });
@@ -318,20 +353,38 @@ describe("CanonicalDrawingModel", () => {
     });
     const layerNames = model.layers.map((layer) => layer.name);
     const architecturalLayerNames = REQUIRED_CANONICAL_CAD_LAYERS.filter(
-      (layerName) => !layerName.startsWith("S-"),
+      (layerName) =>
+        !layerName.startsWith("S-") && !MEP_LAYER_NAMES.includes(layerName),
     );
 
     expect(layerNames).toEqual(expect.arrayContaining(architecturalLayerNames));
     expect(layerNames).not.toEqual(
       expect.arrayContaining(["S-FOUNDATION", "S-BEAM", "S-GRID"]),
     );
+    expect(layerNames).not.toEqual(expect.arrayContaining(MEP_LAYER_NAMES));
 
     const structuralModel = buildCanonicalDrawingModelFromCompiledProject({
       compiledProject: fixtureCompiledProject(),
       includeStructuralDrawings: true,
     });
     expect(structuralModel.layers.map((layer) => layer.name)).toEqual(
-      expect.arrayContaining(REQUIRED_CANONICAL_CAD_LAYERS),
+      expect.arrayContaining(
+        REQUIRED_CANONICAL_CAD_LAYERS.filter(
+          (layerName) => !MEP_LAYER_NAMES.includes(layerName),
+        ),
+      ),
+    );
+
+    const mepModel = buildCanonicalDrawingModelFromCompiledProject({
+      compiledProject: fixtureCompiledProject(),
+      includeMepDrawings: true,
+    });
+    expect(mepModel.layers.map((layer) => layer.name)).toEqual(
+      expect.arrayContaining(
+        REQUIRED_CANONICAL_CAD_LAYERS.filter(
+          (layerName) => !layerName.startsWith("S-"),
+        ),
+      ),
     );
   });
 
@@ -408,6 +461,10 @@ describe("CanonicalDrawingModel", () => {
     expect(result.checks.hasStructuralDisclaimer).toBe(false);
     expect(result.checks.structuralReviewRequired).toBe(false);
     expect(result.checks.structuralImageProviderUsed).toBe(null);
+    expect(result.checks.hasMepModelHash).toBe(false);
+    expect(result.checks.hasMepDisclaimer).toBe(false);
+    expect(result.checks.mepReviewRequired).toBe(false);
+    expect(result.checks.mepImageProviderUsed).toBe(null);
   });
 
   test("adds structural CAD entities, dimensions, grid, and review notes", () => {
@@ -459,6 +516,108 @@ describe("CanonicalDrawingModel", () => {
       expect(entity.technicalDrawing).toBe(true);
       expect(entity.geometryHash).toBe(model.geometryHash);
     });
+  });
+
+  test("adds opt-in MEP CAD entities, symbols, routes, dimensions, and review notes", () => {
+    const model = buildCanonicalDrawingModelFromCompiledProject({
+      compiledProject: fixtureCompiledProject(),
+      includeMepDrawings: true,
+    });
+
+    expect(model.mepModel).toEqual(
+      expect.objectContaining({
+        geometryHash: model.geometryHash,
+        sourceProjectGraphHash: model.sourceProjectGraphHash,
+        reviewRequired: true,
+        imageProviderUsed: "none",
+      }),
+    );
+    expect(model.mepModel.disclaimers.join(" ")).toMatch(
+      /qualified MEP engineer/i,
+    );
+
+    const mepEntities = model.modelSpace.entities.filter((entity) =>
+      MEP_LAYER_NAMES.includes(entity.layer),
+    );
+    const layers = new Set(mepEntities.map((entity) => entity.layer));
+    const roles = new Set(
+      mepEntities.map((entity) => entity.metadata?.role).filter(Boolean),
+    );
+
+    expect([...layers]).toEqual(expect.arrayContaining(MEP_LAYER_NAMES));
+    expect([...roles]).toEqual(
+      expect.arrayContaining([
+        "mep_light_fixture",
+        "mep_power_outlet",
+        "mep_switch",
+        "mep_plumbing_supply",
+        "mep_drainage_waste",
+        "mep_ventilation_route",
+        "mep_riser",
+        "mep_equipment",
+        "review_disclaimer",
+      ]),
+    );
+    mepEntities.forEach((entity) => {
+      expect(entity.imageProviderUsed).toBe("none");
+      expect(entity.technicalDrawing).toBe(true);
+      expect(entity.geometryHash).toBe(model.geometryHash);
+    });
+  });
+
+  test("CAD QA validates MEP only when a MepModel is present or required", () => {
+    const defaultModel = buildCanonicalDrawingModelFromCompiledProject({
+      compiledProject: fixtureCompiledProject(),
+    });
+    const defaultResult = validateCanonicalDrawingModel(defaultModel);
+
+    expect(defaultModel.mepModel).toBeUndefined();
+    expect(defaultResult.valid).toBe(true);
+    expect(defaultResult.errors.map((error) => error.code)).not.toEqual(
+      expect.arrayContaining(["CAD_MODEL_MEP_MODEL_HASH_MISSING"]),
+    );
+
+    const mepModel = buildCanonicalDrawingModelFromCompiledProject({
+      compiledProject: fixtureCompiledProject(),
+      includeMepDrawings: true,
+    });
+    const brokenResult = validateCanonicalDrawingModel({
+      ...mepModel,
+      mepModel: {
+        ...mepModel.mepModel,
+        mepModelHash: null,
+        disclaimers: [],
+        drainageWasteLayout: {
+          ...mepModel.mepModel.drainageWasteLayout,
+          lines: [],
+        },
+        electricalLightingLayout: {
+          ...mepModel.mepModel.electricalLightingLayout,
+          fixtures: [],
+        },
+        imageProviderUsed: "openai",
+      },
+    });
+    const codes = brokenResult.errors.map((error) => error.code);
+
+    expect(brokenResult.valid).toBe(false);
+    expect(codes).toEqual(
+      expect.arrayContaining([
+        "CAD_MODEL_MEP_MODEL_HASH_MISSING",
+        "CAD_MODEL_MEP_DISCLAIMER_MISSING",
+        "CAD_MODEL_MEP_WET_ROOM_DRAINAGE_MISSING",
+        "CAD_MODEL_MEP_HABITABLE_LIGHTING_MISSING",
+        "CAD_MODEL_MEP_IMAGE_PROVIDER_FORBIDDEN",
+      ]),
+    );
+
+    const requiredResult = validateCanonicalDrawingModel(defaultModel, {
+      requireMepModel: true,
+    });
+    expect(requiredResult.valid).toBe(false);
+    expect(requiredResult.errors.map((error) => error.code)).toContain(
+      "CAD_MODEL_MEP_MODEL_HASH_MISSING",
+    );
   });
 
   test("CAD QA fails when title blocks are missing", () => {

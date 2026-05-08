@@ -13,6 +13,7 @@ import {
 } from "../cad/projectGeometrySchema.js";
 import { buildCompiledProjectTechnicalPanels } from "../canonical/compiledProjectTechnicalPackBuilder.js";
 import { buildStructuralDrawingPanelsFromCompiledProject } from "../structure/structuralModelService.js";
+import { buildMepDrawingPanelsFromCompiledProject } from "../mep/mepModelService.js";
 import { compileProject } from "../compiler/index.js";
 import { ensureCompiledProjectRenderInputs } from "../compiler/compiledProjectRenderInputs.js";
 import { resolveArchitectureModelRegistry } from "../modelStepResolver.js";
@@ -5288,6 +5289,7 @@ function drawingTypeForPanel(panelType) {
   ) {
     return "structural";
   }
+  if (panelType.startsWith("mep_")) return "mep";
   if (panelType.startsWith("floor_plan_")) return "floor_plan";
   if (panelType.startsWith("section_")) return "section";
   if (panelType.startsWith("elevation_")) return "elevation";
@@ -5297,8 +5299,17 @@ function drawingTypeForPanel(panelType) {
 function structuralDrawingsEnabled(options = {}) {
   return (
     options.structuralDrawingsEnabled === true ||
+    options.includeStructuralDrawings === true ||
     String(process.env.STRUCTURAL_DRAWINGS_ENABLED || "").toLowerCase() ===
       "true"
+  );
+}
+
+function mepDrawingsEnabled(options = {}) {
+  return (
+    options.mepDrawingsEnabled === true ||
+    options.includeMepDrawings === true ||
+    String(process.env.MEP_DRAWINGS_ENABLED || "").toLowerCase() === "true"
   );
 }
 
@@ -5317,9 +5328,13 @@ function buildDrawingSet(compiledProject, options = {}) {
   const structuralBuild = structuralDrawingsEnabled(options)
     ? buildStructuralDrawingPanelsFromCompiledProject({ compiledProject })
     : { structuralModel: null, structuralPanels: {} };
+  const mepBuild = mepDrawingsEnabled(options)
+    ? buildMepDrawingPanelsFromCompiledProject({ compiledProject })
+    : { mepModel: null, mepPanels: {} };
   const technicalPanels = {
     ...(technicalBuild.technicalPanels || {}),
     ...(structuralBuild.structuralPanels || {}),
+    ...(mepBuild.mepPanels || {}),
   };
   const drawingViews = Object.entries(technicalPanels).map(
     ([panelType, panel]) => {
@@ -5358,7 +5373,9 @@ function buildDrawingSet(compiledProject, options = {}) {
             source:
               drawingType === "structural"
                 ? "structural_model"
-                : "compiled_project",
+                : drawingType === "mep"
+                  ? "mep_model"
+                  : "compiled_project",
             entity_ids: [
               ...(compiledProject.rooms || []).map(
                 (room) => room.sourceId || room.id,
@@ -5367,6 +5384,9 @@ function buildDrawingSet(compiledProject, options = {}) {
               ...(compiledProject.openings || []).map((opening) => opening.id),
               ...(drawingType === "structural"
                 ? structuralBuild.structuralModel?.memberIds || []
+                : []),
+              ...(drawingType === "mep"
+                ? mepBuild.mepModel?.memberIds || []
                 : []),
             ],
           },
@@ -5435,6 +5455,8 @@ function buildDrawingSet(compiledProject, options = {}) {
                 panel.structuralModelHash ||
                 panel.metadata?.structuralModelHash ||
                 null,
+              mepModelHash:
+                panel.mepModelHash || panel.metadata?.mepModelHash || null,
               reviewRequired: panel.reviewRequired || false,
             },
           },
@@ -5445,6 +5467,8 @@ function buildDrawingSet(compiledProject, options = {}) {
       ...technicalBuild,
       structuralModel: structuralBuild.structuralModel || null,
       structuralPanels: structuralBuild.structuralPanels || {},
+      mepModel: mepBuild.mepModel || null,
+      mepPanels: mepBuild.mepPanels || {},
     },
   };
 }
