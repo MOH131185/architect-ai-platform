@@ -31,6 +31,7 @@ import { createPrecisionPolygonEditor } from "./PrecisionPolygonEditor.js";
 import { createPolygonDrawingManager } from "./PolygonDrawingManager.js";
 import { BoundaryNumericEditor } from "./BoundaryNumericEditor.jsx";
 import { BoundaryDiagnostics } from "./BoundaryDiagnostics.jsx";
+import { BoundaryDynamicInput } from "./BoundaryDynamicInput.jsx";
 import {
   fetchAutoBoundary,
   calculateBounds,
@@ -69,6 +70,7 @@ export function SiteBoundaryEditorV2({
   boundarySource = null,
   contextualBoundarySource = null,
   contextualBoundaryRole = null,
+  orthoSnapDegrees = 90,
 }) {
   // OGL v3.0 attribution: when the boundary comes from HM Land Registry
   // (via either the bundled INSPIRE fixture or Digital Land's
@@ -104,10 +106,67 @@ export function SiteBoundaryEditorV2({
   const brownfieldMarkersRef = useRef([]);
   const brownfieldInfoWindowRef = useRef(null);
 
+  // AutoCAD-style dynamic-input overlay state. The drawing manager and
+  // precision editor stream cursor / live-dimension events here via
+  // RAF-coalesced callbacks (Guardrail 7). Keeping length state in the host
+  // is what lets the manager's `_handleKeyDown` route digit keystrokes
+  // through `onDynamicInputKey` without having to know about React.
+  const [dynamicInput, setDynamicInput] = useState({
+    visible: false,
+    anchorPx: null,
+    mode: "draw", // 'draw' | 'drag'
+    lengthValue: "",
+    liveLengthM: 0,
+    liveBearingDeg: 0,
+    snapHint: null,
+  });
+  const dynamicInputRef = useRef(null);
+  const dynamicInputPendingRef = useRef(false);
+  const dynamicInputModeRef = useRef("draw");
+
   const handleMapContainerRef = useCallback((element) => {
     mapContainerRef.current = element;
     setMapContainerElement(element);
   }, []);
+
+  const handleDynamicInputChange = useCallback((next) => {
+    const value = String(next ?? "");
+    dynamicInputPendingRef.current = value.trim() !== "";
+    setDynamicInput((prev) => ({ ...prev, lengthValue: value }));
+  }, []);
+
+  const clearDynamicInput = useCallback(() => {
+    dynamicInputPendingRef.current = false;
+    setDynamicInput((prev) => ({ ...prev, lengthValue: "" }));
+  }, []);
+
+  const handleDynamicInputCommit = useCallback(
+    (lengthM) => {
+      const parsed = Number(lengthM);
+      if (!Number.isFinite(parsed) || parsed <= 0) return;
+      const manager = drawingManagerRef.current;
+      if (!manager || typeof manager.commitLength !== "function") return;
+      manager.commitLength(parsed);
+      // Clear the field after a successful commit so the user can keep
+      // chaining vertices without manually deleting digits each time.
+      clearDynamicInput();
+    },
+    [clearDynamicInput],
+  );
+
+  const handleDynamicInputCancel = useCallback(() => {
+    clearDynamicInput();
+    if (
+      mapContainerRef.current &&
+      typeof mapContainerRef.current.focus === "function"
+    ) {
+      try {
+        mapContainerRef.current.focus({ preventScroll: true });
+      } catch (e) {
+        // older browsers
+      }
+    }
+  }, [clearDynamicInput]);
 
   // Google Maps hook
   const {
@@ -583,6 +642,14 @@ export function SiteBoundaryEditorV2({
           // Commit to history after drag
           const newRing = closeRing(allVertices);
           setRing(newRing);
+          // Hide the live-dimension overlay once the drag commits.
+          dynamicInputModeRef.current = "draw";
+          setDynamicInput((prev) => ({
+            ...prev,
+            visible: false,
+            anchorPx: null,
+            snapHint: null,
+          }));
         },
         onVertexAdd: (index, position, allVertices) => {
           const newRing = closeRing(allVertices);
@@ -599,6 +666,35 @@ export function SiteBoundaryEditorV2({
           setValidationWarning(message);
           setTimeout(() => setValidationWarning(null), 3000);
         },
+        // AutoCAD-style live dimension tooltip while dragging a corner. Read-only
+        // in v1 — the host renders the same overlay component used for DRAW
+        // mode but switches it into 'drag' mode (no input field).
+        onDragLiveDimension: (info) => {
+          if (!info) {
+            setDynamicInput((prev) => ({
+              ...prev,
+              visible: false,
+              anchorPx: null,
+            }));
+            return;
+          }
+          dynamicInputModeRef.current = "drag";
+          setDynamicInput((prev) => ({
+            ...prev,
+            visible: true,
+            anchorPx: info.anchorPx,
+            mode: "drag",
+            lengthValue: "",
+            liveLengthM: Number.isFinite(info.lengthM) ? info.lengthM : 0,
+            liveBearingDeg: Number.isFinite(info.bearingDeg)
+              ? info.bearingDeg
+              : 0,
+          }));
+        },
+        onSnapHint: (hint) => {
+          setDynamicInput((prev) => ({ ...prev, snapHint: hint }));
+        },
+        angleSnapDegrees: orthoSnapDegrees,
         preventSelfIntersection: true,
         minVertices: 3,
       });
@@ -612,8 +708,25 @@ export function SiteBoundaryEditorV2({
         polygonEditorRef.current.destroy();
         polygonEditorRef.current = null;
       }
+      // Drop overlay visibility on mode-change cleanup so a stale anchor from
+      // a previous drag never sticks around.
+      setDynamicInput((prev) => ({
+        ...prev,
+        visible: false,
+        anchorPx: null,
+        snapHint: null,
+      }));
     };
-  }, [google, isLoaded, map, mode, setRing, updateVertexTransient, vertices]);
+  }, [
+    google,
+    isLoaded,
+    map,
+    mode,
+    orthoSnapDegrees,
+    setRing,
+    updateVertexTransient,
+    vertices,
+  ]);
 
   // Update editor vertices when they change externally (e.g., from table)
   useEffect(() => {
@@ -656,8 +769,66 @@ export function SiteBoundaryEditorV2({
           setValidationWarning(errors.join("; "));
           setTimeout(() => setValidationWarning(null), 15000);
         },
+        // RAF-coalesced cursor stream from the manager. Fires at most once
+        // per frame regardless of mousemove rate (Guardrail 7).
+        onDynamicCursor: ({ anchorPx, lengthM, bearingDeg, hasAnchor }) => {
+          dynamicInputModeRef.current = "draw";
+          setDynamicInput((prev) => ({
+            ...prev,
+            visible: hasAnchor && Boolean(anchorPx),
+            anchorPx: anchorPx || null,
+            mode: "draw",
+            liveLengthM: Number.isFinite(lengthM) ? lengthM : 0,
+            liveBearingDeg: Number.isFinite(bearingDeg) ? bearingDeg : 0,
+          }));
+        },
+        // Manager routes digit/dot/comma/Backspace keystrokes here so the user
+        // can start typing without first clicking the floating input.
+        onDynamicInputKey: ({ key }) => {
+          if (dynamicInputModeRef.current !== "draw") return false;
+          if (key === "Backspace" || key === "Delete") {
+            setDynamicInput((prev) => {
+              const next = prev.lengthValue.slice(0, -1);
+              dynamicInputPendingRef.current = next.trim() !== "";
+              return { ...prev, lengthValue: next };
+            });
+            // Focus the input so subsequent native keystrokes flow naturally.
+            if (
+              dynamicInputRef.current &&
+              document.activeElement !== dynamicInputRef.current
+            ) {
+              dynamicInputRef.current.focus({ preventScroll: true });
+            }
+            return true;
+          }
+          if (key && key.length === 1 && /[0-9.,]/.test(key)) {
+            setDynamicInput((prev) => {
+              const next = (prev.lengthValue || "") + key;
+              dynamicInputPendingRef.current = next.trim() !== "";
+              return { ...prev, lengthValue: next };
+            });
+            if (
+              dynamicInputRef.current &&
+              document.activeElement !== dynamicInputRef.current
+            ) {
+              dynamicInputRef.current.focus({ preventScroll: true });
+            }
+            return true;
+          }
+          return false;
+        },
+        onSnapHint: (hint) => {
+          setDynamicInput((prev) => ({ ...prev, snapHint: hint }));
+        },
+        angleSnapDegrees: orthoSnapDegrees,
         minVertices: 3,
       });
+
+      // Manager peeks at this on Enter/Esc so it doesn't fight the dynamic
+      // input over keystrokes (Guardrail 8: typed-length commits route
+      // through the same `_appendVertex` path as a normal click).
+      drawingManagerRef.current.isDynamicInputPending = () =>
+        dynamicInputPendingRef.current;
 
       drawingManagerRef.current.start();
     }
@@ -667,8 +838,18 @@ export function SiteBoundaryEditorV2({
         drawingManagerRef.current.destroy();
         drawingManagerRef.current = null;
       }
+      dynamicInputPendingRef.current = false;
+      setDynamicInput({
+        visible: false,
+        anchorPx: null,
+        mode: "draw",
+        lengthValue: "",
+        liveLengthM: 0,
+        liveBearingDeg: 0,
+        snapHint: null,
+      });
     };
-  }, [google, isLoaded, map, mode, polygonLength, setRing]);
+  }, [google, isLoaded, map, mode, orthoSnapDegrees, polygonLength, setRing]);
 
   // ============================================================
   // EVENT HANDLERS
@@ -924,7 +1105,8 @@ export function SiteBoundaryEditorV2({
                 <li>Click midpoint dots to add a corner</li>
                 <li>Select a corner and press Delete/Backspace to remove it</li>
                 <li>
-                  <span className="font-mono">Shift</span> = angle snap
+                  <span className="font-mono">Shift</span> = {orthoSnapDegrees}°
+                  snap (ortho)
                 </li>
                 <li>
                   <span className="font-mono">Alt</span> = free movement
@@ -946,7 +1128,13 @@ export function SiteBoundaryEditorV2({
                 <li>Double-click or Enter to finish</li>
                 <li>Esc/Backspace to undo last point</li>
                 <li>
-                  <span className="font-mono">Shift</span> = 45° snap
+                  <span className="font-mono">Shift</span> = {orthoSnapDegrees}°
+                  snap
+                </li>
+                <li className="sm:col-span-2">
+                  Type a number to place the next corner at exact distance —
+                  <span className="font-mono">Enter</span> places,{" "}
+                  <span className="font-mono">Esc</span> cancels.
                 </li>
               </ul>
             </motion.div>
@@ -1018,6 +1206,23 @@ export function SiteBoundaryEditorV2({
             ref={handleMapContainerRef}
             className="h-[320px] w-full bg-slate-100 md:h-[390px]"
             style={{ minHeight: "300px" }}
+          />
+
+          {/* AutoCAD-style dynamic length / live-dimension overlay. Anchored
+              to the cursor while drawing, anchored to the dragged corner
+              while editing. Hidden on coarse pointers. */}
+          <BoundaryDynamicInput
+            visible={dynamicInput.visible}
+            anchorPx={dynamicInput.anchorPx}
+            mode={dynamicInput.mode}
+            lengthValue={dynamicInput.lengthValue}
+            liveLengthM={dynamicInput.liveLengthM}
+            liveBearingDeg={dynamicInput.liveBearingDeg}
+            snapHint={dynamicInput.snapHint}
+            inputRef={dynamicInputRef}
+            onLengthChange={handleDynamicInputChange}
+            onCommit={handleDynamicInputCommit}
+            onCancel={handleDynamicInputCancel}
           />
         </div>
 

@@ -14,58 +14,10 @@ import {
   calculateAngles,
   calculateSegments,
   closeRing,
-  roundCoord,
+  destinationFromBearing,
+  normalizeBearing,
   validatePolygon,
 } from "./boundaryGeometry.js";
-
-const EARTH_RADIUS_METERS = 6371000;
-
-function toRadians(value) {
-  return (Number(value) * Math.PI) / 180;
-}
-
-function toDegrees(value) {
-  return (Number(value) * 180) / Math.PI;
-}
-
-function normalizeBearing(value) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return null;
-  return ((numeric % 360) + 360) % 360;
-}
-
-function destinationFromBearing(start, lengthM, bearingDeg) {
-  const distance = Number(lengthM);
-  const bearing = normalizeBearing(bearingDeg);
-  if (!Array.isArray(start) || !Number.isFinite(distance) || bearing === null) {
-    return null;
-  }
-
-  const lng1 = toRadians(start[0]);
-  const lat1 = toRadians(start[1]);
-  const theta = toRadians(bearing);
-  const delta = distance / EARTH_RADIUS_METERS;
-
-  const sinLat1 = Math.sin(lat1);
-  const cosLat1 = Math.cos(lat1);
-  const sinDelta = Math.sin(delta);
-  const cosDelta = Math.cos(delta);
-
-  const lat2 = Math.asin(
-    sinLat1 * cosDelta + cosLat1 * sinDelta * Math.cos(theta),
-  );
-  const lng2 =
-    lng1 +
-    Math.atan2(
-      Math.sin(theta) * sinDelta * cosLat1,
-      cosDelta - sinLat1 * Math.sin(lat2),
-    );
-
-  return [
-    roundCoord(((toDegrees(lng2) + 540) % 360) - 180),
-    roundCoord(toDegrees(lat2)),
-  ];
-}
 
 function buildDimensionRows(vertices = []) {
   if (!Array.isArray(vertices) || vertices.length < 3) return [];

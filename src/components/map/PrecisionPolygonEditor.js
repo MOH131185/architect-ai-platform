@@ -20,11 +20,12 @@ import {
   snapToVertex,
   snapToEdge,
   constrainToAngle,
+  liveLengthAndBearing,
   wouldCauseSelfIntersection,
   closeRing,
   roundCoord,
   SNAP_PIXEL_THRESHOLD,
-  ANGLE_SNAP_DEGREES,
+  ORTHO_SNAP_DEGREES,
 } from "./boundaryGeometry.js";
 
 /**
@@ -44,9 +45,13 @@ export class PrecisionPolygonEditor {
       onDragEnd: null, // (index, polygon) => void
       onSelectionChange: null, // (selectedIndex) => void
       onValidationWarning: null, // (message) => void
+      // Live drag tooltip + snap badge — RAF-coalesced (one emit/frame max).
+      onDragLiveDimension: null, // ({ index, lengthM, bearingDeg, anchorPx }) => void
+      onSnapHint: null, // ('vertex' | 'ortho' | null) => void
       minVertices: 3,
       snapThresholdPx: SNAP_PIXEL_THRESHOLD,
-      angleSnapDegrees: ANGLE_SNAP_DEGREES,
+      // Default to 90° ortho (AutoCAD-style). Pass 45 to restore legacy snap.
+      angleSnapDegrees: ORTHO_SNAP_DEGREES,
       preventSelfIntersection: true,
       ...options,
     };
@@ -59,6 +64,7 @@ export class PrecisionPolygonEditor {
     this.selectedIndex = null;
     this.hoveredIndex = null;
     this.hoveredEdgeIndex = null;
+    this.lastSnapHint = null;
 
     // Keyboard state
     this.shiftPressed = false;
@@ -165,7 +171,9 @@ export class PrecisionPolygonEditor {
   }
 
   /**
-   * Disable editing mode
+   * Disable editing mode. Guardrail 5: also clears any pending RAF and emits
+   * a final null snap-hint / drag-dimension so host overlays don't keep stale
+   * state after the user leaves EDIT mode.
    */
   disable() {
     if (!this.isEnabled) return;
@@ -175,6 +183,10 @@ export class PrecisionPolygonEditor {
     this._removePolygonOverlay();
     this._detachKeyboardListeners();
     this._cancelDrag();
+    this._emitSnapHint(null);
+    if (this.options.onDragLiveDimension) {
+      this.options.onDragLiveDimension(null);
+    }
   }
 
   /**
@@ -255,47 +267,64 @@ export class PrecisionPolygonEditor {
     this._clearVertexMarkers();
 
     this.vertexMarkers = this.vertices.map((vertex, index) => {
-      const marker = new this.google.maps.Marker({
-        position: { lat: vertex[1], lng: vertex[0] },
+      const position = { lat: vertex[1], lng: vertex[0] };
+
+      // Visible marker: pure visual, never draggable, never clickable.
+      // The hit-shadow marker (below) owns all pointer events so the user
+      // gets a generously sized hit target without changing the visible dot.
+      const visible = new this.google.maps.Marker({
+        position,
         map: this.map,
         icon: this._getVertexIcon(index),
-        draggable: true,
-        cursor: "move",
+        draggable: false,
+        clickable: false,
+        cursor: "default",
         zIndex: 1000 + index,
       });
 
-      // Drag start
-      const dragStartListener = marker.addListener("dragstart", () => {
+      // Hit-shadow marker: invisible (opacity 0.001), bigger than the visible
+      // marker, and on top so all clicks/drags resolve here. Forwards every
+      // event to the same handlers the visible marker used to own.
+      const hit = new this.google.maps.Marker({
+        position,
+        map: this.map,
+        icon: this._getVertexHitIcon(),
+        draggable: true,
+        clickable: true,
+        cursor: "move",
+        zIndex: 2000 + index,
+      });
+
+      const dragStartListener = hit.addListener("dragstart", () => {
         this._handleDragStart(index);
       });
 
-      // Drag (throttled with RAF)
-      const dragListener = marker.addListener("drag", (e) => {
+      // Mirror the hit position to the visible marker so the user can see the
+      // drag without waiting for the RAF-driven polygon repaint.
+      const dragListener = hit.addListener("drag", (e) => {
+        if (visible) visible.setPosition(e.latLng);
         this._handleDrag(index, e.latLng);
       });
 
-      // Drag end
-      const dragEndListener = marker.addListener("dragend", () => {
+      const dragEndListener = hit.addListener("dragend", () => {
         this._handleDragEnd(index);
       });
 
-      // Click to select
-      const clickListener = marker.addListener("click", () => {
+      const clickListener = hit.addListener("click", () => {
         this._handleVertexClick(index);
       });
 
-      // Hover
-      const mouseoverListener = marker.addListener("mouseover", () => {
+      const mouseoverListener = hit.addListener("mouseover", () => {
         if (!this.isDragging) {
           this.hoveredIndex = index;
-          marker.setIcon(this._getVertexIcon(index, true));
+          if (visible) visible.setIcon(this._getVertexIcon(index, true));
         }
       });
 
-      const mouseoutListener = marker.addListener("mouseout", () => {
+      const mouseoutListener = hit.addListener("mouseout", () => {
         if (!this.isDragging) {
           this.hoveredIndex = null;
-          marker.setIcon(this._getVertexIcon(index));
+          if (visible) visible.setIcon(this._getVertexIcon(index));
         }
       });
 
@@ -308,12 +337,15 @@ export class PrecisionPolygonEditor {
         mouseoutListener,
       );
 
-      return marker;
+      return { visible, hit };
     });
   }
 
   _clearVertexMarkers() {
-    this.vertexMarkers.forEach((m) => m.setMap(null));
+    this.vertexMarkers.forEach((pair) => {
+      if (pair?.visible) pair.visible.setMap(null);
+      if (pair?.hit) pair.hit.setMap(null);
+    });
     this.vertexMarkers = [];
   }
 
@@ -321,10 +353,12 @@ export class PrecisionPolygonEditor {
     const isSelected = index === this.selectedIndex;
     const isDragging = index === this.draggedIndex;
 
+    // Bumped from 10 → 12 default; hover/selected/dragging all bumped to 15
+    // so the visible dot is comfortably sized at typical site zoom levels.
     let fillColor = "#2563EB"; // Blue
     let strokeColor = "#FFFFFF";
     let strokeWeight = 3;
-    let scale = 10;
+    let scale = 12;
 
     if (isDragging) {
       fillColor = "#EF4444"; // Red
@@ -335,12 +369,12 @@ export class PrecisionPolygonEditor {
       fillColor = "#F59E0B"; // Amber
       strokeColor = "#1E3A8A";
       strokeWeight = 4;
-      scale = 13;
+      scale = 15;
     } else if (isHovered) {
       fillColor = "#10B981"; // Green
       strokeColor = "#064E3B";
       strokeWeight = 4;
-      scale = 12;
+      scale = 15;
     }
 
     return {
@@ -350,6 +384,25 @@ export class PrecisionPolygonEditor {
       fillOpacity: 1,
       strokeColor,
       strokeWeight,
+      anchor: new this.google.maps.Point(0, 0),
+    };
+  }
+
+  /**
+   * Hit-shadow icon: invisible to the user (opacity 0.001) but ~22 px wide so
+   * the click/drag target is much larger than the visible dot. The hit marker
+   * is layered above the visible marker with a higher zIndex.
+   * @private
+   */
+  _getVertexHitIcon() {
+    return {
+      path: this.google.maps.SymbolPath.CIRCLE,
+      scale: 22,
+      fillColor: "#FFFFFF",
+      fillOpacity: 0.001,
+      strokeColor: "#FFFFFF",
+      strokeOpacity: 0,
+      strokeWeight: 0,
       anchor: new this.google.maps.Point(0, 0),
     };
   }
@@ -433,8 +486,9 @@ export class PrecisionPolygonEditor {
     this.draggedIndex = index;
 
     // Update marker appearance
-    if (this.vertexMarkers[index]) {
-      this.vertexMarkers[index].setIcon(this._getVertexIcon(index));
+    const pair = this.vertexMarkers[index];
+    if (pair?.visible) {
+      pair.visible.setIcon(this._getVertexIcon(index));
     }
 
     // Hide midpoint markers during drag
@@ -470,6 +524,8 @@ export class PrecisionPolygonEditor {
     this.pendingDragPosition = null;
 
     let newCoord = [roundCoord(lng), roundCoord(lat)];
+    let orthoSnapped = false;
+    let vertexSnapped = false;
 
     // Apply snapping based on keyboard state
     if (!this.altPressed) {
@@ -481,6 +537,7 @@ export class PrecisionPolygonEditor {
           newCoord,
           this.options.angleSnapDegrees,
         );
+        orthoSnapped = true;
       }
 
       // Vertex snapping (to other vertices)
@@ -492,6 +549,7 @@ export class PrecisionPolygonEditor {
       );
       if (vertexSnap.snapped) {
         newCoord = vertexSnap.point;
+        vertexSnapped = true;
       }
     }
 
@@ -511,13 +569,13 @@ export class PrecisionPolygonEditor {
           );
         }
 
-        // Revert marker position
-        if (this.vertexMarkers[index]) {
+        // Revert BOTH marker positions (visible and hit) so they stay in sync.
+        const pair = this.vertexMarkers[index];
+        if (pair) {
           const currentVertex = this.vertices[index];
-          this.vertexMarkers[index].setPosition({
-            lat: currentVertex[1],
-            lng: currentVertex[0],
-          });
+          const revertPos = { lat: currentVertex[1], lng: currentVertex[0] };
+          if (pair.visible) pair.visible.setPosition(revertPos);
+          if (pair.hit) pair.hit.setPosition(revertPos);
         }
         return;
       }
@@ -529,9 +587,53 @@ export class PrecisionPolygonEditor {
     // Update polygon overlay
     this._updatePolygonOverlay();
 
+    // Live dimension tooltip (read-only): segment from previous vertex.
+    this._emitDragLiveDimension(index, newCoord);
+
+    // Snap hint priority: vertex snap wins over ortho lock (shows 'ENDPOINT'
+    // even if the user is also holding Shift, because endpoint snap is the
+    // higher-fidelity action).
+    let hint = null;
+    if (vertexSnapped) hint = "vertex";
+    else if (orthoSnapped) hint = "ortho";
+    this._emitSnapHint(hint);
+
     // Notify (transient update)
     if (this.options.onVertexUpdate) {
       this.options.onVertexUpdate(index, newCoord, [...this.vertices]);
+    }
+  }
+
+  _emitDragLiveDimension(index, newCoord) {
+    if (!this.options.onDragLiveDimension) return;
+    if (index <= 0) {
+      // No "previous" vertex for the first index — emit zeros so the overlay
+      // can still show a placeholder anchored on the dragged marker.
+      const anchorPx = this.latLngToPixel(newCoord);
+      this.options.onDragLiveDimension({
+        index,
+        lengthM: 0,
+        bearingDeg: 0,
+        anchorPx: anchorPx ? { x: anchorPx.x, y: anchorPx.y } : null,
+      });
+      return;
+    }
+    const prev = this.vertices[index - 1];
+    const live = liveLengthAndBearing(prev, newCoord);
+    const anchorPx = this.latLngToPixel(newCoord);
+    this.options.onDragLiveDimension({
+      index,
+      lengthM: live.lengthM,
+      bearingDeg: live.bearingDeg,
+      anchorPx: anchorPx ? { x: anchorPx.x, y: anchorPx.y } : null,
+    });
+  }
+
+  _emitSnapHint(hint) {
+    if (this.lastSnapHint === hint) return;
+    this.lastSnapHint = hint;
+    if (this.options.onSnapHint) {
+      this.options.onSnapHint(hint);
     }
   }
 
@@ -545,10 +647,12 @@ export class PrecisionPolygonEditor {
       this.rafHandle = null;
     }
 
-    // Final position from marker
-    const marker = this.vertexMarkers[index];
-    if (marker) {
-      const position = marker.getPosition();
+    // Read final position from the hit marker (the one Google Maps was
+    // dragging); fall back to the visible marker if the pair is malformed.
+    const pair = this.vertexMarkers[index];
+    const sourceMarker = pair?.hit || pair?.visible;
+    if (sourceMarker) {
+      const position = sourceMarker.getPosition();
       let finalCoord = [roundCoord(position.lng()), roundCoord(position.lat())];
 
       // Apply final snapping
@@ -575,7 +679,15 @@ export class PrecisionPolygonEditor {
 
       // Update to snapped position
       this.vertices[index] = finalCoord;
-      marker.setPosition({ lat: finalCoord[1], lng: finalCoord[0] });
+      const finalLatLng = { lat: finalCoord[1], lng: finalCoord[0] };
+      if (pair?.visible) pair.visible.setPosition(finalLatLng);
+      if (pair?.hit) pair.hit.setPosition(finalLatLng);
+    }
+
+    // Clear the live drag hint state once the drag finishes.
+    this._emitSnapHint(null);
+    if (this.options.onDragLiveDimension) {
+      this.options.onDragLiveDimension(null);
     }
 
     // Refresh UI
@@ -624,9 +736,9 @@ export class PrecisionPolygonEditor {
       this.selectedIndex = index;
     }
 
-    // Update marker appearance
-    this.vertexMarkers.forEach((marker, i) => {
-      marker.setIcon(this._getVertexIcon(i));
+    // Update visible-marker appearance for every vertex.
+    this.vertexMarkers.forEach((pair, i) => {
+      if (pair?.visible) pair.visible.setIcon(this._getVertexIcon(i));
     });
 
     if (this.options.onSelectionChange) {
@@ -728,8 +840,8 @@ export class PrecisionPolygonEditor {
     // Escape to deselect
     if (e.key === "Escape") {
       this.selectedIndex = null;
-      this.vertexMarkers.forEach((marker, i) => {
-        marker.setIcon(this._getVertexIcon(i));
+      this.vertexMarkers.forEach((pair, i) => {
+        if (pair?.visible) pair.visible.setIcon(this._getVertexIcon(i));
       });
 
       if (this.options.onSelectionChange) {
@@ -826,11 +938,11 @@ export class PrecisionPolygonEditor {
     if (this.isEnabled) {
       this._updatePolygonOverlay();
 
-      if (this.vertexMarkers[index]) {
-        this.vertexMarkers[index].setPosition({
-          lat: newCoord[1],
-          lng: newCoord[0],
-        });
+      const pair = this.vertexMarkers[index];
+      if (pair) {
+        const latLng = { lat: newCoord[1], lng: newCoord[0] };
+        if (pair.visible) pair.visible.setPosition(latLng);
+        if (pair.hit) pair.hit.setPosition(latLng);
       }
     }
 
@@ -857,8 +969,8 @@ export class PrecisionPolygonEditor {
    */
   selectVertex(index) {
     this.selectedIndex = index;
-    this.vertexMarkers.forEach((marker, i) => {
-      marker.setIcon(this._getVertexIcon(i));
+    this.vertexMarkers.forEach((pair, i) => {
+      if (pair?.visible) pair.visible.setIcon(this._getVertexIcon(i));
     });
 
     if (this.options.onSelectionChange) {

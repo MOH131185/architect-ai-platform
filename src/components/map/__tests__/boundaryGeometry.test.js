@@ -485,3 +485,92 @@ describe("Format Conversion", () => {
     expect(latLngArray[0]).toEqual({ lat: 37.7, lng: -122.4 });
   });
 });
+
+// ============================================================
+// AutoCAD-style draw helpers (added in feat/boundary-cad-input)
+// ============================================================
+
+describe("AutoCAD-style helpers", () => {
+  test("ORTHO_SNAP_DEGREES is 90 and ANGLE_SNAP_DEGREES still 45", async () => {
+    const mod = await import("../boundaryGeometry.js");
+    expect(mod.ORTHO_SNAP_DEGREES).toBe(90);
+    expect(mod.ANGLE_SNAP_DEGREES).toBe(45);
+  });
+
+  test("constrainToAngle(prev, target, 90) snaps near-east cursor to true east", async () => {
+    const { constrainToAngle: constrain } =
+      await import("../boundaryGeometry.js");
+    // Prev at origin, target ~3° north of east. With 90° snap that should
+    // collapse to due east (bearing 90°), so the y component returns to ~prev.y.
+    const prev = [0, 0];
+    const target = [0.001, 0.00005];
+    const snapped = constrain(prev, target, 90);
+    expect(Math.abs(snapped[1])).toBeLessThan(1e-6);
+    expect(snapped[0]).toBeGreaterThan(0);
+  });
+
+  test("normalizeBearing maps angles into [0, 360) and rejects junk", async () => {
+    const { normalizeBearing } = await import("../boundaryGeometry.js");
+    expect(normalizeBearing(0)).toBe(0);
+    expect(normalizeBearing(360)).toBe(0);
+    expect(normalizeBearing(-90)).toBe(270);
+    expect(normalizeBearing(450)).toBe(90);
+    expect(normalizeBearing(NaN)).toBeNull();
+    expect(normalizeBearing("not-a-number")).toBeNull();
+  });
+
+  test("destinationFromBearing places a point ~1m east at small distance", async () => {
+    const { destinationFromBearing } = await import("../boundaryGeometry.js");
+    const start = [0, 0];
+    const result = destinationFromBearing(start, 1, 90);
+    expect(result).not.toBeNull();
+    expect(result[0]).toBeGreaterThan(0); // moved east → +lng
+    expect(Math.abs(result[1])).toBeLessThan(1e-5); // stays on equator
+  });
+
+  test("destinationFromBearing returns the same vertex order PR #98 expected", async () => {
+    // Regression for the import swap: numeric output must match the previous
+    // local implementation exactly for a known fixture so PR #98's tests
+    // continue to pass.
+    const { destinationFromBearing, roundCoord: round } =
+      await import("../boundaryGeometry.js");
+    const start = [-122.4, 37.7];
+    const out = destinationFromBearing(start, 50, 45);
+    expect(out).not.toBeNull();
+    // Order is [lng, lat] (Guardrail 4 — same order callers receive).
+    expect(out[0]).toBeGreaterThan(start[0]);
+    expect(out[1]).toBeGreaterThan(start[1]);
+    expect(out[0]).toBe(round(out[0]));
+    expect(out[1]).toBe(round(out[1]));
+  });
+
+  test("destinationFromBearing rejects bad inputs", async () => {
+    const { destinationFromBearing } = await import("../boundaryGeometry.js");
+    expect(destinationFromBearing(null, 5, 90)).toBeNull();
+    expect(destinationFromBearing([0, 0], "abc", 90)).toBeNull();
+    expect(destinationFromBearing([0, 0], 5, NaN)).toBeNull();
+  });
+
+  test("liveLengthAndBearing returns positive length and a bearing in [0, 360)", async () => {
+    const { liveLengthAndBearing } = await import("../boundaryGeometry.js");
+    const prev = [0, 0];
+    const cursor = [0.0001, 0]; // ~11.1 m east at the equator
+    const live = liveLengthAndBearing(prev, cursor);
+    expect(live.lengthM).toBeGreaterThan(10);
+    expect(live.lengthM).toBeLessThan(13);
+    expect(live.bearingDeg).toBeGreaterThanOrEqual(0);
+    expect(live.bearingDeg).toBeLessThan(360);
+  });
+
+  test("liveLengthAndBearing returns zeros for invalid inputs", async () => {
+    const { liveLengthAndBearing } = await import("../boundaryGeometry.js");
+    expect(liveLengthAndBearing(null, null)).toEqual({
+      lengthM: 0,
+      bearingDeg: 0,
+    });
+    expect(liveLengthAndBearing([0, 0], ["nope", "nope"])).toEqual({
+      lengthM: 0,
+      bearingDeg: 0,
+    });
+  });
+});

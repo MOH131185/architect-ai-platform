@@ -221,7 +221,13 @@ describe("SiteBoundaryEditorV2 boundary measurements", () => {
     expect(container.textContent).toContain("Click to place corners");
     expect(container.textContent).toContain("Double-click or Enter to finish");
     expect(container.textContent).toContain("Esc/Backspace to undo last point");
-    expect(container.textContent).toContain("Shift = 45° snap");
+    // The default snap angle changed from 45° to 90° (ortho) in
+    // feat/boundary-cad-input. The help line is now built from the prop so
+    // we assert the new default text and the new "type a number" affordance.
+    expect(container.textContent).toContain("Shift = 90° snap");
+    expect(container.textContent).toContain(
+      "Type a number to place the next corner at exact distance",
+    );
 
     unmount();
   });
