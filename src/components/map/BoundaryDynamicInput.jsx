@@ -106,6 +106,32 @@ export function BoundaryDynamicInput({
     }
   }, [visible, ref]);
 
+  // Position via `transform: translate3d` (GPU-composited, zero layout
+  // reflow per frame) instead of `left/top` (which forces a layout
+  // invalidation on every cursor-stream update at ~60 Hz and visibly
+  // flickers the map + page background while drawing). Computed before the
+  // early-return below so React's Rules of Hooks are honored — useMemo
+  // must be called unconditionally on every render.
+  const wrapperStyle = useMemo(() => {
+    if (!anchorPx) return null;
+    return {
+      position: "absolute",
+      left: 0,
+      top: 0,
+      transform: `translate3d(${Math.round(anchorPx.x + 12)}px, ${Math.round(
+        anchorPx.y + 12,
+      )}px, 0)`,
+      willChange: "transform",
+      pointerEvents: "none",
+      zIndex: 50,
+      direction: "ltr",
+    };
+    // Depend on the scalar x/y rather than the object reference so a fresh
+    // anchorPx object emitted with the same coordinates does not bust the
+    // memoized style (and re-trigger the inline-style assignment).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anchorPx?.x, anchorPx?.y]);
+
   if (!visible || hideForTouch || !anchorPx) {
     return null;
   }
@@ -147,15 +173,6 @@ export function BoundaryDynamicInput({
     if (typeof onLengthChange === "function") {
       onLengthChange(event.target.value);
     }
-  };
-
-  const wrapperStyle = {
-    position: "absolute",
-    left: `${Math.round(anchorPx.x + 12)}px`,
-    top: `${Math.round(anchorPx.y + 12)}px`,
-    pointerEvents: "none",
-    zIndex: 50,
-    direction: "ltr",
   };
 
   const cardClassName = [
