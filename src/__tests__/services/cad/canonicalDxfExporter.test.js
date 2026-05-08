@@ -40,11 +40,36 @@ function fixtureCompiledProject() {
         id: "room-1",
         levelId: "level-0",
         name: "Living",
+        type: "living",
         polygon: [
           { x: 3, y: 3 },
-          { x: 13, y: 3 },
-          { x: 13, y: 10 },
+          { x: 8, y: 3 },
+          { x: 8, y: 10 },
           { x: 3, y: 10 },
+        ],
+      },
+      {
+        id: "room-2",
+        levelId: "level-0",
+        name: "Kitchen",
+        type: "kitchen",
+        polygon: [
+          { x: 8, y: 3 },
+          { x: 11, y: 3 },
+          { x: 11, y: 7 },
+          { x: 8, y: 7 },
+        ],
+      },
+      {
+        id: "room-3",
+        levelId: "level-0",
+        name: "Bathroom",
+        type: "bathroom",
+        polygon: [
+          { x: 11, y: 3 },
+          { x: 13, y: 3 },
+          { x: 13, y: 7 },
+          { x: 11, y: 7 },
         ],
       },
     ],
@@ -166,6 +191,12 @@ describe("exportCanonicalDrawingModelToDXF", () => {
     expect(dxf).not.toContain("S-BEAM");
     expect(dxf).not.toContain("S-GRID");
     expect(dxf).not.toContain("PRELIMINARY STRUCTURAL INFORMATION ONLY");
+    expect(dxf).not.toContain("E-LIGHT");
+    expect(dxf).not.toContain("P-WATER");
+    expect(dxf).not.toContain("P-DRAIN");
+    expect(dxf).not.toContain("M-VENT");
+    expect(dxf).not.toContain("MEP-NOTES");
+    expect(dxf).not.toContain("PRELIMINARY MEP INFORMATION ONLY");
   });
 
   test("emits structural CAD layers, grid, foundations, roof framing, notes, and no raster entities", () => {
@@ -188,6 +219,38 @@ describe("exportCanonicalDrawingModelToDXF", () => {
     expect(dxf).toContain("PRELIMINARY STRUCTURAL INFORMATION ONLY");
     expect(dxf).toContain("FND-001");
     expect(dxf).toContain("RFT-001");
+    expect(dxf).not.toMatch(/  0\nIMAGE\n/);
+    expect(dxf).not.toMatch(/  0\nRASTER\n/);
+  });
+
+  test("emits opt-in MEP CAD layers, symbols, routes, notes, and no raster entities", () => {
+    const model = buildCanonicalDrawingModelFromCompiledProject({
+      compiledProject: fixtureCompiledProject(),
+      includeMepDrawings: true,
+    });
+    const dxf = exportCanonicalDrawingModelToDXF({
+      canonicalDrawingModel: model,
+    });
+
+    expect(dxf).toContain("E-LIGHT");
+    expect(dxf).toContain("E-POWER");
+    expect(dxf).toContain("E-SWITCH");
+    expect(dxf).toContain("E-DATA");
+    expect(dxf).toContain("P-WATER");
+    expect(dxf).toContain("P-DRAIN");
+    expect(dxf).toContain("P-SANITARY");
+    expect(dxf).toContain("M-DUCT");
+    expect(dxf).toContain("M-VENT");
+    expect(dxf).toContain("M-EQUIP");
+    expect(dxf).toContain("MEP-RISER");
+    expect(dxf).toContain("MEP-NOTES");
+    expect(dxf).toContain("MEP-DIMS");
+    expect(dxf).toContain("MEP_LIGHT_CEILING");
+    expect(dxf).toContain("MEP_SOCKET");
+    expect(dxf).toContain("MEP_SANITARY_FIXTURE");
+    expect(dxf).toContain("MEP_EXTRACT_FAN");
+    expect(dxf).toContain("PRELIMINARY MEP INFORMATION ONLY");
+    expect(dxf).toContain("MEP coordination route");
     expect(dxf).not.toMatch(/  0\nIMAGE\n/);
     expect(dxf).not.toMatch(/  0\nRASTER\n/);
   });

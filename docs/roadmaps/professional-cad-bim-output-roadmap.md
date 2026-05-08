@@ -162,6 +162,11 @@ Acceptance criteria:
 ## PR 4: MEP model and drawings
 
 Add deterministic `mepModel` derived from ProjectGraph / CompiledProject.
+This package is opt-in: MEP drawing panels and MEP CAD/DXF entities are included
+only when `MEP_DRAWINGS_ENABLED=true` or an explicit `includeMepDrawings` option
+is passed. Existing architectural CAD/DXF exports remain non-MEP by default.
+All MEP outputs are preliminary coordination information and require review by a
+qualified MEP engineer before construction or permit use.
 
 Deliverables:
 
@@ -169,15 +174,45 @@ Deliverables:
   drainage/waste plan, HVAC/ventilation plan, riser/shaft plan, legends, and
   schedules.
 - Fixture generation from room types.
-- Deterministic routing with clash avoidance.
-- MEP symbols as CAD blocks.
-- Preliminary / specialist-review-required status.
+- Deterministic preliminary routing and coordination notes derived from room
+  geometry, wet rooms, kitchens, habitable rooms, corridors, and service cores
+  where available.
+- MEP symbols as deterministic SVG/CAD blocks.
+- CAD/DXF MEP layers/entities (`E-LIGHT`, `E-POWER`, `E-SWITCH`, `E-DATA`,
+  `P-WATER`, `P-DRAIN`, `P-SANITARY`, `M-DUCT`, `M-VENT`, `M-EQUIP`,
+  `MEP-RISER`, `MEP-NOTES`, `MEP-DIMS`) when MEP drawings are enabled.
+- Preliminary / qualified-MEP-engineer-review-required status.
 
 Acceptance criteria:
 
 - Wet rooms generate plumbing and drainage.
 - Bedrooms, living rooms, and kitchens generate lighting and power layouts.
-- MEP drawings export to SVG and DXF.
+- MEP drawings export to deterministic SVG and DXF only when MEP drawings are
+  enabled.
+- Default CanonicalDrawingModel/DXF export remains architectural-only and does
+  not emit MEP model data or MEP layers/entities.
+- MEP model and drawings carry deterministic hashes, no image-provider technical
+  drawing path, and qualified MEP engineer review disclaimers.
+
+Current limitations after this slice:
+
+- Preliminary coordination model only.
+- No electrical circuit calculations, load schedules, cable sizing, protection
+  discrimination, or circuit schedules.
+- No pipe sizing, pressure/drop checks, pump sizing, drainage falls verification,
+  or fixture unit calculations.
+- No duct sizing, fan duty calculations, ventilation rate calculations, acoustic
+  checks, or heat/cooling load calculations.
+- No automated clash detection or construction-grade service coordination.
+- No jurisdiction-specific MEP code compliance yet.
+- DWG remains conversion-only and unavailable unless a real converter is
+  configured; DXF remains the guaranteed CAD output.
+
+Next MEP fidelity PR:
+
+- Add engineer-reviewed sizing/calculation models, circuit schedules, pipe and
+  duct sizing, pressure/drop checks, load schedules, and jurisdiction-specific
+  MEP code checks.
 
 ## PR 5: Detail library
 
