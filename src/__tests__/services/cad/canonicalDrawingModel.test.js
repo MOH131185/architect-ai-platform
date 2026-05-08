@@ -217,6 +217,12 @@ describe("CanonicalDrawingModel", () => {
         ctbFile: "archiai-monochrome.ctb",
       }),
     );
+    expect(model.structuralModel).toBeUndefined();
+    expect(
+      model.modelSpace.entities.filter((entity) =>
+        String(entity.layer || "").startsWith("S-"),
+      ),
+    ).toEqual([]);
   });
 
   test("carries explicit paper-space sheets, viewports, title block fields, and drawing scales", () => {
@@ -311,8 +317,20 @@ describe("CanonicalDrawingModel", () => {
       compiledProject: fixtureCompiledProject(),
     });
     const layerNames = model.layers.map((layer) => layer.name);
+    const architecturalLayerNames = REQUIRED_CANONICAL_CAD_LAYERS.filter(
+      (layerName) => !layerName.startsWith("S-"),
+    );
 
-    expect(layerNames).toEqual(
+    expect(layerNames).toEqual(expect.arrayContaining(architecturalLayerNames));
+    expect(layerNames).not.toEqual(
+      expect.arrayContaining(["S-FOUNDATION", "S-BEAM", "S-GRID"]),
+    );
+
+    const structuralModel = buildCanonicalDrawingModelFromCompiledProject({
+      compiledProject: fixtureCompiledProject(),
+      includeStructuralDrawings: true,
+    });
+    expect(structuralModel.layers.map((layer) => layer.name)).toEqual(
       expect.arrayContaining(REQUIRED_CANONICAL_CAD_LAYERS),
     );
   });
@@ -386,6 +404,61 @@ describe("CanonicalDrawingModel", () => {
     expect(result.checks.hasNativeViewports).toBe(true);
     expect(result.checks.hasPlotSettings).toBe(true);
     expect(result.checks.hasPlotStyleMetadata).toBe(true);
+    expect(result.checks.hasStructuralModelHash).toBe(false);
+    expect(result.checks.hasStructuralDisclaimer).toBe(false);
+    expect(result.checks.structuralReviewRequired).toBe(false);
+    expect(result.checks.structuralImageProviderUsed).toBe(null);
+  });
+
+  test("adds structural CAD entities, dimensions, grid, and review notes", () => {
+    const model = buildCanonicalDrawingModelFromCompiledProject({
+      compiledProject: fixtureCompiledProject(),
+      includeStructuralDrawings: true,
+    });
+    expect(model.structuralModel).toEqual(
+      expect.objectContaining({
+        geometryHash: model.geometryHash,
+        sourceProjectGraphHash: model.sourceProjectGraphHash,
+        reviewRequired: true,
+        imageProviderUsed: "none",
+      }),
+    );
+    expect(model.structuralModel.disclaimers.join(" ")).toMatch(
+      /licensed structural engineer/i,
+    );
+    const structuralEntities = model.modelSpace.entities.filter((entity) =>
+      String(entity.layer || "").startsWith("S-"),
+    );
+    const layers = new Set(structuralEntities.map((entity) => entity.layer));
+    const roles = new Set(
+      structuralEntities.map((entity) => entity.metadata?.role).filter(Boolean),
+    );
+
+    expect([...layers]).toEqual(
+      expect.arrayContaining([
+        "S-FOUNDATION",
+        "S-COLUMN",
+        "S-BEAM",
+        "S-SLAB",
+        "S-ROOF",
+        "S-GRID",
+        "S-NOTES",
+        "S-DIMS",
+      ]),
+    );
+    expect([...roles]).toEqual(
+      expect.arrayContaining([
+        "foundation_outline",
+        "structural_grid",
+        "roof_rafter",
+        "review_disclaimer",
+      ]),
+    );
+    structuralEntities.forEach((entity) => {
+      expect(entity.imageProviderUsed).toBe("none");
+      expect(entity.technicalDrawing).toBe(true);
+      expect(entity.geometryHash).toBe(model.geometryHash);
+    });
   });
 
   test("CAD QA fails when title blocks are missing", () => {

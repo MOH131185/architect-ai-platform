@@ -29,8 +29,9 @@ contracts and should fail closed when geometry provenance is missing.
   plot-style metadata reference `archiai-monochrome.ctb`.
 - DWG remains conversion-only and unavailable unless a real converter is
   configured. DXF is the guaranteed CAD output.
-- Structural helpers exist, but there is no full deterministic structural
-  drawing package.
+- Structural CAD/BIM output is being introduced as an opt-in package behind
+  `STRUCTURAL_DRAWINGS_ENABLED` or an explicit `includeStructuralDrawings`
+  option. Default architectural DXF exports remain non-structural.
 - There is no MEP model, no detail library, and no versioned UK/France/Algeria
   jurisdiction-pack system.
 
@@ -128,6 +129,10 @@ Acceptance criteria:
 ## PR 3: Structural model and drawings
 
 Add deterministic `structuralModel` derived from ProjectGraph / CompiledProject.
+This package is opt-in: structural drawings and structural CAD/DXF entities are
+included only when `STRUCTURAL_DRAWINGS_ENABLED=true` or an explicit
+`includeStructuralDrawings` option is passed. Existing architectural CAD/DXF
+exports remain architectural-only by default.
 
 Deliverables:
 
@@ -136,13 +141,23 @@ Deliverables:
 - Deterministic preliminary engineering assumptions.
 - Structural grid, member IDs, jurisdiction/design-standard metadata, and
   engineer-review-required status.
+- DXF structural layers/entities (`S-FOUNDATION`, `S-COLUMN`, `S-BEAM`,
+  `S-SLAB`, `S-ROOF`, `S-GRID`, `S-NOTES`, `S-DIMS`) when structural drawings
+  are enabled.
+- Structural outputs labelled preliminary with licensed structural engineer
+  review required.
 
 Acceptance criteria:
 
 - Structural model includes foundations, slabs, beams, columns, and roof framing
   where applicable.
-- Structural drawings export to SVG and DXF.
+- Structural drawings export to SVG and DXF only when structural drawings are
+  enabled.
+- Default CanonicalDrawingModel/DXF export remains architectural-only and does
+  not emit structural model data or `S-*` structural entities.
 - Missing structural model blocks structural drawing export.
+- Structural model and drawings carry deterministic hashes, no image-provider
+  technical drawing path, and licensed structural engineer review disclaimers.
 
 ## PR 4: MEP model and drawings
 
