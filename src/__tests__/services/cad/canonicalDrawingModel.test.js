@@ -205,6 +205,22 @@ const MEP_LAYER_NAMES = [
   "MEP-DIMS",
 ];
 
+const DETAIL_LAYER_NAMES = [
+  "A-DETAIL",
+  "A-DETAIL-DIMS",
+  "A-DETAIL-TEXT",
+  "A-DETAIL-HATCH",
+  "A-CALLOUT",
+  "D-CONCRETE",
+  "D-MASONRY",
+  "D-INSULATION",
+  "D-TIMBER",
+  "D-MEMBRANE",
+  "D-EARTH",
+  "D-GLAZING",
+  "D-METAL",
+];
+
 describe("CanonicalDrawingModel", () => {
   test("throws when CompiledProject geometryHash is missing", () => {
     expect(() =>
@@ -248,6 +264,7 @@ describe("CanonicalDrawingModel", () => {
     );
     expect(model.structuralModel).toBeUndefined();
     expect(model.mepModel).toBeUndefined();
+    expect(model.detailLibrary).toBeUndefined();
     expect(
       model.modelSpace.entities.filter((entity) =>
         String(entity.layer || "").startsWith("S-"),
@@ -256,6 +273,11 @@ describe("CanonicalDrawingModel", () => {
     expect(
       model.modelSpace.entities.filter((entity) =>
         MEP_LAYER_NAMES.includes(entity.layer),
+      ),
+    ).toEqual([]);
+    expect(
+      model.modelSpace.entities.filter((entity) =>
+        DETAIL_LAYER_NAMES.includes(entity.layer),
       ),
     ).toEqual([]);
   });
@@ -354,7 +376,9 @@ describe("CanonicalDrawingModel", () => {
     const layerNames = model.layers.map((layer) => layer.name);
     const architecturalLayerNames = REQUIRED_CANONICAL_CAD_LAYERS.filter(
       (layerName) =>
-        !layerName.startsWith("S-") && !MEP_LAYER_NAMES.includes(layerName),
+        !layerName.startsWith("S-") &&
+        !MEP_LAYER_NAMES.includes(layerName) &&
+        !DETAIL_LAYER_NAMES.includes(layerName),
     );
 
     expect(layerNames).toEqual(expect.arrayContaining(architecturalLayerNames));
@@ -362,6 +386,7 @@ describe("CanonicalDrawingModel", () => {
       expect.arrayContaining(["S-FOUNDATION", "S-BEAM", "S-GRID"]),
     );
     expect(layerNames).not.toEqual(expect.arrayContaining(MEP_LAYER_NAMES));
+    expect(layerNames).not.toEqual(expect.arrayContaining(DETAIL_LAYER_NAMES));
 
     const structuralModel = buildCanonicalDrawingModelFromCompiledProject({
       compiledProject: fixtureCompiledProject(),
@@ -370,7 +395,9 @@ describe("CanonicalDrawingModel", () => {
     expect(structuralModel.layers.map((layer) => layer.name)).toEqual(
       expect.arrayContaining(
         REQUIRED_CANONICAL_CAD_LAYERS.filter(
-          (layerName) => !MEP_LAYER_NAMES.includes(layerName),
+          (layerName) =>
+            !MEP_LAYER_NAMES.includes(layerName) &&
+            !DETAIL_LAYER_NAMES.includes(layerName),
         ),
       ),
     );
@@ -382,7 +409,22 @@ describe("CanonicalDrawingModel", () => {
     expect(mepModel.layers.map((layer) => layer.name)).toEqual(
       expect.arrayContaining(
         REQUIRED_CANONICAL_CAD_LAYERS.filter(
-          (layerName) => !layerName.startsWith("S-"),
+          (layerName) =>
+            !layerName.startsWith("S-") &&
+            !DETAIL_LAYER_NAMES.includes(layerName),
+        ),
+      ),
+    );
+
+    const detailModel = buildCanonicalDrawingModelFromCompiledProject({
+      compiledProject: fixtureCompiledProject(),
+      includeDetailDrawings: true,
+    });
+    expect(detailModel.layers.map((layer) => layer.name)).toEqual(
+      expect.arrayContaining(
+        REQUIRED_CANONICAL_CAD_LAYERS.filter(
+          (layerName) =>
+            !layerName.startsWith("S-") && !MEP_LAYER_NAMES.includes(layerName),
         ),
       ),
     );
@@ -465,6 +507,10 @@ describe("CanonicalDrawingModel", () => {
     expect(result.checks.hasMepDisclaimer).toBe(false);
     expect(result.checks.mepReviewRequired).toBe(false);
     expect(result.checks.mepImageProviderUsed).toBe(null);
+    expect(result.checks.hasDetailLibraryHash).toBe(false);
+    expect(result.checks.hasDetailDisclaimer).toBe(false);
+    expect(result.checks.detailReviewRequired).toBe(false);
+    expect(result.checks.detailImageProviderUsed).toBe(null);
   });
 
   test("adds structural CAD entities, dimensions, grid, and review notes", () => {
@@ -617,6 +663,118 @@ describe("CanonicalDrawingModel", () => {
     expect(requiredResult.valid).toBe(false);
     expect(requiredResult.errors.map((error) => error.code)).toContain(
       "CAD_MODEL_MEP_MODEL_HASH_MISSING",
+    );
+  });
+
+  test("adds opt-in construction detail CAD entities, sheets, callouts, hatches, dimensions, and review notes", () => {
+    const model = buildCanonicalDrawingModelFromCompiledProject({
+      compiledProject: fixtureCompiledProject(),
+      includeDetailDrawings: true,
+    });
+
+    expect(model.detailLibrary).toEqual(
+      expect.objectContaining({
+        geometryHash: model.geometryHash,
+        sourceProjectGraphHash: model.sourceProjectGraphHash,
+        reviewRequired: true,
+        imageProviderUsed: "none",
+      }),
+    );
+    expect(model.detailLibrary.disclaimers.join(" ")).toMatch(
+      /architect and engineer/i,
+    );
+    expect(model.paperSpace.sheets.map((sheet) => sheet.sheetId)).toEqual(
+      expect.arrayContaining(["D-501", "D-502", "D-503", "D-504"]),
+    );
+
+    const detailEntities = model.modelSpace.entities.filter((entity) =>
+      DETAIL_LAYER_NAMES.includes(entity.layer),
+    );
+    const layers = new Set(detailEntities.map((entity) => entity.layer));
+    const roles = new Set(
+      detailEntities.map((entity) => entity.metadata?.role).filter(Boolean),
+    );
+
+    expect([...layers]).toEqual(expect.arrayContaining(DETAIL_LAYER_NAMES));
+    expect([...roles]).toEqual(
+      expect.arrayContaining([
+        "detail_title",
+        "detail_material_hatch",
+        "detail_dimension",
+        "detail_callout",
+        "detail_callout_marker",
+        "detail_callout_reference",
+        "review_disclaimer",
+      ]),
+    );
+    detailEntities.forEach((entity) => {
+      expect(entity.imageProviderUsed).toBe("none");
+      expect(entity.technicalDrawing).toBe(true);
+      expect(entity.geometryHash).toBe(model.geometryHash);
+    });
+  });
+
+  test("CAD QA validates construction details only when detail library is present or required", () => {
+    const defaultModel = buildCanonicalDrawingModelFromCompiledProject({
+      compiledProject: fixtureCompiledProject(),
+    });
+    const defaultResult = validateCanonicalDrawingModel(defaultModel);
+
+    expect(defaultModel.detailLibrary).toBeUndefined();
+    expect(defaultResult.valid).toBe(true);
+    expect(defaultResult.errors.map((error) => error.code)).not.toEqual(
+      expect.arrayContaining(["CAD_MODEL_DETAIL_LIBRARY_HASH_MISSING"]),
+    );
+
+    const detailModel = buildCanonicalDrawingModelFromCompiledProject({
+      compiledProject: fixtureCompiledProject(),
+      includeDetailDrawings: true,
+    });
+    const brokenResult = validateCanonicalDrawingModel({
+      ...detailModel,
+      detailLibrary: {
+        ...detailModel.detailLibrary,
+        detailLibraryHash: null,
+        disclaimers: [],
+        imageProviderUsed: "openai",
+        details: detailModel.detailLibrary.details
+          .filter((detail) => detail.detailType !== "wall_foundation_junction")
+          .map((detail, index) =>
+            index === 0
+              ? {
+                  ...detail,
+                  detailHash: null,
+                  hatches: [],
+                  dimensions: [],
+                  dxfEntities: [],
+                  imageProviderUsed: "openai",
+                }
+              : detail,
+          ),
+      },
+    });
+    const codes = brokenResult.errors.map((error) => error.code);
+
+    expect(brokenResult.valid).toBe(false);
+    expect(codes).toEqual(
+      expect.arrayContaining([
+        "CAD_MODEL_DETAIL_LIBRARY_HASH_MISSING",
+        "CAD_MODEL_DETAIL_DISCLAIMER_MISSING",
+        "CAD_MODEL_DETAIL_REQUIRED_TYPE_MISSING",
+        "CAD_MODEL_DETAIL_HASH_MISSING",
+        "CAD_MODEL_DETAIL_HATCHES_MISSING",
+        "CAD_MODEL_DETAIL_DIMENSIONS_MISSING",
+        "CAD_MODEL_DETAIL_CALLOUTS_MISSING",
+        "CAD_MODEL_DETAIL_IMAGE_PROVIDER_FORBIDDEN",
+      ]),
+    );
+
+    const requiredResult = validateCanonicalDrawingModel(defaultModel, {
+      requireDetailLibrary: true,
+    });
+    expect(requiredResult.valid).toBe(false);
+    expect(requiredResult.errors.map((error) => error.code)).toContain(
+      "CAD_MODEL_DETAIL_LIBRARY_HASH_MISSING",
     );
   });
 

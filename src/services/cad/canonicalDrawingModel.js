@@ -7,6 +7,10 @@ import {
 } from "./projectGeometrySchema.js";
 import { buildStructuralModelFromCompiledProject } from "../structure/structuralModelService.js";
 import { buildMepModelFromCompiledProject } from "../mep/mepModelService.js";
+import {
+  buildConstructionDetailLibraryFromCompiledProject,
+  REQUIRED_CONSTRUCTION_DETAIL_TYPES,
+} from "../details/constructionDetailLibrary.js";
 
 export const CANONICAL_DRAWING_MODEL_VERSION = "canonical-drawing-model-v1";
 
@@ -57,6 +61,19 @@ export const REQUIRED_CANONICAL_CAD_LAYERS = Object.freeze([
   "MEP-RISER",
   "MEP-NOTES",
   "MEP-DIMS",
+  "A-DETAIL",
+  "A-DETAIL-DIMS",
+  "A-DETAIL-TEXT",
+  "A-DETAIL-HATCH",
+  "A-CALLOUT",
+  "D-CONCRETE",
+  "D-MASONRY",
+  "D-INSULATION",
+  "D-TIMBER",
+  "D-MEMBRANE",
+  "D-EARTH",
+  "D-GLAZING",
+  "D-METAL",
 ]);
 
 const STRUCTURAL_CANONICAL_CAD_LAYER_NAMES = new Set([
@@ -86,6 +103,22 @@ const MEP_CANONICAL_CAD_LAYER_NAMES = new Set([
   "MEP-NOTES",
   "MEP-DIMS",
   "F-FIRE",
+]);
+
+const DETAIL_CANONICAL_CAD_LAYER_NAMES = new Set([
+  "A-DETAIL",
+  "A-DETAIL-DIMS",
+  "A-DETAIL-TEXT",
+  "A-DETAIL-HATCH",
+  "A-CALLOUT",
+  "D-CONCRETE",
+  "D-MASONRY",
+  "D-INSULATION",
+  "D-TIMBER",
+  "D-MEMBRANE",
+  "D-EARTH",
+  "D-GLAZING",
+  "D-METAL",
 ]);
 
 export const DEFAULT_CANONICAL_CAD_LAYERS = Object.freeze([
@@ -339,6 +372,97 @@ export const DEFAULT_CANONICAL_CAD_LAYERS = Object.freeze([
     discipline: "fire",
     color: 1,
     lineweight: 25,
+    linetype: "CONTINUOUS",
+  },
+  {
+    name: "A-DETAIL",
+    discipline: "architectural_detail",
+    color: 7,
+    lineweight: 35,
+    linetype: "CONTINUOUS",
+  },
+  {
+    name: "A-DETAIL-DIMS",
+    discipline: "architectural_detail",
+    color: 2,
+    lineweight: 18,
+    linetype: "CONTINUOUS",
+  },
+  {
+    name: "A-DETAIL-TEXT",
+    discipline: "architectural_detail",
+    color: 7,
+    lineweight: 18,
+    linetype: "CONTINUOUS",
+  },
+  {
+    name: "A-DETAIL-HATCH",
+    discipline: "architectural_detail",
+    color: 9,
+    lineweight: 13,
+    linetype: "CONTINUOUS",
+  },
+  {
+    name: "A-CALLOUT",
+    discipline: "architectural_detail",
+    color: 4,
+    lineweight: 25,
+    linetype: "CONTINUOUS",
+  },
+  {
+    name: "D-CONCRETE",
+    discipline: "detail_material",
+    color: 8,
+    lineweight: 13,
+    linetype: "CONTINUOUS",
+  },
+  {
+    name: "D-MASONRY",
+    discipline: "detail_material",
+    color: 30,
+    lineweight: 13,
+    linetype: "CONTINUOUS",
+  },
+  {
+    name: "D-INSULATION",
+    discipline: "detail_material",
+    color: 6,
+    lineweight: 13,
+    linetype: "CONTINUOUS",
+  },
+  {
+    name: "D-TIMBER",
+    discipline: "detail_material",
+    color: 40,
+    lineweight: 13,
+    linetype: "CONTINUOUS",
+  },
+  {
+    name: "D-MEMBRANE",
+    discipline: "detail_material",
+    color: 1,
+    lineweight: 13,
+    linetype: "DASHED",
+  },
+  {
+    name: "D-EARTH",
+    discipline: "detail_material",
+    color: 32,
+    lineweight: 13,
+    linetype: "CONTINUOUS",
+  },
+  {
+    name: "D-GLAZING",
+    discipline: "detail_material",
+    color: 5,
+    lineweight: 13,
+    linetype: "CONTINUOUS",
+  },
+  {
+    name: "D-METAL",
+    discipline: "detail_material",
+    color: 8,
+    lineweight: 18,
     linetype: "CONTINUOUS",
   },
 ]);
@@ -2014,6 +2138,170 @@ function buildMepPrimitiveEntities(
   return buildMepModelEntities(mepModel, geometryHash);
 }
 
+function buildConstructionDetailEntities(detailLibrary = {}, geometryHash) {
+  const entities = [];
+  toArray(detailLibrary.details).forEach((detail) => {
+    toArray(detail.dxfEntities).forEach((sourceEntity, index) => {
+      const sourceId = `${detail.detailId}-${sourceEntity.role || sourceEntity.type}-${index + 1}`;
+      const metadata = {
+        role: sourceEntity.role || "detail_entity",
+        detailId: detail.detailId,
+        detailType: detail.detailType,
+        detailHash: detail.detailHash,
+        detailLibraryHash: detailLibrary.detailLibraryHash,
+        relatedDrawingRefs: detail.relatedDrawingRefs || [],
+      };
+      const common = {
+        layer: sourceEntity.layer || "A-DETAIL",
+        viewType: "detail",
+        viewId: detail.detailType,
+        geometryHash,
+        sourceId,
+        metadata,
+      };
+
+      if (sourceEntity.type === "LWPOLYLINE") {
+        entities.push(
+          polylineEntity({
+            points: sourceEntity.points || [],
+            closed: sourceEntity.closed === true,
+            ...common,
+          }),
+        );
+      } else if (sourceEntity.type === "LINE") {
+        entities.push(
+          lineEntity({
+            start: sourceEntity.start || { x: 0, y: 0 },
+            end: sourceEntity.end || { x: 0, y: 0 },
+            ...common,
+          }),
+        );
+      } else if (sourceEntity.type === "HATCH") {
+        entities.push(
+          hatchEntity({
+            points: sourceEntity.points || [],
+            pattern: sourceEntity.material || "detail",
+            ...common,
+          }),
+        );
+      } else if (sourceEntity.type === "DIMENSION") {
+        entities.push(
+          dimensionEntity({
+            start: sourceEntity.start || { x: 0, y: 0 },
+            end: sourceEntity.end || { x: 0, y: 0 },
+            offset: sourceEntity.offset || { x: 0, y: 0 },
+            text: sourceEntity.text || detail.detailScale,
+            ...common,
+          }),
+        );
+      } else if (sourceEntity.type === "INSERT") {
+        entities.push(
+          insertEntity({
+            blockName: sourceEntity.blockName || "DETAIL_CALLOUT",
+            point: sourceEntity.point || { x: 0, y: 0 },
+            ...common,
+          }),
+        );
+      } else {
+        entities.push(
+          textEntity({
+            text: sourceEntity.text || detail.detailTitle,
+            point: sourceEntity.point || { x: 0, y: 0 },
+            height: sourceEntity.height || 0.16,
+            ...common,
+          }),
+        );
+      }
+    });
+  });
+
+  toArray(detailLibrary.details).forEach((detail, index) => {
+    const x = roundMetric(1.2 + index * 0.32);
+    const y = roundMetric(12.4 - index * 0.18);
+    entities.push(
+      insertEntity({
+        blockName: "DETAIL_CALLOUT",
+        point: { x, y },
+        layer: "A-CALLOUT",
+        viewType:
+          detail.detailType === "drainage_inspection_chamber"
+            ? "site_plan"
+            : detail.detailType === "mep_riser_detail"
+              ? "mep_plumbing_plan"
+              : detail.detailType.includes("roof") ||
+                  detail.detailType.includes("window")
+                ? "elevation"
+                : detail.detailType.includes("wet_room")
+                  ? "floor_plan"
+                  : "section",
+        viewId: `callout-${detail.detailType}`,
+        geometryHash,
+        sourceId: `detail-callout-${detail.detailType}`,
+        metadata: {
+          role: "detail_callout_marker",
+          detailId: detail.detailId,
+          detailType: detail.detailType,
+          detailHash: detail.detailHash,
+          detailLibraryHash: detailLibrary.detailLibraryHash,
+          relatedDrawingRefs: detail.relatedDrawingRefs || [],
+        },
+      }),
+      textEntity({
+        text: `DETAIL ${detail.relatedDrawingRefs?.[0] || detail.detailId}`,
+        point: { x: roundMetric(x + 0.18), y: roundMetric(y + 0.18) },
+        height: 0.14,
+        layer: "A-CALLOUT",
+        viewType: "detail_callout",
+        viewId: `callout-${detail.detailType}`,
+        geometryHash,
+        sourceId: `detail-callout-label-${detail.detailType}`,
+        metadata: {
+          role: "detail_callout_reference",
+          detailId: detail.detailId,
+          detailType: detail.detailType,
+          detailHash: detail.detailHash,
+          detailLibraryHash: detailLibrary.detailLibraryHash,
+        },
+      }),
+    );
+  });
+
+  toArray(detailLibrary.disclaimers).forEach((disclaimer, index) => {
+    entities.push(
+      textEntity({
+        text: disclaimer,
+        point: { x: 0.5, y: roundMetric(-5 - index * 0.3) },
+        height: 0.16,
+        layer: "A-DETAIL-TEXT",
+        viewType: "detail_notes",
+        viewId: "detail_notes",
+        geometryHash,
+        sourceId: `detail-review-disclaimer-${index + 1}`,
+        metadata: {
+          role: "review_disclaimer",
+          detailLibraryHash: detailLibrary.detailLibraryHash,
+        },
+      }),
+    );
+  });
+
+  return entities;
+}
+
+function buildConstructionDetailPrimitiveEntities(
+  compiledProject = {},
+  geometryHash,
+  includeDetailDrawings = false,
+) {
+  if (!includeDetailDrawings) {
+    return [];
+  }
+  const detailLibrary = buildConstructionDetailLibraryFromCompiledProject({
+    compiledProject,
+  });
+  return buildConstructionDetailEntities(detailLibrary, geometryHash);
+}
+
 function defaultBlocks(geometryHash) {
   const block = (name, description, entities = []) => ({
     name,
@@ -2098,6 +2386,19 @@ function defaultBlocks(geometryHash) {
     block("MEP_EXTRACT_FAN", "MEP extract fan symbol", []),
     block("MEP_RISER", "MEP riser symbol", []),
     block("MEP_EQUIPMENT", "MEP equipment symbol", []),
+    block("DETAIL_CALLOUT", "Construction detail callout marker", [
+      {
+        type: "LINE",
+        layer: "A-CALLOUT",
+        geometry: { start: { x: -0.15, y: 0 }, end: { x: 0.15, y: 0 } },
+      },
+      {
+        type: "LINE",
+        layer: "A-CALLOUT",
+        geometry: { start: { x: 0, y: -0.15 }, end: { x: 0, y: 0.15 } },
+      },
+    ]),
+    block("DETAIL_TITLE", "Construction detail title block symbol", []),
   ];
 }
 
@@ -2528,6 +2829,138 @@ function buildDrawingScales() {
   ];
 }
 
+function buildDetailPaperSpaceSheets({
+  baseSheet,
+  detailLibrary,
+  geometryHash,
+  sourceProjectGraphHash,
+  jurisdiction,
+  units,
+} = {}) {
+  if (!baseSheet || !detailLibrary) {
+    return [];
+  }
+  const detailSheets = [
+    {
+      sheetId: "D-501",
+      panelType: "detail_sheet_architectural",
+      title: "Architectural Details",
+      scale: "1:10",
+    },
+    {
+      sheetId: "D-502",
+      panelType: "detail_sheet_envelope",
+      title: "Envelope Details",
+      scale: "1:5",
+    },
+    {
+      sheetId: "D-503",
+      panelType: "detail_sheet_wetroom_drainage",
+      title: "Wet Room and Drainage Details",
+      scale: "1:10",
+    },
+    {
+      sheetId: "D-504",
+      panelType: "detail_sheet_mep_riser",
+      title: "MEP Riser Detail",
+      scale: "1:10",
+    },
+  ];
+
+  return detailSheets.map((sheet, index) => {
+    const layoutName = sheet.sheetId;
+    const viewportHandle = cadHandle(
+      "detail-viewport",
+      layoutName,
+      geometryHash,
+    );
+    const layoutHandle = cadHandle("detail-layout", layoutName, geometryHash);
+    const blockRecordHandle = cadHandle(
+      "detail-block-record",
+      layoutName,
+      geometryHash,
+    );
+    const plotSettingsHandle = cadHandle(
+      "detail-plot-settings",
+      layoutName,
+      geometryHash,
+    );
+    return {
+      ...clone(baseSheet),
+      sheetId: sheet.sheetId,
+      sheetNumber: sheet.sheetId,
+      drawingNumber: sheet.sheetId,
+      layoutName,
+      title: sheet.title,
+      scale: sheet.scale,
+      discipline: "detail",
+      geometryHash,
+      sourceProjectGraphHash,
+      jurisdiction,
+      units,
+      modelViews: [sheet.panelType],
+      detailLibraryHash: detailLibrary.detailLibraryHash,
+      detailIds: toArray(detailLibrary.details)
+        .filter((detail) =>
+          sheet.panelType === "detail_sheet_architectural"
+            ? detail.group === "architectural"
+            : sheet.panelType === "detail_sheet_envelope"
+              ? detail.group === "envelope"
+              : sheet.panelType === "detail_sheet_wetroom_drainage"
+                ? detail.group === "wetroom_drainage"
+                : detail.group === "mep_riser",
+        )
+        .map((detail) => detail.detailId),
+      drawingIndex: {
+        ...(baseSheet.drawingIndex || {}),
+        sheetNumber: sheet.sheetId,
+        title: sheet.title,
+        scale: sheet.scale,
+        discipline: "detail",
+        detailLibraryHash: detailLibrary.detailLibraryHash,
+      },
+      nativeLayout: {
+        ...(baseSheet.nativeLayout || {}),
+        layoutName,
+        layoutHandle,
+        blockRecordHandle,
+        plotSettingsHandle,
+        ownerHandle: cadHandle("detail-layout-owner", layoutName),
+      },
+      plotSettings: {
+        ...(baseSheet.plotSettings || {}),
+        plotSettingsHandle,
+        plotStyleTable: "archiai-monochrome.ctb",
+      },
+      viewports: [
+        {
+          ...(toArray(baseSheet.viewports)[0] || {}),
+          viewportId: `vp-${sheet.panelType}`,
+          viewId: sheet.panelType,
+          viewType: "detail",
+          layoutName,
+          scale: sheet.scale,
+          geometryHash,
+          sourceProjectGraphHash,
+          nativeViewport: {
+            ...((toArray(baseSheet.viewports)[0] || {}).nativeViewport || {}),
+            entityType: "VIEWPORT",
+            className: "AcDbViewport",
+            viewportHandle,
+            layoutName,
+            ownerHandle: blockRecordHandle,
+          },
+          metadata: {
+            detailLibraryHash: detailLibrary.detailLibraryHash,
+            paperSpace: true,
+          },
+        },
+      ],
+      order: (baseSheet.order || 0) + index + 10,
+    };
+  });
+}
+
 export function buildCanonicalDrawingModelFromCompiledProject({
   compiledProject,
   projectName = null,
@@ -2537,6 +2970,8 @@ export function buildCanonicalDrawingModelFromCompiledProject({
   structuralDrawingsEnabled = false,
   includeMepDrawings = false,
   mepDrawingsEnabled = false,
+  includeDetailDrawings = false,
+  detailDrawingsEnabled = false,
 } = {}) {
   if (!compiledProject?.geometryHash) {
     throw new Error(
@@ -2552,6 +2987,8 @@ export function buildCanonicalDrawingModelFromCompiledProject({
     includeStructuralDrawings === true || structuralDrawingsEnabled === true;
   const shouldIncludeMepDrawings =
     includeMepDrawings === true || mepDrawingsEnabled === true;
+  const shouldIncludeDetailDrawings =
+    includeDetailDrawings === true || detailDrawingsEnabled === true;
   const structuralModel = shouldIncludeStructuralDrawings
     ? buildStructuralModelFromCompiledProject({
         compiledProject,
@@ -2560,6 +2997,12 @@ export function buildCanonicalDrawingModelFromCompiledProject({
     : null;
   const mepModel = shouldIncludeMepDrawings
     ? buildMepModelFromCompiledProject({
+        compiledProject,
+        jurisdiction: resolvedJurisdiction,
+      })
+    : null;
+  const detailLibrary = shouldIncludeDetailDrawings
+    ? buildConstructionDetailLibraryFromCompiledProject({
         compiledProject,
         jurisdiction: resolvedJurisdiction,
       })
@@ -2579,8 +3022,13 @@ export function buildCanonicalDrawingModelFromCompiledProject({
       geometryHash,
       shouldIncludeMepDrawings,
     ),
+    ...buildConstructionDetailPrimitiveEntities(
+      compiledProject,
+      geometryHash,
+      shouldIncludeDetailDrawings,
+    ),
   ];
-  const sheets = buildPaperSpaceSheets({
+  const architecturalSheets = buildPaperSpaceSheets({
     compiledProject,
     geometryHash,
     sourceProjectGraphHash,
@@ -2588,6 +3036,17 @@ export function buildCanonicalDrawingModelFromCompiledProject({
     units,
     projectName: resolvedProjectName,
   });
+  const sheets = [
+    ...architecturalSheets,
+    ...buildDetailPaperSpaceSheets({
+      baseSheet: architecturalSheets[0],
+      detailLibrary,
+      geometryHash,
+      sourceProjectGraphHash,
+      jurisdiction: resolvedJurisdiction,
+      units,
+    }),
+  ];
 
   return {
     schema_version: CANONICAL_DRAWING_MODEL_VERSION,
@@ -2610,12 +3069,15 @@ export function buildCanonicalDrawingModelFromCompiledProject({
     plotStyleMetadata: clone(DEFAULT_PLOT_STYLE_METADATA),
     ...(structuralModel ? { structuralModel } : {}),
     ...(mepModel ? { mepModel } : {}),
+    ...(detailLibrary ? { detailLibrary } : {}),
     layers: clone(DEFAULT_CANONICAL_CAD_LAYERS).filter(
       (layer) =>
         (shouldIncludeStructuralDrawings ||
           !STRUCTURAL_CANONICAL_CAD_LAYER_NAMES.has(layer.name)) &&
         (shouldIncludeMepDrawings ||
-          !MEP_CANONICAL_CAD_LAYER_NAMES.has(layer.name)),
+          !MEP_CANONICAL_CAD_LAYER_NAMES.has(layer.name)) &&
+        (shouldIncludeDetailDrawings ||
+          !DETAIL_CANONICAL_CAD_LAYER_NAMES.has(layer.name)),
     ),
     blocks: defaultBlocks(geometryHash),
     hatches: clone(DEFAULT_HATCHES),
@@ -2698,6 +3160,8 @@ export function validateCanonicalDrawingModel(model = {}, options = {}) {
     Boolean(model.structuralModel) || options.requireStructuralModel === true;
   const shouldValidateMepModel =
     Boolean(model.mepModel) || options.requireMepModel === true;
+  const shouldValidateDetailLibrary =
+    Boolean(model.detailLibrary) || options.requireDetailLibrary === true;
 
   if (model.schema_version !== CANONICAL_DRAWING_MODEL_VERSION) {
     errors.push(
@@ -2855,7 +3319,10 @@ export function validateCanonicalDrawingModel(model = {}, options = {}) {
     (layerName) =>
       (shouldValidateStructuralModel ||
         !STRUCTURAL_CANONICAL_CAD_LAYER_NAMES.has(layerName)) &&
-      (shouldValidateMepModel || !MEP_CANONICAL_CAD_LAYER_NAMES.has(layerName)),
+      (shouldValidateMepModel ||
+        !MEP_CANONICAL_CAD_LAYER_NAMES.has(layerName)) &&
+      (shouldValidateDetailLibrary ||
+        !DETAIL_CANONICAL_CAD_LAYER_NAMES.has(layerName)),
   );
   requiredLayerNames.forEach((layerName) => {
     if (!layerNames.has(layerName)) {
@@ -3093,6 +3560,137 @@ export function validateCanonicalDrawingModel(model = {}, options = {}) {
     );
   }
 
+  const detailLibraryDetails = toArray(model.detailLibrary?.details);
+  const detailTypes = new Set(
+    detailLibraryDetails.map((detail) => detail.detailType),
+  );
+  if (shouldValidateDetailLibrary && !model.detailLibrary?.detailLibraryHash) {
+    errors.push(
+      validationError(
+        "CAD_MODEL_DETAIL_LIBRARY_HASH_MISSING",
+        "CanonicalDrawingModel requires detailLibrary.detailLibraryHash when detail drawings are enabled.",
+      ),
+    );
+  }
+  if (
+    shouldValidateDetailLibrary &&
+    model.detailLibrary?.geometryHash &&
+    model.geometryHash &&
+    model.detailLibrary.geometryHash !== model.geometryHash
+  ) {
+    errors.push(
+      validationError(
+        "CAD_MODEL_DETAIL_GEOMETRY_HASH_MISMATCH",
+        "Construction detail library geometryHash must match CanonicalDrawingModel geometryHash.",
+        {
+          detailGeometryHash: model.detailLibrary.geometryHash,
+          geometryHash: model.geometryHash,
+        },
+      ),
+    );
+  }
+  if (
+    shouldValidateDetailLibrary &&
+    model.detailLibrary?.reviewRequired !== true
+  ) {
+    errors.push(
+      validationError(
+        "CAD_MODEL_DETAIL_REVIEW_REQUIRED_MISSING",
+        "Construction detail library must be marked reviewRequired=true.",
+      ),
+    );
+  }
+  if (
+    shouldValidateDetailLibrary &&
+    !toArray(model.detailLibrary?.disclaimers)
+      .join(" ")
+      .match(/architect and engineer/i)
+  ) {
+    errors.push(
+      validationError(
+        "CAD_MODEL_DETAIL_DISCLAIMER_MISSING",
+        "Construction detail library requires architect and engineer review disclaimer.",
+      ),
+    );
+  }
+  if (shouldValidateDetailLibrary) {
+    REQUIRED_CONSTRUCTION_DETAIL_TYPES.forEach((detailType) => {
+      if (!detailTypes.has(detailType)) {
+        errors.push(
+          validationError(
+            "CAD_MODEL_DETAIL_REQUIRED_TYPE_MISSING",
+            `Construction detail library is missing ${detailType}.`,
+            { detailType },
+          ),
+        );
+      }
+    });
+    detailLibraryDetails.forEach((detail) => {
+      if (!detail.detailHash) {
+        errors.push(
+          validationError(
+            "CAD_MODEL_DETAIL_HASH_MISSING",
+            "Construction detail is missing detailHash.",
+            { detailId: detail.detailId, detailType: detail.detailType },
+          ),
+        );
+      }
+      if (!toArray(detail.hatches).length) {
+        errors.push(
+          validationError(
+            "CAD_MODEL_DETAIL_HATCHES_MISSING",
+            "Construction detail is missing material hatches.",
+            { detailId: detail.detailId, detailType: detail.detailType },
+          ),
+        );
+      }
+      if (!toArray(detail.dimensions).length) {
+        errors.push(
+          validationError(
+            "CAD_MODEL_DETAIL_DIMENSIONS_MISSING",
+            "Construction detail is missing dimensions.",
+            { detailId: detail.detailId, detailType: detail.detailType },
+          ),
+        );
+      }
+      if (
+        !toArray(detail.dxfEntities).some((entity) =>
+          String(entity.role || "").includes("callout"),
+        )
+      ) {
+        errors.push(
+          validationError(
+            "CAD_MODEL_DETAIL_CALLOUTS_MISSING",
+            "Construction detail is missing callout references.",
+            { detailId: detail.detailId, detailType: detail.detailType },
+          ),
+        );
+      }
+      if (detail.imageProviderUsed && detail.imageProviderUsed !== "none") {
+        errors.push(
+          validationError(
+            "CAD_MODEL_DETAIL_IMAGE_PROVIDER_FORBIDDEN",
+            "Construction details must not use image generation.",
+            { detailId: detail.detailId, detailType: detail.detailType },
+          ),
+        );
+      }
+      if (
+        `${detail.disclaimer || ""} ${toArray(detail.annotations).join(" ")}`.match(
+          /approved for construction|code compliant|certified/i,
+        )
+      ) {
+        errors.push(
+          validationError(
+            "CAD_MODEL_DETAIL_FALSE_APPROVAL_CLAIM",
+            "Construction details must not claim construction approval or code certification.",
+            { detailId: detail.detailId, detailType: detail.detailType },
+          ),
+        );
+      }
+    });
+  }
+
   const hasNativeLayouts =
     sheets.length > 0 &&
     sheets.every((sheet) => sheet.nativeLayout?.className === "AcDbLayout");
@@ -3122,6 +3720,10 @@ export function validateCanonicalDrawingModel(model = {}, options = {}) {
   const hasMepDisclaimer = toArray(model.mepModel?.disclaimers)
     .join(" ")
     .match(/qualified MEP engineer/i);
+  const hasDetailLibraryHash = Boolean(model.detailLibrary?.detailLibraryHash);
+  const hasDetailDisclaimer = toArray(model.detailLibrary?.disclaimers)
+    .join(" ")
+    .match(/architect and engineer/i);
 
   return {
     valid: errors.length === 0,
@@ -3151,6 +3753,11 @@ export function validateCanonicalDrawingModel(model = {}, options = {}) {
       hasMepDisclaimer: Boolean(hasMepDisclaimer),
       mepReviewRequired: model.mepModel?.reviewRequired === true,
       mepImageProviderUsed: model.mepModel?.imageProviderUsed || null,
+      hasDetailLibraryHash,
+      hasDetailDisclaimer: Boolean(hasDetailDisclaimer),
+      detailReviewRequired: model.detailLibrary?.reviewRequired === true,
+      detailImageProviderUsed: model.detailLibrary?.imageProviderUsed || null,
+      detailCount: detailLibraryDetails.length,
     },
   };
 }

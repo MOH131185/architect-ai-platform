@@ -10,8 +10,18 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { compiledProject, projectName = "ArchiAI_Project" } = req.body || {};
-    const dxf = exportCompiledProjectToDXF({ compiledProject, projectName });
+    const {
+      compiledProject,
+      projectName = "ArchiAI_Project",
+      includeDetailDrawings = false,
+      detailDrawingsEnabled = false,
+    } = req.body || {};
+    const dxf = exportCompiledProjectToDXF({
+      compiledProject,
+      projectName,
+      includeDetailDrawings,
+      detailDrawingsEnabled,
+    });
     const safeName = String(projectName)
       .replace(/[^a-zA-Z0-9_-]/g, "_")
       .slice(0, 80);
