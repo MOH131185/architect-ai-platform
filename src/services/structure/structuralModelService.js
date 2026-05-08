@@ -6,6 +6,7 @@ import {
   rectangleToPolygon,
   roundMetric,
 } from "../cad/projectGeometrySchema.js";
+import { summarizeJurisdictionPack } from "../jurisdiction/jurisdictionPackService.js";
 import { buildStructuralGrid } from "./structuralGridService.js";
 
 export const STRUCTURAL_MODEL_VERSION = "structural-model-v1";
@@ -389,6 +390,7 @@ function buildSchedules({
 export function buildStructuralModelFromCompiledProject({
   compiledProject,
   jurisdiction = null,
+  jurisdictionPack = null,
 } = {}) {
   if (!compiledProject?.geometryHash) {
     throw new Error(
@@ -411,14 +413,27 @@ export function buildStructuralModelFromCompiledProject({
     "Column/grid coordination is indicative and must be rationalized by structural engineer calculations.",
     "Lateral stability, uplift, disproportionate collapse, and movement joints are not calculated.",
   ];
+  const jurisdictionPackSummary = jurisdictionPack
+    ? summarizeJurisdictionPack(jurisdictionPack)
+    : null;
+  const disclaimers = [
+    STRUCTURAL_REVIEW_DISCLAIMER,
+    jurisdictionPackSummary?.disclaimers?.structural,
+    jurisdictionPackSummary?.disclaimers?.preliminaryAdvisory,
+  ].filter(Boolean);
   const partial = {
     version: STRUCTURAL_MODEL_VERSION,
     geometryHash: compiledProject.geometryHash,
     sourceProjectGraphHash: sourceProjectGraphHashOf(compiledProject),
-    jurisdiction: jurisdiction || jurisdictionOf(compiledProject),
+    jurisdiction:
+      jurisdictionPackSummary?.jurisdictionId ||
+      jurisdiction ||
+      jurisdictionOf(compiledProject),
+    jurisdictionPack: jurisdictionPackSummary,
+    jurisdictionPackVersion: jurisdictionPackSummary?.version || null,
     designBasis,
     assumptions,
-    disclaimers: [STRUCTURAL_REVIEW_DISCLAIMER],
+    disclaimers,
     reviewRequired: true,
     foundationSystem,
     foundations,
@@ -767,10 +782,12 @@ export function buildStructuralDrawingPanelsFromStructuralModel(
 export function buildStructuralDrawingPanelsFromCompiledProject({
   compiledProject,
   jurisdiction = null,
+  jurisdictionPack = null,
 } = {}) {
   const structuralModel = buildStructuralModelFromCompiledProject({
     compiledProject,
     jurisdiction,
+    jurisdictionPack,
   });
   return {
     structuralModel,

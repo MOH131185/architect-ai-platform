@@ -2,6 +2,7 @@ import {
   buildLocalStylePackV2,
   computeMaterialPalette,
 } from "../../../services/style/localStylePack.js";
+import { loadJurisdictionPack } from "../../../services/jurisdiction/jurisdictionPackService.js";
 import { resolveUKVernacular } from "../../../services/style/ukVernacularPacks.js";
 
 const baseBrief = {
@@ -72,6 +73,7 @@ describe("localStylePack — UK vernacular pack integration", () => {
       brief: baseBrief,
       site,
       climate: baseClimate,
+      jurisdictionPack: loadJurisdictionPack("uk"),
     });
     expect(stylePack.style_provenance).toEqual(
       expect.objectContaining({

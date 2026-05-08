@@ -29,11 +29,19 @@ contracts and should fail closed when geometry provenance is missing.
   plot-style metadata reference `archiai-monochrome.ctb`.
 - DWG remains conversion-only and unavailable unless a real converter is
   configured. DXF is the guaranteed CAD output.
-- Structural CAD/BIM output is being introduced as an opt-in package behind
-  `STRUCTURAL_DRAWINGS_ENABLED` or an explicit `includeStructuralDrawings`
-  option. Default architectural DXF exports remain non-structural.
-- There is no MEP model, no detail library, and no versioned UK/France/Algeria
-  jurisdiction-pack system.
+- Structural CAD/BIM output is opt-in behind `STRUCTURAL_DRAWINGS_ENABLED` or
+  an explicit `includeStructuralDrawings` option. Default architectural DXF
+  exports remain non-structural.
+- MEP CAD/BIM output is opt-in behind `MEP_DRAWINGS_ENABLED` or an explicit
+  `includeMepDrawings` option. All MEP output remains preliminary and requires
+  qualified MEP engineer review.
+- Construction detail sheets are opt-in behind `DETAIL_DRAWINGS_ENABLED` or an
+  explicit `includeDetailDrawings` option. Details are preliminary and require
+  responsible architect/engineer review.
+- Versioned UK, France, Algeria, and declared generic advisory jurisdiction
+  packs are implemented as data-driven metadata for labels, CAD preferences,
+  local style defaults, climate assumptions, advisory checklists, and review
+  disclaimers.
 
 ## Non-negotiable authority rules
 
@@ -271,18 +279,47 @@ Add versioned jurisdiction packs for UK, France, and Algeria.
 Deliverables:
 
 - `src/services/jurisdiction/`.
-- `data/jurisdictions/uk/`, `data/jurisdictions/france/`, and
-  `data/jurisdictions/algeria/`.
+- `data/uk.json`, `data/france.json`, `data/algeria.json`, and a declared
+  `data/generic.json` advisory fallback.
 - Labels, title-block formats, CAD layer preferences, units/scales, climate
-  defaults, regulatory checklist metadata, planning/site providers,
-  structural/seismic/wind assumptions, typical materials/hatches, MEP defaults,
-  and disclaimers.
+  defaults, planning/regulatory checklist metadata, preliminary structural/MEP
+  assumptions, typical materials/hatches, and disclaimers.
+- Jurisdiction resolver precedence: explicit brief jurisdiction, supplied
+  country/country code, address/postcode inference, then declared generic
+  fallback with source-gap warning.
+- Jurisdiction pack metadata threaded into ProjectGraph drawing-set metadata,
+  A1 title-block labels, CanonicalDrawingModel, DXF metadata, local style
+  evidence, and structural/MEP/detail advisory disclaimers.
 
 Acceptance criteria:
 
 - UK, France, and Algeria briefs select the correct pack.
 - France and Algeria can use French title-block labels where configured.
 - Missing pack fails clearly or falls back only to a declared generic pack.
+- CAD layer names remain DXF-safe ASCII by default; localized labels are
+  metadata/title-block labels rather than renderer-hardcoded layer names.
+- Outputs remain preliminary/advisory and do not claim legal/code compliance or
+  construction approval.
+
+Current limitations after this slice:
+
+- Jurisdiction packs are preliminary advisory data, not official regulation
+  databases.
+- Planning/regulatory checklist metadata must be verified with the relevant
+  local authority and licensed professionals.
+- France and Algeria language support is first-pass deterministic metadata;
+  full typography/language QA for every sheet and viewer remains future work.
+- Algeria Arabic labels are exposed as Arabic-ready alternate metadata while
+  French remains the default title-block label set for CAD safety.
+- No authority-specific planning checks, official regulation ingestion, seismic
+  design verification, fire strategy approval, or permit/construction approval
+  is claimed.
+
+Next jurisdiction fidelity PR:
+
+- Add region-level packs, official regulation/source integration, language QA,
+  authority-specific planning checks, and localized construction-detail
+  variants for UK, France, and Algeria.
 
 ## PR 7: A1 and professional drawing sets
 

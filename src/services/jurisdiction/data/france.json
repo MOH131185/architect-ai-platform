@@ -1,0 +1,155 @@
+{
+  "jurisdictionId": "france",
+  "countryCode": "FR",
+  "countryName": "France",
+  "version": "jurisdiction-pack-france-v1",
+  "languages": ["fr", "en"],
+  "defaultLanguage": "fr",
+  "units": {
+    "length": "m",
+    "area": "m2",
+    "paper": "mm"
+  },
+  "drawingScales": ["1:500", "1:200", "1:100", "1:50", "1:20", "1:10", "1:5"],
+  "titleBlockLabels": {
+    "project": "Projet",
+    "drawingNumber": "DESSIN",
+    "title": "TITRE",
+    "scale": "ECHELLE",
+    "revision": "REVISION",
+    "status": "STATUT",
+    "date": "Date",
+    "author": "Auteur",
+    "company": "Societe",
+    "location": "Adresse",
+    "programme": "Programme",
+    "ribaStage": "Phase"
+  },
+  "a1TitleBlockLabels": {
+    "project": "Projet",
+    "scale": "ECHELLE",
+    "status": "STATUT",
+    "date": "Date",
+    "drawingNumber": "DESSIN",
+    "revision": "REVISION",
+    "location": "Adresse",
+    "programme": "Programme",
+    "ribaStage": "Phase"
+  },
+  "drawingStatusLabels": {
+    "preliminary": "Preliminaire",
+    "draft": "Projet pour revue",
+    "information": "Pour information",
+    "review": "Pour revue professionnelle"
+  },
+  "cadLayerPreferences": {
+    "naming": "ascii_safe_archiai_layers_with_french_labels",
+    "keepCurrentArchitecturalLayers": true,
+    "aliases": {
+      "A-WALL": "A-MUR",
+      "A-DOOR": "A-PORTE",
+      "A-WINDOW": "A-FENETRE",
+      "A-DIMS": "A-COTES",
+      "A-TEXT": "A-TEXTE"
+    }
+  },
+  "defaultCadLayers": [
+    "A-WALL",
+    "A-WALL-EXT",
+    "A-DOOR",
+    "A-WINDOW",
+    "A-STAIR",
+    "A-ROOM",
+    "A-DIMS",
+    "A-TEXT",
+    "A-HATCH",
+    "A-SITE",
+    "A-TITLE",
+    "S-FOUNDATION",
+    "S-COLUMN",
+    "S-BEAM",
+    "S-SLAB",
+    "S-ROOF",
+    "S-GRID",
+    "S-NOTES",
+    "S-DIMS",
+    "E-LIGHT",
+    "E-POWER",
+    "P-WATER",
+    "P-DRAIN",
+    "M-VENT",
+    "MEP-NOTES",
+    "A-DETAIL",
+    "A-CALLOUT"
+  ],
+  "materialHatchPreferences": {
+    "masonry": "STONE",
+    "concrete": "CONCRETE",
+    "timber": "TIMBER",
+    "insulation": "INSULATION",
+    "roofTile": "TERRACOTTA_TILE",
+    "slate": "SLATE"
+  },
+  "climateAssumptions": {
+    "climateZone": "mixed_temperate_mediterranean_advisory",
+    "rainfall": "regional exposure must be verified",
+    "overheating": "shading, thermal mass, and ventilation should be reviewed locally"
+  },
+  "localStyleDefaults": {
+    "source": "france_jurisdiction_pack",
+    "materials": [
+      "lime render",
+      "local stone",
+      "terracotta roof tile",
+      "natural slate",
+      "timber shutters"
+    ],
+    "facadeCues": [
+      "rendered wall planes",
+      "stone base or reveals",
+      "terracotta or slate roof response"
+    ],
+    "climateResponses": [
+      "solar shading",
+      "thermal mass",
+      "natural ventilation"
+    ],
+    "vernacularPackHints": []
+  },
+  "planningRegulatoryChecklist": {
+    "status": "preliminary_advisory",
+    "items": [
+      "planning/zoning context",
+      "site access",
+      "fire safety review",
+      "accessibility review",
+      "thermal/environmental review"
+    ],
+    "sourceNote": "Preliminary advisory checklist - verify with local authority and licensed professionals."
+  },
+  "structuralAssumptions": {
+    "basis": "preliminary France residential coordination assumptions",
+    "review": "licensed structural engineer review required"
+  },
+  "mepAssumptions": {
+    "basis": "preliminary France MEP coordination assumptions",
+    "review": "qualified MEP engineer review required"
+  },
+  "disclaimers": {
+    "preliminaryAdvisory": "Preliminary advisory checklist - verify with local authority and licensed professionals.",
+    "structural": "Informations structurelles preliminaires uniquement - revue par un ingenieur structure qualifie requise.",
+    "mep": "Informations MEP preliminaires uniquement - revue par un ingenieur MEP qualifie requise.",
+    "details": "Details de construction preliminaires uniquement - revue par l'architecte et les ingenieurs responsables requise."
+  },
+  "reviewRequirements": {
+    "architect": true,
+    "structuralEngineer": true,
+    "mepEngineer": true,
+    "localAuthority": true
+  },
+  "exportNamingConventions": {
+    "drawingPrefix": "A",
+    "technicalSetPrefix": "FR",
+    "fileSlug": "france"
+  }
+}

@@ -262,6 +262,14 @@ describe("CanonicalDrawingModel", () => {
         ctbFile: "archiai-monochrome.ctb",
       }),
     );
+    expect(model.jurisdictionPack).toEqual(
+      expect.objectContaining({
+        jurisdictionId: "uk",
+        countryCode: "GB",
+        version: "jurisdiction-pack-uk-v1",
+      }),
+    );
+    expect(model.sheetMetadata.titleBlockLabels.project).toBe("Project");
     expect(model.structuralModel).toBeUndefined();
     expect(model.mepModel).toBeUndefined();
     expect(model.detailLibrary).toBeUndefined();
@@ -303,6 +311,10 @@ describe("CanonicalDrawingModel", () => {
         geometryHash: model.geometryHash,
         sourceProjectGraphHash: model.sourceProjectGraphHash,
         jurisdiction: "uk",
+        titleBlockLabels: expect.objectContaining({
+          drawingNumber: "DRAWING_NUMBER",
+          title: "TITLE",
+        }),
         revision: "P01",
         status: "Preliminary",
         date: "undated",
@@ -366,6 +378,72 @@ describe("CanonicalDrawingModel", () => {
     );
     expect(model.drawingScales.map((scale) => scale.ratio)).toEqual(
       expect.arrayContaining(["1:500", "1:100", "1:20", "1:5"]),
+    );
+  });
+
+  test("applies France and Algeria jurisdiction labels while keeping CAD layer names DXF-safe", () => {
+    const franceModel = buildCanonicalDrawingModelFromCompiledProject({
+      compiledProject: {
+        ...fixtureCompiledProject(),
+        jurisdiction: "france",
+        locationData: { address: "Paris, France", countryCode: "FR" },
+      },
+    });
+    const algeriaModel = buildCanonicalDrawingModelFromCompiledProject({
+      compiledProject: {
+        ...fixtureCompiledProject(),
+        jurisdiction: "algeria",
+        locationData: { address: "Algiers, Algeria", countryCode: "DZ" },
+      },
+    });
+
+    expect(franceModel.jurisdictionPack).toEqual(
+      expect.objectContaining({
+        jurisdictionId: "france",
+        countryCode: "FR",
+      }),
+    );
+    expect(franceModel.paperSpace.sheets[0].titleBlockLabels).toEqual(
+      expect.objectContaining({
+        project: "Projet",
+        title: "TITRE",
+        scale: "ECHELLE",
+      }),
+    );
+    expect(algeriaModel.jurisdictionPack).toEqual(
+      expect.objectContaining({
+        jurisdictionId: "algeria",
+        countryCode: "DZ",
+        alternateTitleBlockLabels: expect.objectContaining({
+          ar: expect.objectContaining({ project: "المشروع" }),
+        }),
+      }),
+    );
+    franceModel.layers.concat(algeriaModel.layers).forEach((layer) => {
+      expect(layer.name).toMatch(/^[A-Z0-9-]+$/);
+    });
+  });
+
+  test("opt-in structural, MEP, and detail models include jurisdiction advisory disclaimers", () => {
+    const model = buildCanonicalDrawingModelFromCompiledProject({
+      compiledProject: {
+        ...fixtureCompiledProject(),
+        jurisdiction: "france",
+        locationData: { address: "Paris, France", countryCode: "FR" },
+      },
+      includeStructuralDrawings: true,
+      includeMepDrawings: true,
+      includeDetailDrawings: true,
+    });
+
+    expect(model.structuralModel.disclaimers.join(" ")).toMatch(
+      /ingenieur structure qualifie|verify with local authority/i,
+    );
+    expect(model.mepModel.disclaimers.join(" ")).toMatch(
+      /ingenieur MEP qualifie|verify with local authority/i,
+    );
+    expect(model.detailLibrary.disclaimers.join(" ")).toMatch(
+      /architecte et les ingenieurs|verify with local authority/i,
     );
   });
 
@@ -499,6 +577,10 @@ describe("CanonicalDrawingModel", () => {
     expect(result.checks.hasNativeViewports).toBe(true);
     expect(result.checks.hasPlotSettings).toBe(true);
     expect(result.checks.hasPlotStyleMetadata).toBe(true);
+    expect(result.checks.hasJurisdictionPack).toBe(true);
+    expect(result.checks.jurisdictionPackId).toBe("uk");
+    expect(result.checks.jurisdictionCountryCode).toBe("GB");
+    expect(result.checks.hasJurisdictionDisclaimer).toBe(true);
     expect(result.checks.hasStructuralModelHash).toBe(false);
     expect(result.checks.hasStructuralDisclaimer).toBe(false);
     expect(result.checks.structuralReviewRequired).toBe(false);

@@ -3,6 +3,7 @@ import {
   createStableId,
   roundMetric,
 } from "../cad/projectGeometrySchema.js";
+import { summarizeJurisdictionPack } from "../jurisdiction/jurisdictionPackService.js";
 
 export const CONSTRUCTION_DETAIL_LIBRARY_VERSION =
   "construction-detail-library-v1";
@@ -388,6 +389,7 @@ function buildConstructionDetail(definition, index, context) {
 export function buildConstructionDetailLibraryFromCompiledProject({
   compiledProject,
   jurisdiction = null,
+  jurisdictionPack = null,
 } = {}) {
   if (!compiledProject?.geometryHash) {
     throw new Error(
@@ -397,9 +399,19 @@ export function buildConstructionDetailLibraryFromCompiledProject({
   const context = {
     geometryHash: compiledProject.geometryHash,
     sourceProjectGraphHash: sourceProjectGraphHashOf(compiledProject),
-    jurisdiction: jurisdictionOf(compiledProject, jurisdiction),
+    jurisdiction:
+      jurisdictionPack?.jurisdictionId ||
+      jurisdictionOf(compiledProject, jurisdiction),
     projectContext: projectContext(compiledProject),
   };
+  const jurisdictionPackSummary = jurisdictionPack
+    ? summarizeJurisdictionPack(jurisdictionPack)
+    : null;
+  const disclaimers = [
+    DETAIL_REVIEW_DISCLAIMER,
+    jurisdictionPackSummary?.disclaimers?.details,
+    jurisdictionPackSummary?.disclaimers?.preliminaryAdvisory,
+  ].filter(Boolean);
   const details = DETAIL_DEFINITIONS.map((definition, index) =>
     buildConstructionDetail(definition, index, context),
   );
@@ -412,9 +424,11 @@ export function buildConstructionDetailLibraryFromCompiledProject({
     geometryHash: context.geometryHash,
     sourceProjectGraphHash: context.sourceProjectGraphHash,
     jurisdiction: context.jurisdiction,
+    jurisdictionPack: jurisdictionPackSummary,
+    jurisdictionPackVersion: jurisdictionPackSummary?.version || null,
     reviewRequired: true,
     disclaimer: DETAIL_REVIEW_DISCLAIMER,
-    disclaimers: [DETAIL_REVIEW_DISCLAIMER],
+    disclaimers,
     requiredDetailTypes: [...REQUIRED_CONSTRUCTION_DETAIL_TYPES],
     requiredCadLayers: [...REQUIRED_DETAIL_CAD_LAYERS],
     details,
@@ -542,10 +556,12 @@ export function buildConstructionDetailPanelsFromDetailLibrary(
 export function buildConstructionDetailPanelsFromCompiledProject({
   compiledProject,
   jurisdiction = null,
+  jurisdictionPack = null,
 } = {}) {
   const detailLibrary = buildConstructionDetailLibraryFromCompiledProject({
     compiledProject,
     jurisdiction,
+    jurisdictionPack,
   });
   return buildConstructionDetailPanelsFromDetailLibrary(detailLibrary);
 }

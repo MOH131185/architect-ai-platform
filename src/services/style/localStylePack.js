@@ -42,8 +42,12 @@ export function computeBlendWeights({
   portfolioStyleStrength = null,
 } = {}) {
   const local = clamp01(localBlendStrength, 0.5);
+  const hasExplicitPortfolioStyle =
+    portfolioStyleStrength !== null &&
+    portfolioStyleStrength !== undefined &&
+    portfolioStyleStrength !== "";
   const explicitPortfolioStyle = Number(portfolioStyleStrength);
-  if (Number.isFinite(explicitPortfolioStyle)) {
+  if (hasExplicitPortfolioStyle && Number.isFinite(explicitPortfolioStyle)) {
     const portfolioWeight = clamp01(explicitPortfolioStyle, 0.15);
     const remaining = Math.max(0, 1 - portfolioWeight);
     const localShareOfRemaining = 0.25 + 0.5 * local;
@@ -185,18 +189,36 @@ const CLIMATE_PALETTES_BY_RISK = Object.freeze({
   unknown: ["warm brick", "timber boarding", "standing seam roof"],
 });
 
-function localContextPalette(brief, site) {
+function jurisdictionLocalMaterials(jurisdictionPack = null) {
+  return Array.isArray(jurisdictionPack?.localStyleDefaults?.materials)
+    ? jurisdictionPack.localStyleDefaults.materials
+    : [];
+}
+
+function localContextPalette(brief, site, jurisdictionPack = null) {
   // UK regional vernacular pack (paper §4.3 transfer-by-curation): when a
   // resolved pack is present on the site, its materials lead the palette so
   // London-stucco, Edinburgh-tenement, etc. don't collapse to one nationwide
   // dwelling default.
-  const vernacularPack = site?.uk_vernacular_pack || null;
+  const vernacularHints =
+    jurisdictionPack &&
+    Array.isArray(jurisdictionPack?.localStyleDefaults?.vernacularPackHints)
+      ? jurisdictionPack.localStyleDefaults.vernacularPackHints
+      : null;
+  const useUkVernacular = vernacularHints
+    ? vernacularHints.includes("ukVernacularPacks")
+    : true;
+  const vernacularPack = useUkVernacular
+    ? site?.uk_vernacular_pack || null
+    : null;
   const vernacularMaterials = Array.isArray(vernacularPack?.materials)
     ? vernacularPack.materials
     : [];
-  const list =
-    LOCAL_PALETTES_BY_TYPE[brief.building_type] ||
-    LOCAL_PALETTES_BY_TYPE.community;
+  const jurisdictionMaterials = jurisdictionLocalMaterials(jurisdictionPack);
+  const list = jurisdictionMaterials.length
+    ? jurisdictionMaterials
+    : LOCAL_PALETTES_BY_TYPE[brief.building_type] ||
+      LOCAL_PALETTES_BY_TYPE.community;
   const explicitLocal =
     clamp01(brief?.user_intent?.local_material_strength, 0) > 0.9 &&
     Array.isArray(brief?.user_intent?.material_preferences)
@@ -291,10 +313,11 @@ export function computeMaterialPalette({
   brief,
   site,
   climate,
+  jurisdictionPack = null,
   paletteSize = 6,
 }) {
   const sourcePalettes = {
-    local: localContextPalette(brief, site),
+    local: localContextPalette(brief, site, jurisdictionPack),
     user: userPalette(brief),
     climate: climatePalette(climate),
     portfolio: portfolioPalette(brief),
@@ -343,10 +366,17 @@ export function buildLocalStylePackV2({
   brief,
   site,
   climate,
+  jurisdictionPack = null,
   createStableId,
   paletteSize = 6,
 } = {}) {
-  const blend = computeMaterialPalette({ brief, site, climate, paletteSize });
+  const blend = computeMaterialPalette({
+    brief,
+    site,
+    climate,
+    jurisdictionPack,
+    paletteSize,
+  });
   const styleKeywords = Array.isArray(brief?.user_intent?.style_keywords)
     ? brief.user_intent.style_keywords
     : [];
@@ -412,6 +442,22 @@ export function buildLocalStylePackV2({
         layout_archetype: null,
         conservation_typical: false,
       };
+  const jurisdictionEvidence = jurisdictionPack
+    ? {
+        source: "jurisdictionPack",
+        jurisdictionId: jurisdictionPack.jurisdictionId || null,
+        countryCode: jurisdictionPack.countryCode || null,
+        countryName: jurisdictionPack.countryName || null,
+        packVersion: jurisdictionPack.version || null,
+        defaultLanguage: jurisdictionPack.defaultLanguage || null,
+        materials: jurisdictionLocalMaterials(jurisdictionPack),
+        climateResponses: Array.isArray(
+          jurisdictionPack?.localStyleDefaults?.climateResponses,
+        )
+          ? [...jurisdictionPack.localStyleDefaults.climateResponses]
+          : [],
+      }
+    : null;
   return {
     style_pack_id: createStableId
       ? createStableId(
@@ -444,6 +490,8 @@ export function buildLocalStylePackV2({
     innovation_strength: brief?.user_intent?.innovation_strength ?? 0.5,
     data_quality: Array.isArray(site?.data_quality) ? site.data_quality : [],
     style_provenance: styleProvenance,
+    jurisdictionEvidence,
+    jurisdiction_style_defaults: jurisdictionPack?.localStyleDefaults || null,
   };
 }
 

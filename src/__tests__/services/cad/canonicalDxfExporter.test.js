@@ -139,6 +139,11 @@ describe("exportCanonicalDrawingModelToDXF", () => {
     expect(dxf).toContain("PLOT_STYLE_TABLE: archiai-monochrome.ctb");
     expect(dxf).toContain("PLOT_STYLE_METADATA: mode=ctb");
     expect(dxf).toContain("CTB_STB_MAPPING: layer-weight-to-ctb");
+    expect(dxf).toContain("JURISDICTION_ID: generic");
+    expect(dxf).toContain("JURISDICTION_COUNTRY_CODE: INT");
+    expect(dxf).toContain(
+      "JURISDICTION_PACK_VERSION: jurisdiction-pack-generic-v1",
+    );
     expect(dxf).toContain("GEOMETRY_HASH: geometry-hash-dxf-model-001");
     expect(dxf).toContain(
       "SOURCE_PROJECT_GRAPH_HASH: project-graph-hash-dxf-model-001",
@@ -177,6 +182,28 @@ describe("exportCanonicalDrawingModelToDXF", () => {
     expect(dxf).toContain("TITLE_BLOCK_A1");
     expect(dxf).toContain("DRAWING_NUMBER: A-100");
     expect(dxf).toContain("SCALE: 1:500");
+  });
+
+  test("emits jurisdiction metadata and localized title-block labels", () => {
+    const model = buildCanonicalDrawingModelFromCompiledProject({
+      compiledProject: {
+        ...fixtureCompiledProject(),
+        jurisdiction: "france",
+        locationData: { address: "Paris, France", countryCode: "FR" },
+      },
+    });
+    const dxf = exportCanonicalDrawingModelToDXF({
+      canonicalDrawingModel: model,
+    });
+
+    expect(dxf).toContain("JURISDICTION_ID: france");
+    expect(dxf).toContain("JURISDICTION_COUNTRY_CODE: FR");
+    expect(dxf).toContain(
+      "JURISDICTION_PACK_VERSION: jurisdiction-pack-france-v1",
+    );
+    expect(dxf).toContain("TITRE: Ground Plan");
+    expect(dxf).toContain("ECHELLE: 1:100");
+    expect(dxf).toContain("Preliminary advisory checklist");
   });
 
   test("keeps default DXF export architectural-only without structural opt-in", () => {
