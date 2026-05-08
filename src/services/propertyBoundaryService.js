@@ -30,6 +30,25 @@ export const SITE_BOUNDARY_PROXY_TIMEOUT_MS = 9000;
 export const INTELLIGENT_FALLBACK_BOUNDARY_SOURCE = "Intelligent Fallback";
 export const INTELLIGENT_FALLBACK_BOUNDARY_CONFIDENCE = 0.4;
 
+// Surfaced by `/api/site/boundary` when buildings + parcels both come back
+// empty AND a highway-density probe finds zero ways within 200 m of the
+// site. Indicates a remote / desert / unmapped location — the polygon
+// returned is a 50 m × 50 m latitude-corrected placeholder, not a real
+// boundary, so the UI renders it dashed amber and prompts the user to
+// draw a real boundary.
+export const REMOTE_PLACEHOLDER_BOUNDARY_SOURCE = "Remote-site placeholder";
+export const REMOTE_PLACEHOLDER_BOUNDARY_CONFIDENCE = 0.2;
+
+export function isRemoteSitePlaceholderResult(result = {}) {
+  if (!result) return false;
+  if (result.placeholder === true) return true;
+  if (result.metadata?.placeholder === true) return true;
+  const source = String(
+    result?.boundarySource || result?.source || result?.metadata?.source || "",
+  );
+  return /remote-site placeholder/i.test(source);
+}
+
 export function buildEstimatedBoundaryMetadata({
   source = INTELLIGENT_FALLBACK_BOUNDARY_SOURCE,
   confidence = INTELLIGENT_FALLBACK_BOUNDARY_CONFIDENCE,
@@ -223,6 +242,11 @@ export async function fetchSiteBoundaryFromProxy({
       boundarySource: json.source,
       estimateReason: json.estimateReason || null,
       estimatedOnly: json.boundaryAuthoritative !== true,
+      // Forward placeholder + recommendation fields from the proxy so the
+      // editor can render dashed amber and surface the "draw to refine"
+      // banner. Only set when the proxy explicitly flagged the polygon.
+      placeholder: json.placeholder === true ? true : undefined,
+      recommendation: json.recommendation || undefined,
       policyVersion: json.policyVersion || BOUNDARY_POLICY_VERSION,
       hash: json.hash || null,
       metadata: {

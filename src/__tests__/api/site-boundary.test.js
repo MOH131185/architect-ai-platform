@@ -218,6 +218,66 @@ describe("api/site/boundary — empty / fallback paths", () => {
     expect(r.body.metadata.reason).toBe("overpass_unavailable");
   });
 
+  test("returns Remote-site placeholder when buildings + parcels + highways all empty", async () => {
+    // Three Overpass calls in order: building, parcel, highway-density.
+    // All come back with zero elements → genuinely remote/desert site.
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(makeOverpassResponse([])) // building
+      .mockResolvedValueOnce(makeOverpassResponse([])) // parcel
+      .mockResolvedValueOnce(makeOverpassResponse([])); // highway density
+
+    const r = await resolveBoundaryRequest({
+      ...OVERPASS_ONLY,
+      lat: 22.0,
+      lng: 53.0, // Empty Quarter / Rub' al Khali — no OSM coverage
+      fetchImpl,
+      useCache: false,
+    });
+
+    expect(r.status).toBe(200);
+    expect(r.body.source).toBe("Remote-site placeholder");
+    expect(r.body.polygon).toHaveLength(4);
+    expect(r.body.boundaryAuthoritative).toBe(false);
+    expect(r.body.confidence).toBeCloseTo(0.2, 2);
+    expect(r.body.placeholder).toBe(true);
+    expect(r.body.recommendation).toBe("draw_manually");
+    expect(r.body.metadata.reason).toBe("remote_site_no_osm_evidence");
+    // 50 m × 50 m → ~2500 m². Allow a little wiggle room for latitude
+    // correction at lat=22°.
+    expect(r.body.areaM2).toBeGreaterThan(2400);
+    expect(r.body.areaM2).toBeLessThan(2600);
+    // All three Overpass probes must have been issued (building, parcel,
+    // highway density).
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  test("returns no_polygon_found (NOT placeholder) when only OSM parcels/buildings are empty but roads exist", async () => {
+    const highwayWay = {
+      type: "way",
+      id: 999,
+      tags: { highway: "primary" },
+    };
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(makeOverpassResponse([])) // building
+      .mockResolvedValueOnce(makeOverpassResponse([])) // parcel
+      .mockResolvedValueOnce(makeOverpassResponse([highwayWay])); // highway
+
+    const r = await resolveBoundaryRequest({
+      ...OVERPASS_ONLY,
+      lat: POINT.lat,
+      lng: POINT.lng,
+      fetchImpl,
+      useCache: false,
+    });
+
+    expect(r.status).toBe(200);
+    expect(r.body.polygon).toBeNull();
+    expect(r.body.metadata.reason).toBe("no_polygon_found");
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
   test("never claims authoritative for empty / errored responses", async () => {
     const fetchImpl = jest
       .fn()

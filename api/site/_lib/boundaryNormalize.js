@@ -31,8 +31,17 @@ export const BOUNDARY_SOURCE = Object.freeze({
   OVERPASS_BUILDING_CONTAINS: "openstreetmap-overpass-building-contains-point",
   OVERPASS_BUILDING_NEAREST: "openstreetmap-overpass-building-nearest",
   OVERPASS_PARCEL_CONTAINS: "openstreetmap-overpass-parcel-contains-point",
+  // Returned when no INSPIRE / Digital Land / Overpass parcel or building
+  // matches AND a follow-up Overpass highway-density probe also comes back
+  // empty within 200 m. Indicates a remote / desert / unmapped site —
+  // surfaced as a dashed-amber 50 m × 50 m placeholder so the user knows
+  // the polygon is a guess and they should refine it.
+  REMOTE_PLACEHOLDER: "Remote-site placeholder",
   NONE: null,
 });
+
+export const REMOTE_PLACEHOLDER_BOUNDARY_CONFIDENCE = 0.2;
+export const REMOTE_PLACEHOLDER_RECTANGLE_M = 50;
 
 const CONFIDENCE_BY_SOURCE = Object.freeze({
   // Digital Land's live API beats every other source because it is the
@@ -727,6 +736,76 @@ export function buildBoundaryResponse({
  * just on `polygon` being null. Returns a 200 from the endpoint, NOT a
  * 404, because "no boundary" is a valid (negative) result, not an error.
  */
+/**
+ * Build a "remote-site placeholder" response. Shape matches the canonical
+ * proxy response so the client only branches on `polygon` and `source`.
+ *
+ * Generates a `REMOTE_PLACEHOLDER_RECTANGLE_M`-square latitude-corrected
+ * rectangle around `(lat, lng)` so the editor has something to render
+ * without faking a real boundary. The combined `source` + low confidence
+ * + `placeholder: true` flag tell the UI to render dashed amber and show
+ * the "draw to refine" banner.
+ */
+export function buildRemoteSitePlaceholderResponse({
+  lat,
+  lng,
+  cached = false,
+  now = null,
+  queryRadiusM = 200,
+  rectangleM = REMOTE_PLACEHOLDER_RECTANGLE_M,
+} = {}) {
+  // Latitude-correct meters → degrees (mirrors the math used by
+  // generateRectangularLot in the legacy intelligent-fallback path).
+  const halfDepthDeg = rectangleM / 2 / 111320;
+  const halfWidthDeg =
+    rectangleM / 2 / (111320 * Math.cos((Number(lat) * Math.PI) / 180));
+  const polygon = [
+    { lat: Number(lat) + halfDepthDeg, lng: Number(lng) - halfWidthDeg },
+    { lat: Number(lat) + halfDepthDeg, lng: Number(lng) + halfWidthDeg },
+    { lat: Number(lat) - halfDepthDeg, lng: Number(lng) + halfWidthDeg },
+    { lat: Number(lat) - halfDepthDeg, lng: Number(lng) - halfWidthDeg },
+  ];
+
+  const measurements = buildBoundaryMeasurements(polygon);
+  const hash = hashBoundaryShape({
+    polygon,
+    source: BOUNDARY_SOURCE.REMOTE_PLACEHOLDER,
+  });
+
+  return {
+    schemaVersion: PROXY_RESPONSE_SCHEMA_VERSION,
+    policyVersion: BOUNDARY_POLICY_VERSION,
+    polygon,
+    source: BOUNDARY_SOURCE.REMOTE_PLACEHOLDER,
+    confidence: REMOTE_PLACEHOLDER_BOUNDARY_CONFIDENCE,
+    boundaryAuthoritative: false,
+    estimateReason: "remote_site_no_osm_evidence",
+    placeholder: true,
+    recommendation: "draw_manually",
+    areaM2: measurements.areaM2,
+    surfaceAreaM2: measurements.surfaceAreaM2,
+    perimeterM: measurements.perimeterM,
+    segments: measurements.segments,
+    angles: measurements.angles,
+    hash,
+    cached: Boolean(cached),
+    timestamp: now || new Date().toISOString(),
+    metadata: {
+      reason: "remote_site_no_osm_evidence",
+      overpassQueryRadiusM: queryRadiusM,
+      placeholder: true,
+      rectangleM,
+      siteMetrics: {
+        areaM2: measurements.areaM2,
+        surfaceAreaM2: measurements.surfaceAreaM2,
+        perimeterM: measurements.perimeterM,
+        segmentCount: measurements.segmentCount,
+        angleCount: measurements.angleCount,
+      },
+    },
+  };
+}
+
 export function buildEmptyResponse({
   reason = "no_polygon_found",
   cached = false,

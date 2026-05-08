@@ -195,13 +195,15 @@ describe("SiteBoundaryEditorV2 boundary measurements", () => {
     unmount();
   });
 
-  test("Edit mode instructions are visible", () => {
+  test("Edit mode instructions are visible immediately when polygon is present", () => {
+    // SELECT and EDIT collapsed into a single SELECTED state in
+    // feat/boundary-cad-input. When initialBoundaryPolygon is provided the
+    // editor lands in SELECTED + focused=true via the normalize effect, so
+    // the editing instructions render immediately — no toolbar click needed.
     const { container, unmount } = renderBoundaryEditor();
 
-    click(buttonByText(container, "Edit"));
-
     expect(container.textContent).toContain(
-      "Drag blue corner points to adjust the boundary",
+      "Drag blue corner points to reshape the boundary",
     );
     expect(container.textContent).toContain(
       "Click midpoint dots to add a corner",
@@ -209,6 +211,26 @@ describe("SiteBoundaryEditorV2 boundary measurements", () => {
     expect(container.textContent).toContain(
       "Select a corner and press Delete/Backspace to remove it",
     );
+    expect(container.textContent).toContain(
+      "Drag the polygon body to translate the whole site",
+    );
+
+    unmount();
+  });
+
+  test("clicking the focus toggle dims handles and hides instructions", () => {
+    const { container, unmount } = renderBoundaryEditor();
+    expect(container.textContent).toContain(
+      "Drag blue corner points to reshape the boundary",
+    );
+
+    click(buttonByText(container, "Editing"));
+
+    // Focus toggled off → instructions removed, toolbar copy flips to Focus.
+    expect(container.textContent).not.toContain(
+      "Drag blue corner points to reshape the boundary",
+    );
+    expect(container.textContent).toContain("Focus (E)");
 
     unmount();
   });
@@ -228,6 +250,26 @@ describe("SiteBoundaryEditorV2 boundary measurements", () => {
     expect(container.textContent).toContain(
       "Type a number to place the next corner at exact distance",
     );
+
+    unmount();
+  });
+
+  test("remote-site placeholder banner renders when boundarySource matches", () => {
+    const { container, unmount } = renderBoundaryEditor({
+      boundarySource: "Remote-site placeholder",
+    });
+
+    const banner = container.querySelector(
+      '[data-testid="boundary-remote-placeholder-banner"]',
+    );
+    expect(banner).toBeTruthy();
+    expect(container.textContent).toContain("No parcel data found");
+    expect(container.textContent).toContain("50 m × 50 m placeholder");
+    expect(
+      container.querySelector(
+        '[data-testid="boundary-remote-placeholder-draw"]',
+      ),
+    ).toBeTruthy();
 
     unmount();
   });

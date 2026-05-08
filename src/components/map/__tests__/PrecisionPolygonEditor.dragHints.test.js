@@ -38,6 +38,7 @@ function createMaps() {
       this.opts = opts;
       this.position = opts.position || null;
       this.icon = opts.icon || null;
+      this.label = opts.label || null;
       this.map = opts.map || null;
       this._listeners = new Map();
       allMarkers.add(this);
@@ -47,6 +48,12 @@ function createMaps() {
     }
     setIcon(icon) {
       this.icon = icon;
+    }
+    setLabel(label) {
+      this.label = label;
+    }
+    getLabel() {
+      return this.label;
     }
     setMap(map) {
       this.map = map;
@@ -82,6 +89,9 @@ function createMaps() {
     setPath(p) {
       this.path = p;
     }
+    setOptions(o) {
+      this.opts = { ...this.opts, ...o };
+    }
     setMap(map) {
       this.map = map;
     }
@@ -90,6 +100,17 @@ function createMaps() {
       if (!this._listeners.has(event)) this._listeners.set(event, []);
       this._listeners.get(event).push(ref);
       return ref;
+    }
+    fire(event, payload) {
+      const arr = this._listeners.get(event) || [];
+      arr.slice().forEach((ref) => ref.__handler(payload));
+    }
+  }
+
+  class Size {
+    constructor(w, h) {
+      this.width = w;
+      this.height = h;
     }
   }
 
@@ -138,6 +159,7 @@ function createMaps() {
     const handlers = new Map();
     return {
       __handlers: handlers,
+      __opts: {},
       addListener(event, handler) {
         const ref = { __event: event, __handler: handler };
         if (!handlers.has(event)) handlers.set(event, []);
@@ -145,7 +167,16 @@ function createMaps() {
         return ref;
       },
       addListenerOnce: () => ({}),
-      setOptions: () => {},
+      setOptions(o) {
+        this.__opts = { ...this.__opts, ...o };
+      },
+      get(key) {
+        return this.__opts[key];
+      },
+      fire(event, payload) {
+        const arr = handlers.get(event) || [];
+        arr.slice().forEach((ref) => ref.__handler(payload));
+      },
       getZoom: () => 18,
       getDiv: () => ({ focus: () => {} }),
     };
@@ -161,10 +192,14 @@ function createMaps() {
         OverlayView,
         Point,
         LatLng,
+        Size,
         SymbolPath: { CIRCLE: "CIRCLE" },
         event: {
           addListenerOnce: () => ({}),
           removeListener: () => {},
+          addListener(target, event, handler) {
+            return target.addListener(event, handler);
+          },
         },
       },
     },
@@ -179,7 +214,7 @@ const SQUARE = [
 ];
 
 describe("PrecisionPolygonEditor drag hints", () => {
-  test("creates a hit-shadow marker per visible marker (Guardrail 6 pairing)", () => {
+  test("creates a hit-shadow marker per visible marker plus edge labels", () => {
     const { google, createMap, allMarkers } = createMaps();
     const map = createMap();
     const editor = createPrecisionPolygonEditor(map, google);
@@ -187,8 +222,8 @@ describe("PrecisionPolygonEditor drag hints", () => {
     editor.enable();
 
     // 4 vertices × 2 markers each (visible + hit) = 8 markers, plus the
-    // 4 midpoint markers between them = 12 total.
-    expect(allMarkers.size).toBe(12);
+    // 4 midpoint markers between them = 12, plus 4 edge-length labels = 16.
+    expect(allMarkers.size).toBe(16);
 
     editor.destroy();
 
@@ -308,5 +343,222 @@ describe("PrecisionPolygonEditor drag hints", () => {
     // Final emits ensure the host overlay can hide its tooltip + badge.
     expect(snapHints[snapHints.length - 1]).toBeNull();
     expect(dragSamples[dragSamples.length - 1]).toBeNull();
+  });
+});
+
+describe("PrecisionPolygonEditor focused state", () => {
+  test("focused: false renders polygon clickable but creates no markers", () => {
+    const { google, createMap, allMarkers } = createMaps();
+    const map = createMap();
+    const editor = createPrecisionPolygonEditor(map, google, {
+      focused: false,
+    });
+    editor.setVertices(SQUARE);
+    editor.enable();
+
+    // Polygon overlay still exists and is clickable; vertex/midpoint/edge
+    // labels are all suppressed.
+    expect(allMarkers.size).toBe(0);
+    expect(editor.polygonOverlay).toBeDefined();
+    expect(editor.polygonOverlay.opts.clickable).toBe(true);
+
+    editor.destroy();
+  });
+
+  test("clicking the polygon body when latent fires onPolygonBodyClick", () => {
+    const { google, createMap } = createMaps();
+    const map = createMap();
+    const calls = [];
+    const editor = createPrecisionPolygonEditor(map, google, {
+      focused: false,
+      onPolygonBodyClick: (latLng) => calls.push(latLng),
+    });
+    editor.setVertices(SQUARE);
+    editor.enable();
+
+    editor.polygonOverlay.fire("click", {
+      latLng: new google.maps.LatLng(37.705, -122.395),
+    });
+
+    expect(calls.length).toBe(1);
+    expect(typeof calls[0].lat).toBe("function");
+    editor.destroy();
+  });
+
+  test("setFocused(true) after construction creates markers via _refresh", () => {
+    const { google, createMap, allMarkers } = createMaps();
+    const map = createMap();
+    const editor = createPrecisionPolygonEditor(map, google, {
+      focused: false,
+    });
+    editor.setVertices(SQUARE);
+    editor.enable();
+    expect(allMarkers.size).toBe(0);
+
+    editor.setFocused(true);
+    // 8 paired vertex markers + 4 midpoints + 4 edge labels = 16.
+    expect(allMarkers.size).toBe(16);
+
+    editor.destroy();
+  });
+
+  test("placeholder: true suppresses vertex/midpoint markers", () => {
+    const { google, createMap, allMarkers } = createMaps();
+    const map = createMap();
+    const editor = createPrecisionPolygonEditor(map, google, {
+      placeholder: true,
+    });
+    editor.setVertices(SQUARE);
+    editor.enable();
+    // Placeholder suppresses all markers (vertex + midpoint + edge labels).
+    expect(allMarkers.size).toBe(0);
+    editor.destroy();
+  });
+});
+
+describe("PrecisionPolygonEditor edge labels", () => {
+  test("creates one edge label per edge with a length string", () => {
+    const { google, createMap } = createMaps();
+    const map = createMap();
+    const editor = createPrecisionPolygonEditor(map, google);
+    editor.setVertices(SQUARE);
+    editor.enable();
+
+    expect(editor.edgeLabelMarkers.length).toBe(4);
+    editor.edgeLabelMarkers.forEach((m) => {
+      expect(m).toBeDefined();
+      expect(m.label?.text).toEqual(expect.any(String));
+      expect(m.label.text.length).toBeGreaterThan(0);
+    });
+
+    editor.destroy();
+  });
+
+  test("showEdgeLabels: false suppresses edge labels", () => {
+    const { google, createMap, allMarkers } = createMaps();
+    const map = createMap();
+    const editor = createPrecisionPolygonEditor(map, google, {
+      showEdgeLabels: false,
+    });
+    editor.setVertices(SQUARE);
+    editor.enable();
+    // 4 visible + 4 hit + 4 midpoint = 12 (no edge labels).
+    expect(allMarkers.size).toBe(12);
+    expect(editor.edgeLabelMarkers.length).toBe(0);
+    editor.destroy();
+  });
+
+  test("dragging a vertex updates the two adjacent edge labels", () => {
+    const { google, createMap } = createMaps();
+    const map = createMap();
+    const editor = createPrecisionPolygonEditor(map, google);
+    editor.setVertices(SQUARE);
+    editor.enable();
+
+    const beforeIncoming = editor.edgeLabelMarkers[0].label.text;
+    const beforeOutgoing = editor.edgeLabelMarkers[1].label.text;
+
+    const pair = editor.vertexMarkers[1];
+    pair.hit.fire("dragstart");
+    pair.hit.fire("drag", {
+      latLng: new google.maps.LatLng(37.72, -122.398),
+    });
+    flushRAF();
+
+    expect(editor.edgeLabelMarkers[0].label.text).not.toBe(beforeIncoming);
+    expect(editor.edgeLabelMarkers[1].label.text).not.toBe(beforeOutgoing);
+
+    editor.destroy();
+  });
+});
+
+describe("PrecisionPolygonEditor body translate", () => {
+  test("polygon body mousedown + map mousemove translates every vertex", () => {
+    const { google, createMap } = createMaps();
+    const map = createMap();
+    const polyChanges = [];
+    const editor = createPrecisionPolygonEditor(map, google, {
+      onPolygonChange: (verts) => polyChanges.push(verts),
+    });
+    editor.setVertices(SQUARE);
+    editor.enable();
+    const original = editor.getVertices();
+
+    editor.polygonOverlay.fire("mousedown", {
+      latLng: new google.maps.LatLng(37.705, -122.395),
+    });
+    map.fire("mousemove", {
+      latLng: new google.maps.LatLng(37.715, -122.385),
+    });
+    flushRAF();
+
+    // Every vertex should have moved by the same delta.
+    const after = editor.getVertices();
+    const dLng = after[0][0] - original[0][0];
+    const dLat = after[0][1] - original[0][1];
+    expect(dLng).toBeCloseTo(0.01, 5);
+    expect(dLat).toBeCloseTo(0.01, 5);
+    after.forEach((v, i) => {
+      expect(v[0] - original[i][0]).toBeCloseTo(dLng, 5);
+      expect(v[1] - original[i][1]).toBeCloseTo(dLat, 5);
+    });
+
+    map.fire("mouseup");
+    expect(polyChanges.length).toBe(1);
+
+    editor.destroy();
+  });
+
+  test("Shift held during translate constrains delta to one axis", () => {
+    const { google, createMap } = createMaps();
+    const map = createMap();
+    const editor = createPrecisionPolygonEditor(map, google);
+    editor.setVertices(SQUARE);
+    editor.enable();
+    const original = editor.getVertices();
+
+    editor.shiftPressed = true;
+    editor.polygonOverlay.fire("mousedown", {
+      latLng: new google.maps.LatLng(37.705, -122.395),
+    });
+    // dLat = 0.001, dLng = 0.005 → |dLng| dominates, so dLat should be zeroed.
+    map.fire("mousemove", {
+      latLng: new google.maps.LatLng(37.706, -122.39),
+    });
+    flushRAF();
+
+    const after = editor.getVertices();
+    expect(after[0][0]).not.toBeCloseTo(original[0][0], 6);
+    expect(after[0][1]).toBeCloseTo(original[0][1], 6);
+
+    map.fire("mouseup");
+    editor.destroy();
+  });
+
+  test("body click after translate does NOT insert a stray vertex", () => {
+    const { google, createMap } = createMaps();
+    const map = createMap();
+    const editor = createPrecisionPolygonEditor(map, google);
+    editor.setVertices(SQUARE);
+    editor.enable();
+    const before = editor.getVertices().length;
+
+    editor.polygonOverlay.fire("mousedown", {
+      latLng: new google.maps.LatLng(37.705, -122.395),
+    });
+    map.fire("mousemove", {
+      latLng: new google.maps.LatLng(37.706, -122.394),
+    });
+    flushRAF();
+    map.fire("mouseup");
+
+    // Trailing click that fires immediately after mouseup must be ignored.
+    editor.polygonOverlay.fire("click", {
+      latLng: new google.maps.LatLng(37.706, -122.394),
+    });
+
+    expect(editor.getVertices().length).toBe(before);
+
+    editor.destroy();
   });
 });

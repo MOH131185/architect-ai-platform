@@ -41,6 +41,7 @@
 import { setCorsHeaders, handlePreflight } from "../_shared/cors.js";
 import {
   fetchBuildingAndParcel,
+  fetchHighwayDensity,
   OverpassRateLimitError,
   OverpassTimeoutError,
 } from "./_lib/overpassClient.js";
@@ -48,6 +49,7 @@ import {
   BOUNDARY_POLICY_VERSION,
   buildBoundaryResponse,
   buildEmptyResponse,
+  buildRemoteSitePlaceholderResponse,
   selectBestBoundaryCandidate,
 } from "./_lib/boundaryNormalize.js";
 import { fetchInspireParcelsNear } from "./_lib/inspirePolygonsClient.js";
@@ -294,11 +296,43 @@ export async function resolveBoundaryRequest({
   });
 
   if (!best) {
-    body = buildEmptyResponse({
-      reason: "no_polygon_found",
-      cached: false,
-      queryRadiusM: buildingRadiusM,
-    });
+    // No INSPIRE / Digital Land / Overpass parcel or building match. Probe
+    // highway density before declaring "no polygon" so we can distinguish
+    // "rural addr but mapped" (don't flag) from "true desert / unmapped"
+    // (flag as remote-site placeholder so the editor renders dashed amber
+    // and prompts the user to draw). Skip the probe if Overpass already
+    // failed — re-running it would just hit the same error.
+    let highwayCount = null;
+    if (
+      !overpassError &&
+      buildingElements.length === 0 &&
+      parcelElements.length === 0
+    ) {
+      try {
+        highwayCount = await fetchHighwayDensity({
+          lat,
+          lng,
+          radiusM: 200,
+          fetchImpl,
+        });
+      } catch (_err) {
+        highwayCount = null;
+      }
+    }
+    if (highwayCount === 0) {
+      body = buildRemoteSitePlaceholderResponse({
+        lat,
+        lng,
+        cached: false,
+        queryRadiusM: 200,
+      });
+    } else {
+      body = buildEmptyResponse({
+        reason: "no_polygon_found",
+        cached: false,
+        queryRadiusM: buildingRadiusM,
+      });
+    }
   } else {
     body = buildBoundaryResponse({
       polygon: best.polygon,

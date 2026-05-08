@@ -184,6 +184,52 @@ async function safeText(response) {
 }
 
 /**
+ * Build the Overpass query for highway count near `(lat, lng)`. Used as
+ * a "non-habitat" probe — when buildings + parcels both come back empty
+ * AND there are zero highways within the radius, the site is treated
+ * as a remote/desert location and the proxy returns a dashed-amber
+ * placeholder polygon instead of letting the browser fall through to
+ * the synthetic intelligent-fallback shape.
+ */
+export function buildHighwayDensityQuery({ lat, lng, radiusM = 200 }) {
+  return `[out:json][timeout:25];
+(
+  way["highway"](around:${radiusM},${lat},${lng});
+);
+out ids;
+`;
+}
+
+/**
+ * Run the highway-density probe. Returns the count of highway ways
+ * within the radius. On any error returns null (caller treats null as
+ * "do not assume remote site" — never falsely flag desert when the
+ * Overpass API misbehaved).
+ */
+export async function fetchHighwayDensity({
+  lat,
+  lng,
+  radiusM = 200,
+  url,
+  timeoutMs,
+  fetchImpl,
+  signal,
+}) {
+  try {
+    const result = await runOverpassQuery({
+      query: buildHighwayDensityQuery({ lat, lng, radiusM }),
+      url,
+      timeoutMs,
+      fetchImpl,
+      signal,
+    });
+    return Array.isArray(result?.elements) ? result.elements.length : null;
+  } catch (_err) {
+    return null;
+  }
+}
+
+/**
  * Convenience wrapper: run building + parcel queries in parallel.
  * Either query failing independently does NOT throw — the caller can
  * still attempt to use whichever set of elements came back. Only when
