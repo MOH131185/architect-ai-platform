@@ -8,6 +8,8 @@ export const ARTIFACT_STORAGE_EXPIRED = "ARTIFACT_STORAGE_EXPIRED";
 export const ARTIFACT_STORAGE_SIGNED_URL_UNSUPPORTED =
   "ARTIFACT_STORAGE_SIGNED_URL_UNSUPPORTED";
 export const DEFAULT_SIGNED_URL_EXPIRES_SECONDS = 15 * 60;
+export const DEFAULT_S3_REGION = "us-east-1";
+export const ARTIFACT_STORAGE_KEY_PREFIX = "artifact-packages";
 
 const MEMORY_STATE_KEY = "__archiaiArtifactPackageStorage";
 
@@ -58,11 +60,106 @@ function sanitizePackageId(value) {
     .replace(/^-|-$/g, "");
 }
 
+function sanitizeStorageSegment(value, fallback = "unknown") {
+  const cleaned = String(value || fallback)
+    .trim()
+    .replace(/[^a-zA-Z0-9_.-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return cleaned || fallback;
+}
+
+export function buildArtifactStorageKey({ manifest = {}, packageId } = {}) {
+  const resolvedPackageId = sanitizeStorageSegment(
+    packageId || manifest.packageId,
+    "package",
+  );
+  const projectId = sanitizeStorageSegment(manifest.projectId, "project");
+  const packageHash = sanitizeStorageSegment(manifest.packageHash, "hash");
+  return `${ARTIFACT_STORAGE_KEY_PREFIX}/${projectId}/${resolvedPackageId}/${packageHash}.zip`;
+}
+
+function sidecarKeys(storageKey) {
+  return {
+    manifestKey: `${storageKey}.manifest.json`,
+    metadataKey: `${storageKey}.metadata.json`,
+    indexKey: `${ARTIFACT_STORAGE_KEY_PREFIX}/_index/${sanitizeStorageSegment(
+      storageKey.split("/").slice(-2, -1)[0],
+      "package",
+    )}.json`,
+  };
+}
+
 function nowDate(now) {
   if (now instanceof Date) return now;
   if (typeof now === "function") return nowDate(now());
   if (typeof now === "string" || typeof now === "number") return new Date(now);
   return new Date();
+}
+
+function numberOrNull(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function booleanFromEnv(value) {
+  if (typeof value === "boolean") return value;
+  return ["1", "true", "yes", "on"].includes(String(value || "").toLowerCase());
+}
+
+export function resolveRetentionDays(
+  env = globalThis.process?.env || {},
+  options = {},
+) {
+  const configured =
+    options.retentionDays ??
+    env.ARTIFACT_RETENTION_DAYS ??
+    env.ARTIFACT_PACKAGE_RETENTION_DAYS ??
+    null;
+  const days = numberOrNull(configured);
+  return days != null && days > 0 ? days : null;
+}
+
+export function computeRetentionExpiresAt({ createdAt, retentionDays } = {}) {
+  const days = numberOrNull(retentionDays);
+  if (days == null || days <= 0) return null;
+  const start = nowDate(createdAt);
+  return new Date(start.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function buildObjectMetadata({
+  manifest = {},
+  metadata = {},
+  now,
+  retentionDays,
+}) {
+  const createdAt = metadata.createdAt || nowDate(now).toISOString();
+  const expiresAt =
+    metadata.expiresAt ||
+    computeRetentionExpiresAt({ createdAt, retentionDays }) ||
+    null;
+  const artifacts = Array.isArray(manifest.artifacts) ? manifest.artifacts : [];
+  const sourceGaps = Array.isArray(manifest.sourceGaps)
+    ? manifest.sourceGaps
+    : [];
+  return {
+    packageId: manifest.packageId || metadata.packageId || null,
+    packageHash: manifest.packageHash || metadata.packageHash || null,
+    projectId: manifest.projectId || metadata.projectId || null,
+    projectGraphId: manifest.projectGraphId || metadata.projectGraphId || null,
+    userId: metadata.userId || null,
+    geometryHash: manifest.geometryHash || null,
+    visualManifestHash: manifest.visualManifestHash || null,
+    styleBlendManifestHash: manifest.styleBlendManifestHash || null,
+    jurisdictionId: manifest.jurisdictionId || null,
+    createdAt,
+    expiresAt,
+    retentionDays: retentionDays || null,
+    qaStatus: manifest.qaSummary?.status || null,
+    artifactCount: artifacts.length,
+    sourceGapCount: sourceGaps.length,
+    projectName: metadata.projectName || null,
+  };
 }
 
 function publicBaseUrl(value) {
@@ -105,19 +202,28 @@ function storageRecord({
   storageKey,
   adapterName,
   now,
+  retentionDays = null,
 }) {
   const bytes = cloneBytes(zipBytes);
   const storedAt = nowDate(now).toISOString();
+  const objectMetadata = buildObjectMetadata({
+    manifest,
+    metadata,
+    now: storedAt,
+    retentionDays,
+  });
   return {
     packageId,
     packageHash: manifest?.packageHash || metadata?.packageHash || null,
     manifest: cloneJson(manifest),
-    metadata: cloneJson(metadata || {}),
+    metadata: cloneJson({ ...(metadata || {}), ...objectMetadata }),
     zipBytes: bytes,
     byteLength: bytes.byteLength,
     storageKey,
     adapterName,
     storedAt,
+    expiresAt: objectMetadata.expiresAt,
+    retentionDays: objectMetadata.retentionDays,
     status: "stored",
   };
 }
@@ -156,6 +262,7 @@ export function createInMemoryArtifactStorageAdapter(options = {}) {
     options.signedUrlBaseUrl || "/api/project/export/artifact-package";
   const adapterName = options.adapterName || "memory";
   const now = options.now;
+  const retentionDays = resolveRetentionDays(options.env, options);
 
   const adapterCapabilities = Object.freeze({
     adapter: adapterName,
@@ -163,6 +270,7 @@ export function createInMemoryArtifactStorageAdapter(options = {}) {
     signedUrls: Boolean(signedUrlSecret),
     delete: true,
     list: true,
+    retention: true,
   });
 
   return {
@@ -178,9 +286,10 @@ export function createInMemoryArtifactStorageAdapter(options = {}) {
         zipBytes,
         manifest,
         metadata,
-        storageKey: `memory://${safeId}.zip`,
+        storageKey: buildArtifactStorageKey({ manifest, packageId: safeId }),
         adapterName,
         now,
+        retentionDays,
       });
       state.packages.set(safeId, record);
       return visibleStorageRecord(record);
@@ -291,30 +400,57 @@ export function createFilesystemArtifactStorageAdapter(options = {}) {
     options.signedUrlBaseUrl || "/api/project/export/artifact-package";
   const adapterName = "filesystem";
   const now = options.now;
+  const retentionDays = resolveRetentionDays(options.env, options);
   const adapterCapabilities = Object.freeze({
     adapter: adapterName,
     persistent: true,
     signedUrls: Boolean(signedUrlSecret),
     delete: true,
     list: true,
+    retention: true,
   });
 
-  async function pathsFor(packageId) {
+  async function pathsFor(packageId, manifest = null) {
     const path = await import("node:path");
     const safeId = sanitizePackageId(packageId);
-    const packageDir = path.join(rootDir, "packages");
+    const storageKey = manifest
+      ? buildArtifactStorageKey({ manifest, packageId: safeId })
+      : `${ARTIFACT_STORAGE_KEY_PREFIX}/_legacy/${safeId}.zip`;
+    const packageDir = path.join(rootDir, path.dirname(storageKey));
     await ensureDir(packageDir);
+    const { indexKey } = sidecarKeys(storageKey);
+    const indexPath = path.join(rootDir, indexKey);
+    await ensureDir(path.dirname(indexPath));
     return {
       safeId,
-      zipPath: path.join(packageDir, `${safeId}.zip`),
-      manifestPath: path.join(packageDir, `${safeId}.manifest.json`),
-      metadataPath: path.join(packageDir, `${safeId}.metadata.json`),
+      storageKey,
+      zipPath: path.join(rootDir, storageKey),
+      manifestPath: path.join(rootDir, `${storageKey}.manifest.json`),
+      metadataPath: path.join(rootDir, `${storageKey}.metadata.json`),
+      indexPath,
     };
   }
 
   async function readRecord(packageId) {
     const fs = await import("node:fs/promises");
-    const paths = await pathsFor(packageId);
+    const path = await import("node:path");
+    const safeId = sanitizePackageId(packageId);
+    const indexPath = path.join(
+      rootDir,
+      `${ARTIFACT_STORAGE_KEY_PREFIX}/_index/${safeId}.json`,
+    );
+    if (!(await fileExists(indexPath))) {
+      return null;
+    }
+    const index = JSON.parse(await fs.readFile(indexPath, "utf8"));
+    const paths = {
+      safeId,
+      storageKey: index.storageKey,
+      zipPath: path.join(rootDir, index.storageKey),
+      manifestPath: path.join(rootDir, `${index.storageKey}.manifest.json`),
+      metadataPath: path.join(rootDir, `${index.storageKey}.metadata.json`),
+      indexPath,
+    };
     if (!(await fileExists(paths.manifestPath))) {
       return null;
     }
@@ -336,11 +472,13 @@ export function createFilesystemArtifactStorageAdapter(options = {}) {
       metadata,
       zipBytes,
       byteLength: zipBytes?.byteLength || metadata.byteLength || 0,
-      storageKey: paths.zipPath,
+      storageKey: paths.storageKey,
       adapterName,
       storedAt: metadata.storedAt || null,
       status: metadata.status || "stored",
       deletedAt: metadata.deletedAt || null,
+      expiresAt: metadata.expiresAt || null,
+      retentionDays: metadata.retentionDays || null,
     };
   }
 
@@ -353,15 +491,16 @@ export function createFilesystemArtifactStorageAdapter(options = {}) {
       if (!safeId) {
         throw new Error("packageId is required to store artifact package");
       }
-      const paths = await pathsFor(safeId);
+      const paths = await pathsFor(safeId, manifest);
       const record = storageRecord({
         packageId: safeId,
         zipBytes,
         manifest,
         metadata,
-        storageKey: paths.zipPath,
+        storageKey: paths.storageKey,
         adapterName,
         now,
+        retentionDays,
       });
       await Promise.all([
         fs.writeFile(paths.zipPath, bytesToBuffer(record.zipBytes)),
@@ -376,6 +515,21 @@ export function createFilesystemArtifactStorageAdapter(options = {}) {
               ...record.metadata,
               storedAt: record.storedAt,
               byteLength: record.byteLength,
+              status: record.status,
+              storageKey: record.storageKey,
+            },
+            null,
+            2,
+          )}\n`,
+        ),
+        fs.writeFile(
+          paths.indexPath,
+          `${JSON.stringify(
+            {
+              packageId: safeId,
+              storageKey: record.storageKey,
+              projectId: record.manifest?.projectId || null,
+              packageHash: record.packageHash,
               status: record.status,
             },
             null,
@@ -430,11 +584,11 @@ export function createFilesystemArtifactStorageAdapter(options = {}) {
 
     async deleteArtifactPackage({ packageId }) {
       const fs = await import("node:fs/promises");
-      const paths = await pathsFor(packageId);
       const existing = await readRecord(packageId);
       if (!existing) {
         return { deleted: false, code: ARTIFACT_STORAGE_NOT_FOUND };
       }
+      const paths = await pathsFor(packageId, existing.manifest);
       const deleted = deletedRecord(paths.safeId, existing, now);
       await fs.writeFile(
         paths.metadataPath,
@@ -445,6 +599,21 @@ export function createFilesystemArtifactStorageAdapter(options = {}) {
             deletedAt: deleted.deletedAt,
             storedAt: existing.storedAt,
             byteLength: existing.byteLength,
+            storageKey: existing.storageKey,
+          },
+          null,
+          2,
+        )}\n`,
+      );
+      await fs.writeFile(
+        paths.indexPath,
+        `${JSON.stringify(
+          {
+            packageId: paths.safeId,
+            storageKey: existing.storageKey,
+            projectId: existing.manifest?.projectId || null,
+            packageHash: existing.packageHash,
+            status: "deleted",
           },
           null,
           2,
@@ -456,15 +625,18 @@ export function createFilesystemArtifactStorageAdapter(options = {}) {
     async listArtifactPackages({ projectId, userId } = {}) {
       const fs = await import("node:fs/promises");
       const path = await import("node:path");
-      const packageDir = path.join(rootDir, "packages");
-      if (!(await fileExists(packageDir))) return [];
-      const fileNames = await fs.readdir(packageDir);
-      const manifestNames = fileNames.filter((name) =>
-        name.endsWith(".manifest.json"),
+      const indexDir = path.join(
+        rootDir,
+        ARTIFACT_STORAGE_KEY_PREFIX,
+        "_index",
+      );
+      if (!(await fileExists(indexDir))) return [];
+      const indexNames = (await fs.readdir(indexDir)).filter((name) =>
+        name.endsWith(".json"),
       );
       const records = [];
-      for (const name of manifestNames) {
-        const packageId = name.replace(/\.manifest\.json$/, "");
+      for (const name of indexNames) {
+        const packageId = name.replace(/\.json$/, "");
         const record = await readRecord(packageId);
         if (!record || record.status === "deleted") continue;
         if (projectId && record.manifest?.projectId !== projectId) continue;
@@ -480,8 +652,440 @@ export function createFilesystemArtifactStorageAdapter(options = {}) {
   };
 }
 
+function s3EncodePath(key) {
+  return String(key)
+    .split("/")
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+}
+
+function s3EndpointUrl({ endpoint, region, bucket, key, forcePathStyle }) {
+  const base = endpoint
+    ? String(endpoint).replace(/\/+$/, "")
+    : `https://s3.${region || DEFAULT_S3_REGION}.amazonaws.com`;
+  if (forcePathStyle) {
+    return `${base}/${encodeURIComponent(bucket)}/${s3EncodePath(key)}`;
+  }
+  const url = new URL(base);
+  url.hostname = `${bucket}.${url.hostname}`;
+  url.pathname = `/${s3EncodePath(key)}`;
+  return url.toString();
+}
+
+async function sha256Hex(value) {
+  const { createHash } = await import("node:crypto");
+  return createHash("sha256").update(value).digest("hex");
+}
+
+async function hmac(key, value, encoding = undefined) {
+  const { createHmac } = await import("node:crypto");
+  return createHmac("sha256", key).update(value).digest(encoding);
+}
+
+function amzDate(now) {
+  return nowDate(now)
+    .toISOString()
+    .replace(/[:-]|\.\d{3}/g, "");
+}
+
+function dateStamp(amzDateValue) {
+  return String(amzDateValue).slice(0, 8);
+}
+
+function canonicalQuery(params = {}) {
+  return Object.entries(params)
+    .filter(([, value]) => value !== undefined && value !== null)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(
+      ([key, value]) =>
+        `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`,
+    )
+    .join("&");
+}
+
+function canonicalHeaders(headers = {}) {
+  const entries = Object.entries(headers)
+    .map(([key, value]) => [key.toLowerCase(), String(value).trim()])
+    .sort(([a], [b]) => a.localeCompare(b));
+  return {
+    canonical: `${entries.map(([key, value]) => `${key}:${value}\n`).join("")}`,
+    signedHeaders: entries.map(([key]) => key).join(";"),
+  };
+}
+
+async function s3SigningKey({ secretAccessKey, date, region }) {
+  const kDate = await hmac(`AWS4${secretAccessKey}`, date);
+  const kRegion = await hmac(kDate, region);
+  const kService = await hmac(kRegion, "s3");
+  return hmac(kService, "aws4_request");
+}
+
+async function signS3Request({
+  method,
+  url,
+  headers = {},
+  query = {},
+  bodyBytes = new Uint8Array(),
+  accessKeyId,
+  secretAccessKey,
+  sessionToken,
+  region,
+  now,
+  presign = false,
+  expiresInSeconds = DEFAULT_SIGNED_URL_EXPIRES_SECONDS,
+}) {
+  const requestUrl = new URL(url);
+  const requestDate = amzDate(now);
+  const date = dateStamp(requestDate);
+  const credentialScope = `${date}/${region}/s3/aws4_request`;
+  const host = requestUrl.host;
+  const payloadHash = presign
+    ? "UNSIGNED-PAYLOAD"
+    : await sha256Hex(bytesToBuffer(bodyBytes));
+  const signedHeadersSource = {
+    host,
+    ...(presign ? {} : { "x-amz-content-sha256": payloadHash }),
+    ...(presign ? {} : { "x-amz-date": requestDate }),
+    ...(sessionToken && !presign
+      ? { "x-amz-security-token": sessionToken }
+      : {}),
+    ...headers,
+  };
+  const { canonical, signedHeaders } = canonicalHeaders(signedHeadersSource);
+  const queryParams = {
+    ...query,
+    ...(presign
+      ? {
+          "X-Amz-Algorithm": "AWS4-HMAC-SHA256",
+          "X-Amz-Credential": `${accessKeyId}/${credentialScope}`,
+          "X-Amz-Date": requestDate,
+          "X-Amz-Expires": Number(expiresInSeconds || 0),
+          "X-Amz-SignedHeaders": signedHeaders,
+          ...(sessionToken ? { "X-Amz-Security-Token": sessionToken } : {}),
+        }
+      : {}),
+  };
+  const canonicalRequest = [
+    method,
+    requestUrl.pathname,
+    canonicalQuery(queryParams),
+    canonical,
+    signedHeaders,
+    payloadHash,
+  ].join("\n");
+  const stringToSign = [
+    "AWS4-HMAC-SHA256",
+    requestDate,
+    credentialScope,
+    await sha256Hex(bytesToBuffer(canonicalRequest)),
+  ].join("\n");
+  const signingKey = await s3SigningKey({
+    secretAccessKey,
+    date,
+    region,
+  });
+  const signature = await hmac(signingKey, stringToSign, "hex");
+
+  if (presign) {
+    requestUrl.search = canonicalQuery({
+      ...queryParams,
+      "X-Amz-Signature": signature,
+    });
+    return {
+      url: requestUrl.toString(),
+      expiresAt: new Date(
+        nowDate(now).getTime() + Number(expiresInSeconds || 0) * 1000,
+      ).toISOString(),
+    };
+  }
+
+  return {
+    headers: {
+      ...signedHeadersSource,
+      Authorization: `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
+    },
+  };
+}
+
+function s3MetadataHeaders(metadata = {}) {
+  const out = {};
+  for (const [key, value] of Object.entries(metadata)) {
+    if (value === undefined || value === null) continue;
+    const headerKey = `x-amz-meta-${String(key)
+      .replace(/([A-Z])/g, "-$1")
+      .toLowerCase()
+      .replace(/^-/, "")}`;
+    out[headerKey] = String(value);
+  }
+  return out;
+}
+
+export function createS3ArtifactStorageAdapter(options = {}) {
+  const bucket = options.bucket;
+  const region = options.region || DEFAULT_S3_REGION;
+  const endpoint = options.endpoint || null;
+  const publicObjectBaseUrl = options.publicBaseUrl || null;
+  const accessKeyId = options.accessKeyId;
+  const secretAccessKey = options.secretAccessKey;
+  const sessionToken = options.sessionToken || null;
+  const forcePathStyle =
+    options.forcePathStyle === true ||
+    options.forcePathStyle === "true" ||
+    Boolean(endpoint);
+  const fetchImpl = options.fetchImpl || globalThis.fetch;
+  const now = options.now;
+  const retentionDays = resolveRetentionDays(options.env, options);
+  const configured = Boolean(bucket && accessKeyId && secretAccessKey);
+
+  if (!configured) {
+    throw new Error(
+      "S3 artifact storage requires ARTIFACT_STORAGE_BUCKET, ARTIFACT_STORAGE_ACCESS_KEY_ID, and ARTIFACT_STORAGE_SECRET_ACCESS_KEY",
+    );
+  }
+  if (typeof fetchImpl !== "function") {
+    throw new Error("S3 artifact storage requires a fetch implementation");
+  }
+
+  const adapterCapabilities = Object.freeze({
+    adapter: "s3",
+    persistent: true,
+    signedUrls: true,
+    delete: true,
+    list: true,
+    retention: true,
+  });
+
+  function urlFor(key) {
+    return s3EndpointUrl({
+      endpoint,
+      region,
+      bucket,
+      key,
+      forcePathStyle,
+    });
+  }
+
+  function publicUrlFor(key) {
+    if (!publicObjectBaseUrl) return urlFor(key);
+    return `${String(publicObjectBaseUrl).replace(/\/+$/, "")}/${s3EncodePath(
+      key,
+    )}`;
+  }
+
+  async function requestObject({
+    method,
+    key,
+    body,
+    contentType = "application/octet-stream",
+    metadata = {},
+  }) {
+    const bodyBytes = body ? normalizeBytes(body) : new Uint8Array();
+    const headers = {
+      ...(method === "PUT" ? { "content-type": contentType } : {}),
+      ...(method === "PUT" ? s3MetadataHeaders(metadata) : {}),
+    };
+    const signed = await signS3Request({
+      method,
+      url: urlFor(key),
+      headers,
+      bodyBytes,
+      accessKeyId,
+      secretAccessKey,
+      sessionToken,
+      region,
+      now,
+    });
+    return fetchImpl(urlFor(key), {
+      method,
+      headers: signed.headers,
+      ...(method === "PUT" ? { body: bytesToBuffer(bodyBytes) } : {}),
+    });
+  }
+
+  async function putJson(key, payload) {
+    return requestObject({
+      method: "PUT",
+      key,
+      body: `${JSON.stringify(payload, null, 2)}\n`,
+      contentType: "application/json",
+    });
+  }
+
+  async function getJson(key) {
+    const response = await requestObject({ method: "GET", key });
+    if (!response.ok) return null;
+    return response.json();
+  }
+
+  async function getBytes(key) {
+    const response = await requestObject({ method: "GET", key });
+    if (!response.ok) return null;
+    return new Uint8Array(await response.arrayBuffer());
+  }
+
+  async function readRecord(packageId) {
+    const safeId = sanitizePackageId(packageId);
+    const index = await getJson(
+      `${ARTIFACT_STORAGE_KEY_PREFIX}/_index/${safeId}.json`,
+    );
+    if (!index?.storageKey) return null;
+    const [manifest, metadata, zipBytes] = await Promise.all([
+      getJson(`${index.storageKey}.manifest.json`),
+      getJson(`${index.storageKey}.metadata.json`),
+      index.status === "deleted" ? null : getBytes(index.storageKey),
+    ]);
+    if (!manifest || !metadata) return null;
+    return {
+      packageId: safeId,
+      packageHash: manifest.packageHash,
+      manifest,
+      metadata,
+      zipBytes,
+      byteLength: zipBytes?.byteLength || metadata.byteLength || 0,
+      storageKey: index.storageKey,
+      adapterName: "s3",
+      storedAt: metadata.storedAt || metadata.createdAt || null,
+      status: metadata.status || index.status || "stored",
+      deletedAt: metadata.deletedAt || null,
+      expiresAt: metadata.expiresAt || null,
+      retentionDays: metadata.retentionDays || null,
+    };
+  }
+
+  return {
+    adapterCapabilities,
+
+    async putArtifactPackage({ packageId, zipBytes, manifest, metadata = {} }) {
+      const safeId = sanitizePackageId(packageId || manifest?.packageId);
+      const storageKey = buildArtifactStorageKey({
+        manifest,
+        packageId: safeId,
+      });
+      const record = storageRecord({
+        packageId: safeId,
+        zipBytes,
+        manifest,
+        metadata,
+        storageKey,
+        adapterName: "s3",
+        now,
+        retentionDays,
+      });
+      const { indexKey, manifestKey, metadataKey } = sidecarKeys(storageKey);
+      const objectMetadata = {
+        ...record.metadata,
+        byteLength: record.byteLength,
+        status: record.status,
+        storageKey,
+      };
+      await Promise.all([
+        requestObject({
+          method: "PUT",
+          key: storageKey,
+          body: record.zipBytes,
+          contentType: "application/zip",
+          metadata: objectMetadata,
+        }),
+        putJson(manifestKey, record.manifest),
+        putJson(metadataKey, objectMetadata),
+        putJson(indexKey, {
+          packageId: safeId,
+          storageKey,
+          projectId: record.manifest?.projectId || null,
+          packageHash: record.packageHash,
+          status: record.status,
+        }),
+      ]);
+      return visibleStorageRecord(record);
+    },
+
+    async getArtifactPackage({ packageId }) {
+      const record = await readRecord(packageId);
+      if (!record) return { found: false, code: ARTIFACT_STORAGE_NOT_FOUND };
+      if (record.status === "deleted") {
+        return {
+          found: false,
+          code: ARTIFACT_STORAGE_DELETED,
+          record: visibleStorageRecord(record),
+        };
+      }
+      return { found: true, record: visibleStorageRecord(record) };
+    },
+
+    async createSignedDownloadUrl({
+      packageId,
+      expiresInSeconds = DEFAULT_SIGNED_URL_EXPIRES_SECONDS,
+    }) {
+      const safeId = sanitizePackageId(packageId);
+      const index = await getJson(
+        `${ARTIFACT_STORAGE_KEY_PREFIX}/_index/${safeId}.json`,
+      );
+      if (!index?.storageKey || index.status === "deleted") {
+        return { supported: false, code: ARTIFACT_STORAGE_NOT_FOUND };
+      }
+      const signed = await signS3Request({
+        method: "GET",
+        url: publicUrlFor(index.storageKey),
+        accessKeyId,
+        secretAccessKey,
+        sessionToken,
+        region,
+        now,
+        presign: true,
+        expiresInSeconds,
+      });
+      return {
+        supported: true,
+        signedUrl: signed.url,
+        expiresAt: signed.expiresAt,
+        expiresInSeconds: Number(expiresInSeconds || 0),
+      };
+    },
+
+    async deleteArtifactPackage({ packageId }) {
+      const record = await readRecord(packageId);
+      if (!record) {
+        return { deleted: false, code: ARTIFACT_STORAGE_NOT_FOUND };
+      }
+      const deleted = deletedRecord(packageId, record, now);
+      const { indexKey, metadataKey } = sidecarKeys(record.storageKey);
+      await Promise.all([
+        requestObject({ method: "DELETE", key: record.storageKey }),
+        putJson(metadataKey, {
+          ...(record.metadata || {}),
+          status: "deleted",
+          deletedAt: deleted.deletedAt,
+          storageKey: record.storageKey,
+          byteLength: record.byteLength,
+        }),
+        putJson(indexKey, {
+          packageId: record.packageId,
+          storageKey: record.storageKey,
+          projectId: record.manifest?.projectId || null,
+          packageHash: record.packageHash,
+          status: "deleted",
+        }),
+      ]);
+      return { deleted: true, record: visibleStorageRecord(deleted) };
+    },
+
+    async listArtifactPackages({ projectId, userId } = {}) {
+      // Listing is primarily served from package history. S3-compatible object
+      // stores differ in list semantics, so this adapter exposes object access
+      // by packageId and keeps broad listing provider-neutral for future jobs.
+      const _unused = { projectId, userId };
+      return [];
+    },
+  };
+}
+
 export function resolveArtifactStorageAdapter(env = undefined, options = {}) {
   const effectiveEnv = env || globalThis.process?.env || {};
+  const provider = String(
+    options.provider || effectiveEnv.ARTIFACT_STORAGE_PROVIDER || "",
+  )
+    .trim()
+    .toLowerCase();
   const rootDir =
     options.rootDir ||
     effectiveEnv.ARTIFACT_PACKAGE_STORAGE_DIR ||
@@ -496,18 +1100,51 @@ export function resolveArtifactStorageAdapter(env = undefined, options = {}) {
     options.signedUrlBaseUrl ||
     effectiveEnv.ARTIFACT_PACKAGE_SIGNED_URL_BASE ||
     "/api/project/export/artifact-package";
-  if (rootDir) {
+
+  if (provider === "s3") {
+    return createS3ArtifactStorageAdapter({
+      bucket: options.bucket || effectiveEnv.ARTIFACT_STORAGE_BUCKET,
+      region:
+        options.region ||
+        effectiveEnv.ARTIFACT_STORAGE_REGION ||
+        DEFAULT_S3_REGION,
+      endpoint: options.endpoint || effectiveEnv.ARTIFACT_STORAGE_ENDPOINT,
+      publicBaseUrl:
+        options.publicBaseUrl || effectiveEnv.ARTIFACT_STORAGE_PUBLIC_BASE_URL,
+      accessKeyId:
+        options.accessKeyId || effectiveEnv.ARTIFACT_STORAGE_ACCESS_KEY_ID,
+      secretAccessKey:
+        options.secretAccessKey ||
+        effectiveEnv.ARTIFACT_STORAGE_SECRET_ACCESS_KEY,
+      sessionToken:
+        options.sessionToken || effectiveEnv.ARTIFACT_STORAGE_SESSION_TOKEN,
+      forcePathStyle:
+        options.forcePathStyle ??
+        booleanFromEnv(effectiveEnv.ARTIFACT_STORAGE_FORCE_PATH_STYLE),
+      fetchImpl: options.fetchImpl,
+      now: options.now,
+      retentionDays: options.retentionDays,
+      env: effectiveEnv,
+    });
+  }
+
+  if (provider === "filesystem" || (!provider && rootDir)) {
     return createFilesystemArtifactStorageAdapter({
       rootDir,
       signedUrlSecret,
       signedUrlBaseUrl,
       now: options.now,
+      retentionDays: options.retentionDays,
+      env: effectiveEnv,
     });
   }
+
   return createInMemoryArtifactStorageAdapter({
     signedUrlSecret,
     signedUrlBaseUrl,
     now: options.now,
+    retentionDays: options.retentionDays,
+    env: effectiveEnv,
   });
 }
 
@@ -557,8 +1194,14 @@ export default {
   ARTIFACT_STORAGE_EXPIRED,
   ARTIFACT_STORAGE_SIGNED_URL_UNSUPPORTED,
   DEFAULT_SIGNED_URL_EXPIRES_SECONDS,
+  DEFAULT_S3_REGION,
+  ARTIFACT_STORAGE_KEY_PREFIX,
+  buildArtifactStorageKey,
+  computeRetentionExpiresAt,
+  resolveRetentionDays,
   createInMemoryArtifactStorageAdapter,
   createFilesystemArtifactStorageAdapter,
+  createS3ArtifactStorageAdapter,
   resolveArtifactStorageAdapter,
   getDefaultArtifactStorageAdapter,
   setDefaultArtifactStorageAdapter,

@@ -1,9 +1,16 @@
+/* global globalThis */
 import { setCorsHeaders, handlePreflight } from "../../../_shared/cors.js";
 import {
   getDefaultArtifactStorageAdapter,
   DEFAULT_SIGNED_URL_EXPIRES_SECONDS,
 } from "../../../../src/services/export/artifactStorageService.js";
 import { listArtifactPackageHistory } from "../../../../src/services/export/artifactHistoryService.js";
+import {
+  accessDeniedResponse,
+  canListArtifactHistory,
+  canReadArtifactPackage,
+  resolveArtifactAccessContext,
+} from "../../../../src/services/export/artifactAccessPolicyService.js";
 
 function resolveQuery(req) {
   return {
@@ -23,24 +30,40 @@ function directDownloadRoute(packageId) {
   )}/download`;
 }
 
-async function withDownloadUrls(records, adapter) {
-  return Promise.all(
+async function withDownloadUrls(records, adapter, accessContext) {
+  const signedUrlTtlSeconds =
+    Number(globalThis.process?.env?.ARTIFACT_SIGNED_URL_TTL_SECONDS) ||
+    DEFAULT_SIGNED_URL_EXPIRES_SECONDS;
+  const hydrated = await Promise.all(
     records.map(async (record) => {
+      const accessDecision = canReadArtifactPackage(accessContext, {
+        manifest: {
+          projectId: record.projectId,
+        },
+        metadata: {
+          userId: record.userId,
+        },
+      });
+      if (!accessDecision.allowed) return null;
       const signedUrlInfo = await adapter.createSignedDownloadUrl({
         packageId: record.packageId,
-        expiresInSeconds: DEFAULT_SIGNED_URL_EXPIRES_SECONDS,
+        expiresInSeconds: signedUrlTtlSeconds,
       });
       return {
         ...record,
+        storageProvider: adapter.adapterCapabilities?.adapter || "memory",
         signedUrl: signedUrlInfo.supported ? signedUrlInfo.signedUrl : null,
         signedUrlAvailable: signedUrlInfo.supported === true,
-        expiresAt: signedUrlInfo.supported ? signedUrlInfo.expiresAt : null,
+        signedUrlExpiresAt: signedUrlInfo.supported
+          ? signedUrlInfo.expiresAt
+          : null,
         downloadUrl: signedUrlInfo.supported
           ? signedUrlInfo.signedUrl
           : directDownloadRoute(record.packageId),
       };
     }),
   );
+  return hydrated.filter(Boolean);
 }
 
 export default async function handler(req, res) {
@@ -53,12 +76,20 @@ export default async function handler(req, res) {
 
   const adapter = getDefaultArtifactStorageAdapter();
   const query = resolveQuery(req);
+  const accessContext = resolveArtifactAccessContext(req, query);
+  const accessDecision = canListArtifactHistory(accessContext, {
+    projectId: query.projectId,
+  });
+  if (!accessDecision.allowed) {
+    return accessDeniedResponse(res, accessDecision);
+  }
   const records = listArtifactPackageHistory(query);
-  const history = await withDownloadUrls(records, adapter);
+  const history = await withDownloadUrls(records, adapter, accessContext);
 
   return res.status(200).json({
     history,
     count: history.length,
+    storageProvider: adapter.adapterCapabilities?.adapter || "memory",
     storage: {
       adapterCapabilities: adapter.adapterCapabilities,
     },

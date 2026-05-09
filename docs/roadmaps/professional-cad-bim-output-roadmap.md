@@ -44,10 +44,21 @@ contracts and should fail closed when geometry provenance is missing.
   disclaimers.
 - The professional deliverable package system now includes deterministic
   manifest/ZIP generation, API/download wiring, deterministic PDF stitching from
-  existing generated PDFs, provider-neutral package storage, capability-based
-  signed download URLs, and package history metadata. `packageHash` remains
-  deterministic package evidence; history timestamps are operational metadata
-  and do not feed back into the package hash.
+  existing generated PDFs, provider-neutral package storage, a production
+  S3-compatible object-storage adapter, capability-based signed download URLs,
+  retention metadata/hooks, access-control checks on store/history/metadata/
+  download routes, and package history metadata. `packageHash` remains
+  deterministic package evidence; history and retention timestamps are
+  operational metadata and do not feed back into the package hash.
+- Artifact package storage is configured through
+  `ARTIFACT_STORAGE_PROVIDER=memory|filesystem|s3`. The S3-compatible adapter
+  uses `ARTIFACT_STORAGE_BUCKET`, `ARTIFACT_STORAGE_REGION`,
+  `ARTIFACT_STORAGE_ENDPOINT`, `ARTIFACT_STORAGE_ACCESS_KEY_ID`,
+  `ARTIFACT_STORAGE_SECRET_ACCESS_KEY`, `ARTIFACT_STORAGE_SESSION_TOKEN`,
+  `ARTIFACT_STORAGE_FORCE_PATH_STYLE`,
+  `ARTIFACT_STORAGE_PUBLIC_BASE_URL`, `ARTIFACT_SIGNED_URL_TTL_SECONDS`, and
+  `ARTIFACT_RETENTION_DAYS`. Access keys are never included in manifests,
+  history responses, or ZIP downloads.
 
 ## Non-negotiable authority rules
 
@@ -58,6 +69,16 @@ contracts and should fail closed when geometry provenance is missing.
 - Do not treat DWG as available unless a real conversion provider is configured.
 - Do not hardcode jurisdiction or regulation logic inside renderers.
 - Do not return huge base64 payloads from the main project-generation API.
+
+## Current artifact package limitations
+
+- Scheduled retention cleanup is not wired yet; the service exposes deterministic
+  deletion helpers for a future scheduled job.
+- Enterprise team/project permission models and audit logs are future work.
+- The artifact browser remains intentionally small; a full package manager UI
+  should be a separate slice.
+- Real DWG/IFC inclusion remains future provider integration work. Unavailable
+  DWG/IFC outputs continue to be reported as source gaps without fake files.
 
 ## PR 1: Professional CAD/BIM roadmap and CanonicalDrawingModel contract
 
@@ -392,22 +413,24 @@ Current package-delivery implementation:
   `Download Deliverables ZIP` UI entry point.
 - Phase 3 added deterministic PDF stitching from existing generated PDFs only,
   with source gaps for no PDF inputs or stitching failure.
-- Phase 4 adds provider-neutral artifact package storage and package history.
-  The storage contract supports local/test memory, optional filesystem-backed
-  storage when configured, capability reporting, delete/list/get, and signed
-  download URLs only when a real signing secret is configured.
+- Phase 4 adds provider-neutral artifact package storage, package history,
+  S3-compatible production object storage, retention metadata/hooks, and
+  access checks on store/history/metadata/download routes. The storage contract
+  supports local/test memory, optional filesystem-backed storage when
+  configured, capability reporting, delete/list/get, and signed download URLs
+  only when the configured adapter truly supports them.
 
 Current limitations after Phase 4:
 
-- Storage is provider-neutral and local-first; production object storage
-  provider integration remains future work.
+- Scheduled retention cleanup is not wired yet; expired package discovery and
+  delete/update helpers are available for a future scheduled job.
 - Signed URLs are capability-based. When signing is unsupported, the API returns
   the direct package download route rather than fabricating signed URLs.
 - Package history stores operational timestamps, status, package hash,
   authority hashes, flags, source-gap counts, and producer versions. These
   timestamps do not affect deterministic package hashes.
-- Retention policies, team/project permissions, audit-log persistence, and a
-  full artifact browser UI remain future work.
+- Enterprise team permissions, audit-log persistence, retention policy
+  scheduling, and a full artifact browser UI remain future work.
 
 ## Final validation stack
 

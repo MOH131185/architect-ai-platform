@@ -4,6 +4,11 @@ import {
   getDefaultArtifactStorageAdapter,
   verifySignedDownloadToken,
 } from "../../../../../src/services/export/artifactStorageService.js";
+import {
+  accessDeniedResponse,
+  canReadArtifactPackage,
+  resolveArtifactAccessContext,
+} from "../../../../../src/services/export/artifactAccessPolicyService.js";
 import { __artifactPackageExportInternals } from "../../artifact-package.js";
 
 const { safeProjectName } = __artifactPackageExportInternals;
@@ -81,6 +86,18 @@ export default async function handler(req, res) {
         error: "Artifact package not found",
         code: result.code,
       });
+  }
+
+  const accessContext = {
+    ...resolveArtifactAccessContext(req, {
+      ...(req.body || {}),
+      projectId: result.record.manifest?.projectId,
+    }),
+    signedUrlVerified: signed.signed === true,
+  };
+  const accessDecision = canReadArtifactPackage(accessContext, result.record);
+  if (!accessDecision.allowed) {
+    return accessDeniedResponse(res, accessDecision);
   }
 
   const zipBuffer = Buffer.from(result.record.zipBytes);
