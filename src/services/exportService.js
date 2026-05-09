@@ -176,6 +176,7 @@ class ExportService {
         sheet?.projectGraph?.project_id ||
         artifacts?.projectGraphId ||
         null,
+      userId: sheet?.userId || sheet?.metadata?.userId || null,
       projectGraph: sheet?.projectGraph || null,
       compiledProject,
       geometryHash:
@@ -267,6 +268,95 @@ class ExportService {
     );
     const url = await this.downloadResponseBlob(response, filename);
     logger.success("Deliverables ZIP export complete", { filename });
+    return { success: true, url, filename, format: "ZIP" };
+  }
+
+  async storeDeliverablesPackage({ sheet, expiresInSeconds } = {}) {
+    if (!this.hasDeliverableArtifacts(sheet)) {
+      throw new Error("Generate a design before saving deliverables.");
+    }
+
+    const payload = this.buildArtifactPackagePayload(sheet);
+    const response = await fetch("/api/project/export/artifact-package/store", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...payload,
+        ...(expiresInSeconds ? { expiresInSeconds } : {}),
+      }),
+    });
+
+    if (!response.ok) {
+      const message = await this.readJsonError(
+        response,
+        `Deliverables package storage failed: ${response.status}`,
+      );
+      throw new Error(message);
+    }
+
+    const result = await response.json();
+    logger.success("Deliverables package stored", {
+      packageId: result.packageId,
+      packageHash: result.packageHash,
+    });
+    return {
+      success: true,
+      format: "ZIP",
+      ...result,
+    };
+  }
+
+  async listDeliverablesPackageHistory({ projectId, userId, sheet } = {}) {
+    const payload = sheet ? this.buildArtifactPackagePayload(sheet) : {};
+    const params = new URLSearchParams();
+    const resolvedProjectId = projectId || payload.projectId;
+    const resolvedUserId = userId || payload.userId;
+    if (resolvedProjectId) params.set("projectId", resolvedProjectId);
+    if (resolvedUserId) params.set("userId", resolvedUserId);
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    const response = await fetch(
+      `/api/project/export/artifact-package/history${suffix}`,
+      {
+        method: "GET",
+      },
+    );
+
+    if (!response.ok) {
+      const message = await this.readJsonError(
+        response,
+        `Deliverables package history failed: ${response.status}`,
+      );
+      throw new Error(message);
+    }
+
+    return response.json();
+  }
+
+  async downloadStoredDeliverablesPackage({ packageRecord }) {
+    const downloadUrl =
+      packageRecord?.signedUrl ||
+      packageRecord?.downloadUrl ||
+      packageRecord?.downloadRoute;
+    if (!downloadUrl) {
+      throw new Error("Stored deliverables package has no download URL.");
+    }
+    const response = await fetch(downloadUrl, { method: "GET" });
+    if (!response.ok) {
+      const message = await this.readJsonError(
+        response,
+        `Stored deliverables download failed: ${response.status}`,
+      );
+      throw new Error(message);
+    }
+    const fallbackFilename = `${this.safeProjectName(
+      packageRecord?.projectId || packageRecord?.packageId,
+    )}-deliverables.zip`;
+    const filename = this.filenameFromContentDisposition(
+      response.headers?.get?.("content-disposition"),
+      fallbackFilename,
+    );
+    const url = await this.downloadResponseBlob(response, filename);
+    logger.success("Stored deliverables ZIP download complete", { filename });
     return { success: true, url, filename, format: "ZIP" };
   }
 
