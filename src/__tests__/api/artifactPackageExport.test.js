@@ -141,6 +141,8 @@ describe("/api/project/export/artifact-package", () => {
     clearArtifactPackageHistory();
     setDefaultArtifactStorageAdapter(createInMemoryArtifactStorageAdapter());
     delete process.env.ARTIFACT_PACKAGE_SIGNING_SECRET;
+    delete process.env.ARTIFACT_SIGNED_URL_TTL_SECONDS;
+    delete process.env.ARTIFACT_ACCESS_CONTROL_STRICT;
   });
 
   test("returns application/zip with a safe attachment filename", async () => {
@@ -292,6 +294,18 @@ describe("/api/project/export/artifact-package", () => {
         }),
       }),
     );
+    expect(storeRes.body).toEqual(
+      expect.objectContaining({
+        storageProvider: "memory",
+        signedUrlAvailable: false,
+        packageHistoryStatus: "stored",
+      }),
+    );
+    expect(storeRes.body.storage).toEqual(
+      expect.objectContaining({
+        storageProvider: "memory",
+      }),
+    );
     expect(JSON.stringify(storeRes.body)).not.toContain(
       "secret-value-that-must-not-appear",
     );
@@ -331,6 +345,102 @@ describe("/api/project/export/artifact-package", () => {
     expect(JSON.stringify(historyRes.body)).not.toContain(
       "secret-value-that-must-not-appear",
     );
+  });
+
+  test("artifact package storage, history, metadata, and download enforce access policy", async () => {
+    const adapter = createInMemoryArtifactStorageAdapter({
+      signedUrlSecret: "access-test-secret",
+      now: "2026-05-09T12:00:00.000Z",
+    });
+    setDefaultArtifactStorageAdapter(adapter);
+    const storeRes = createMockResponse();
+    await storeArtifactPackageHandler(
+      {
+        method: "POST",
+        headers: {
+          "x-user-id": "user-a",
+          "x-accessible-project-ids": "project-zip-001",
+        },
+        body: { ...baseBody(), userId: "user-a" },
+      },
+      storeRes,
+    );
+
+    expect(storeRes.statusCode).toBe(200);
+    expect(storeRes.body.signedUrlAvailable).toBe(true);
+    const packageId = storeRes.body.packageId;
+
+    const deniedStoreRes = createMockResponse();
+    await storeArtifactPackageHandler(
+      {
+        method: "POST",
+        headers: { "x-user-id": "user-b" },
+        body: { ...baseBody(), userId: "user-a" },
+      },
+      deniedStoreRes,
+    );
+    expect(deniedStoreRes.statusCode).toBe(403);
+
+    const deniedHistoryRes = createMockResponse();
+    await artifactPackageHistoryHandler(
+      {
+        method: "GET",
+        headers: {
+          "x-user-id": "user-b",
+          "x-accessible-project-ids": "other-project",
+        },
+        query: { projectId: "project-zip-001" },
+      },
+      deniedHistoryRes,
+    );
+    expect(deniedHistoryRes.statusCode).toBe(403);
+
+    const filteredHistoryRes = createMockResponse();
+    await artifactPackageHistoryHandler(
+      {
+        method: "GET",
+        headers: { "x-user-id": "user-b" },
+        query: { projectId: "project-zip-001" },
+      },
+      filteredHistoryRes,
+    );
+    expect(filteredHistoryRes.statusCode).toBe(200);
+    expect(filteredHistoryRes.body.history).toHaveLength(0);
+    expect(JSON.stringify(filteredHistoryRes.body)).not.toContain("signature=");
+
+    const deniedMetadataRes = createMockResponse();
+    await artifactPackageMetadataHandler(
+      {
+        method: "GET",
+        headers: { "x-user-id": "user-b" },
+        query: { packageId },
+      },
+      deniedMetadataRes,
+    );
+    expect(deniedMetadataRes.statusCode).toBe(404);
+
+    const deniedDownloadRes = createMockResponse();
+    await downloadArtifactPackageHandler(
+      {
+        method: "GET",
+        headers: { "x-user-id": "user-b" },
+        query: { packageId },
+      },
+      deniedDownloadRes,
+    );
+    expect(deniedDownloadRes.statusCode).toBe(404);
+
+    const allowedDownloadRes = createMockResponse();
+    await downloadArtifactPackageHandler(
+      {
+        method: "GET",
+        headers: { "x-user-id": "user-a" },
+        query: { packageId },
+      },
+      allowedDownloadRes,
+    );
+    expect(allowedDownloadRes.statusCode).toBe(200);
+    expect(allowedDownloadRes.headers["Content-Type"]).toBe("application/zip");
   });
 
   test("store endpoint returns a real signed URL when adapter supports it", async () => {

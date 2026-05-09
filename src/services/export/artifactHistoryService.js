@@ -66,6 +66,11 @@ export function createArtifactHistoryRecord({
     manifest: canonicalStringify(manifest),
   });
   const createdAt = nowIso(now);
+  const retentionExpiresAt =
+    storageRecord?.expiresAt || storageRecord?.metadata?.expiresAt || null;
+  const signedUrlExpiresAt = signedUrlInfo?.supported
+    ? signedUrlInfo.expiresAt
+    : null;
 
   return safeRecord({
     schemaVersion: ARTIFACT_HISTORY_SCHEMA_VERSION,
@@ -98,8 +103,14 @@ export function createArtifactHistoryRecord({
       : downloadRoute,
     signedUrl: signedUrlInfo?.supported ? signedUrlInfo.signedUrl : null,
     signedUrlAvailable: signedUrlInfo?.supported === true,
-    expiresAt: signedUrlInfo?.supported ? signedUrlInfo.expiresAt : null,
+    expiresAt: retentionExpiresAt,
+    signedUrlExpiresAt,
+    retentionDays:
+      storageRecord?.retentionDays ||
+      storageRecord?.metadata?.retentionDays ||
+      null,
     status,
+    packageHistoryStatus: status,
     qaStatus: manifest.qaSummary?.status || null,
     flags: cloneJson(manifest.flags || {}),
     producerVersions: cloneJson(manifest.producerVersions || {}),
@@ -152,10 +163,72 @@ export function markArtifactPackageDeleted(
   const updated = {
     ...existing,
     status: "deleted",
+    packageHistoryStatus: "deleted",
     deletedAt: nowIso(now),
   };
   state.records.set(packageId, updated);
   return { updated: true, record: cloneJson(updated) };
+}
+
+export function markArtifactPackageExpired(
+  { packageId, now = undefined },
+  state = getHistoryState(),
+) {
+  const existing = state.records.get(packageId);
+  if (!existing) return { updated: false, code: ARTIFACT_HISTORY_NOT_FOUND };
+  const updated = {
+    ...existing,
+    status: "expired",
+    packageHistoryStatus: "expired",
+    expiredAt: nowIso(now),
+  };
+  state.records.set(packageId, updated);
+  return { updated: true, record: cloneJson(updated) };
+}
+
+export function listExpiredArtifactPackageHistory(
+  { now = undefined } = {},
+  state = getHistoryState(),
+) {
+  const currentTime = new Date(nowIso(now)).getTime();
+  return [...state.records.values()]
+    .filter((record) => record.status === "stored")
+    .filter((record) => record.expiresAt)
+    .filter((record) => new Date(record.expiresAt).getTime() <= currentTime)
+    .sort((a, b) =>
+      [a.expiresAt || "", a.packageId || ""]
+        .join(":")
+        .localeCompare([b.expiresAt || "", b.packageId || ""].join(":")),
+    )
+    .map((record) => cloneJson(record));
+}
+
+export async function deleteExpiredArtifactPackage(
+  { packageId, storageAdapter, now = undefined },
+  state = getHistoryState(),
+) {
+  const existing = state.records.get(packageId);
+  if (!existing) return { deleted: false, code: ARTIFACT_HISTORY_NOT_FOUND };
+  const currentTime = new Date(nowIso(now)).getTime();
+  const expiresAtTime = existing.expiresAt
+    ? new Date(existing.expiresAt).getTime()
+    : Number.POSITIVE_INFINITY;
+  if (expiresAtTime > currentTime) {
+    return { deleted: false, code: "ARTIFACT_HISTORY_NOT_EXPIRED" };
+  }
+  if (storageAdapter?.deleteArtifactPackage) {
+    await storageAdapter.deleteArtifactPackage({ packageId });
+  }
+  const expired = markArtifactPackageExpired({ packageId, now }, state);
+  const deleted = markArtifactPackageDeleted({ packageId, now }, state);
+  return {
+    deleted: deleted.updated,
+    record: cloneJson({
+      ...(expired.record || existing),
+      ...(deleted.record || {}),
+      expiredAt: expired.record?.expiredAt || nowIso(now),
+    }),
+  };
 }
 
 export function markArtifactPackageFailed(
@@ -166,6 +239,7 @@ export function markArtifactPackageFailed(
   const updated = {
     ...existing,
     status: "failed",
+    packageHistoryStatus: "failed",
     failedAt: nowIso(now),
     failureReason: reason || "Artifact package storage failed",
   };
@@ -186,6 +260,9 @@ export default {
   getArtifactPackageHistoryRecord,
   listArtifactPackageHistory,
   markArtifactPackageDeleted,
+  markArtifactPackageExpired,
+  listExpiredArtifactPackageHistory,
+  deleteExpiredArtifactPackage,
   markArtifactPackageFailed,
   clearArtifactPackageHistory,
 };

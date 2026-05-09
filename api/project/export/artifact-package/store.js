@@ -1,3 +1,4 @@
+/* global globalThis */
 import { setCorsHeaders, handlePreflight } from "../../../_shared/cors.js";
 import { buildArtifactPackageWithPdfStitching } from "../../../../src/services/export/artifactPackageService.js";
 import {
@@ -8,6 +9,11 @@ import {
   createArtifactHistoryRecord,
   recordArtifactPackageHistory,
 } from "../../../../src/services/export/artifactHistoryService.js";
+import {
+  accessDeniedResponse,
+  canStoreArtifactPackage,
+  resolveArtifactAccessContext,
+} from "../../../../src/services/export/artifactAccessPolicyService.js";
 import { __artifactPackageExportInternals } from "../artifact-package.js";
 
 const { buildPackageInput, hasPackageSource, safeProjectName } =
@@ -68,11 +74,19 @@ export default async function handler(req, res) {
         code: "PACKAGE_ARTIFACTS_REQUIRED",
       });
     }
+    const accessContext = resolveArtifactAccessContext(req, req.body || {});
+    const accessDecision = canStoreArtifactPackage(accessContext, {
+      ...packageInput,
+      userId: req.body?.userId || req.body?.metadata?.userId || null,
+    });
+    if (!accessDecision.allowed) {
+      return accessDeniedResponse(res, accessDecision);
+    }
 
     const packageResult =
       await buildArtifactPackageWithPdfStitching(packageInput);
     const adapter = getDefaultArtifactStorageAdapter();
-    const userId = resolveUserId(req, req.body || {});
+    const userId = accessContext.userId || resolveUserId(req, req.body || {});
     const metadata = {
       projectName: safeProjectName(packageInput.projectName),
       userId,
@@ -88,6 +102,7 @@ export default async function handler(req, res) {
       packageId: packageResult.packageId,
       expiresInSeconds:
         Number(req.body?.expiresInSeconds) ||
+        Number(globalThis.process?.env?.ARTIFACT_SIGNED_URL_TTL_SECONDS) ||
         DEFAULT_SIGNED_URL_EXPIRES_SECONDS,
     });
     const fallbackDownloadRoute = downloadRouteFor(packageResult.packageId);
@@ -105,14 +120,26 @@ export default async function handler(req, res) {
       packageId: packageResult.packageId,
       packageHash: packageResult.packageHash,
       manifest: manifestSummary(packageResult.manifest),
+      storageProvider: adapter.adapterCapabilities?.adapter || "memory",
       storage: {
         adapterCapabilities: adapter.adapterCapabilities,
+        storageProvider: adapter.adapterCapabilities?.adapter || "memory",
         storageKey: storageRecord.storageKey,
         byteLength: storageRecord.byteLength,
         status: storageRecord.status,
       },
       signedUrl: signedUrlInfo.supported ? signedUrlInfo.signedUrl : null,
-      expiresAt: signedUrlInfo.supported ? signedUrlInfo.expiresAt : null,
+      signedUrlAvailable: signedUrlInfo.supported === true,
+      expiresAt:
+        storageRecord.expiresAt || storageRecord.metadata?.expiresAt || null,
+      signedUrlExpiresAt: signedUrlInfo.supported
+        ? signedUrlInfo.expiresAt
+        : null,
+      retentionDays:
+        storageRecord.retentionDays ||
+        storageRecord.metadata?.retentionDays ||
+        null,
+      packageHistoryStatus: historyRecord.status,
       downloadRoute: signedUrlInfo.supported ? null : fallbackDownloadRoute,
       history: historyRecord,
     });

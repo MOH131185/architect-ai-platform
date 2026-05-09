@@ -1,6 +1,11 @@
 import { setCorsHeaders, handlePreflight } from "../../../_shared/cors.js";
 import { getDefaultArtifactStorageAdapter } from "../../../../src/services/export/artifactStorageService.js";
 import { getArtifactPackageHistoryRecord } from "../../../../src/services/export/artifactHistoryService.js";
+import {
+  accessDeniedResponse,
+  canReadArtifactPackage,
+  resolveArtifactAccessContext,
+} from "../../../../src/services/export/artifactAccessPolicyService.js";
 
 function resolvePackageId(req) {
   return req.query?.packageId || req.query?.id || req.body?.packageId || null;
@@ -27,6 +32,10 @@ function packageSummary(record = {}) {
     byteLength: record.byteLength || 0,
     storageKey: record.storageKey || null,
     status: record.status || "stored",
+    expiresAt: record.expiresAt || record.metadata?.expiresAt || null,
+    retentionDays:
+      record.retentionDays || record.metadata?.retentionDays || null,
+    packageHistoryStatus: record.status || "stored",
     qaSummary: manifest.qaSummary || null,
     flags: manifest.flags || {},
     producerVersions: manifest.producerVersions || {},
@@ -60,12 +69,23 @@ export default async function handler(req, res) {
       });
   }
 
+  const accessContext = resolveArtifactAccessContext(req, {
+    ...(req.body || {}),
+    projectId: result.record.manifest?.projectId,
+  });
+  const accessDecision = canReadArtifactPackage(accessContext, result.record);
+  if (!accessDecision.allowed) {
+    return accessDeniedResponse(res, accessDecision);
+  }
+
   const history = getArtifactPackageHistoryRecord({ packageId });
 
   return res.status(200).json({
     package: packageSummary(result.record),
     manifest: result.record.manifest,
     history: history.found ? history.record : null,
+    storageProvider: adapter.adapterCapabilities?.adapter || "memory",
+    signedUrlAvailable: adapter.adapterCapabilities?.signedUrls === true,
     storage: {
       adapterCapabilities: adapter.adapterCapabilities,
     },
