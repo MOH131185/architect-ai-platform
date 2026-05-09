@@ -381,6 +381,7 @@ mountDynamicApiRoute('post', '/api/project/export/json',    'api/project/export/
 mountDynamicApiRoute('post', '/api/project/export/dxf',     'api/project/export/dxf.js');
 mountDynamicApiRoute('post', '/api/project/export/ifc',     'api/project/export/ifc.js');
 mountDynamicApiRoute('post', '/api/project/export/xlsx',    'api/project/export/xlsx.js');
+mountDynamicApiRoute('post', '/api/project/export/artifact-package', 'api/project/export/artifact-package.js');
 
 // Phase 1/2 architecture backend routes (shared with api/models/* serverless handlers)
 mountDynamicApiRoute('post', '/api/models/generate-style', 'api/models/generate-style.js', [aiApiLimiter]);

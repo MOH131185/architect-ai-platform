@@ -50,10 +50,36 @@ class ExportService {
   resolveProjectName(sheet = {}) {
     return (
       sheet?.projectName ||
+      sheet?.brief?.project_name ||
+      sheet?.projectGraph?.brief?.project_name ||
       sheet?.metadata?.projectName ||
       sheet?.dna?.projectType ||
       "ArchiAI_Project"
     );
+  }
+
+  safeProjectName(value, fallback = "ArchiAI_Project") {
+    const cleaned = String(value || fallback)
+      .trim()
+      .replace(/[^a-zA-Z0-9_-]+/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 80);
+    return cleaned || fallback;
+  }
+
+  filenameFromContentDisposition(headerValue, fallback) {
+    const header = String(headerValue || "");
+    const utf8Match = header.match(/filename\*=UTF-8''([^;]+)/i);
+    if (utf8Match) {
+      try {
+        return decodeURIComponent(utf8Match[1].replace(/^"|"$/g, ""));
+      } catch (_error) {
+        return utf8Match[1].replace(/^"|"$/g, "") || fallback;
+      }
+    }
+    const filenameMatch = header.match(/filename="?([^";]+)"?/i);
+    return filenameMatch?.[1] || fallback;
   }
 
   async downloadResponseBlob(response, filename) {
@@ -65,6 +91,183 @@ class ExportService {
     link.click();
     URL.revokeObjectURL(url);
     return url;
+  }
+
+  async readJsonError(response, fallbackMessage) {
+    const errorData = await response.json().catch(() => ({}));
+    return (
+      errorData?.error?.message ||
+      errorData?.error ||
+      errorData?.message ||
+      fallbackMessage
+    );
+  }
+
+  hasDeliverableArtifacts(sheet = {}) {
+    const artifacts = sheet?.artifacts || {};
+    const compiledProject = this.resolveCompiledProject(sheet);
+    const sheetUrlIsData =
+      typeof sheet?.url === "string" && sheet.url.startsWith("data:");
+    const sheetPdfUrlIsData =
+      typeof sheet?.pdfUrl === "string" && sheet.pdfUrl.startsWith("data:");
+    return Boolean(
+      compiledProject?.geometryHash ||
+      artifacts?.a1Sheet?.svgString ||
+      artifacts?.a1Sheet?.svg ||
+      artifacts?.a1Pdf?.dataUrl ||
+      artifacts?.a1Pdf?.pdfDataUrl ||
+      artifacts?.a1Png?.dataUrl ||
+      artifacts?.renderedProof?.dataUrl ||
+      artifacts?.dxf ||
+      artifacts?.drawings ||
+      artifacts?.qaReport ||
+      sheet?.a1Sheet?.svgString ||
+      sheet?.a1Sheet?.svg ||
+      sheet?.a1Pdf?.dataUrl ||
+      sheet?.a1Pdf?.pdfDataUrl ||
+      sheetUrlIsData ||
+      sheetPdfUrlIsData,
+    );
+  }
+
+  buildArtifactPackagePayload(sheet = {}) {
+    const artifacts = sheet?.artifacts || {};
+    const compiledProject = this.resolveCompiledProject(sheet);
+    const sheetUrlPng =
+      typeof sheet?.url === "string" && sheet.url.startsWith("data:")
+        ? { dataUrl: sheet.url }
+        : null;
+    const sheetPdfUrl =
+      typeof sheet?.pdfUrl === "string" && sheet.pdfUrl.startsWith("data:")
+        ? { dataUrl: sheet.pdfUrl }
+        : null;
+    const flags = {
+      structuralEnabled: Boolean(
+        sheet?.flags?.structuralEnabled ||
+        artifacts?.structuralArtifacts?.length ||
+        compiledProject?.structuralModel,
+      ),
+      mepEnabled: Boolean(
+        sheet?.flags?.mepEnabled ||
+        artifacts?.mepArtifacts?.length ||
+        compiledProject?.mepModel,
+      ),
+      detailsEnabled: Boolean(
+        sheet?.flags?.detailsEnabled ||
+        artifacts?.detailArtifacts?.length ||
+        compiledProject?.constructionDetailLibrary ||
+        compiledProject?.detailLibrary,
+      ),
+      dwgEnabled: Boolean(sheet?.flags?.dwgEnabled),
+      ifcEnabled: Boolean(sheet?.flags?.ifcEnabled),
+    };
+
+    return {
+      projectName: this.resolveProjectName(sheet),
+      projectId:
+        sheet?.projectId ||
+        sheet?.project_id ||
+        sheet?.designId ||
+        sheet?.metadata?.projectId ||
+        null,
+      projectGraphId:
+        sheet?.projectGraphId ||
+        sheet?.projectGraph?.projectGraphId ||
+        sheet?.projectGraph?.project_id ||
+        artifacts?.projectGraphId ||
+        null,
+      projectGraph: sheet?.projectGraph || null,
+      compiledProject,
+      geometryHash:
+        sheet?.geometryHash ||
+        artifacts?.geometryHash ||
+        compiledProject?.geometryHash ||
+        null,
+      visualManifestHash:
+        sheet?.visualManifestHash ||
+        artifacts?.visualManifestHash ||
+        sheet?.visualManifest?.manifestHash ||
+        null,
+      styleBlendManifestHash:
+        sheet?.styleBlendManifestHash ||
+        artifacts?.styleBlendManifestHash ||
+        sheet?.styleBlendManifest?.manifestHash ||
+        null,
+      jurisdictionId:
+        sheet?.jurisdictionId ||
+        sheet?.jurisdictionPack?.jurisdictionId ||
+        sheet?.metadata?.jurisdictionId ||
+        compiledProject?.jurisdictionId ||
+        null,
+      countryCode:
+        sheet?.countryCode ||
+        sheet?.jurisdictionPack?.countryCode ||
+        sheet?.metadata?.countryCode ||
+        compiledProject?.countryCode ||
+        null,
+      flags,
+      a1Sheet: artifacts?.a1Sheet || sheet?.a1Sheet || null,
+      a1Pdf: artifacts?.a1Pdf || sheet?.a1Pdf || sheetPdfUrl,
+      a1Png:
+        artifacts?.a1Png ||
+        artifacts?.renderedProof ||
+        sheet?.a1Png ||
+        sheetUrlPng,
+      dxfArtifact: artifacts?.dxf || sheet?.dxfArtifact || null,
+      dwgArtifact: artifacts?.dwg || sheet?.dwgArtifact || null,
+      ifcArtifact: artifacts?.ifc || sheet?.ifcArtifact || null,
+      technicalDrawings:
+        artifacts?.drawings || sheet?.technicalDrawings || null,
+      existingArtifacts:
+        artifacts?.existingArtifacts || sheet?.existingArtifacts || [],
+      structuralArtifacts:
+        artifacts?.structuralArtifacts || sheet?.structuralArtifacts || null,
+      mepArtifacts: artifacts?.mepArtifacts || sheet?.mepArtifacts || null,
+      detailArtifacts:
+        artifacts?.detailArtifacts || sheet?.detailArtifacts || null,
+      schedulesWorkbook:
+        artifacts?.schedulesWorkbook || sheet?.schedulesWorkbook || null,
+      qaReport: artifacts?.qaReport || sheet?.qaReport || sheet?.qa || null,
+      visualManifest:
+        artifacts?.visualManifest || sheet?.visualManifest || null,
+      styleBlendManifest:
+        artifacts?.styleBlendManifest || sheet?.styleBlendManifest || null,
+      jurisdictionPack:
+        artifacts?.jurisdictionPack || sheet?.jurisdictionPack || null,
+      sourceGaps: sheet?.sourceGaps || [],
+      producerVersions: sheet?.producerVersions || {},
+    };
+  }
+
+  async exportDeliverablesPackage({ sheet }) {
+    if (!this.hasDeliverableArtifacts(sheet)) {
+      throw new Error("Generate a design before downloading deliverables.");
+    }
+
+    const payload = this.buildArtifactPackagePayload(sheet);
+    const safeName = this.safeProjectName(payload.projectName);
+    const fallbackFilename = `${safeName}-deliverables.zip`;
+    const response = await fetch("/api/project/export/artifact-package", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const message = await this.readJsonError(
+        response,
+        `Deliverables ZIP export failed: ${response.status}`,
+      );
+      throw new Error(message);
+    }
+
+    const filename = this.filenameFromContentDisposition(
+      response.headers?.get?.("content-disposition"),
+      fallbackFilename,
+    );
+    const url = await this.downloadResponseBlob(response, filename);
+    logger.success("Deliverables ZIP export complete", { filename });
+    return { success: true, url, filename, format: "ZIP" };
   }
 
   /**
@@ -104,6 +307,10 @@ class ExportService {
 
     if (fmt === "GLB") {
       return this.exportGLB({ sheet });
+    }
+
+    if (fmt === "ZIP" || fmt === "DELIVERABLES" || fmt === "ARTIFACT_PACKAGE") {
+      return this.exportDeliverablesPackage({ sheet, env: effectiveEnv });
     }
 
     // Determine export method based on environment

@@ -13,6 +13,7 @@
 import React from "react";
 import {
   Download,
+  Archive,
   Box,
   FileSpreadsheet,
   FileText,
@@ -56,6 +57,39 @@ function downloadBlenderRenders(panels) {
   return count;
 }
 
+function hasDeliverablePackageArtifacts(designData = {}) {
+  const artifacts = designData?.artifacts || {};
+  const compiledProject =
+    designData?.compiledProject ||
+    designData?.a1Sheet?.compiledProject ||
+    designData?.metadata?.compiledProject ||
+    null;
+  const designUrlIsData =
+    typeof designData?.url === "string" && designData.url.startsWith("data:");
+  const designPdfUrlIsData =
+    typeof designData?.pdfUrl === "string" &&
+    designData.pdfUrl.startsWith("data:");
+
+  return Boolean(
+    compiledProject?.geometryHash ||
+    artifacts?.a1Sheet?.svgString ||
+    artifacts?.a1Sheet?.svg ||
+    artifacts?.a1Pdf?.dataUrl ||
+    artifacts?.a1Pdf?.pdfDataUrl ||
+    artifacts?.a1Png?.dataUrl ||
+    artifacts?.renderedProof?.dataUrl ||
+    artifacts?.dxf ||
+    artifacts?.drawings ||
+    artifacts?.qaReport ||
+    designData?.a1Sheet?.svgString ||
+    designData?.a1Sheet?.svg ||
+    designData?.a1Pdf?.dataUrl ||
+    designData?.a1Pdf?.pdfDataUrl ||
+    designUrlIsData ||
+    designPdfUrlIsData,
+  );
+}
+
 /**
  * Single export row — consistent layout regardless of format.
  */
@@ -65,6 +99,7 @@ const ExportRow = ({
   formatChip,
   available,
   blockedReason,
+  statusLabel,
   tooltip,
   onClick,
 }) => {
@@ -100,7 +135,12 @@ const ExportRow = ({
         </span>
       )}
 
-      <StatusChip status={status} size="sm" tooltip={statusTooltip} />
+      <StatusChip
+        status={status}
+        size="sm"
+        label={statusLabel}
+        tooltip={statusTooltip}
+      />
     </button>
   );
 
@@ -182,6 +222,7 @@ const ExportPanel = ({
     (entry) => entry?.available,
   ).length;
   const totalExportCount = Object.keys(exportsMap).length;
+  const deliverablesReady = hasDeliverablePackageArtifacts(designData);
 
   // Per-format availability + blocked-reason logic.
   const isAvailable = (key, fallback = true) =>
@@ -221,6 +262,16 @@ const ExportPanel = ({
 
       {/* Documents */}
       <ExportSection title="Documents">
+        <ExportRow
+          icon={Archive}
+          label="Download Deliverables ZIP"
+          formatChip="ZIP"
+          available={deliverablesReady}
+          blockedReason="Generate first"
+          statusLabel={deliverablesReady ? undefined : "Generate first"}
+          tooltip="Deterministic package with manifest, QA report, drawings, CAD, and source gaps."
+          onClick={() => void handleExport("zip", "Deliverables ZIP")}
+        />
         <ExportRow
           icon={FileText}
           label="Export as PDF"
