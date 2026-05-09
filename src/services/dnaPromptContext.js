@@ -27,6 +27,8 @@ export const SHEET_DESIGN_CONTEXT_KEYS = Object.freeze([
   "region",
   "sustainability",
   "designFingerprint",
+  "styleBlendManifest",
+  "styleBlendManifestHash",
   "visualManifest",
   "contextHash",
 ]);
@@ -92,6 +94,14 @@ function normaliseMaterialEntry(entry, fallbackApplication = null) {
     application: application || null,
     role: nullIfBlank(entry.role) || null,
     hatch: nullIfBlank(entry.hatch) || null,
+    sourceTags: Array.isArray(entry.sourceTags)
+      ? entry.sourceTags.filter(Boolean)
+      : Array.isArray(entry.sources)
+        ? entry.sources.filter(Boolean)
+        : [],
+    provenanceLabel:
+      nullIfBlank(entry.provenanceLabel) ||
+      (Array.isArray(entry.sourceTags) ? entry.sourceTags.join("+") : null),
   };
 }
 
@@ -102,7 +112,18 @@ function normaliseMaterialList(rawList, fallbackApplication = null) {
     .filter(Boolean);
 }
 
-function resolveCanonicalMaterials({ masterDNA, compiledProject, localStyle }) {
+function resolveCanonicalMaterials({
+  masterDNA,
+  compiledProject,
+  localStyle,
+  styleBlendManifest = null,
+}) {
+  const fromStyleBlend = normaliseMaterialList(
+    styleBlendManifest?.resolvedPalette,
+    null,
+  );
+  if (fromStyleBlend.length > 0) return fromStyleBlend;
+
   // Prefer the canonical palette (Phase 8 SSOT) when it can be derived.
   try {
     const canonical = getCanonicalMaterialPalette({
@@ -147,28 +168,38 @@ function resolveCanonicalMaterials({ masterDNA, compiledProject, localStyle }) {
   return fromDNA;
 }
 
-function deriveStyleDescriptor({ masterDNA, localStyle, styleDNA }) {
+function deriveStyleDescriptor({
+  masterDNA,
+  localStyle,
+  styleDNA,
+  styleBlendManifest = null,
+}) {
   const structured = masterDNA?._structured || null;
   const architecture =
+    nullIfBlank(styleBlendManifest?.facadeLanguage) ||
     nullIfBlank(structured?.style?.architecture) ||
     nullIfBlank(masterDNA?.style?.architecture) ||
     nullIfBlank(localStyle?.primary_style) ||
     nullIfBlank(styleDNA?.style_name) ||
     "contemporary";
   const facadeLanguage =
+    nullIfBlank(styleBlendManifest?.facadeLanguage) ||
     nullIfBlank(styleDNA?.facade_language) ||
     nullIfBlank(localStyle?.facade_language) ||
     nullIfBlank(structured?.style?.facade_language) ||
     null;
   const roofLanguage =
+    nullIfBlank(styleBlendManifest?.roofLanguage) ||
     nullIfBlank(styleDNA?.roof_language) ||
     nullIfBlank(localStyle?.roof_language) ||
     null;
   const massingLanguage =
+    nullIfBlank(styleBlendManifest?.massingLanguage) ||
     nullIfBlank(styleDNA?.massing_language) ||
     nullIfBlank(localStyle?.massing_language) ||
     null;
   const windowLanguage =
+    nullIfBlank(styleBlendManifest?.windowLanguage) ||
     nullIfBlank(styleDNA?.window_language) ||
     nullIfBlank(localStyle?.window_language) ||
     null;
@@ -178,6 +209,7 @@ function deriveStyleDescriptor({ masterDNA, localStyle, styleDNA }) {
     styleDNA?.keywords,
     localStyle?.style_keywords,
     localStyle?.keywords,
+    styleBlendManifest?.userIntentEvidence?.styleKeywords,
   ]) {
     if (Array.isArray(list)) {
       for (const kw of list) {
@@ -231,7 +263,21 @@ function deriveClimateSummary(climate) {
   };
 }
 
-function derivePortfolioBlend({ localStyle }) {
+function derivePortfolioBlend({ localStyle, styleBlendManifest = null }) {
+  if (styleBlendManifest?.blendWeights) {
+    return {
+      localWeight: asNumberOrNull(styleBlendManifest.blendWeights.local),
+      portfolioWeight: asNumberOrNull(
+        styleBlendManifest.blendWeights.portfolio,
+      ),
+      climateWeight: asNumberOrNull(styleBlendManifest.blendWeights.climate),
+      userWeight: asNumberOrNull(styleBlendManifest.blendWeights.user),
+      styleBlendManifestHash: styleBlendManifest.manifestHash || null,
+      portfolioEvidence:
+        styleBlendManifest.portfolioStyleEvidence?.hasPortfolioEvidence ===
+        true,
+    };
+  }
   const weights = localStyle?.style_weights || localStyle?.weights || null;
   if (!weights || typeof weights !== "object") return null;
   const out = {
@@ -323,6 +369,7 @@ function deriveSustainability({ regulations, climate }) {
  * @param {object} [options.compiledProject]   - compiled geometry (authority)
  * @param {object} [options.climate]           - climate pack
  * @param {object} [options.localStyle]        - regional vernacular pack
+ * @param {object} [options.styleBlendManifest] - style blend authority
  * @param {object} [options.styleDNA]          - generated style DNA
  * @param {object} [options.regulations]      - regulation pack
  * @param {object} [options.programmeSummary]  - per-level programme summary
@@ -338,6 +385,7 @@ export function buildSheetDesignContext({
   compiledProject = null,
   climate = null,
   localStyle = null,
+  styleBlendManifest = null,
   styleDNA = null,
   regulations = null,
   programmeSummary = null,
@@ -360,10 +408,19 @@ export function buildSheetDesignContext({
     masterDNA,
     compiledProject,
     localStyle,
+    styleBlendManifest,
   });
-  const style = deriveStyleDescriptor({ masterDNA, localStyle, styleDNA });
+  const style = deriveStyleDescriptor({
+    masterDNA,
+    localStyle,
+    styleDNA,
+    styleBlendManifest,
+  });
   const climateSummary = deriveClimateSummary(climate);
-  const portfolioBlend = derivePortfolioBlend({ localStyle });
+  const portfolioBlend = derivePortfolioBlend({
+    localStyle,
+    styleBlendManifest,
+  });
   const programSpaces = deriveProgramSpaces({ programmeSummary, masterDNA });
   const sustainability = deriveSustainability({ regulations, climate });
   const resolvedRegion = nullIfBlank(region) || null;
@@ -391,6 +448,7 @@ export function buildSheetDesignContext({
     region: resolvedRegion,
     sustainability,
     visualManifestHash: visualManifest?.manifestHash || null,
+    styleBlendManifestHash: styleBlendManifest?.manifestHash || null,
   };
   const contextHash = computeCDSHashSync(hashable);
 
@@ -406,6 +464,8 @@ export function buildSheetDesignContext({
     region: resolvedRegion,
     sustainability,
     designFingerprint: designFingerprint || null,
+    styleBlendManifest: styleBlendManifest || null,
+    styleBlendManifestHash: styleBlendManifest?.manifestHash || null,
     visualManifest: visualManifest || null,
     contextHash,
   };

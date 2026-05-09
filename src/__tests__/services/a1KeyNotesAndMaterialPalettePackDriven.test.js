@@ -85,6 +85,113 @@ describe("buildKeyNoteItems — style provenance group", () => {
   });
 });
 
+describe("buildKeyNoteItems — StyleBlend portfolio provenance", () => {
+  test("does not leak rejected glass-heavy portfolio materials into key notes", () => {
+    const styleBlendManifest = {
+      manifestHash: "styleblend-glass-risk",
+      blendWeights: { local: 0.55, user: 0.2, climate: 0.2, portfolio: 0.05 },
+      localStyleEvidence: { label: "high overheating local context" },
+      portfolioStyleEvidence: {
+        hasPortfolioEvidence: true,
+        materials: [
+          "all-glass curtain wall",
+          "mirrored facade",
+          "fully glazed",
+          "timber solar screen",
+        ],
+      },
+      rejectedInfluences: [
+        {
+          influence: "unshaded/high-glass portfolio facade language",
+          rejectedBy: "climate",
+          reason:
+            "Climate suitability outranks portfolio identity where overheating risk is material.",
+        },
+      ],
+      conflicts: [
+        {
+          lower_priority_dropped:
+            "unshaded/high-glass portfolio facade language",
+          summary:
+            "Climate suitability reduced portfolio glazing influence because overheating risk is material.",
+        },
+      ],
+    };
+    const groups = buildKeyNoteItems({
+      brief: baseBrief,
+      site: baseSite,
+      climate: { overheating: { risk_level: "high" } },
+      regulations: baseRegulations,
+      localStyle: makeLocalStyleWithPack(null),
+      sheetDesignContext: {
+        styleBlendManifest,
+        styleBlendManifestHash: styleBlendManifest.manifestHash,
+        visualManifest: {
+          styleBlendPortfolioRationale: {
+            materials: ["timber solar screen"],
+          },
+        },
+      },
+    });
+    const provenanceGroup = groups.find((g) => g.id === "style_provenance");
+    const allText = provenanceGroup.lines.join(" ");
+
+    expect(allText).not.toMatch(/all-glass curtain wall/i);
+    expect(allText).not.toMatch(/mirrored facade/i);
+    expect(allText).not.toMatch(/fully glazed/i);
+    expect(allText).toMatch(/Compatible portfolio: timber solar screen/i);
+    expect(allText).toMatch(/Rejected style influences were excluded/i);
+    expect(styleBlendManifest.rejectedInfluences).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          influence: "unshaded/high-glass portfolio facade language",
+        }),
+      ]),
+    );
+  });
+
+  test("filters raw portfolio materials when no visual rationale is supplied", () => {
+    const styleBlendManifest = {
+      manifestHash: "styleblend-raw-filter",
+      blendWeights: { local: 0.55, user: 0.2, climate: 0.2, portfolio: 0.05 },
+      localStyleEvidence: { label: "high overheating local context" },
+      portfolioStyleEvidence: {
+        hasPortfolioEvidence: true,
+        materials: [
+          "all-glass curtain wall",
+          "mirrored facade",
+          "fully glazed",
+          "terracotta baguette screen",
+        ],
+      },
+      rejectedInfluences: [
+        {
+          influence: "unshaded/high-glass portfolio facade language",
+          rejectedBy: "climate",
+        },
+      ],
+    };
+    const groups = buildKeyNoteItems({
+      brief: baseBrief,
+      site: baseSite,
+      climate: { overheating: { risk_level: "high" } },
+      regulations: baseRegulations,
+      localStyle: makeLocalStyleWithPack(null),
+      sheetDesignContext: {
+        styleBlendManifest,
+        styleBlendManifestHash: styleBlendManifest.manifestHash,
+      },
+    });
+    const provenanceGroup = groups.find((g) => g.id === "style_provenance");
+    const allText = provenanceGroup.lines.join(" ");
+
+    expect(allText).not.toMatch(/all-glass curtain wall/i);
+    expect(allText).not.toMatch(/mirrored facade/i);
+    expect(allText).not.toMatch(/fully glazed/i);
+    expect(allText).toMatch(/terracotta baguette screen/i);
+  });
+});
+
 describe("buildKeyNoteItems — QA summary group", () => {
   test("emits a 'QA summary' group when qaSummary carries adjacency + quantitative scores", () => {
     const groups = buildKeyNoteItems({

@@ -1,9 +1,19 @@
 /**
- * Adaptive Style Transfer Service
+ * Adaptive Style Transfer Service (legacy)
  *
  * Blends portfolio styles with local architectural context to create
  * a unified style profile for design generation.
+ *
+ * This service is not the ProjectGraph production authority. The
+ * ProjectGraph path must use StyleBlendManifest from
+ * services/style/styleBlendManifestService.js so safety, programme, climate,
+ * local/jurisdiction, and technical authority constraints stay above
+ * portfolio influence.
  */
+
+export const ADAPTIVE_STYLE_TRANSFER_LEGACY = true;
+export const ADAPTIVE_STYLE_TRANSFER_LEGACY_NOTICE =
+  "Legacy panel-generation style helper only; ProjectGraph production uses StyleBlendManifest.";
 
 /**
  * Calculate dynamic weights based on portfolio, location, and creativity settings
@@ -189,6 +199,8 @@ export function applyStyleToPrompt(prompt, style = {}) {
 }
 
 export default {
+  ADAPTIVE_STYLE_TRANSFER_LEGACY,
+  ADAPTIVE_STYLE_TRANSFER_LEGACY_NOTICE,
   calculateDynamicWeights,
   transferStyle,
   applyStyleToPrompt,

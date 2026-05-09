@@ -77,6 +77,10 @@ import {
   summarizeRuleResults,
 } from "../regulation/runRules.js";
 import { buildLocalStylePackV2 } from "../style/localStylePack.js";
+import {
+  buildStyleBlendManifest,
+  evaluateStyleBlendQA,
+} from "../style/styleBlendManifestService.js";
 import { resolveUKVernacular } from "../style/ukVernacularPacks.js";
 import { generateRectangularOptions } from "../design/optionGenerator.js";
 import { scoreOption, selectBestOption } from "../design/optionScorer.js";
@@ -6503,10 +6507,16 @@ export function buildMaterialPalettePanelArtifact({
       categoryOffset: 10,
     },
   });
-  const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="material_palette" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}">
+  const styleBlendManifestHash =
+    sheetDesignContext?.styleBlendManifestHash ||
+    sheetDesignContext?.styleBlendManifest?.manifestHash ||
+    localStyle?.styleBlendManifestHash ||
+    null;
+  const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="material_palette" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-style-blend-manifest-hash="${escapeXml(styleBlendManifestHash || "")}">
   <defs>${defs}</defs>
   <rect width="${width}" height="${height}" fill="#ffffff"/>
   <text x="34" y="48" font-family="Arial, sans-serif" font-size="32" font-weight="700" fill="#111111">MATERIAL PALETTE</text>
+  <text x="34" y="78" font-family="Arial, sans-serif" font-size="13" fill="#444444">StyleBlendManifest ${escapeXml(String(styleBlendManifestHash || "n/a").slice(0, 18))}</text>
   <line x1="34" y1="66" x2="666" y2="66" stroke="#111111" stroke-width="2"/>
   ${cards}
 </svg>`;
@@ -6549,6 +6559,7 @@ export function buildMaterialPalettePanelArtifact({
       ).size,
       categories: cardMetadata.map((card) => card.category || null),
       sheetDesignContextHash: sheetDesignContext?.contextHash || null,
+      styleBlendManifestHash,
       sourceContext: sheetDesignContext ? "sheet_design_context" : "legacy_dna",
     },
   };
@@ -6615,6 +6626,96 @@ function compactManifestText(value, fallback = "", maxLength = 180) {
   if (!raw) return "";
   if (raw.length <= maxLength) return raw;
   return `${raw.slice(0, Math.max(0, maxLength - 1)).trimEnd()}.`;
+}
+
+function comparableStyleText(value) {
+  return String(value || "")
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function collectStyleBlendRejectedText(styleBlend = null) {
+  const rejectedInfluences = Array.isArray(styleBlend?.rejectedInfluences)
+    ? styleBlend.rejectedInfluences
+    : [];
+  const conflicts = Array.isArray(styleBlend?.conflicts)
+    ? styleBlend.conflicts
+    : [];
+  return [
+    ...rejectedInfluences.flatMap((entry) => [
+      entry?.influence,
+      entry?.reason,
+      entry?.rejectedBy,
+    ]),
+    ...conflicts.flatMap((entry) => [
+      entry?.lower_priority_dropped,
+      entry?.summary,
+    ]),
+  ]
+    .map(comparableStyleText)
+    .filter(Boolean)
+    .join(" ");
+}
+
+function filterCompatiblePortfolioKeyNoteMaterials(
+  materials = [],
+  styleBlend = null,
+) {
+  if (!Array.isArray(materials)) return [];
+  const rejectedText = collectStyleBlendRejectedText(styleBlend);
+  const seen = new Set();
+  return materials
+    .map((entry) =>
+      typeof entry === "string"
+        ? compactManifestText(entry, "", 120)
+        : compactManifestText(
+            entry?.name || entry?.material || entry?.label,
+            "",
+            120,
+          ),
+    )
+    .filter((name) => {
+      const normalized = comparableStyleText(name);
+      if (!normalized || seen.has(normalized)) return false;
+      seen.add(normalized);
+      if (!rejectedText) return true;
+      if (rejectedText.includes(normalized)) return false;
+      if (
+        /glass|glaz|curtain wall|mirrored/.test(normalized) &&
+        /glass|glaz|curtain wall|mirrored/.test(rejectedText)
+      ) {
+        return false;
+      }
+      if (
+        /sci fi|futur|parametric|blob/.test(normalized) &&
+        /sci fi|futur|parametric|blob/.test(rejectedText)
+      ) {
+        return false;
+      }
+      if (
+        /detached|freestanding/.test(normalized) &&
+        /detached|freestanding/.test(rejectedText)
+      ) {
+        return false;
+      }
+      return true;
+    });
+}
+
+function getCompatiblePortfolioKeyNoteMaterials({
+  styleBlend = null,
+  sheetDesignContext = null,
+} = {}) {
+  const visualRationaleMaterials =
+    sheetDesignContext?.visualManifest?.styleBlendPortfolioRationale?.materials;
+  const sourceMaterials =
+    Array.isArray(visualRationaleMaterials) && visualRationaleMaterials.length
+      ? visualRationaleMaterials
+      : styleBlend?.portfolioStyleEvidence?.materials;
+  return filterCompatiblePortfolioKeyNoteMaterials(sourceMaterials, styleBlend);
 }
 
 function summarizeProgrammeZones(
@@ -6999,6 +7100,57 @@ export function buildKeyNoteItems({
       ? localStyle.style_provenance
       : null;
   const styleProvenanceLines = [];
+  const styleBlend =
+    sheetDesignContext?.styleBlendManifest ||
+    (localStyle?.styleBlendManifestHash
+      ? {
+          manifestHash: localStyle.styleBlendManifestHash,
+          blendWeights: localStyle.style_blend_weights || null,
+          resolvedPalette: localStyle.style_blend_resolved_palette || [],
+          rejectedInfluences: [],
+        }
+      : null);
+  if (styleBlend?.manifestHash) {
+    styleProvenanceLines.push(
+      `StyleBlendManifest: ${String(styleBlend.manifestHash).slice(0, 18)}.`,
+    );
+  }
+  if (styleBlend?.blendWeights) {
+    styleProvenanceLines.push(
+      `Blend weights: local ${Math.round((styleBlend.blendWeights.local || 0) * 100)}%, user ${Math.round((styleBlend.blendWeights.user || 0) * 100)}%, climate ${Math.round((styleBlend.blendWeights.climate || 0) * 100)}%, portfolio ${Math.round((styleBlend.blendWeights.portfolio || 0) * 100)}%.`,
+    );
+  }
+  if (styleBlend?.localStyleEvidence?.label) {
+    styleProvenanceLines.push(
+      `Local style: ${String(styleBlend.localStyleEvidence.label).slice(0, 120)}.`,
+    );
+  }
+  if (
+    styleBlend?.portfolioStyleEvidence?.hasPortfolioEvidence === true &&
+    Array.isArray(styleBlend.portfolioStyleEvidence.materials)
+  ) {
+    const compatiblePortfolioMaterials = getCompatiblePortfolioKeyNoteMaterials(
+      {
+        styleBlend,
+        sheetDesignContext,
+      },
+    );
+    if (compatiblePortfolioMaterials.length > 0) {
+      styleProvenanceLines.push(
+        `Compatible portfolio: ${compatiblePortfolioMaterials
+          .slice(0, 3)
+          .join(", ")}.`,
+      );
+    }
+  }
+  if (
+    Array.isArray(styleBlend?.rejectedInfluences) &&
+    styleBlend.rejectedInfluences.length > 0
+  ) {
+    styleProvenanceLines.push(
+      "Rejected style influences were excluded by StyleBlendManifest QA.",
+    );
+  }
   if (styleProvenance && styleProvenance.packLabel) {
     const period = styleProvenance.historical_period
       ? ` (${String(styleProvenance.historical_period).slice(0, 80)})`
@@ -7894,10 +8046,15 @@ export function buildProjectGraphRenderPrompt({
     visualManifest?.geometryHash ||
     "n/a";
   const visualManifestHash = visualManifest?.manifestHash || "n/a";
+  const styleBlendManifestHash =
+    visualManifest?.styleBlendManifestHash ||
+    sheetDesignContext?.styleBlendManifestHash ||
+    "n/a";
   const authorityLine = [
     "GEOMETRY AND VISUAL AUTHORITY:",
     `geometryHash: ${geometryHash}`,
     `visualManifestHash: ${visualManifestHash}`,
+    `styleBlendManifestHash: ${styleBlendManifestHash}`,
     "Use the supplied control image as the geometry reference; do not use text-only generation and do not invent project geometry.",
   ].join("\n");
   const visualContinuity =
@@ -8352,6 +8509,10 @@ export async function buildVisual3DPanelArtifacts({
       const requestId =
         renderProvenance?.requestId || renderResult?.requestId || null;
       const usage = renderProvenance?.usage || renderResult?.usage || null;
+      const styleBlendManifestHash =
+        visualManifest?.styleBlendManifestHash ||
+        sheetDesignContext?.styleBlendManifestHash ||
+        null;
       const generationSeed = normalizeGenerationSeed(brief?.generation_seed);
       const seedSource = brief?.seedSource || null;
       const variationMode = brief?.variationMode || null;
@@ -8392,6 +8553,7 @@ export async function buildVisual3DPanelArtifacts({
           variationMode,
           visualManifestId: visualManifest?.manifestId || null,
           visualManifestHash: visualManifest?.manifestHash || null,
+          styleBlendManifestHash,
           visualIdentityLocked: Boolean(visualManifest?.manifestHash),
           visualControlConsistency: controlConsistency,
           referenceSource: "compiled_3d_control_svg",
@@ -8474,6 +8636,7 @@ export async function buildVisual3DPanelArtifacts({
             // applies (the deterministic source is geometry-bound).
             visualManifestId: visualManifest?.manifestId || null,
             visualManifestHash: visualManifest?.manifestHash || null,
+            styleBlendManifestHash,
             visualIdentityLocked: Boolean(visualManifest?.manifestHash),
             buildingTypology: visualManifest?.buildingTypology || null,
             attachmentType: visualManifest?.attachmentType || null,
@@ -12782,6 +12945,7 @@ function buildProjectGraph({
   compiledProject,
   modelRegistry,
   projectGraphId,
+  styleBlendManifest = null,
 }) {
   const projectId =
     projectGraphId || createStableId("project-graph", brief.project_name);
@@ -12814,6 +12978,9 @@ function buildProjectGraph({
     climate,
     regulations,
     local_style: localStyle,
+    style_blend_manifest: styleBlendManifest,
+    styleBlendManifest,
+    styleBlendManifestHash: styleBlendManifest?.manifestHash || null,
     programme,
     design_options: scoredOptions,
     selected_design: {
@@ -13056,6 +13223,63 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       sourceGaps: jurisdictionPackResolution.sourceGaps || [],
     },
   };
+  const projectGraphId = createStableId(
+    "project-graph",
+    brief.project_name,
+    compiledProject.geometryHash,
+  );
+  const styleBlendManifest = buildStyleBlendManifest({
+    brief,
+    site,
+    climate,
+    localStyle,
+    portfolioItems: [
+      ...(Array.isArray(input.portfolioItems) ? input.portfolioItems : []),
+      ...(Array.isArray(input.portfolioReferences)
+        ? input.portfolioReferences
+        : []),
+      ...(Array.isArray(input.portfolioImages) ? input.portfolioImages : []),
+      ...(Array.isArray(input.portfolioFiles) ? input.portfolioFiles : []),
+      ...(Array.isArray(input.brief?.portfolioItems)
+        ? input.brief.portfolioItems
+        : []),
+    ],
+    portfolioProfile:
+      input.portfolioProfile ||
+      input.portfolioAnalysis ||
+      input.projectDetails?.portfolioProfile ||
+      input.brief?.portfolioProfile ||
+      null,
+    jurisdictionPack,
+    jurisdictionPackResolution,
+    compiledProject,
+    projectGraphId,
+    programme,
+    regulations,
+  });
+  Object.assign(localStyle, {
+    styleBlendManifestId: styleBlendManifest.manifestId,
+    styleBlendManifestHash: styleBlendManifest.manifestHash,
+    style_blend_manifest_id: styleBlendManifest.manifestId,
+    style_blend_manifest_hash: styleBlendManifest.manifestHash,
+    style_blend_weights: styleBlendManifest.blendWeights,
+    style_blend_resolved_palette: styleBlendManifest.resolvedPalette,
+    material_palette: styleBlendManifest.resolvedPalette,
+    material_palette_with_provenance: styleBlendManifest.resolvedPalette.map(
+      (entry) => ({
+        material: entry.name || entry.material,
+        score: entry.score,
+        sources: entry.sources || entry.sourceTags || [],
+      }),
+    ),
+  });
+  compiledProject.styleBlendManifestHash = styleBlendManifest.manifestHash;
+  compiledProject.metadata = {
+    ...(compiledProject.metadata || {}),
+    styleBlendManifestId: styleBlendManifest.manifestId,
+    styleBlendManifestHash: styleBlendManifest.manifestHash,
+    styleBlendManifest,
+  };
   __vsMark = __vsLog("compile_project", __vsMark);
   // Compiled-project QA. Catches geometry layers losing a level (e.g. the
   // 3-level brief silently producing a 2-level model). The level-count
@@ -13140,11 +13364,6 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     fineTunedModelUsed: entry.fineTunedModelUsed || null,
     deterministicGeometry: entry.deterministicGeometry === true,
   }));
-  const projectGraphId = createStableId(
-    "project-graph",
-    brief.project_name,
-    compiledProject.geometryHash,
-  );
   const drawingSetWithGraph = {
     ...drawingSet,
     drawings: drawingSet.drawings.map((drawing) => ({
@@ -13185,8 +13404,12 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     siteSnapshot: siteMapSnapshot,
     climate,
     localStyle,
+    styleBlendManifest,
     styleDNA: styleDNAForManifest,
-    materialPalette: localStyle?.material_palette || null,
+    materialPalette:
+      styleBlendManifest?.resolvedPalette ||
+      localStyle?.material_palette ||
+      null,
   });
   __vsMark = __vsLog("visual_manifest", __vsMark);
   // Phase 1 — SheetDesignContext foundation. One frozen contract object
@@ -13201,6 +13424,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     compiledProject,
     climate,
     localStyle,
+    styleBlendManifest,
     styleDNA: styleDNAForManifest,
     regulations,
     programmeSummary,
@@ -13310,6 +13534,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       renderProof: pdf.renderedProof,
       textRenderStatus: pdf.renderedProof?.textRenderStatus,
       sheetDesignContextHash: sheetDesignContext.contextHash,
+      styleBlendManifestHash: styleBlendManifest.manifestHash,
       sheetDesignContextVersion: SHEET_DESIGN_CONTEXT_VERSION,
     };
     renderedSheets.push({
@@ -13354,6 +13579,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     seedSource: generationLifecycle.seedSource,
     variationMode: generationLifecycle.variationMode,
     generationLifecycle,
+    styleBlendManifestHash: styleBlendManifest.manifestHash,
   };
   const siteMapArtifact =
     Object.values(primaryPanelArtifacts).find(
@@ -13828,6 +14054,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     compiledProject,
     modelRegistry,
     projectGraphId,
+    styleBlendManifest,
   });
   const graphWithStableId = {
     ...initialGraph,
@@ -13882,6 +14109,8 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     // metadata.visualManifestId / Hash / visualIdentityLocked.
     visualManifest,
     visualManifestHash: visualManifest.manifestHash,
+    styleBlendManifest,
+    styleBlendManifestHash: styleBlendManifest.manifestHash,
     // Phase 1 — SheetDesignContext foundation. Frozen contract object that
     // wraps visualManifest with material/style/climate/portfolio/programme.
     // Surfaced here so downstream tests/consumers can prove every panel
@@ -13934,6 +14163,36 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     qa,
     artifacts?.a1Sheet?.quality?.exportGate || null,
   );
+  const styleBlendQa = evaluateStyleBlendQA({
+    styleBlendManifest,
+    visualManifest,
+    sheetDesignContext,
+    panelArtifacts: primaryPanelArtifacts,
+    a1MaterialPalette:
+      sheetDesignContext?.materials || localStyle?.material_palette || [],
+    strict: true,
+  });
+  artifacts.styleBlendQa = styleBlendQa;
+  sheetArtifact.metadata = {
+    ...(sheetArtifact.metadata || {}),
+    styleBlendQa,
+  };
+  qa.styleBlend = styleBlendQa;
+  for (const issue of styleBlendQa.issues || []) {
+    qa.issues.push({
+      code: issue.code,
+      severity: issue.severity,
+      message: issue.message,
+      details: issue.details || {},
+    });
+  }
+  if (styleBlendQa.errorCount > 0) {
+    qa.status = "fail";
+    qa.score = Math.max(
+      0,
+      Number(qa.score || 0) - styleBlendQa.errorCount * 18,
+    );
+  }
   qa.openai = openaiQaMetadata;
   __vsMark = __vsLog("validate_qa", __vsMark, `qa_status=${qa.status}`);
 
@@ -13994,6 +14253,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
         }
       : null,
     style: {
+      styleBlendManifestHash: styleBlendManifest.manifestHash,
       regional_vernacular:
         localStyle?.region || localStyle?.region_label || null,
       facade_language:
@@ -14083,6 +14343,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       generationLifecycle,
       geometryHash: compiledProject.geometryHash,
       visualManifestHash: visualManifest.manifestHash,
+      styleBlendManifestHash: styleBlendManifest.manifestHash,
       jurisdictionPack: jurisdictionPackSummary,
       jurisdictionPackResolution: {
         source: jurisdictionPackResolution.source,
@@ -14094,8 +14355,10 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     projectGraph: finalGraph,
     provenanceManifest,
     architectReasoningManifest,
+    styleBlendManifest,
     artifacts: {
       ...artifacts,
+      styleBlendManifest,
       ...(architectReasoningManifest ? { architectReasoningManifest } : {}),
       qaReport: {
         asset_id: createStableId(

@@ -247,6 +247,82 @@ describe("buildVisualManifest", () => {
     ]);
   });
 
+  test("carries StyleBlendManifest hash and rejected influence evidence", () => {
+    const styleBlendManifest = {
+      manifestId: "style-blend-001",
+      manifestHash: "styleblendhash001",
+      blendWeights: { local: 0.55, user: 0.2, climate: 0.2, portfolio: 0.05 },
+      materialWeights: {
+        local: 0.55,
+        user: 0.2,
+        climate: 0.2,
+        portfolio: 0.05,
+      },
+      resolvedPalette: [
+        { name: "Multi-stock red brick", application: "primary facade" },
+        { name: "Dark grey roof tile", application: "roof" },
+        { name: "Painted timber sash", application: "openings" },
+      ],
+      facadeLanguage: "red-brick terrace facade",
+      roofLanguage: "pitched tile roof",
+      windowLanguage: "regular sash window rhythm",
+      massingLanguage: "attached terrace massing",
+      detailLanguage: "painted timber sash",
+      graphicPresentationStyle: "restrained architectural presentation",
+      localStyleEvidence: { label: "Birmingham red-brick vernacular" },
+      portfolioStyleEvidence: {
+        hasPortfolioEvidence: true,
+        materials: ["timber"],
+        styles: ["warm contemporary"],
+        referenceCount: 1,
+      },
+      rejectedInfluences: [
+        {
+          influence: "detached/freestanding portfolio typology",
+          rejectedBy: "programme/local",
+          reason: "Terraced context.",
+        },
+      ],
+    };
+    const m = buildVisualManifest({
+      ...canonicalFixture(),
+      styleBlendManifest,
+    });
+    expect(m.styleBlendManifestHash).toBe("styleblendhash001");
+    expect(m.styleBlend.manifestHash).toBe("styleblendhash001");
+    expect(m.styleBlend.resolvedPalette).toEqual(
+      styleBlendManifest.resolvedPalette,
+    );
+    expect(m.styleBlend.facadeLanguage).toBe("red-brick terrace facade");
+    expect(m.styleBlend.roofLanguage).toBe("pitched tile roof");
+    expect(m.styleBlend.windowLanguage).toBe("regular sash window rhythm");
+    expect(m.styleBlend.detailLanguage).toBe("painted timber sash");
+    expect(m.resolvedPalette).toEqual(styleBlendManifest.resolvedPalette);
+    expect(m.facadeLanguage).toBe("red-brick terrace facade");
+    expect(m.roofLanguage).toBe("pitched tile roof");
+    expect(m.windowLanguage).toBe("regular sash window rhythm");
+    expect(m.detailLanguage).toBe("painted timber sash");
+    expect(m.styleBlendWeights.portfolio).toBe(0.05);
+    expect(m.styleBlendRejectedInfluences).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          influence: "detached/freestanding portfolio typology",
+        }),
+      ]),
+    );
+    const lockBlock = buildVisualIdentityLockBlock(m);
+    expect(lockBlock).toContain("StyleBlendManifest: styleblendhash001");
+    expect(lockBlock).toContain("Compatible portfolio influence: timber");
+    expect(lockBlock).toContain(
+      "Rejected style influences were excluded by the style blend QA.",
+    );
+    expect(lockBlock).not.toContain("Rejected influence:");
+    expect(lockBlock).not.toContain("detached/freestanding portfolio typology");
+    expect(lockBlock).toContain(
+      "Do not violate safety, programme, climate, local/jurisdiction, or technical authority constraints",
+    );
+  });
+
   test("carries terraced attachment type and party wall sides from the residential subtype", () => {
     const m = buildVisualManifest(terracedFixture());
     expect(m.buildingType).toBe("dwelling");
@@ -462,6 +538,70 @@ describe("buildProjectGraphRenderPrompt — Phase D injection", () => {
     expect(interior).toContain("Render an indoor interior view only");
     expect(interior).toContain("Do not show an exterior facade");
     expect(interior).toContain("room programme, room adjacency");
+  });
+
+  test("prompt includes style blend hash and excludes rejected influence as allowed direction", () => {
+    const fixture = terracedFixture();
+    const styleBlendManifest = {
+      manifestId: "style-blend-terrace",
+      manifestHash: "styleblendterrace",
+      blendWeights: { local: 0.62, user: 0.18, climate: 0.15, portfolio: 0.05 },
+      materialWeights: {
+        local: 0.62,
+        user: 0.18,
+        climate: 0.15,
+        portfolio: 0.05,
+      },
+      resolvedPalette: [
+        { name: "Red brick", application: "primary facade" },
+        { name: "Clay tile", application: "roof" },
+        { name: "Painted timber", application: "openings" },
+      ],
+      facadeLanguage: "terraced brick frontage",
+      roofLanguage: "pitched clay tile roof",
+      windowLanguage: "regular punched windows",
+      massingLanguage: "attached terrace",
+      detailLanguage: "painted timber openings",
+      localStyleEvidence: { label: "terraced local context" },
+      portfolioStyleEvidence: {
+        hasPortfolioEvidence: true,
+        materials: ["timber"],
+        styles: ["warm contemporary"],
+      },
+      rejectedInfluences: [
+        {
+          influence: "detached/freestanding portfolio typology",
+          rejectedBy: "programme/local",
+          reason: "Terraced context.",
+        },
+      ],
+    };
+    const manifest = buildVisualManifest({
+      ...fixture,
+      styleBlendManifest,
+    });
+    const prompt = buildProjectGraphRenderPrompt({
+      panelType: "exterior_render",
+      brief: fixture.brief,
+      compiledProject: fixture.compiledProject,
+      climate: fixture.climate,
+      localStyle: fixture.localStyle,
+      styleDNA: fixture.styleDNA,
+      programmeSummary: { targetStoreys: 3 },
+      region: "Birmingham",
+      visualManifest: manifest,
+    });
+
+    expect(prompt).toContain("styleBlendManifestHash: styleblendterrace");
+    expect(prompt).toContain(
+      "Rejected style influences were excluded by the style blend QA.",
+    );
+    expect(prompt).not.toContain("Rejected influence:");
+    expect(prompt).not.toContain("detached/freestanding portfolio typology");
+    expect(prompt).toContain(
+      "Do not include rejected portfolio/local-style influences",
+    );
+    expect(prompt).toContain("No freestanding detached house");
   });
 
   test("when no manifest is supplied, no lock block is emitted", () => {
