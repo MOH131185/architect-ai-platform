@@ -1573,7 +1573,8 @@ export async function planA1Panels({
   console.log(`   Panels: ${panelSequence.join(", ")}`);
   console.log(`   Seed source: ${seedSource}`);
 
-  // NEW: Generate style profile using adaptive style transfer (0.6/0.3/0.1 blend)
+  // Legacy multi-panel path only: ProjectGraph production style authority is
+  // StyleBlendManifest, not this adaptive style helper.
   // When conditionedPipeline is enabled, use its styleDescriptors instead
   // CRITICAL FIX: Use designFingerprint-scoped cache to prevent cross-generation contamination
   let styleProfile = styleProfileCache.get(designFingerprint);
@@ -1599,7 +1600,7 @@ export async function planA1Panels({
   } else if (!styleProfile) {
     try {
       console.log(
-        "🎨 Generating style profile (0.6 Portfolio / 0.3 Local / 0.1 Variation)...",
+        "🎨 Generating legacy adaptive style profile for non-ProjectGraph panels...",
       );
       const dynamicWeights = calculateDynamicWeights({
         portfolioItems,

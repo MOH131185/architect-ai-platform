@@ -43,6 +43,16 @@ function nullable(value) {
   return value;
 }
 
+function clone(value) {
+  return value == null ? value : JSON.parse(JSON.stringify(value));
+}
+
+function compactText(value) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function numericOrNull(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
@@ -109,6 +119,108 @@ function normaliseMaterial(entry, fallbackApplication = null) {
     hex,
     application: nullable(entry.application) || fallbackApplication,
   };
+}
+
+function summarizeConflicts(conflicts = []) {
+  if (!Array.isArray(conflicts)) return [];
+  return conflicts
+    .map((entry) => ({
+      conflictId: entry?.conflict_id || entry?.id || null,
+      higherPriority: entry?.higher_priority || null,
+      lowerPriority: entry?.lower_priority || null,
+      summary: entry?.summary || null,
+    }))
+    .filter((entry) => entry.conflictId || entry.summary)
+    .slice(0, 8);
+}
+
+function buildStyleBlendRationaleSummary(styleBlendManifest = null) {
+  if (!styleBlendManifest) return null;
+  const local =
+    styleBlendManifest.localStyleEvidence?.label ||
+    styleBlendManifest.localStyleEvidence?.source ||
+    null;
+  const weights = styleBlendManifest.blendWeights || null;
+  const rejectedCount = Array.isArray(styleBlendManifest.rejectedInfluences)
+    ? styleBlendManifest.rejectedInfluences.length
+    : 0;
+  return {
+    local,
+    portfolioEvidence:
+      styleBlendManifest.portfolioStyleEvidence?.hasPortfolioEvidence === true,
+    climateEvidence:
+      Array.isArray(styleBlendManifest.climateEvidence?.climateResponses) &&
+      styleBlendManifest.climateEvidence.climateResponses.length > 0,
+    weights: weights ? clone(weights) : null,
+    rejectedInfluenceCount: rejectedCount,
+    constraintsOverridePortfolio: rejectedCount > 0,
+  };
+}
+
+function buildStyleBlendSnapshot(styleBlendManifest = null) {
+  if (!styleBlendManifest) return null;
+  return {
+    manifestHash: styleBlendManifest.manifestHash || null,
+    blendWeights: clone(styleBlendManifest.blendWeights || null),
+    materialWeights: clone(styleBlendManifest.materialWeights || null),
+    resolvedPalette: clone(styleBlendManifest.resolvedPalette || []),
+    facadeLanguage: nullable(styleBlendManifest.facadeLanguage),
+    roofLanguage: nullable(styleBlendManifest.roofLanguage),
+    windowLanguage: nullable(styleBlendManifest.windowLanguage),
+    massingLanguage: nullable(styleBlendManifest.massingLanguage),
+    detailLanguage: nullable(styleBlendManifest.detailLanguage),
+    graphicPresentationStyle: nullable(
+      styleBlendManifest.graphicPresentationStyle,
+    ),
+    conflictsSummary: summarizeConflicts(styleBlendManifest.conflicts),
+    rejectedInfluenceCount: Array.isArray(styleBlendManifest.rejectedInfluences)
+      ? styleBlendManifest.rejectedInfluences.length
+      : 0,
+    rationaleSummary: buildStyleBlendRationaleSummary(styleBlendManifest),
+  };
+}
+
+function filterCompatiblePortfolioValues(
+  values = [],
+  styleBlendManifest = null,
+) {
+  if (!Array.isArray(values)) return [];
+  const rejectedText = [
+    ...(styleBlendManifest?.rejectedInfluences || []).map(
+      (entry) => entry?.influence,
+    ),
+    ...(styleBlendManifest?.conflicts || []).map(
+      (entry) => entry?.lower_priority_dropped,
+    ),
+  ]
+    .map(compactText)
+    .join(" ")
+    .toLowerCase();
+  return values.filter((value) => {
+    const text = compactText(value);
+    if (!text) return false;
+    const lower = text.toLowerCase();
+    if (rejectedText.includes(lower)) return false;
+    if (
+      /glass|glaz|curtain wall/.test(lower) &&
+      /glass|glaz/.test(rejectedText)
+    ) {
+      return false;
+    }
+    if (
+      /sci-fi|futur|parametric|blob/.test(lower) &&
+      /sci-fi|futur|parametric|blob/.test(rejectedText)
+    ) {
+      return false;
+    }
+    if (
+      /detached|freestanding/.test(lower) &&
+      /detached|freestanding/.test(rejectedText)
+    ) {
+      return false;
+    }
+    return true;
+  });
 }
 
 function deriveRoof({ compiledProject, masterDNA, styleDNA, palette }) {
@@ -485,6 +597,9 @@ function deriveWindowRhythmFingerprint({ compiledProject }) {
  *                                             future use).
  * @param {object} [options.climate]         — climate pack.
  * @param {object} [options.localStyle]      — regional vernacular pack.
+ * @param {object} [options.styleBlendManifest]
+ *                                             — deterministic style blend
+ *                                             authority snapshot.
  * @param {object} [options.styleDNA]        — generated style DNA.
  * @param {Array}  [options.materialPalette] — explicit palette (overrides
  *                                             localStyle.material_palette).
@@ -501,6 +616,7 @@ export function buildVisualManifest({
   // documenting that it is a recognised input.
   climate = null,
   localStyle = null,
+  styleBlendManifest = null,
   styleDNA = null,
   materialPalette = null,
 } = {}) {
@@ -566,6 +682,21 @@ export function buildVisualManifest({
   if (palette.length === 0) manifestSourceGaps.push("materialPalette");
   if (!primaryFacadeMaterial) manifestSourceGaps.push("primaryFacadeMaterial");
 
+  const styleBlend = buildStyleBlendSnapshot(styleBlendManifest);
+  const resolvedPalette = styleBlend?.resolvedPalette || null;
+  const facadeLanguage = styleBlend?.facadeLanguage || null;
+  const roofLanguage = styleBlend?.roofLanguage || null;
+  const windowLanguage = styleBlend?.windowLanguage || null;
+  const detailLanguage = styleBlend?.detailLanguage || null;
+  const compatiblePortfolioMaterials = filterCompatiblePortfolioValues(
+    styleBlendManifest?.portfolioStyleEvidence?.materials || [],
+    styleBlendManifest,
+  );
+  const compatiblePortfolioStyles = filterCompatiblePortfolioValues(
+    styleBlendManifest?.portfolioStyleEvidence?.styles || [],
+    styleBlendManifest,
+  );
+
   const draft = {
     version: VISUAL_MANIFEST_VERSION,
     geometryHash,
@@ -606,6 +737,37 @@ export function buildVisualManifest({
     climateResponse: deriveClimateResponse({ climate }),
     localStyle: deriveLocalStyleLabel({ localStyle, styleDNA }),
     styleKeywords: deriveStyleKeywords({ styleDNA, localStyle }),
+    styleBlendManifestId: styleBlendManifest?.manifestId || null,
+    styleBlendManifestHash: styleBlendManifest?.manifestHash || null,
+    styleBlend,
+    resolvedPalette,
+    facadeLanguage,
+    roofLanguage,
+    windowLanguage,
+    detailLanguage,
+    styleBlendWeights: styleBlendManifest?.blendWeights || null,
+    styleBlendRejectedInfluences: Array.isArray(
+      styleBlendManifest?.rejectedInfluences,
+    )
+      ? styleBlendManifest.rejectedInfluences.map((entry) => ({
+          influence: entry.influence || null,
+          rejectedBy: entry.rejectedBy || null,
+          reason: entry.reason || null,
+        }))
+      : [],
+    styleBlendLocalRationale:
+      styleBlendManifest?.localStyleEvidence?.label ||
+      styleBlendManifest?.localStyleEvidence?.source ||
+      null,
+    styleBlendPortfolioRationale:
+      styleBlendManifest?.portfolioStyleEvidence?.hasPortfolioEvidence === true
+        ? {
+            styles: compatiblePortfolioStyles,
+            materials: compatiblePortfolioMaterials,
+            referenceCount:
+              styleBlendManifest.portfolioStyleEvidence.referenceCount || 0,
+          }
+        : null,
     manifestSourceGaps,
   };
 
@@ -684,6 +846,30 @@ export function buildVisualIdentityLockBlock(manifest) {
           : ""
       }`
     : null;
+  const styleBlendLine = m.styleBlendManifestHash
+    ? `StyleBlendManifest: ${m.styleBlendManifestHash}`
+    : null;
+  const blendWeightsLine = m.styleBlendWeights
+    ? `Style blend weights: local ${Math.round((m.styleBlendWeights.local || 0) * 100)}%, user ${Math.round((m.styleBlendWeights.user || 0) * 100)}%, climate ${Math.round((m.styleBlendWeights.climate || 0) * 100)}%, portfolio ${Math.round((m.styleBlendWeights.portfolio || 0) * 100)}%.`
+    : null;
+  const localRationaleLine = m.styleBlendLocalRationale
+    ? `Local style rationale: ${m.styleBlendLocalRationale}.`
+    : null;
+  const compatiblePortfolioValues = m.styleBlendPortfolioRationale
+    ? [
+        ...(m.styleBlendPortfolioRationale.materials || []),
+        ...(m.styleBlendPortfolioRationale.styles || []),
+      ].slice(0, 4)
+    : [];
+  const portfolioLine = compatiblePortfolioValues.length
+    ? `Compatible portfolio influence: ${compatiblePortfolioValues.join(", ")}.`
+    : null;
+  const hasRejectedInfluences =
+    Array.isArray(m.styleBlendRejectedInfluences) &&
+    m.styleBlendRejectedInfluences.length > 0;
+  const rejectedSummaryLine = hasRejectedInfluences
+    ? "Rejected style influences were excluded by the style blend QA."
+    : null;
 
   const constraints = Array.isArray(m.negativeConstraints)
     ? m.negativeConstraints
@@ -708,10 +894,21 @@ export function buildVisualIdentityLockBlock(manifest) {
     entranceLine,
     climateLine,
     styleLine,
+    styleBlendLine,
+    blendWeightsLine,
+    localRationaleLine,
+    portfolioLine,
+    rejectedSummaryLine,
     typologyConstraints.length ? `Typology constraints:` : null,
     ...typologyConstraints.map((c) => `- ${c}`),
     `Constraints (do NOT violate):`,
     ...constraints.map((c) => `- ${c}`),
+    `Do not violate safety, programme, climate, local/jurisdiction, or technical authority constraints for style or portfolio reasons.`,
+    ...(hasRejectedInfluences
+      ? [
+          `Do not include rejected portfolio/local-style influences in this panel.`,
+        ]
+      : []),
     `This panel MUST depict the SAME building identity as all other visual panels.`,
     `geometryHash: ${m.geometryHash || "n/a"}`,
     `=== END IDENTITY LOCK ===`,
