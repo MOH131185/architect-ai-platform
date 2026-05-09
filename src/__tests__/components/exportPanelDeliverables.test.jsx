@@ -176,4 +176,90 @@ describe("ExportPanel deliverables ZIP entry point", () => {
 
     unmount();
   });
+
+  test("saves a package and downloads it from package history", async () => {
+    const responseBlob = new Blob(["stored-zip-bytes"], {
+      type: "application/zip",
+    });
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          packageId: "artifact-package-ui-001",
+          packageHash: "packagehash-ui-001",
+          signedUrl: null,
+          downloadRoute:
+            "/api/project/export/artifact-package/artifact-package-ui-001/download",
+          history: {
+            packageId: "artifact-package-ui-001",
+            packageHash: "packagehash-ui-001",
+            projectId: "project-ui-001",
+            artifactCount: 4,
+            sourceGapCount: 2,
+            downloadUrl:
+              "/api/project/export/artifact-package/artifact-package-ui-001/download",
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        headers: createHeaders({
+          "Content-Disposition": 'attachment; filename="saved.zip"',
+        }),
+        blob: jest.fn().mockResolvedValue(responseBlob),
+      });
+
+    const designData = {
+      projectName: "Test Project",
+      projectId: "project-ui-001",
+      geometryHash: "geometry-ui-001",
+      artifacts: {
+        a1Sheet: {
+          svgString:
+            '<svg xmlns="http://www.w3.org/2000/svg"><text>A1</text></svg>',
+        },
+      },
+      compiledProject: {
+        geometryHash: "geometry-ui-001",
+      },
+    };
+
+    const { container, unmount } = renderComponent(
+      <ExportPanel designData={designData} onExport={jest.fn()} />,
+    );
+
+    await act(async () => {
+      buttonByText(container, "Save Package").click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/project/export/artifact-package/store",
+      expect.objectContaining({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    expect(container.textContent).toContain("packagehash-ui-001");
+    expect(mockToast.success).toHaveBeenCalledWith(
+      "Package saved",
+      "Deliverables ZIP stored for this project.",
+    );
+
+    await act(async () => {
+      buttonByText(container, "packagehash-ui-001").click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(global.fetch).toHaveBeenLastCalledWith(
+      "/api/project/export/artifact-package/artifact-package-ui-001/download",
+      { method: "GET" },
+    );
+    expect(HTMLAnchorElement.prototype.click).toHaveBeenCalled();
+
+    unmount();
+  });
 });

@@ -1,5 +1,15 @@
 import artifactPackageHandler from "../../../api/project/export/artifact-package.js";
+import storeArtifactPackageHandler from "../../../api/project/export/artifact-package/store.js";
+import artifactPackageMetadataHandler from "../../../api/project/export/artifact-package/[packageId].js";
+import downloadArtifactPackageHandler from "../../../api/project/export/artifact-package/[packageId]/download.js";
+import artifactPackageHistoryHandler from "../../../api/project/export/artifact-package/history.js";
 import { listZipEntryNames } from "../../services/export/artifactPackageService.js";
+import {
+  clearInMemoryArtifactStorage,
+  createInMemoryArtifactStorageAdapter,
+  setDefaultArtifactStorageAdapter,
+} from "../../services/export/artifactStorageService.js";
+import { clearArtifactPackageHistory } from "../../services/export/artifactHistoryService.js";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 function dataUri(mimeType, value) {
@@ -126,6 +136,13 @@ function baseBody(overrides = {}) {
 }
 
 describe("/api/project/export/artifact-package", () => {
+  afterEach(() => {
+    clearInMemoryArtifactStorage();
+    clearArtifactPackageHistory();
+    setDefaultArtifactStorageAdapter(createInMemoryArtifactStorageAdapter());
+    delete process.env.ARTIFACT_PACKAGE_SIGNING_SECRET;
+  });
+
   test("returns application/zip with a safe attachment filename", async () => {
     const req = { method: "POST", headers: {}, body: baseBody() };
     const res = createMockResponse();
@@ -248,6 +265,125 @@ describe("/api/project/export/artifact-package", () => {
     expect(res.statusCode).toBe(400);
     expect(res.body).toEqual(
       expect.objectContaining({ code: "PACKAGE_ARTIFACTS_REQUIRED" }),
+    );
+  });
+
+  test("stores a real package, records history, and downloads through fallback route", async () => {
+    setDefaultArtifactStorageAdapter(createInMemoryArtifactStorageAdapter());
+    const storeReq = { method: "POST", headers: {}, body: baseBody() };
+    const storeRes = createMockResponse();
+
+    await storeArtifactPackageHandler(storeReq, storeRes);
+
+    expect(storeRes.statusCode).toBe(200);
+    expect(storeRes.body).toEqual(
+      expect.objectContaining({
+        packageId: expect.stringMatching(/^artifact-package-/),
+        packageHash: expect.any(String),
+        signedUrl: null,
+        downloadRoute: expect.stringContaining("/download"),
+        history: expect.objectContaining({
+          projectId: "project-zip-001",
+          geometryHash: "geometryhash-zip-001",
+          visualManifestHash: "visualhash-zip-001",
+          styleBlendManifestHash: "stylehash-zip-001",
+          jurisdictionId: "uk-england",
+          status: "stored",
+        }),
+      }),
+    );
+    expect(JSON.stringify(storeRes.body)).not.toContain(
+      "secret-value-that-must-not-appear",
+    );
+
+    const packageId = storeRes.body.packageId;
+    const metadataRes = createMockResponse();
+    await artifactPackageMetadataHandler(
+      { method: "GET", headers: {}, query: { packageId } },
+      metadataRes,
+    );
+    expect(metadataRes.statusCode).toBe(200);
+    expect(metadataRes.body.manifest.packageHash).toBe(
+      storeRes.body.packageHash,
+    );
+
+    const downloadRes = createMockResponse();
+    await downloadArtifactPackageHandler(
+      { method: "GET", headers: {}, query: { packageId } },
+      downloadRes,
+    );
+    expect(downloadRes.statusCode).toBe(200);
+    expect(downloadRes.headers["Content-Type"]).toBe("application/zip");
+    expect(listZipEntryNames(downloadRes.body)).toContain("manifest.json");
+
+    const historyRes = createMockResponse();
+    await artifactPackageHistoryHandler(
+      {
+        method: "GET",
+        headers: {},
+        query: { projectId: "project-zip-001" },
+      },
+      historyRes,
+    );
+    expect(historyRes.statusCode).toBe(200);
+    expect(historyRes.body.history).toHaveLength(1);
+    expect(JSON.stringify(historyRes.body)).not.toContain("zipBytes");
+    expect(JSON.stringify(historyRes.body)).not.toContain(
+      "secret-value-that-must-not-appear",
+    );
+  });
+
+  test("store endpoint returns a real signed URL when adapter supports it", async () => {
+    process.env.ARTIFACT_PACKAGE_SIGNING_SECRET = "api-test-secret";
+    setDefaultArtifactStorageAdapter(
+      createInMemoryArtifactStorageAdapter({
+        signedUrlSecret: "api-test-secret",
+        signedUrlBaseUrl: "/api/project/export/artifact-package",
+        now: "2026-05-09T12:00:00.000Z",
+      }),
+    );
+    const storeRes = createMockResponse();
+
+    await storeArtifactPackageHandler(
+      {
+        method: "POST",
+        headers: {},
+        body: { ...baseBody(), expiresInSeconds: 60 },
+      },
+      storeRes,
+    );
+
+    expect(storeRes.statusCode).toBe(200);
+    expect(storeRes.body.signedUrl).toContain(
+      `/api/project/export/artifact-package/${storeRes.body.packageId}/download`,
+    );
+    expect(storeRes.body.signedUrl).toContain("signature=");
+    expect(storeRes.body.downloadRoute).toBe(null);
+  });
+
+  test("deleted stored package returns a clear download error", async () => {
+    const adapter = createInMemoryArtifactStorageAdapter();
+    setDefaultArtifactStorageAdapter(adapter);
+    const storeRes = createMockResponse();
+    await storeArtifactPackageHandler(
+      { method: "POST", headers: {}, body: baseBody() },
+      storeRes,
+    );
+
+    await adapter.deleteArtifactPackage({ packageId: storeRes.body.packageId });
+    const downloadRes = createMockResponse();
+    await downloadArtifactPackageHandler(
+      {
+        method: "GET",
+        headers: {},
+        query: { packageId: storeRes.body.packageId },
+      },
+      downloadRes,
+    );
+
+    expect(downloadRes.statusCode).toBe(410);
+    expect(downloadRes.body).toEqual(
+      expect.objectContaining({ code: "ARTIFACT_STORAGE_DELETED" }),
     );
   });
 });

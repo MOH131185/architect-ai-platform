@@ -42,6 +42,12 @@ contracts and should fail closed when geometry provenance is missing.
   packs are implemented as data-driven metadata for labels, CAD preferences,
   local style defaults, climate assumptions, advisory checklists, and review
   disclaimers.
+- The professional deliverable package system now includes deterministic
+  manifest/ZIP generation, API/download wiring, deterministic PDF stitching from
+  existing generated PDFs, provider-neutral package storage, capability-based
+  signed download URLs, and package history metadata. `packageHash` remains
+  deterministic package evidence; history timestamps are operational metadata
+  and do not feed back into the package hash.
 
 ## Non-negotiable authority rules
 
@@ -376,6 +382,32 @@ Acceptance criteria:
 - Main generation response returns lightweight artifact metadata and URLs, not
   huge base64 payloads.
 - Each export stage has status, logs, retry metadata, and manifest entries.
+
+Current package-delivery implementation:
+
+- Phase 1 implemented deterministic artifact manifests and ZIP packaging using
+  sorted entries, fixed timestamps, stored ZIP entries, CRC32, and explicit
+  source gaps for unavailable gated artifacts.
+- Phase 2 exposed the package builder through the export API and a minimal
+  `Download Deliverables ZIP` UI entry point.
+- Phase 3 added deterministic PDF stitching from existing generated PDFs only,
+  with source gaps for no PDF inputs or stitching failure.
+- Phase 4 adds provider-neutral artifact package storage and package history.
+  The storage contract supports local/test memory, optional filesystem-backed
+  storage when configured, capability reporting, delete/list/get, and signed
+  download URLs only when a real signing secret is configured.
+
+Current limitations after Phase 4:
+
+- Storage is provider-neutral and local-first; production object storage
+  provider integration remains future work.
+- Signed URLs are capability-based. When signing is unsupported, the API returns
+  the direct package download route rather than fabricating signed URLs.
+- Package history stores operational timestamps, status, package hash,
+  authority hashes, flags, source-gap counts, and producer versions. These
+  timestamps do not affect deterministic package hashes.
+- Retention policies, team/project permissions, audit-log persistence, and a
+  full artifact browser UI remain future work.
 
 ## Final validation stack
 
