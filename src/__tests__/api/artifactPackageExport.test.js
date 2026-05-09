@@ -1,8 +1,32 @@
 import artifactPackageHandler from "../../../api/project/export/artifact-package.js";
 import { listZipEntryNames } from "../../services/export/artifactPackageService.js";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 function dataUri(mimeType, value) {
   return `data:${mimeType};base64,${Buffer.from(value).toString("base64")}`;
+}
+
+async function pdfDataUri(label) {
+  const pdf = await PDFDocument.create();
+  pdf.setTitle(label);
+  pdf.setCreator("artifact-package-api-test");
+  pdf.setProducer("artifact-package-api-test");
+  pdf.setCreationDate(new Date("1980-01-01T00:00:00.000Z"));
+  pdf.setModificationDate(new Date("1980-01-01T00:00:00.000Z"));
+  const page = pdf.addPage([200, 200]);
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  page.drawText(label, {
+    x: 24,
+    y: 144,
+    font,
+    size: 12,
+    color: rgb(0, 0, 0),
+  });
+  const bytes = await pdf.save({
+    useObjectStreams: false,
+    addDefaultPage: false,
+  });
+  return dataUri("application/pdf", bytes);
 }
 
 function createMockResponse() {
@@ -144,6 +168,9 @@ describe("/api/project/export/artifact-package", () => {
     );
     expect(qaReport).toEqual(expect.objectContaining({ status: "pass" }));
     expect(manifestText).not.toContain("secret-value-that-must-not-appear");
+    expect(Buffer.from(res.body).toString("latin1")).not.toContain(
+      "secret-value-that-must-not-appear",
+    );
   });
 
   test("DWG and IFC unavailable are source gaps with no fake files", async () => {
@@ -163,6 +190,49 @@ describe("/api/project/export/artifact-package", () => {
     );
     expect(names.some((name) => name.endsWith(".dwg"))).toBe(false);
     expect(names.some((name) => name.endsWith(".ifc"))).toBe(false);
+  });
+
+  test("includes stitched deliverables PDF in ZIP when generated PDFs exist", async () => {
+    const req = {
+      method: "POST",
+      headers: {},
+      body: baseBody({
+        a1Pdf: {
+          dataUrl: await pdfDataUri("A1 PDF"),
+          sheetNumber: "A1-001",
+        },
+        technicalDrawings: [
+          {
+            panelType: "section",
+            mimeType: "application/pdf",
+            pdfDataUrl: await pdfDataUri("Section PDF"),
+            sheetNumber: "A-201",
+          },
+        ],
+      }),
+    };
+    const res = createMockResponse();
+
+    await artifactPackageHandler(req, res);
+
+    const names = listZipEntryNames(res.body);
+    const stitchedFileName = "presentation/my-project-2026-deliverables.pdf";
+    const manifest = readZipJson(res.body, "manifest.json");
+    const stitchedBytes = readZipEntry(res.body, stitchedFileName);
+    expect(stitchedBytes).toBeTruthy();
+    const stitchedPdf = await PDFDocument.load(new Uint8Array(stitchedBytes));
+
+    expect(names).toContain(stitchedFileName);
+    expect(manifest.artifacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          fileName: stitchedFileName,
+          type: "stitched_pdf_package",
+          mimeType: "application/pdf",
+        }),
+      ]),
+    );
+    expect(stitchedPdf.getPageCount()).toBe(3);
   });
 
   test("rejects package requests with no generated artifact source", async () => {

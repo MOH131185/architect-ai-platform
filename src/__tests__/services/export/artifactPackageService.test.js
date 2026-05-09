@@ -1,12 +1,65 @@
 import {
   buildArtifactPackage,
+  buildArtifactPackageWithPdfStitching,
   IFC_EXPORT_UNAVAILABLE,
   listZipEntryNames,
+  PDF_STITCHING_FAILED,
+  PDF_STITCHING_NO_INPUT_PDFS,
 } from "../../../services/export/artifactPackageService.js";
 import { DWG_CONVERSION_UNAVAILABLE } from "../../../services/cad/dwgConversionAdapter.js";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 function dataUri(mimeType, value) {
   return `data:${mimeType};base64,${Buffer.from(value).toString("base64")}`;
+}
+
+async function pdfDataUri(label) {
+  const pdf = await PDFDocument.create();
+  pdf.setTitle(label);
+  pdf.setCreator("artifact-package-test");
+  pdf.setProducer("artifact-package-test");
+  pdf.setCreationDate(new Date("1980-01-01T00:00:00.000Z"));
+  pdf.setModificationDate(new Date("1980-01-01T00:00:00.000Z"));
+  const page = pdf.addPage([200, 200]);
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  page.drawText(label, {
+    x: 24,
+    y: 144,
+    font,
+    size: 12,
+    color: rgb(0, 0, 0),
+  });
+  const bytes = await pdf.save({
+    useObjectStreams: false,
+    addDefaultPage: false,
+  });
+  return dataUri("application/pdf", bytes);
+}
+
+function readZipEntry(zipBytes, entryName) {
+  const bytes = Buffer.from(zipBytes);
+  let offset = 0;
+
+  while (offset + 30 <= bytes.length) {
+    const signature = bytes.readUInt32LE(offset);
+    if (signature !== 0x04034b50) break;
+
+    const compressedSize = bytes.readUInt32LE(offset + 18);
+    const nameLength = bytes.readUInt16LE(offset + 26);
+    const extraLength = bytes.readUInt16LE(offset + 28);
+    const nameStart = offset + 30;
+    const nameEnd = nameStart + nameLength;
+    const name = bytes.slice(nameStart, nameEnd).toString("utf8");
+    const dataStart = nameEnd + extraLength;
+    const dataEnd = dataStart + compressedSize;
+
+    if (name === entryName) {
+      return bytes.slice(dataStart, dataEnd);
+    }
+    offset = dataEnd;
+  }
+
+  return null;
 }
 
 function baseInput(overrides = {}) {
@@ -326,5 +379,101 @@ describe("artifactPackageService", () => {
       expect(artifact.styleBlendManifestHash).toBe("styleblendhash001");
       expect(artifact.jurisdictionId).toBe("uk-england");
     }
+  });
+
+  test("stitches existing generated PDFs into deterministic deliverables PDF", async () => {
+    const a1Pdf = await pdfDataUri("A1 sheet");
+    const sectionPdf = await pdfDataUri("Section sheet");
+    const input = baseInput({
+      a1Pdf: {
+        dataUrl: a1Pdf,
+        sheetNumber: "A1-001",
+      },
+      technicalDrawings: [
+        {
+          panelType: "section",
+          mimeType: "application/pdf",
+          pdfDataUrl: sectionPdf,
+          sheetNumber: "A-201",
+        },
+      ],
+    });
+
+    const first = await buildArtifactPackageWithPdfStitching(input);
+    const second = await buildArtifactPackageWithPdfStitching(input);
+    const stitchedFileName =
+      "presentation/deterministic-package-deliverables.pdf";
+    const stitchedArtifact = first.manifest.artifacts.find(
+      (artifact) => artifact.fileName === stitchedFileName,
+    );
+
+    expect(stitchedArtifact).toEqual(
+      expect.objectContaining({
+        type: "stitched_pdf_package",
+        mimeType: "application/pdf",
+        role: "stitched_deliverables_pdf",
+        source: "PDF stitching from existing generated PDF artifacts",
+      }),
+    );
+    expect(listZipEntryNames(first.zipBytes)).toContain(stitchedFileName);
+    expect(second.packageHash).toBe(first.packageHash);
+    expect(
+      second.manifest.artifacts.find(
+        (artifact) => artifact.fileName === stitchedFileName,
+      )?.hash,
+    ).toBe(stitchedArtifact.hash);
+
+    const stitchedBytes = readZipEntry(first.zipBytes, stitchedFileName);
+    expect(stitchedBytes).toBeTruthy();
+    const stitchedPdf = await PDFDocument.load(new Uint8Array(stitchedBytes));
+    expect(stitchedPdf.getPageCount()).toBe(3);
+  });
+
+  test("stitching source gap is reported when no existing PDFs are supplied", async () => {
+    const result = await buildArtifactPackageWithPdfStitching(
+      baseInput({
+        a1Pdf: null,
+        technicalDrawings: [],
+        existingArtifacts: [],
+      }),
+    );
+
+    expect(result.manifest.sourceGaps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: PDF_STITCHING_NO_INPUT_PDFS }),
+      ]),
+    );
+    expect(
+      result.manifest.artifacts.some(
+        (artifact) => artifact.type === "stitched_pdf_package",
+      ),
+    ).toBe(false);
+  });
+
+  test("stitching failure reports a source gap without creating a fake stitched PDF", async () => {
+    const result = await buildArtifactPackageWithPdfStitching(
+      baseInput({
+        a1Pdf: {
+          dataUrl: dataUri("application/pdf", "not a real pdf"),
+          sheetNumber: "A1-001",
+        },
+      }),
+    );
+
+    expect(result.manifest.sourceGaps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: PDF_STITCHING_FAILED }),
+      ]),
+    );
+    expect(
+      result.manifest.artifacts.some(
+        (artifact) => artifact.type === "stitched_pdf_package",
+      ),
+    ).toBe(false);
+    expect(
+      listZipEntryNames(result.zipBytes).some((name) =>
+        name.endsWith("-deliverables.pdf"),
+      ),
+    ).toBe(false);
   });
 });
