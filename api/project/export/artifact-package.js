@@ -1,5 +1,5 @@
 import { setCorsHeaders, handlePreflight } from "../../_shared/cors.js";
-import { buildArtifactPackage } from "../../../src/services/export/artifactPackageService.js";
+import { buildArtifactPackageWithPdfStitching } from "../../../src/services/export/artifactPackageService.js";
 import { exportCompiledProjectToDXF } from "../../../src/services/project/compiledProjectExportService.js";
 
 function safeProjectName(value, fallback = "ArchiAI_Project") {
@@ -253,7 +253,8 @@ export default async function handler(req, res) {
       });
     }
 
-    const packageResult = buildArtifactPackage(packageInput);
+    const packageResult =
+      await buildArtifactPackageWithPdfStitching(packageInput);
     const safeName = safeProjectName(packageInput.projectName);
     const zipBuffer = Buffer.from(packageResult.zipBytes);
 

@@ -7,6 +7,20 @@ import {
   DWG_CONVERSION_UNAVAILABLE,
   resolveDwgConversionCapabilities,
 } from "../cad/dwgConversionAdapter.js";
+import {
+  buildStitchedPdfArtifact,
+  PDF_STITCHING_SERVICE_VERSION,
+  PDF_STITCHING_STRATEGY,
+  PDF_STITCHING_FAILED,
+  PDF_STITCHING_NO_INPUT_PDFS,
+  PDF_STITCHING_UNAVAILABLE,
+} from "./pdfStitchingService.js";
+
+export {
+  PDF_STITCHING_FAILED,
+  PDF_STITCHING_NO_INPUT_PDFS,
+  PDF_STITCHING_UNAVAILABLE,
+} from "./pdfStitchingService.js";
 
 export const ARTIFACT_PACKAGE_SCHEMA_VERSION = "artifact-package-manifest-v1";
 export const ARTIFACT_PACKAGE_SERVICE_VERSION = "artifact-package-service-v1";
@@ -310,7 +324,7 @@ function normalizeZipPath(value) {
 function safeName(value, fallback = "artifact") {
   const cleaned = String(value || fallback)
     .trim()
-    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "")
     .toLowerCase();
@@ -1050,13 +1064,41 @@ export function buildArtifactPackage(input = {}) {
   };
 }
 
+export async function buildArtifactPackageWithPdfStitching(input = {}) {
+  const context = resolveContext(input);
+  const stitchedPdf = await buildStitchedPdfArtifact(input, context);
+  const existingArtifacts = [
+    ...asArray(input.existingArtifacts),
+    ...(stitchedPdf.artifact ? [stitchedPdf.artifact] : []),
+  ];
+  const sourceGaps = [
+    ...asArray(input.sourceGaps),
+    ...asArray(stitchedPdf.sourceGaps),
+  ];
+
+  return buildArtifactPackage({
+    ...input,
+    existingArtifacts,
+    sourceGaps,
+    producerVersions: {
+      ...(input.producerVersions || {}),
+      pdfStitchingService: PDF_STITCHING_SERVICE_VERSION,
+      pdfStitchingStrategy: PDF_STITCHING_STRATEGY,
+    },
+  });
+}
+
 export default {
   ARTIFACT_PACKAGE_SCHEMA_VERSION,
   ARTIFACT_PACKAGE_SERVICE_VERSION,
   ARTIFACT_PACKAGE_FOLDERS,
   DWG_CONVERSION_UNAVAILABLE,
   IFC_EXPORT_UNAVAILABLE,
+  PDF_STITCHING_FAILED,
+  PDF_STITCHING_NO_INPUT_PDFS,
+  PDF_STITCHING_UNAVAILABLE,
   buildArtifactPackage,
+  buildArtifactPackageWithPdfStitching,
   buildDeterministicZip,
   hashBytes,
   listZipEntryNames,
