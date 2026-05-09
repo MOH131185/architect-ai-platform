@@ -6628,6 +6628,96 @@ function compactManifestText(value, fallback = "", maxLength = 180) {
   return `${raw.slice(0, Math.max(0, maxLength - 1)).trimEnd()}.`;
 }
 
+function comparableStyleText(value) {
+  return String(value || "")
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function collectStyleBlendRejectedText(styleBlend = null) {
+  const rejectedInfluences = Array.isArray(styleBlend?.rejectedInfluences)
+    ? styleBlend.rejectedInfluences
+    : [];
+  const conflicts = Array.isArray(styleBlend?.conflicts)
+    ? styleBlend.conflicts
+    : [];
+  return [
+    ...rejectedInfluences.flatMap((entry) => [
+      entry?.influence,
+      entry?.reason,
+      entry?.rejectedBy,
+    ]),
+    ...conflicts.flatMap((entry) => [
+      entry?.lower_priority_dropped,
+      entry?.summary,
+    ]),
+  ]
+    .map(comparableStyleText)
+    .filter(Boolean)
+    .join(" ");
+}
+
+function filterCompatiblePortfolioKeyNoteMaterials(
+  materials = [],
+  styleBlend = null,
+) {
+  if (!Array.isArray(materials)) return [];
+  const rejectedText = collectStyleBlendRejectedText(styleBlend);
+  const seen = new Set();
+  return materials
+    .map((entry) =>
+      typeof entry === "string"
+        ? compactManifestText(entry, "", 120)
+        : compactManifestText(
+            entry?.name || entry?.material || entry?.label,
+            "",
+            120,
+          ),
+    )
+    .filter((name) => {
+      const normalized = comparableStyleText(name);
+      if (!normalized || seen.has(normalized)) return false;
+      seen.add(normalized);
+      if (!rejectedText) return true;
+      if (rejectedText.includes(normalized)) return false;
+      if (
+        /glass|glaz|curtain wall|mirrored/.test(normalized) &&
+        /glass|glaz|curtain wall|mirrored/.test(rejectedText)
+      ) {
+        return false;
+      }
+      if (
+        /sci fi|futur|parametric|blob/.test(normalized) &&
+        /sci fi|futur|parametric|blob/.test(rejectedText)
+      ) {
+        return false;
+      }
+      if (
+        /detached|freestanding/.test(normalized) &&
+        /detached|freestanding/.test(rejectedText)
+      ) {
+        return false;
+      }
+      return true;
+    });
+}
+
+function getCompatiblePortfolioKeyNoteMaterials({
+  styleBlend = null,
+  sheetDesignContext = null,
+} = {}) {
+  const visualRationaleMaterials =
+    sheetDesignContext?.visualManifest?.styleBlendPortfolioRationale?.materials;
+  const sourceMaterials =
+    Array.isArray(visualRationaleMaterials) && visualRationaleMaterials.length
+      ? visualRationaleMaterials
+      : styleBlend?.portfolioStyleEvidence?.materials;
+  return filterCompatiblePortfolioKeyNoteMaterials(sourceMaterials, styleBlend);
+}
+
 function summarizeProgrammeZones(
   programmeSummary = null,
   compiledProject = {},
@@ -7039,11 +7129,19 @@ export function buildKeyNoteItems({
     styleBlend?.portfolioStyleEvidence?.hasPortfolioEvidence === true &&
     Array.isArray(styleBlend.portfolioStyleEvidence.materials)
   ) {
-    styleProvenanceLines.push(
-      `Compatible portfolio: ${styleBlend.portfolioStyleEvidence.materials
-        .slice(0, 3)
-        .join(", ")}.`,
+    const compatiblePortfolioMaterials = getCompatiblePortfolioKeyNoteMaterials(
+      {
+        styleBlend,
+        sheetDesignContext,
+      },
     );
+    if (compatiblePortfolioMaterials.length > 0) {
+      styleProvenanceLines.push(
+        `Compatible portfolio: ${compatiblePortfolioMaterials
+          .slice(0, 3)
+          .join(", ")}.`,
+      );
+    }
   }
   if (
     Array.isArray(styleBlend?.rejectedInfluences) &&
