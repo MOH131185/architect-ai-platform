@@ -76,4 +76,31 @@ describe("jurisdictionPackService", () => {
       expect(text).toMatch(/Preliminary advisory checklist/i);
     });
   });
+
+  // Regression lock-in for ERR_IMPORT_ATTRIBUTE_MISSING (Node 22+/25 ESM):
+  // bare `import x from "y.json"` fails at module-load time when the dynamic
+  // API wrapper (server.cjs) imports this service. Jest's babel transform
+  // tolerates bare JSON imports, so the runtime check above passes either way;
+  // this source-pattern check is what catches the regression.
+  test('every JSON import declares `with { type: "json" }`', () => {
+    // eslint-disable-next-line global-require
+    const fs = require("fs");
+    // eslint-disable-next-line global-require
+    const path = require("path");
+    const file = path.resolve(
+      __dirname,
+      "../../../services/jurisdiction/jurisdictionPackService.js",
+    );
+    const source = fs.readFileSync(file, "utf8");
+    const offenders = source
+      .split(/\r?\n/)
+      .map((text, idx) => ({ line: idx + 1, text }))
+      .filter(({ text }) =>
+        /^\s*import\s+\S+\s+from\s+["'][^"']+\.json["']/.test(text),
+      )
+      .filter(
+        ({ text }) => !/with\s*\{\s*type\s*:\s*["']json["']\s*\}/.test(text),
+      );
+    expect(offenders).toEqual([]);
+  });
 });

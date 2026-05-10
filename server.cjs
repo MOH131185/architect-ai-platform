@@ -95,12 +95,27 @@ function mountDynamicApiRoute(method, route, relativePath, middlewares = []) {
       const handler = await loadDynamicApiHandler(relativePath);
       return handler(req, res);
     } catch (error) {
-      console.error(`[Dynamic API] Failed to load ${relativePath}:`, error);
-      return res.status(500).json({
+      // Always log the full stack server-side so import-time and
+      // synchronous-throw failures (e.g. ERR_IMPORT_ATTRIBUTE_MISSING) are
+      // diagnosable from the dev console without redeploying.
+      console.error(
+        `[Dynamic API] Failed to load ${relativePath}:`,
+        error?.stack || error,
+      );
+      const isProduction = process.env.NODE_ENV === 'production';
+      const body = {
         error: 'Dynamic API route failed',
-        message: error.message,
+        message: error?.message || String(error),
         route,
-      });
+      };
+      // In dev, surface the upstream error name + code + stack so the client
+      // gets actionable detail. Stripped in production to avoid leaking paths.
+      if (!isProduction) {
+        if (error?.name) body.errorName = error.name;
+        if (error?.code) body.errorCode = error.code;
+        if (error?.stack) body.errorStack = error.stack;
+      }
+      return res.status(500).json(body);
     }
   });
 }
