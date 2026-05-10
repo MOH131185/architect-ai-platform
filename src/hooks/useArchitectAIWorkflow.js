@@ -1457,6 +1457,11 @@ async function runProjectGraphVerticalSliceWorkflow({
     panelsByKey: panelMap,
     qa: verticalSlice.qa,
     artifacts: verticalSlice.artifacts,
+    // Pre-baked artifact package reference from the generation request.
+    // When present, ExportPanel's Save Package sends a compact ref body
+    // ({ packageId, projectId, userId }) instead of re-uploading the
+    // full design bundle. See fix/save-package-reference-architecture.
+    package: verticalSlice.package || null,
     modelRegistry: verticalSlice.modelRegistry,
     metadata: {
       workflow: PIPELINE_MODE.PROJECT_GRAPH,
