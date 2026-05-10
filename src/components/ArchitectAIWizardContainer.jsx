@@ -1484,8 +1484,8 @@ const ArchitectAIWizardContainer = () => {
         return spaces;
       }
 
-      const togetherAIReasoningService = (
-        await import("../services/togetherAIReasoningService")
+      const openaiReasoningService = (
+        await import("../services/openaiReasoningService")
       ).default;
       // Generic AI path uses the same authoritative floor count as the
       // residential path. Locked > autoDetected > manual > fallback.
@@ -1525,7 +1525,7 @@ const ArchitectAIWizardContainer = () => {
         "Put public and high-footfall spaces on Ground, with support, staff, teaching, workplace, or clinical spaces distributed logically across the remaining levels.";
       const prompt = `You are an architectural programming expert. Generate a JSON array of spaces for a ${projectTypeSupport.label || sanitizedProgram} totaling ~${sanitizedArea} m². Ensure the total area (area×count sum) is within ±5% of ${sanitizedArea}. Assign each space to ONE of these level names only: ${levelNames.join(", ")}. ${programmeGuidance} Return ONLY the JSON array, no commentary.`;
 
-      const response = await togetherAIReasoningService.chatCompletion(
+      const response = await openaiReasoningService.chatCompletion(
         [
           {
             role: "system",
@@ -1534,7 +1534,11 @@ const ArchitectAIWizardContainer = () => {
           },
           { role: "user", content: prompt },
         ],
-        { max_tokens: 900, temperature: 0.55 },
+        {
+          max_tokens: 900,
+          temperature: 0.55,
+          task_type: "wizard-program-compile",
+        },
       );
 
       const content =
