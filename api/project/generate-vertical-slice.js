@@ -52,6 +52,33 @@ function downloadRouteFor(packageId) {
   )}/download`;
 }
 
+// The wizard sends its own projectId/designId on the request payload; the
+// slice service generates an unrelated projectId on the result (typically
+// derived from projectGraph.project_id). For the prebaked artifact package
+// to be filterable from the panel by the same projectId the wizard's
+// designData carries, the wizard's id MUST win — otherwise Save Package
+// succeeds but the per-project history filter shows nothing.
+//
+// Exported via __verticalSlicePrebakeInternals so the precedence is unit-
+// testable without spinning up the full slice service.
+function resolveWizardProjectId(payload = {}, result = {}) {
+  return (
+    payload?.projectId ||
+    payload?.project_id ||
+    payload?.designId ||
+    payload?.metadata?.projectId ||
+    result?.projectId ||
+    result?.projectGraph?.project_id ||
+    result?.projectGraph?.projectGraphId ||
+    result?.metadata?.projectId ||
+    null
+  );
+}
+
+export const __verticalSlicePrebakeInternals = {
+  resolveWizardProjectId,
+};
+
 // Pre-bake the deliverables ZIP into storage during the generation request so
 // the client never has to re-upload tens of MB of artifacts at Save time.
 // Returns a small reference object the client stores on designData.package and
@@ -67,12 +94,24 @@ async function prebakeArtifactPackage({ result, payload, req }) {
       payload?.metadata?.projectName ||
       result?.projectName ||
       "ArchiAI_Project";
+    // Explicit projectId override: the wizard's id must beat the
+    // slice-generated one regardless of spread order. Without this, the
+    // panel's history filter (queried with the wizard's projectId) returns
+    // empty after a successful Save because the storage entry was filed
+    // under the slice's auto-generated projectId.
+    //
+    // CRITICAL: do not pass a `result` key here. buildPackageInput's
+    // resolvePayload helper preferences body.result over body, which would
+    // cause the explicit projectId set at body level to be dropped on the
+    // floor. The spread `...result` already exposes artifacts, projectGraph,
+    // compiledProject, etc. at top level for buildPackageInput to find.
+    const wizardProjectId = resolveWizardProjectId(payload, result);
     const packageInput = buildPackageInput({
       ...payload,
       ...result,
+      projectId: wizardProjectId,
       projectName,
       userId,
-      result,
     });
     if (!hasPackageSource(packageInput)) return null;
     const packageResult =
