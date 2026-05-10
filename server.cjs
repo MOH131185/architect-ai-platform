@@ -92,6 +92,30 @@ async function loadDynamicApiHandler(relativePath) {
 function mountDynamicApiRoute(method, route, relativePath, middlewares = []) {
   app[method](route, ...middlewares, async (req, res) => {
     try {
+      // Vercel/Next-style dynamic handlers (api/.../[param].js) read URL
+      // segments from req.query. Express puts them on req.params and
+      // exposes req.query as a prototype-level getter with no setter, so
+      // a plain `req.query = ...` assignment is silently rejected. Shadow
+      // the prototype getter with an own property so the merged values
+      // stick. No-op for static routes (req.params is {}).
+      if (req.params && typeof req.params === 'object') {
+        const merged = { ...(req.query || {}) };
+        let mutated = false;
+        for (const [name, value] of Object.entries(req.params)) {
+          if (value !== undefined && merged[name] === undefined) {
+            merged[name] = value;
+            mutated = true;
+          }
+        }
+        if (mutated) {
+          Object.defineProperty(req, 'query', {
+            value: merged,
+            writable: true,
+            configurable: true,
+            enumerable: true,
+          });
+        }
+      }
       const handler = await loadDynamicApiHandler(relativePath);
       return handler(req, res);
     } catch (error) {
@@ -397,6 +421,15 @@ mountDynamicApiRoute('post', '/api/project/export/dxf',     'api/project/export/
 mountDynamicApiRoute('post', '/api/project/export/ifc',     'api/project/export/ifc.js');
 mountDynamicApiRoute('post', '/api/project/export/xlsx',    'api/project/export/xlsx.js');
 mountDynamicApiRoute('post', '/api/project/export/artifact-package', 'api/project/export/artifact-package.js');
+// Artifact-package storage + history routes. The serverless handlers under
+// api/project/export/artifact-package/* run natively on Vercel; mount them
+// on the Express dev server too so npm run dev exercises the same surface.
+// Dynamic ":packageId" reaches the handler via req.query thanks to the
+// params-into-query merge in mountDynamicApiRoute above.
+mountDynamicApiRoute('get',  '/api/project/export/artifact-package/history',                    'api/project/export/artifact-package/history.js');
+mountDynamicApiRoute('post', '/api/project/export/artifact-package/store',                      'api/project/export/artifact-package/store.js');
+mountDynamicApiRoute('get',  '/api/project/export/artifact-package/:packageId',                 'api/project/export/artifact-package/[packageId].js');
+mountDynamicApiRoute('get',  '/api/project/export/artifact-package/:packageId/download',        'api/project/export/artifact-package/[packageId]/download.js');
 
 // Phase 1/2 architecture backend routes (shared with api/models/* serverless handlers)
 mountDynamicApiRoute('post', '/api/models/generate-style', 'api/models/generate-style.js', [aiApiLimiter]);
