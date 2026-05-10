@@ -271,19 +271,45 @@ class ExportService {
     return { success: true, url, filename, format: "ZIP" };
   }
 
+  buildArtifactPackageReference(sheet = {}) {
+    const pkg = sheet?.package || sheet?.metadata?.package || null;
+    if (!pkg || !pkg.packageId) return null;
+    return {
+      packageId: pkg.packageId,
+      projectId:
+        sheet?.projectId ||
+        sheet?.project_id ||
+        sheet?.designId ||
+        sheet?.metadata?.projectId ||
+        null,
+      projectName: this.resolveProjectName(sheet),
+      userId: sheet?.userId || sheet?.metadata?.userId || null,
+    };
+  }
+
   async storeDeliverablesPackage({ sheet, expiresInSeconds } = {}) {
     if (!this.hasDeliverableArtifacts(sheet)) {
       throw new Error("Generate a design before saving deliverables.");
     }
 
-    const payload = this.buildArtifactPackagePayload(sheet);
+    // Prefer the compact-ref Save when generation pre-baked the package.
+    // The client never re-uploads tens of MB of artifact bytes; the server
+    // looks up the existing storage entry and records history. Falls back to
+    // the legacy full-payload Save if no pre-baked package is on the sheet.
+    const ref = this.buildArtifactPackageReference(sheet);
+    const body = ref
+      ? { ...ref, ...(expiresInSeconds ? { expiresInSeconds } : {}) }
+      : (() => {
+          const payload = this.buildArtifactPackagePayload(sheet);
+          return {
+            ...payload,
+            ...(expiresInSeconds ? { expiresInSeconds } : {}),
+          };
+        })();
     const response = await fetch("/api/project/export/artifact-package/store", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...payload,
-        ...(expiresInSeconds ? { expiresInSeconds } : {}),
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
