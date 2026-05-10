@@ -1,7 +1,7 @@
-import ukPack from "./data/uk.json";
-import francePack from "./data/france.json";
-import algeriaPack from "./data/algeria.json";
-import genericPack from "./data/generic.json";
+import ukPack from "./data/uk.json" with { type: "json" };
+import francePack from "./data/france.json" with { type: "json" };
+import algeriaPack from "./data/algeria.json" with { type: "json" };
+import genericPack from "./data/generic.json" with { type: "json" };
 
 export const JURISDICTION_PACK_SERVICE_VERSION = "jurisdiction-pack-service-v1";
 
