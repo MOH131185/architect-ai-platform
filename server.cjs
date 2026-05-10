@@ -930,13 +930,23 @@ app.post('/api/openai-reasoning', aiApiLimiter, async (req, res) => {
 
     console.log(`Brain [OpenAI Reasoning] Starting ${task_type} (model: ${model})`);
 
-    // Build request body
+    // Build request body. OpenAI's reasoning-class models (gpt-5.x, o1-, o3-,
+    // o4-) reject the legacy `max_tokens` parameter and require
+    // `max_completion_tokens` instead. Detect by model-name prefix and route
+    // the same caller-supplied integer to whichever parameter the target
+    // model accepts so callers stay model-agnostic.
+    const isReasoningModel =
+      typeof model === 'string' && /^(gpt-5|o1-|o3-|o4-)/i.test(model);
     const requestBody = {
       model,
       messages,
-      max_tokens,
       temperature,
     };
+    if (isReasoningModel) {
+      requestBody.max_completion_tokens = max_tokens;
+    } else {
+      requestBody.max_tokens = max_tokens;
+    }
 
     // Add structured output format if requested
     if (response_format) {
