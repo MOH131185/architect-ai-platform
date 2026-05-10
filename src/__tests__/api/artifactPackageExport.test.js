@@ -345,6 +345,26 @@ describe("/api/project/export/artifact-package", () => {
     expect(JSON.stringify(historyRes.body)).not.toContain(
       "secret-value-that-must-not-appear",
     );
+    // Per-record forbidden-keys lock-in for the artifact browser UI:
+    // history responses must never expose raw bytes, secrets, env, or tokens.
+    const FORBIDDEN_HISTORY_KEYS = [
+      "zipBytes",
+      "rawBytes",
+      "secret",
+      "secrets",
+      "env",
+      "environment",
+      "token",
+      "apiKey",
+      "openaiApiKey",
+    ];
+    historyRes.body.history.forEach((record) => {
+      FORBIDDEN_HISTORY_KEYS.forEach((forbidden) => {
+        expect(Object.prototype.hasOwnProperty.call(record, forbidden)).toBe(
+          false,
+        );
+      });
+    });
   });
 
   test("artifact package storage, history, metadata, and download enforce access policy", async () => {

@@ -10,7 +10,7 @@
  * Emits success/error toasts via ToastProvider.
  */
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Download,
   Archive,
@@ -27,6 +27,7 @@ import StatusChip from "./ui/StatusChip.jsx";
 import { Tooltip } from "./ui/feedback/Tooltip.jsx";
 import { useToastContext } from "./ui/ToastProvider.jsx";
 import exportService from "../services/exportService.js";
+import ArtifactHistoryPanel from "./export/ArtifactHistoryPanel.jsx";
 
 /**
  * Download a base64 data URL as a file.
@@ -182,12 +183,8 @@ const ExportPanel = ({
       [];
     return Array.isArray(history) ? history : [];
   }, [designData]);
-  const [packageHistory, setPackageHistory] = useState(initialPackageHistory);
   const [packageAction, setPackageAction] = useState(null);
-
-  useEffect(() => {
-    setPackageHistory(initialPackageHistory);
-  }, [initialPackageHistory]);
+  const [historyRefreshTick, setHistoryRefreshTick] = useState(0);
 
   const handleExport = async (format, label) => {
     if (onExportStart) onExportStart(format);
@@ -222,21 +219,10 @@ const ExportPanel = ({
     if (!deliverablesReady) return;
     setPackageAction("storing");
     try {
-      const result = await exportService.storeDeliverablesPackage({
+      await exportService.storeDeliverablesPackage({
         sheet: designData,
       });
-      const record = result.history || {
-        packageId: result.packageId,
-        packageHash: result.packageHash,
-        artifactCount: result.manifest?.artifactCount,
-        sourceGapCount: result.manifest?.sourceGapCount,
-        createdAt: new Date().toISOString(),
-        downloadUrl: result.signedUrl || result.downloadRoute,
-      };
-      setPackageHistory((current) => [
-        record,
-        ...current.filter((item) => item.packageId !== record.packageId),
-      ]);
+      setHistoryRefreshTick((tick) => tick + 1);
       toast.success(
         "Package saved",
         "Deliverables ZIP stored for this project.",
@@ -245,21 +231,6 @@ const ExportPanel = ({
       toast.error(
         "Save failed",
         err?.message || "Could not store deliverables ZIP.",
-      );
-    } finally {
-      setPackageAction(null);
-    }
-  };
-
-  const handleDownloadStoredPackage = async (packageRecord) => {
-    setPackageAction(packageRecord.packageId);
-    try {
-      await exportService.downloadStoredDeliverablesPackage({ packageRecord });
-      toast.success("Export complete", "Saved deliverables ZIP downloaded.");
-    } catch (err) {
-      toast.error(
-        "Download failed",
-        err?.message || "Could not download saved deliverables ZIP.",
       );
     } finally {
       setPackageAction(null);
@@ -344,39 +315,11 @@ const ExportPanel = ({
           tooltip="Persist the deterministic deliverables package and record package history."
           onClick={() => void handleSavePackage()}
         />
-        {packageHistory.length > 0 && (
-          <div className="rounded-lg border border-white/8 bg-white/[0.025] px-3 py-2">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <span className="text-eyebrow">Saved Packages</span>
-              <span className="font-mono text-[10px] text-white/45">
-                {packageHistory.length}
-              </span>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              {packageHistory.slice(0, 3).map((record) => (
-                <button
-                  key={record.packageId}
-                  type="button"
-                  onClick={() => void handleDownloadStoredPackage(record)}
-                  className="flex w-full items-center gap-2 rounded-md border border-white/8 bg-white/[0.025] px-2 py-1.5 text-left text-xs text-white/70 hover:border-white/15 hover:bg-white/[0.05] focus:outline-none focus:ring-2 focus:ring-royal-500/30"
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-mono text-white/80">
-                      {record.packageHash || record.packageId}
-                    </span>
-                    <span className="block text-[10px] text-white/45">
-                      {(record.artifactCount ?? 0).toString()} artifacts /{" "}
-                      {(record.sourceGapCount ?? 0).toString()} gaps
-                    </span>
-                  </span>
-                  <span className="text-[10px] uppercase tracking-wider text-royal-300">
-                    {packageAction === record.packageId ? "..." : "Download"}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+        <ArtifactHistoryPanel
+          sheet={designData}
+          initialHistory={initialPackageHistory}
+          refreshSignal={historyRefreshTick}
+        />
         <ExportRow
           icon={FileText}
           label="Export as PDF"
