@@ -1,7 +1,10 @@
-import { useCallback } from 'react';
-import { useDesignContext } from '../context/DesignContext.jsx';
-import { convertPdfFileToImageFile } from '../utils/pdfToImages.js';
-import logger from '../utils/logger.js';
+import { useCallback } from "react";
+import { useDesignContext } from "../context/DesignContext.jsx";
+import {
+  processPortfolioUploadFiles,
+  releasePortfolioFilePreviewUrls,
+} from "../utils/portfolioFileProcessing.js";
+import logger from "../utils/logger.js";
 
 /**
  * usePortfolio - Portfolio Management Hook
@@ -24,139 +27,133 @@ export const usePortfolio = () => {
     setCharacteristicWeight,
     isUploading,
     setIsUploading,
-    showToast
+    showToast,
   } = useDesignContext();
 
   /**
    * Handle portfolio file upload with PDF conversion
    */
-  const handlePortfolioUpload = useCallback(async (e) => {
-    if (!e?.target?.files) return;
-    const files = Array.from(e.target.files);
-    if (files.length === 0) return;
+  const handlePortfolioUpload = useCallback(
+    async (e) => {
+      if (!e?.target?.files) return;
+      const files = Array.from(e.target.files);
+      if (files.length === 0) return;
 
-    setIsUploading(true);
-    logger.info('Uploading portfolio files', { count: files.length }, '📤');
+      setIsUploading(true);
+      logger.info("Uploading portfolio files", { count: files.length }, "📤");
 
-    try {
-      const processedFiles = [];
+      try {
+        const { processedFiles, errors } = await processPortfolioUploadFiles(
+          files,
+          { maxPdfThumbnailPages: 3 },
+        );
 
-      for (let file of files) {
-        // Check if file is PDF
-        if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
-          try {
-            logger.info(`Converting PDF to PNG: ${file.name}`, null, '📄');
-
-            // Convert PDF to PNG using client-side utility
-            const pngFile = await convertPdfFileToImageFile(file);
-
-            processedFiles.push({
-              name: pngFile.name,
-              size: (pngFile.size / 1024 / 1024).toFixed(2) + ' MB',
-              type: pngFile.type,
-              preview: URL.createObjectURL(pngFile),
-              file: pngFile
-            });
-
-            logger.info(`PDF converted successfully: ${pngFile.name}`, null, '✅');
-          } catch (pdfError) {
-            logger.error('PDF conversion failed', pdfError);
-            showToast(`Failed to convert PDF: ${file.name}`);
-          }
-        } else {
-          // Image file - add directly
-          processedFiles.push({
-            name: file.name,
-            size: (file.size / 1024 / 1024).toFixed(2) + ' MB',
-            type: file.type,
-            preview: URL.createObjectURL(file),
-            file: file
-          });
+        if (errors.length > 0) {
+          errors.forEach((error) =>
+            logger.error("Portfolio file processing failed", error),
+          );
+          showToast(
+            `Failed to process ${errors[0].fileName}: ${errors[0].message}`,
+          );
         }
+
+        if (processedFiles.length > 0) {
+          setPortfolioFiles((prev) => [...prev, ...processedFiles]);
+
+          logger.info(
+            "Portfolio files uploaded successfully",
+            {
+              newFiles: processedFiles.length,
+              totalFiles: portfolioFiles.length + processedFiles.length,
+            },
+            "✅",
+          );
+
+          showToast(`${processedFiles.length} file(s) uploaded successfully`);
+        }
+      } catch (error) {
+        logger.error("Portfolio upload failed", error);
+        showToast(`Upload failed: ${error.message}`);
+      } finally {
+        setIsUploading(false);
       }
-
-      // Add to existing portfolio files
-      setPortfolioFiles(prev => [...prev, ...processedFiles]);
-
-      logger.info('Portfolio files uploaded successfully', {
-        newFiles: processedFiles.length,
-        totalFiles: portfolioFiles.length + processedFiles.length
-      }, '✅');
-
-      showToast(`${processedFiles.length} file(s) uploaded successfully`);
-
-    } catch (error) {
-      logger.error('Portfolio upload failed', error);
-      showToast(`Upload failed: ${error.message}`);
-    } finally {
-      setIsUploading(false);
-    }
-  }, [portfolioFiles.length, setPortfolioFiles, setIsUploading, showToast]);
+    },
+    [portfolioFiles.length, setPortfolioFiles, setIsUploading, showToast],
+  );
 
   /**
    * Remove a portfolio file by index
    */
-  const removePortfolioFile = useCallback((index) => {
-    logger.info('Removing portfolio file', { index }, '🗑️');
+  const removePortfolioFile = useCallback(
+    (index) => {
+      logger.info("Removing portfolio file", { index }, "🗑️");
 
-    setPortfolioFiles(prev => {
-      // Revoke object URL to prevent memory leaks
-      if (prev[index]?.preview) {
-        URL.revokeObjectURL(prev[index].preview);
-      }
+      setPortfolioFiles((prev) => {
+        // Revoke object URL to prevent memory leaks
+        releasePortfolioFilePreviewUrls(prev[index]);
 
-      const updated = prev.filter((_, i) => i !== index);
-      logger.info('Portfolio file removed', { remainingFiles: updated.length });
-      return updated;
-    });
+        const updated = prev.filter((_, i) => i !== index);
+        logger.info("Portfolio file removed", {
+          remainingFiles: updated.length,
+        });
+        return updated;
+      });
 
-    showToast('File removed from portfolio');
-  }, [setPortfolioFiles, showToast]);
+      showToast("File removed from portfolio");
+    },
+    [setPortfolioFiles, showToast],
+  );
 
   /**
    * Clear all portfolio files
    */
   const clearPortfolio = useCallback(() => {
-    logger.info('Clearing all portfolio files', { count: portfolioFiles.length }, '🗑️');
+    logger.info(
+      "Clearing all portfolio files",
+      { count: portfolioFiles.length },
+      "🗑️",
+    );
 
     // Revoke all object URLs
-    portfolioFiles.forEach(file => {
-      if (file.preview) {
-        URL.revokeObjectURL(file.preview);
-      }
-    });
+    portfolioFiles.forEach(releasePortfolioFilePreviewUrls);
 
     setPortfolioFiles([]);
-    showToast('Portfolio cleared');
+    showToast("Portfolio cleared");
   }, [portfolioFiles, setPortfolioFiles, showToast]);
 
   /**
    * Update material weight (0=100% local, 1=100% portfolio)
    */
-  const updateMaterialWeight = useCallback((weight) => {
-    const normalized = Math.max(0, Math.min(1, weight));
-    setMaterialWeight(normalized);
+  const updateMaterialWeight = useCallback(
+    (weight) => {
+      const normalized = Math.max(0, Math.min(1, weight));
+      setMaterialWeight(normalized);
 
-    logger.info('Material weight updated', {
-      weight: normalized,
-      local: `${Math.round((1 - normalized) * 100)}%`,
-      portfolio: `${Math.round(normalized * 100)}%`
-    });
-  }, [setMaterialWeight]);
+      logger.info("Material weight updated", {
+        weight: normalized,
+        local: `${Math.round((1 - normalized) * 100)}%`,
+        portfolio: `${Math.round(normalized * 100)}%`,
+      });
+    },
+    [setMaterialWeight],
+  );
 
   /**
    * Update characteristic weight (0=100% local, 1=100% portfolio)
    */
-  const updateCharacteristicWeight = useCallback((weight) => {
-    const normalized = Math.max(0, Math.min(1, weight));
-    setCharacteristicWeight(normalized);
+  const updateCharacteristicWeight = useCallback(
+    (weight) => {
+      const normalized = Math.max(0, Math.min(1, weight));
+      setCharacteristicWeight(normalized);
 
-    logger.info('Characteristic weight updated', {
-      weight: normalized,
-      local: `${Math.round((1 - normalized) * 100)}%`,
-      portfolio: `${Math.round(normalized * 100)}%`
-    });
-  }, [setCharacteristicWeight]);
+      logger.info("Characteristic weight updated", {
+        weight: normalized,
+        local: `${Math.round((1 - normalized) * 100)}%`,
+        portfolio: `${Math.round(normalized * 100)}%`,
+      });
+    },
+    [setCharacteristicWeight],
+  );
 
   /**
    * Get portfolio statistics
@@ -167,7 +164,7 @@ export const usePortfolio = () => {
     }, 0);
 
     const fileTypes = portfolioFiles.reduce((types, file) => {
-      const ext = file.name.split('.').pop().toLowerCase();
+      const ext = file.name.split(".").pop().toLowerCase();
       types[ext] = (types[ext] || 0) + 1;
       return types;
     }, {});
@@ -178,12 +175,12 @@ export const usePortfolio = () => {
       fileTypes,
       materialBlend: {
         local: Math.round((1 - materialWeight) * 100),
-        portfolio: Math.round(materialWeight * 100)
+        portfolio: Math.round(materialWeight * 100),
       },
       characteristicBlend: {
         local: Math.round((1 - characteristicWeight) * 100),
-        portfolio: Math.round(characteristicWeight * 100)
-      }
+        portfolio: Math.round(characteristicWeight * 100),
+      },
     };
   }, [portfolioFiles, materialWeight, characteristicWeight]);
 
@@ -196,33 +193,43 @@ export const usePortfolio = () => {
 
     // Check file count
     if (portfolioFiles.length === 0) {
-      warnings.push('No portfolio files uploaded - will use location-based styles only');
+      warnings.push(
+        "No portfolio files uploaded - will use location-based styles only",
+      );
     }
 
     if (portfolioFiles.length > 10) {
-      warnings.push('Large portfolio may slow down analysis - consider using 5-10 representative images');
+      warnings.push(
+        "Large portfolio may slow down analysis - consider using 5-10 representative images",
+      );
     }
 
     // Check file sizes
-    const oversizedFiles = portfolioFiles.filter(file => parseFloat(file.size) > 10);
+    const oversizedFiles = portfolioFiles.filter(
+      (file) => parseFloat(file.size) > 10,
+    );
     if (oversizedFiles.length > 0) {
-      warnings.push(`${oversizedFiles.length} file(s) exceed 10MB - may slow down processing`);
+      warnings.push(
+        `${oversizedFiles.length} file(s) exceed 10MB - may slow down processing`,
+      );
     }
 
     // Check file types
-    const invalidFiles = portfolioFiles.filter(file => {
+    const invalidFiles = portfolioFiles.filter((file) => {
       const type = file.type.toLowerCase();
-      return !type.startsWith('image/');
+      return !type.startsWith("image/") && type !== "application/pdf";
     });
 
     if (invalidFiles.length > 0) {
-      errors.push(`${invalidFiles.length} invalid file type(s) - only images are supported`);
+      errors.push(
+        `${invalidFiles.length} invalid file type(s) - only images are supported`,
+      );
     }
 
     return {
       valid: errors.length === 0,
       errors,
-      warnings
+      warnings,
     };
   }, [portfolioFiles]);
 
@@ -247,7 +254,9 @@ export const usePortfolio = () => {
     // Convenience flags
     hasPortfolio: portfolioFiles.length > 0,
     portfolioCount: portfolioFiles.length,
-    isBalancedBlend: Math.abs(materialWeight - 0.5) < 0.1 && Math.abs(characteristicWeight - 0.5) < 0.1
+    isBalancedBlend:
+      Math.abs(materialWeight - 0.5) < 0.1 &&
+      Math.abs(characteristicWeight - 0.5) < 0.1,
   };
 };
 

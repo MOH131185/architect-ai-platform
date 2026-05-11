@@ -688,7 +688,18 @@ function compactPortfolioBlendForRequest(portfolioBlend = {}) {
       name: file.name,
       size: file.size,
       type: file.type,
+      isPdf: Boolean(file.isPdf),
       convertedFromPdf: Boolean(file.convertedFromPdf),
+      pdf: file.pdf
+        ? {
+            pageCount: file.pdf.pageCount,
+            textExtracted: file.pdf.textExtracted,
+            textCharCount: file.pdf.textCharCount,
+            sourceGaps: file.pdf.sourceGaps || [],
+          }
+        : null,
+      sourceGaps: file.sourceGaps || [],
+      portfolioStyleEvidence: file.portfolioStyleEvidence || null,
     })),
   };
 }

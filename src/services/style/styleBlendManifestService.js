@@ -241,6 +241,22 @@ function buildPortfolioEvidence({
     portfolioProfile?.dominant_tags,
     portfolioProfile?.keywords,
   ]);
+  const profileColours = uniqueStrings([
+    portfolioProfile?.colours,
+    portfolioProfile?.colors,
+    portfolioProfile?.dominant_colours,
+    portfolioProfile?.dominant_colors,
+  ]);
+  const profilePresentationKeywords = uniqueStrings([
+    portfolioProfile?.presentationKeywords,
+    portfolioProfile?.dominant_presentation_keywords,
+    portfolioProfile?.presentation_keywords,
+  ]);
+  const profileDrawingTypes = uniqueStrings([
+    portfolioProfile?.drawingTypes,
+    portfolioProfile?.dominant_drawing_types,
+    portfolioProfile?.drawing_types,
+  ]);
   const profileBuildingTypes = uniqueStrings([
     portfolioProfile?.buildingTypes,
     portfolioProfile?.dominant_building_types,
@@ -252,6 +268,15 @@ function buildPortfolioEvidence({
   ]);
   const styles = uniqueStrings([summary.dominant_styles, profileStyles]);
   const tags = uniqueStrings([summary.dominant_tags, profileTags]);
+  const colours = uniqueStrings([summary.dominant_colours, profileColours]);
+  const presentationKeywords = uniqueStrings([
+    summary.dominant_presentation_keywords,
+    profilePresentationKeywords,
+  ]);
+  const drawingTypes = uniqueStrings([
+    summary.dominant_drawing_types,
+    profileDrawingTypes,
+  ]);
   const buildingTypes = uniqueStrings([
     summary.dominant_building_types,
     profileBuildingTypes,
@@ -261,6 +286,9 @@ function buildPortfolioEvidence({
     materials.length > 0 ||
     styles.length > 0 ||
     tags.length > 0 ||
+    colours.length > 0 ||
+    presentationKeywords.length > 0 ||
+    drawingTypes.length > 0 ||
     buildingTypes.length > 0;
 
   return {
@@ -273,7 +301,12 @@ function buildPortfolioEvidence({
     materials,
     styles,
     tags,
+    colours,
+    styleKeywords: styles,
+    presentationKeywords,
+    drawingTypes,
     buildingTypes,
+    sourceGaps: summary.sourceGaps || [],
     graphicPresentationStyle:
       portfolioProfile?.graphicPresentationStyle ||
       portfolioProfile?.boardStyle ||
@@ -404,6 +437,19 @@ function buildUserIntentEvidence(brief = {}, userSettings = {}) {
 function hasAnyTerm(values, terms) {
   const haystack = uniqueStrings(values).join(" ").toLowerCase();
   return terms.some((term) => haystack.includes(term));
+}
+
+function isRejectedPortfolioMaterial(name, rejectedInfluences = []) {
+  const material = lc(name);
+  if (!material) return false;
+  const rejectedText = rejectedInfluences
+    .map((entry) => lc(entry.influence))
+    .join(" ");
+  if (rejectedText.includes(material)) return true;
+  if (/glass|glaz|curtain wall/.test(rejectedText)) {
+    return GLASS_RISK_TERMS.some((term) => material.includes(lc(term)));
+  }
+  return false;
 }
 
 function isTerracedContext({ brief, localEvidence, compiledProject }) {
@@ -684,7 +730,12 @@ function buildResolvedPalette({
   );
   if (portfolioEvidence.hasPortfolioEvidence && weights.portfolio > 0) {
     portfolioEvidence.materials.forEach((entry) => {
-      if (rejectedText && rejectedText.includes(lc(entry))) return;
+      if (
+        rejectedText &&
+        isRejectedPortfolioMaterial(entry, rejectedInfluences)
+      ) {
+        return;
+      }
       addMaterial(
         scored,
         entry,
@@ -859,6 +910,7 @@ export function buildStyleBlendManifest({
     });
   }
   sourceGaps.push(...(jurisdictionPackResolution?.sourceGaps || []));
+  sourceGaps.push(...(portfolioEvidence.sourceGaps || []));
   qaWarnings.push(...sourceGaps);
 
   const jurisdiction = {

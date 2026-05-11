@@ -219,11 +219,20 @@ const PortfolioStep = ({
                   const fileType = file.file?.type || file.type || "";
                   const isPDF =
                     fileName.toLowerCase().endsWith(".pdf") ||
-                    fileType === "application/pdf";
+                    fileType === "application/pdf" ||
+                    file.isPdf === true;
+                  const pdfInfo = file.pdf || {};
+                  const pageCount = Number(pdfInfo.pageCount || 0);
+                  const hasSelectableText = pdfInfo.textExtracted === true;
+                  const pdfTextState = hasSelectableText
+                    ? "Text extracted"
+                    : "Image-only PDF";
 
                   try {
                     if (file.preview) {
                       previewUrl = file.preview;
+                    } else if (file.thumbnails?.[0]?.preview) {
+                      previewUrl = file.thumbnails[0].preview;
                     } else if (file.file && file.file instanceof Blob) {
                       previewUrl = URL.createObjectURL(file.file);
                     } else if (file instanceof File || file instanceof Blob) {
@@ -294,6 +303,27 @@ const PortfolioStep = ({
                           <p className="text-[11px] text-white/45 tabular-nums">
                             {file.size}
                           </p>
+                        )}
+                        {isPDF && (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            <span className="rounded border border-error-500/25 bg-error-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-error-200">
+                              PDF
+                            </span>
+                            {pageCount > 0 && (
+                              <span className="rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[10px] text-white/55">
+                                {pageCount} {pageCount === 1 ? "page" : "pages"}
+                              </span>
+                            )}
+                            <span
+                              className={`rounded border px-1.5 py-0.5 text-[10px] ${
+                                hasSelectableText
+                                  ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-200"
+                                  : "border-amber-500/25 bg-amber-500/10 text-amber-200"
+                              }`}
+                            >
+                              {pdfTextState}
+                            </span>
+                          </div>
                         )}
                       </div>
                     </div>

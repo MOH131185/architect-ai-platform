@@ -34,7 +34,10 @@ import { locationIntelligence } from "../services/locationIntelligence.js";
 import siteAnalysisService from "../services/siteAnalysisService.js";
 import autoLevelAssignmentService from "../services/autoLevelAssignmentService.js";
 import logger from "../utils/logger.js";
-import { convertPdfFileToImageFile } from "../utils/pdfToImages.js";
+import {
+  processPortfolioUploadFiles,
+  releasePortfolioFilePreviewUrls,
+} from "../utils/portfolioFileProcessing.js";
 import { isFeatureEnabled } from "../config/featureFlags.js";
 import {
   getCurrentPipelineMode,
@@ -71,6 +74,10 @@ import {
   syncProgramToFloorCount,
 } from "../services/project/floorCountAuthority.js";
 import { normalizeProgramSpaces } from "../services/project/levelUtils.js";
+import {
+  generateDeterministicProgramSpaces,
+  getProgrammeGuidanceForProjectType,
+} from "../services/project/programmeSpaceGenerator.js";
 import PricingPage from "./PricingPage.jsx";
 import DesignHistoryMenu from "./DesignHistoryMenu.jsx";
 
@@ -330,6 +337,7 @@ const ArchitectAIWizardContainer = () => {
   const fileInputRef = useRef(null);
   const mapRef = useRef(null);
   const lastEntranceGateHeldLogKeyRef = useRef(null);
+  const portfolioFilesRef = useRef(portfolioFiles);
   const [generationStartAtMs, setGenerationStartAtMs] = useState(null);
   const [generationElapsedSeconds, setGenerationElapsedSeconds] = useState(0);
   const [isGenerationTimerRunning, setIsGenerationTimerRunning] =
@@ -419,18 +427,18 @@ const ArchitectAIWizardContainer = () => {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    portfolioFilesRef.current = portfolioFiles;
+  }, [portfolioFiles]);
+
   /**
    * Cleanup object URLs on unmount to prevent memory leaks
    */
   useEffect(() => {
     return () => {
-      portfolioFiles.forEach((file) => {
-        if (file.preview) {
-          URL.revokeObjectURL(file.preview);
-        }
-      });
+      portfolioFilesRef.current.forEach(releasePortfolioFilePreviewUrls);
     };
-  }, [portfolioFiles]);
+  }, []);
 
   // Auto-detect optimal floor count from site + area (unless locked by user)
   useEffect(() => {
@@ -1139,10 +1147,7 @@ const ArchitectAIWizardContainer = () => {
     (index) => {
       setPortfolioFiles((prev) => {
         const newFiles = [...prev];
-        // Revoke object URL if it exists to prevent memory leak
-        if (newFiles[index]?.preview) {
-          URL.revokeObjectURL(newFiles[index].preview);
-        }
+        releasePortfolioFilePreviewUrls(newFiles[index]);
         newFiles.splice(index, 1);
         logger.info("Portfolio file removed", { index });
         return newFiles;
@@ -1168,66 +1173,22 @@ const ArchitectAIWizardContainer = () => {
       setIsUploading(true);
 
       try {
-        const processedFiles = [];
+        const { processedFiles, errors } = await processPortfolioUploadFiles(
+          files,
+          { maxPdfThumbnailPages: 3 },
+        );
 
-        for (const originalFile of files) {
-          const isPdf =
-            originalFile.type === "application/pdf" ||
-            originalFile.name.toLowerCase().endsWith(".pdf");
-          let preview = null;
-          let dataUrl = null; // For API usage
-          let storedFile = originalFile;
-
-          if (isPdf) {
-            try {
-              logger.info("Converting PDF to PNG for preview", {
-                fileName: originalFile.name,
-              });
-              const pngFile = await convertPdfFileToImageFile(originalFile);
-              storedFile = pngFile;
-              preview = URL.createObjectURL(pngFile);
-
-              // Convert to base64 for API usage
-              dataUrl = await new Promise((resolve) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result);
-                reader.readAsDataURL(pngFile);
-              });
-
-              logger.info("PDF converted successfully", {
-                fileName: pngFile.name,
-              });
-            } catch (pdfErr) {
-              logger.warn("PDF conversion failed", pdfErr);
-              setPdfErrorState({
-                fileName: originalFile.name,
-                message: pdfErr?.message || "Unknown error",
-              });
-              continue;
-            }
-          } else if (originalFile.type.startsWith("image/")) {
-            preview = URL.createObjectURL(originalFile);
-
-            // Convert to base64 for API usage
-            dataUrl = await new Promise((resolve) => {
-              const reader = new FileReader();
-              reader.onloadend = () => resolve(reader.result);
-              reader.readAsDataURL(originalFile);
-            });
-          }
-
-          processedFiles.push({
-            name: storedFile.name,
-            size: `${(storedFile.size / 1024 / 1024).toFixed(2)} MB`,
-            file: storedFile,
-            preview, // Blob URL for UI preview
-            dataUrl, // Base64 data URL for API usage
-            type: storedFile.type,
-            convertedFromPdf: isPdf,
+        if (errors.length > 0) {
+          const firstError = errors[0];
+          logger.warn("Portfolio file processing failed", firstError);
+          setPdfErrorState({
+            fileName: firstError.fileName,
+            message: firstError.message,
           });
         }
 
         if (processedFiles.length > 0) {
+          setPdfErrorState(null);
           setPortfolioFiles((prev) => [...prev, ...processedFiles]);
           logger.success("Portfolio files uploaded", {
             count: processedFiles.length,
@@ -1484,9 +1445,6 @@ const ArchitectAIWizardContainer = () => {
         return spaces;
       }
 
-      const openaiReasoningService = (
-        await import("../services/openaiReasoningService")
-      ).default;
       // Generic AI path uses the same authoritative floor count as the
       // residential path. Locked > autoDetected > manual > fallback.
       const floorCountForPrompt = authoritativeFloorCount;
@@ -1510,74 +1468,76 @@ const ArchitectAIWizardContainer = () => {
         return levels;
       })();
 
-      const programmeGuidanceByType = {
-        clinic:
-          "Include reception, waiting, consult/treatment rooms, clinical support, staff/admin, storage, clean/dirty utility, toilets, plant, and circulation.",
-        hospital:
-          "Include reception/admissions, outpatient or emergency care, diagnostics, wards, clinical support, staff/admin, logistics, plant, toilets, and circulation.",
-        office_studio:
-          "Include reception, open office, meeting rooms, focus rooms, shared support, staff amenities, storage, plant, toilets, and circulation.",
-        education_studio:
-          "Include classrooms, admin, staff areas, library or resource space, assembly or multipurpose space, dining/support, toilets, storage, plant, and circulation.",
-      };
-      const programmeGuidance =
-        programmeGuidanceByType[projectTypeSupport.canonicalBuildingType] ||
-        "Put public and high-footfall spaces on Ground, with support, staff, teaching, workplace, or clinical spaces distributed logically across the remaining levels.";
-      const prompt = `You are an architectural programming expert. Generate a JSON array of spaces for a ${projectTypeSupport.label || sanitizedProgram} totaling ~${sanitizedArea} m². Ensure the total area (area×count sum) is within ±5% of ${sanitizedArea}. Assign each space to ONE of these level names only: ${levelNames.join(", ")}. ${programmeGuidance} Return ONLY the JSON array, no commentary.`;
-
-      const response = await openaiReasoningService.chatCompletion(
-        [
-          {
-            role: "system",
-            content:
-              "Return ONLY a JSON array of objects with: name (string), area (number), count (number), level (string), notes (optional string).",
-          },
-          { role: "user", content: prompt },
-        ],
-        {
-          max_tokens: 900,
-          temperature: 0.55,
-          task_type: "wizard-program-compile",
-        },
+      const programmeGuidance = getProgrammeGuidanceForProjectType(
+        projectTypeSupport.canonicalBuildingType,
       );
-
-      const content =
-        response?.choices?.[0]?.message?.content || response?.content || "[]";
-      const jsonMatch = content.match(/\[[\s\S]*\]/);
+      const prompt = `You are an architectural programming expert. Generate a JSON array of spaces for a ${projectTypeSupport.label || sanitizedProgram} totaling ~${sanitizedArea} m². Ensure the total area (area * count sum) is within ±5% of ${sanitizedArea}. Assign each space to ONE of these level names only: ${levelNames.join(", ")}. ${programmeGuidance} Return ONLY the JSON array, no commentary.`;
       let parsed = [];
-      if (jsonMatch) {
-        try {
-          parsed = JSON.parse(jsonMatch[0]);
-        } catch (err) {
-          logger.warn("Failed to parse AI program JSON, falling back", err);
+      let programSource = "openai_reasoning";
+      try {
+        const openaiReasoningService = (
+          await import("../services/openaiReasoningService")
+        ).default;
+        const response = await openaiReasoningService.chatCompletion(
+          [
+            {
+              role: "system",
+              content:
+                "Return ONLY a JSON array of objects with: name (string), area (number), count (number), level (string), type/category (string where applicable), notes (optional string).",
+            },
+            { role: "user", content: prompt },
+          ],
+          {
+            max_tokens: 900,
+            temperature: 0.55,
+            task_type: "wizard-program-compile",
+          },
+        );
+
+        const content =
+          response?.choices?.[0]?.message?.content || response?.content || "[]";
+        const jsonMatch = content.match(/\[[\s\S]*\]/);
+        if (jsonMatch) {
+          try {
+            parsed = JSON.parse(jsonMatch[0]);
+          } catch (err) {
+            logger.warn("Failed to parse AI program JSON, falling back", err);
+          }
         }
+      } catch (reasoningErr) {
+        logger.warn(
+          "OpenAI programme compile unavailable; using deterministic template",
+          reasoningErr,
+        );
       }
 
       if (!Array.isArray(parsed) || parsed.length === 0) {
-        const programSpaceAnalyzer = (
-          await import("../services/programSpaceAnalyzer")
-        ).default;
-        const fallback = programSpaceAnalyzer.generateProgramFromSpecs({
-          category: projectDetails.category,
-          subType: projectDetails.subType,
-          area: parseFloat(projectDetails.area),
+        const deterministic = generateDeterministicProgramSpaces({
+          projectDetails,
+          projectTypeSupport,
           floorCount: floorCountForPrompt,
-          climate: locationData?.climate,
-          zoning: locationData?.zoning,
+          targetAreaM2: parseFloat(projectDetails.area),
         });
-        parsed = fallback.spaces;
+        parsed = deterministic.spaces;
+        programSource = deterministic.source;
       }
 
       // Map to UI schema
       let spaces = parsed.map((space, index) => ({
         id: `space_${Date.now()}_${index}`,
-        spaceType: space.spaceType || space.type || space.name,
+        spaceType:
+          space.spaceType || space.type || space.category || space.name,
+        type: space.type || space.spaceType || space.category || null,
+        category: space.category || space.type || space.spaceType || null,
         name: String(space.name || space.label || `Space ${index + 1}`),
         label: String(space.label || space.name || `Space ${index + 1}`),
         area: Math.max(0, parseFloat(space.area) || 0),
         count: Math.max(1, parseInt(space.count, 10) || 1),
         level: space.level || "Ground",
+        levelIndex: space.levelIndex ?? space.level_index ?? undefined,
+        level_index: space.level_index ?? space.levelIndex ?? undefined,
         notes: space.notes || "",
+        source: space.source || programSource,
       }));
 
       // Auto level assignment. We always run syncProgramToFloorCount with
@@ -1695,7 +1655,6 @@ const ArchitectAIWizardContainer = () => {
       setIsGeneratingSpaces(false);
     }
   }, [
-    locationData,
     projectDetails,
     setIsGeneratingSpaces,
     setProgramSpaces,
@@ -2086,15 +2045,12 @@ const ArchitectAIWizardContainer = () => {
 
       // Auto-generate program spaces if user skipped "Generate Program" button.
       // The ProgramComplianceGate requires programSpaces to build ProgramLock + CDS.
-      // ProjectGraph project types may intentionally rely on service-side
-      // deterministic programme templates, so do not synthesize UI spaces first.
       // React setState is async so we capture the returned array for immediate use.
       let effectiveProgramSpaces = programSpaces;
       if (
         programSpaces.length === 0 &&
         projectDetails.category &&
-        projectDetails.area &&
-        projectTypeSupport.route !== PROJECT_TYPE_ROUTES.PROJECT_GRAPH
+        projectDetails.area
       ) {
         logger.info(
           "Auto-generating program spaces before generation...",
@@ -2106,12 +2062,15 @@ const ArchitectAIWizardContainer = () => {
           if (generated && generated.length > 0) {
             effectiveProgramSpaces = generated;
             logger.success(`Auto-generated ${generated.length} program spaces`);
+          } else {
+            throw new Error(
+              "Programme generation returned no spaces. Choose a supported project type or edit the programme before generation.",
+            );
           }
         } catch (spaceErr) {
-          logger.warn(
-            "Auto-generation of program spaces failed, continuing",
-            spaceErr,
-          );
+          logger.warn("Auto-generation of program spaces failed", spaceErr);
+          setIsGenerationTimerRunning(false);
+          throw spaceErr;
         }
       }
 
@@ -2331,7 +2290,18 @@ const ArchitectAIWizardContainer = () => {
         name: file.name,
         size: file.size,
         type: file.type,
-        convertedFromPdf: file.convertedFromPdf,
+        isPdf: Boolean(file.isPdf),
+        convertedFromPdf: Boolean(file.convertedFromPdf),
+        pdf: file.pdf
+          ? {
+              pageCount: file.pdf.pageCount,
+              textExtracted: file.pdf.textExtracted,
+              textCharCount: file.pdf.textCharCount,
+              sourceGaps: file.pdf.sourceGaps || [],
+            }
+          : null,
+        sourceGaps: file.sourceGaps || [],
+        portfolioStyleEvidence: file.portfolioStyleEvidence || null,
       }));
       const portfolioFilesForDesignSpec = isProjectGraphMode
         ? portfolioFileSummaries
@@ -2342,7 +2312,18 @@ const ArchitectAIWizardContainer = () => {
             dataUrl: file.dataUrl,
             file: file.file,
             type: file.type,
+            isPdf: Boolean(file.isPdf),
             convertedFromPdf: file.convertedFromPdf,
+            pdf: file.pdf
+              ? {
+                  pageCount: file.pdf.pageCount,
+                  textExtracted: file.pdf.textExtracted,
+                  textCharCount: file.pdf.textCharCount,
+                  sourceGaps: file.pdf.sourceGaps || [],
+                }
+              : null,
+            sourceGaps: file.sourceGaps || [],
+            portfolioStyleEvidence: file.portfolioStyleEvidence || null,
           }));
       const designFloorAuth = resolveAuthoritativeFloorCount(projectDetails, {
         fallback: 2,
@@ -2664,6 +2645,7 @@ const ArchitectAIWizardContainer = () => {
   }, [setCurrentStep]);
 
   const handleStartNew = useCallback(() => {
+    portfolioFilesRef.current.forEach(releasePortfolioFilePreviewUrls);
     setCurrentStep(0);
     setAddress("");
     setLocationData(null);
@@ -2931,12 +2913,12 @@ const ArchitectAIWizardContainer = () => {
             </>
           )}
 
-          {/* PDF conversion error modal (replaces window.alert) */}
+          {/* PDF processing error modal (replaces window.alert) */}
           <Modal
             open={!!pdfErrorState}
             onClose={() => setPdfErrorState(null)}
-            title="PDF couldn't be converted"
-            description="We couldn't render this PDF as an image. Try uploading a JPG or PNG instead."
+            title="Portfolio file couldn't be read"
+            description="We couldn't read this portfolio file. Try a different PDF, JPG, or PNG."
             size="sm"
             footer={
               <Button

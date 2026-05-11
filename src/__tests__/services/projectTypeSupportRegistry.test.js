@@ -6,6 +6,7 @@ import {
   getProjectTypeSupport,
 } from "../../services/project/projectTypeSupportRegistry.js";
 import { SUPPORTED_RESIDENTIAL_V2_SUBTYPES } from "../../services/project/v2ProjectContracts.js";
+import { KNOWN_BUILDING_TYPES } from "../../services/project/projectGraphVerticalSliceService.js";
 
 const enabledNonResidentialKeys = () =>
   PROJECT_TYPE_SUPPORT_REGISTRY.filter(
@@ -196,6 +197,18 @@ describe("projectTypeSupportRegistry", () => {
         }),
       );
     }
+  });
+
+  test("every UI-enabled non-residential canonical type is known to ProjectGraph", () => {
+    const enabledCanonicalTypes = PROJECT_TYPE_SUPPORT_REGISTRY.filter(
+      (entry) => entry.categoryId !== "residential" && entry.enabledInUi,
+    ).map((entry) => entry.canonicalBuildingType);
+
+    expect(
+      enabledCanonicalTypes.filter(
+        (canonicalType) => !KNOWN_BUILDING_TYPES.includes(canonicalType),
+      ),
+    ).toEqual([]);
   });
 
   test("residential mansion is enabled on the production V2 route", () => {
