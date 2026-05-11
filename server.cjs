@@ -429,6 +429,10 @@ mountDynamicApiRoute('post', '/api/generation-jobs/start',                  'api
 mountDynamicApiRoute('get',  '/api/generation-jobs',                        'api/generation-jobs/index.js');
 mountDynamicApiRoute('get',  '/api/generation-jobs/:jobId',                 'api/generation-jobs/[jobId].js');
 mountDynamicApiRoute('post', '/api/generation-jobs/:jobId/cancel',          'api/generation-jobs/[jobId]/cancel.js');
+// Admin provider-health preflight dashboard (Phase D). Active checks against
+// OpenAI key validity, image-edit model access, storage adapter capabilities,
+// DWG converter / IFC engine env presence. Admin-token gated in production.
+mountDynamicApiRoute('get',  '/api/admin/provider-health',                  'api/admin/provider-health.js');
 // Artifact-package storage + history routes. The serverless handlers under
 // api/project/export/artifact-package/* run natively on Vercel; mount them
 // on the Express dev server too so npm run dev exercises the same surface.
