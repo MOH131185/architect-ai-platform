@@ -28,6 +28,7 @@ import {
 } from "../services/workflowRouter.js";
 import { PIPELINE_MODE } from "../config/pipelineMode.js";
 import { createSheetArtifactManifest } from "../services/project/v2ProjectContracts.js";
+import { buildClientExportManifest } from "../services/export/buildClientExportManifest.js";
 import {
   buildProjectTypeSupportMetadata,
   getProjectTypeSupport,
@@ -1473,6 +1474,25 @@ async function runProjectGraphVerticalSliceWorkflow({
     // ({ packageId, projectId, userId }) instead of re-uploading the
     // full design bundle. See fix/save-package-reference-architecture.
     package: verticalSlice.package || null,
+    // Client-side fallback export manifest for the project-graph path.
+    // The V2 pipeline emits its own structured manifest server-side; the
+    // project-graph slice does not, so without this fallback ExportPanel
+    // defaults every engineering row to BLOCKED. Mirrors the shape of
+    // createCompiledExportManifest (v2ProjectContracts.js) — readiness
+    // reflects what the deterministic exporters can really produce from
+    // the compiledProject in hand.
+    exportManifest: buildClientExportManifest({
+      compiledProject: verticalSlice.artifacts?.compiledProject || null,
+      projectQuantityTakeoff:
+        verticalSlice.artifacts?.projectQuantityTakeoff || null,
+      geometryHash: verticalSlice.geometryHash || null,
+      projectName:
+        verticalSlice.projectName ||
+        verticalSlice.projectGraph?.brief?.project_name ||
+        "ArchiAI Project",
+      pipelineVersion:
+        verticalSlice.pipelineVersion || "project-graph-vertical-slice-v1",
+    }),
     modelRegistry: verticalSlice.modelRegistry,
     metadata: {
       workflow: PIPELINE_MODE.PROJECT_GRAPH,
