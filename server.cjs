@@ -421,6 +421,14 @@ mountDynamicApiRoute('post', '/api/project/export/dxf',     'api/project/export/
 mountDynamicApiRoute('post', '/api/project/export/ifc',     'api/project/export/ifc.js');
 mountDynamicApiRoute('post', '/api/project/export/xlsx',    'api/project/export/xlsx.js');
 mountDynamicApiRoute('post', '/api/project/export/artifact-package', 'api/project/export/artifact-package.js');
+// Generation job lifecycle (Phase B). Wraps the synchronous slice handler in
+// an async job so heavy ProjectGraph/A1/package work no longer occupies a
+// 2-minute HTTP request. The legacy POST /api/project/generate-vertical-slice
+// stays mounted for backward compatibility.
+mountDynamicApiRoute('post', '/api/generation-jobs/start',                  'api/generation-jobs/start.js');
+mountDynamicApiRoute('get',  '/api/generation-jobs',                        'api/generation-jobs/index.js');
+mountDynamicApiRoute('get',  '/api/generation-jobs/:jobId',                 'api/generation-jobs/[jobId].js');
+mountDynamicApiRoute('post', '/api/generation-jobs/:jobId/cancel',          'api/generation-jobs/[jobId]/cancel.js');
 // Artifact-package storage + history routes. The serverless handlers under
 // api/project/export/artifact-package/* run natively on Vercel; mount them
 // on the Express dev server too so npm run dev exercises the same surface.
