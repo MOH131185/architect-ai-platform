@@ -1,6 +1,44 @@
 import logger from "../../utils/logger.js";
 import { generateStyleEmbedding as routeStyleEmbedding } from "../models/openSourceModelRouter.js";
 
+function compactText(value) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function uniqueStrings(values = []) {
+  return [
+    ...new Set(
+      values
+        .flat()
+        .map((entry) =>
+          typeof entry === "string"
+            ? compactText(entry)
+            : compactText(entry?.name || entry?.material || entry?.label),
+        )
+        .filter(Boolean),
+    ),
+  ];
+}
+
+function toArray(value) {
+  if (Array.isArray(value)) return value.filter((entry) => entry != null);
+  if (value === undefined || value === null || value === "") return [];
+  return [value];
+}
+
+function normalizeSourceGaps(reference = {}) {
+  return [
+    ...toArray(reference.sourceGaps),
+    ...toArray(reference.pdf?.sourceGaps),
+  ].filter(Boolean);
+}
+
+function hasSourceGap(reference, code) {
+  return normalizeSourceGaps(reference).some((gap) => gap?.code === code);
+}
+
 function normalizeReference(reference, index) {
   if (typeof reference === "string") {
     return {
@@ -11,17 +49,87 @@ function normalizeReference(reference, index) {
       materials: [],
       buildingType: null,
       style: null,
+      colours: [],
+      presentationKeywords: [],
+      drawingTypes: [],
+      sourceGaps: [],
+      hasEvidence: true,
     };
   }
 
+  const portfolioStyleEvidence = reference.portfolioStyleEvidence || {};
+  const sourceGaps = normalizeSourceGaps(reference);
+  const imageOnlyPdf = hasSourceGap(reference, "PDF_TEXT_NOT_SELECTABLE");
+  const evidenceAllowed = !imageOnlyPdf;
+  const materials = uniqueStrings([
+    reference.materials,
+    evidenceAllowed ? portfolioStyleEvidence.materials : [],
+  ]);
+  const colours = uniqueStrings([
+    reference.colours,
+    reference.colors,
+    evidenceAllowed
+      ? portfolioStyleEvidence.colours || portfolioStyleEvidence.colors
+      : [],
+  ]);
+  const styleKeywords = uniqueStrings([
+    reference.styleKeywords,
+    evidenceAllowed ? portfolioStyleEvidence.styleKeywords : [],
+  ]);
+  const presentationKeywords = uniqueStrings([
+    reference.presentationKeywords,
+    evidenceAllowed ? portfolioStyleEvidence.presentationKeywords : [],
+  ]);
+  const drawingTypes = uniqueStrings([
+    reference.drawingTypes,
+    evidenceAllowed ? portfolioStyleEvidence.drawingTypes : [],
+  ]);
+  const tags = uniqueStrings([
+    reference.tags,
+    reference.keywords,
+    styleKeywords,
+    presentationKeywords,
+    drawingTypes,
+    colours,
+  ]);
+  const buildingTypes = uniqueStrings([
+    reference.buildingTypes,
+    reference.buildingType,
+    reference.program,
+    evidenceAllowed ? portfolioStyleEvidence.buildingTypes : [],
+  ]);
+  const style = reference.style || styleKeywords[0] || null;
+  const url = reference.url || null;
+  const description = reference.description || reference.caption || "";
+  const isImageMetadata = String(reference.type || "").startsWith("image/");
+  const hasEvidence =
+    !imageOnlyPdf &&
+    Boolean(
+      url ||
+      reference.dataUrl ||
+      isImageMetadata ||
+      compactText(description) ||
+      tags.length ||
+      materials.length ||
+      buildingTypes.length ||
+      style ||
+      drawingTypes.length,
+    );
+
   return {
     id: reference.id || `portfolio-${index}`,
-    url: reference.url || null,
-    description: reference.description || reference.caption || "",
-    tags: Array.isArray(reference.tags) ? reference.tags : [],
-    materials: Array.isArray(reference.materials) ? reference.materials : [],
-    buildingType: reference.buildingType || reference.program || null,
-    style: reference.style || null,
+    url,
+    description,
+    tags,
+    materials,
+    buildingType: buildingTypes[0] || null,
+    buildingTypes,
+    style,
+    colours,
+    presentationKeywords,
+    drawingTypes,
+    sourceGaps,
+    hasEvidence,
   };
 }
 
@@ -42,20 +150,41 @@ function takeTopKeys(counter = {}, limit = 5) {
 
 export function summarizePortfolioReferences(references = []) {
   const normalized = references.map(normalizeReference);
-  const tags = normalized.flatMap((reference) => reference.tags);
-  const materials = normalized.flatMap((reference) => reference.materials);
-  const styles = normalized.map((reference) => reference.style).filter(Boolean);
-  const buildingTypes = normalized
-    .map((reference) => reference.buildingType)
+  const evidenceReferences = normalized.filter(
+    (reference) => reference.hasEvidence,
+  );
+  const tags = evidenceReferences.flatMap((reference) => reference.tags);
+  const materials = evidenceReferences.flatMap(
+    (reference) => reference.materials,
+  );
+  const styles = evidenceReferences
+    .map((reference) => reference.style)
     .filter(Boolean);
+  const buildingTypes = evidenceReferences.flatMap(
+    (reference) => reference.buildingTypes || reference.buildingType || [],
+  );
+  const colours = evidenceReferences.flatMap((reference) => reference.colours);
+  const presentationKeywords = evidenceReferences.flatMap(
+    (reference) => reference.presentationKeywords,
+  );
+  const drawingTypes = evidenceReferences.flatMap(
+    (reference) => reference.drawingTypes,
+  );
+  const sourceGaps = normalized.flatMap((reference) => reference.sourceGaps);
 
   return {
     references: normalized,
-    reference_count: normalized.length,
+    reference_count: evidenceReferences.length,
     dominant_tags: takeTopKeys(countValues(tags)),
     dominant_materials: takeTopKeys(countValues(materials)),
     dominant_styles: takeTopKeys(countValues(styles)),
     dominant_building_types: takeTopKeys(countValues(buildingTypes)),
+    dominant_colours: takeTopKeys(countValues(colours)),
+    dominant_presentation_keywords: takeTopKeys(
+      countValues(presentationKeywords),
+    ),
+    dominant_drawing_types: takeTopKeys(countValues(drawingTypes)),
+    sourceGaps,
   };
 }
 

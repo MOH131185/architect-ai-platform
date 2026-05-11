@@ -103,12 +103,19 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
     expect(request.projectDetails.floorCountLocked).toBe(true);
     expect(request.brief.target_storeys).toBe(2);
     expect(request.programSpaces[0].notes).toHaveLength(500);
-    expect(request.portfolioBlend.portfolioFiles[0]).toEqual({
-      name: "portfolio.png",
-      type: "image/png",
-      size: largeImage.length,
-      convertedFromPdf: false,
-    });
+    expect(request.portfolioBlend.portfolioFiles[0]).toEqual(
+      expect.objectContaining({
+        name: "portfolio.png",
+        type: "image/png",
+        size: largeImage.length,
+        isPdf: false,
+        convertedFromPdf: false,
+      }),
+    );
+    expect(request.portfolioBlend.portfolioFiles[0]).not.toHaveProperty(
+      "dataUrl",
+    );
+    expect(request.portfolioBlend.portfolioFiles[0]).not.toHaveProperty("file");
   });
 
   test("propagates the per-run generation seed into the ProjectGraph payload", () => {

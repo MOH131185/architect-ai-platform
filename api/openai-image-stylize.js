@@ -9,6 +9,7 @@
  */
 import openaiEnv from "../server/utils/openaiEnv.cjs";
 import projectGraphProductionGuard from "../server/utils/projectGraphProductionGuard.cjs";
+import { fetchWithProviderControls } from "../src/services/concurrency/providerFetch.js";
 
 const { resolveOpenAIImageApiKeyInfo, buildOpenAIRequestHeaders } = openaiEnv;
 const {
@@ -122,17 +123,28 @@ export default async function handler(req, res) {
     console.log(
       `[OpenAI] START image edit route=/api/openai-image-stylize panel=${normalizedPanelType || "unknown"} model=${resolvedModel} keySource=${keyInfo.keySource}`,
     );
-    const response = await fetch("https://api.openai.com/v1/images/edits", {
-      method: "POST",
-      headers: buildOpenAIRequestHeaders(keyInfo, process.env),
-      body: createEditFormData({
-        image,
-        mask,
-        prompt,
-        size: resolvedSize,
-        model: resolvedModel,
-      }),
-    });
+    const response = await fetchWithProviderControls(
+      "openai-image",
+      "https://api.openai.com/v1/images/edits",
+      {
+        method: "POST",
+        headers: buildOpenAIRequestHeaders(keyInfo, process.env),
+        body: createEditFormData({
+          image,
+          mask,
+          prompt,
+          size: resolvedSize,
+          model: resolvedModel,
+        }),
+      },
+      {
+        onRetry: (attempt, delayMs, error) => {
+          console.warn(
+            `[OpenAI] RETRY image edit route=/api/openai-image-stylize attempt=${attempt} status=${error.status || "network"} delayMs=${delayMs}`,
+          );
+        },
+      },
+    );
 
     const requestId =
       response.headers?.get?.("x-request-id") ||

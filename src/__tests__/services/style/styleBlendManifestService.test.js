@@ -115,6 +115,88 @@ describe("StyleBlendManifest contract", () => {
     );
   });
 
+  test("consumes selectable PDF portfolio evidence", () => {
+    const manifest = buildFixture({
+      portfolioItems: [
+        {
+          name: "education-reference.pdf",
+          type: "application/pdf",
+          isPdf: true,
+          pdf: {
+            pageCount: 6,
+            textExtracted: true,
+            textCharCount: 840,
+            sourceGaps: [],
+          },
+          portfolioStyleEvidence: {
+            source: "pdf_selectable_text",
+            materials: ["timber", "concrete"],
+            colours: ["green"],
+            styleKeywords: ["biophilic"],
+            presentationKeywords: ["axonometric"],
+            buildingTypes: ["school"],
+            drawingTypes: ["section"],
+          },
+        },
+      ],
+    });
+
+    expect(manifest.portfolioStyleEvidence.hasPortfolioEvidence).toBe(true);
+    expect(manifest.portfolioStyleEvidence.materials).toEqual(
+      expect.arrayContaining(["timber", "concrete"]),
+    );
+    expect(manifest.portfolioStyleEvidence.colours).toEqual(
+      expect.arrayContaining(["green"]),
+    );
+    expect(manifest.portfolioStyleEvidence.presentationKeywords).toEqual(
+      expect.arrayContaining(["axonometric"]),
+    );
+    expect(manifest.portfolioStyleEvidence.drawingTypes).toEqual(
+      expect.arrayContaining(["section"]),
+    );
+    expect(manifest.portfolioStyleEvidence.buildingTypes).toEqual(
+      expect.arrayContaining(["school"]),
+    );
+  });
+
+  test("image-only PDF source gaps block portfolio evidence terms", () => {
+    const manifest = buildFixture({
+      portfolioItems: [
+        {
+          name: "scanned-reference.pdf",
+          type: "application/pdf",
+          isPdf: true,
+          pdf: {
+            pageCount: 3,
+            textExtracted: false,
+            textCharCount: 0,
+            sourceGaps: [{ code: "PDF_TEXT_NOT_SELECTABLE" }],
+          },
+          sourceGaps: [{ code: "PDF_TEXT_NOT_SELECTABLE" }],
+          portfolioStyleEvidence: {
+            source: "pdf_image_only",
+            materials: ["invented bronze"],
+            styleKeywords: ["invented scanned style"],
+          },
+        },
+      ],
+    });
+
+    expect(manifest.portfolioStyleEvidence.hasPortfolioEvidence).toBe(false);
+    expect(manifest.portfolioStyleEvidence.materials).not.toContain(
+      "invented bronze",
+    );
+    expect(manifest.portfolioStyleEvidence.styleKeywords).not.toContain(
+      "invented scanned style",
+    );
+    expect(manifest.blendWeights.portfolio).toBe(0);
+    expect(manifest.sourceGaps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "PDF_TEXT_NOT_SELECTABLE" }),
+      ]),
+    );
+  });
+
   test("climate rejects high-glass portfolio language under overheating risk", () => {
     const manifest = buildFixture({
       climate: { overheating: { risk_level: "high" } },
@@ -302,6 +384,56 @@ describe("StyleBlendQA", () => {
         {
           panelType: "exterior_render",
           finalPrompt: `styleBlendManifestHash: ${styleBlendManifest.manifestHash}\nRender a sci-fi glass facade.`,
+        },
+      ],
+      strict: true,
+    });
+    expect(report.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "STYLE_BLEND_REJECTED_INFLUENCE_LEAK",
+        }),
+      ]),
+    );
+  });
+
+  test("rejected PDF portfolio influences stay out of palette and are caught in prompts", () => {
+    const styleBlendManifest = buildFixture({
+      climate: { overheating: { risk_level: "high" } },
+      portfolioItems: [
+        {
+          name: "hot-climate-glass-reference.pdf",
+          type: "application/pdf",
+          isPdf: true,
+          portfolioStyleEvidence: {
+            source: "pdf_selectable_text",
+            materials: ["all-glass curtain wall"],
+            styleKeywords: ["glass box"],
+            presentationKeywords: ["render"],
+            buildingTypes: ["office"],
+            drawingTypes: ["elevation"],
+          },
+        },
+      ],
+    });
+
+    expect(styleBlendManifest.rejectedInfluences).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          rejectedBy: "climate",
+        }),
+      ]),
+    );
+    expect(
+      styleBlendManifest.resolvedPalette.map((entry) => entry.name),
+    ).not.toContain("all-glass curtain wall");
+
+    const report = evaluateStyleBlendQA({
+      styleBlendManifest,
+      promptEvidence: [
+        {
+          panelType: "hero_3d",
+          finalPrompt: `styleBlendManifestHash: ${styleBlendManifest.manifestHash}\nUse all-glass curtain wall language.`,
         },
       ],
       strict: true,

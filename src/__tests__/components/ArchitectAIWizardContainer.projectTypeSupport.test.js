@@ -1,5 +1,6 @@
-jest.mock("../../utils/pdfToImages.js", () => ({
-  convertPdfFileToImageFile: jest.fn(),
+jest.mock("../../utils/portfolioFileProcessing.js", () => ({
+  processPortfolioUploadFiles: jest.fn(),
+  releasePortfolioFilePreviewUrls: jest.fn(),
 }));
 
 import {
@@ -17,6 +18,7 @@ describe("ArchitectAIWizardContainer project type routing", () => {
       { category: "healthcare", subType: "hospital" },
       { category: "hospitality", subType: "hotel" },
       { category: "industrial", subType: "warehouse" },
+      { category: "commercial", subType: "retail" },
       { category: "cultural", subType: "museum" },
       { category: "government", subType: "town-hall" },
       { category: "religious", subType: "church" },
@@ -35,7 +37,7 @@ describe("ArchitectAIWizardContainer project type routing", () => {
     expect(() =>
       assertProjectTypeSupportedForGeneration({
         category: "commercial",
-        subType: "retail",
+        subType: "casino",
       }),
     ).toThrow(/not enabled|Experimental\/off/i);
   });

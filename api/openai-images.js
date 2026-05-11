@@ -10,6 +10,7 @@
 import { setCorsHeaders, handlePreflight } from "./_shared/cors.js";
 import openaiEnv from "../server/utils/openaiEnv.cjs";
 import projectGraphProductionGuard from "../server/utils/projectGraphProductionGuard.cjs";
+import { fetchWithProviderControls } from "../src/services/concurrency/providerFetch.js";
 
 const { resolveOpenAIImageApiKeyInfo, buildOpenAIRequestHeaders } = openaiEnv;
 const {
@@ -86,7 +87,8 @@ export default async function handler(req, res) {
     console.log(
       `[OpenAI] START image generation route=/api/openai-images model=${resolvedModel} size=${resolvedSize} keySource=${keyInfo.keySource}`,
     );
-    const response = await fetch(
+    const response = await fetchWithProviderControls(
+      "openai-image",
       "https://api.openai.com/v1/images/generations",
       {
         method: "POST",
@@ -99,6 +101,13 @@ export default async function handler(req, res) {
           size: resolvedSize,
           n: Math.max(1, Math.min(Number(n) || 1, 4)),
         }),
+      },
+      {
+        onRetry: (attempt, delayMs, error) => {
+          console.warn(
+            `[OpenAI] RETRY image generation route=/api/openai-images attempt=${attempt} status=${error.status || "network"} delayMs=${delayMs}`,
+          );
+        },
       },
     );
 

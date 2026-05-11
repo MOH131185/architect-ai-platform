@@ -1013,11 +1013,21 @@ app.post('/api/openai-reasoning', aiApiLimiter, async (req, res) => {
       requestBody.response_format = response_format;
     }
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: buildOpenAIRequestHeaders(keyInfo, process.env, { json: true }),
-      body: JSON.stringify(requestBody),
-    });
+    const { fetchWithProviderControls } = await import('./src/services/concurrency/providerFetch.js');
+    const response = await fetchWithProviderControls(
+      'openai-reasoning',
+      'https://api.openai.com/v1/chat/completions',
+      {
+        method: 'POST',
+        headers: buildOpenAIRequestHeaders(keyInfo, process.env, { json: true }),
+        body: JSON.stringify(requestBody),
+      },
+      {
+        onRetry: (attempt, delayMs, error) => {
+          console.warn(`[OpenAI] RETRY reasoning route=/api/openai-reasoning attempt=${attempt} status=${error.status || 'network'} delayMs=${delayMs}`);
+        },
+      },
+    );
 
     const requestId =
       response.headers?.get?.('x-request-id') ||
