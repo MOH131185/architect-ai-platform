@@ -449,7 +449,49 @@ function isRejectedPortfolioMaterial(name, rejectedInfluences = []) {
   if (/glass|glaz|curtain wall/.test(rejectedText)) {
     return GLASS_RISK_TERMS.some((term) => material.includes(lc(term)));
   }
+  if (/uk vernacular|uk pack/.test(rejectedText)) {
+    return UK_VERNACULAR_BLEED_TERMS.some((term) =>
+      material.includes(lc(term)),
+    );
+  }
   return false;
+}
+
+function isRejectedPortfolioText(value, rejectedInfluences = []) {
+  const text = lc(value);
+  if (!text) return false;
+  const rejectedText = rejectedInfluences
+    .map((entry) => lc(entry.influence))
+    .join(" ");
+  if (rejectedText.includes(text)) return true;
+  if (/uk vernacular|uk pack/.test(rejectedText)) {
+    return UK_VERNACULAR_BLEED_TERMS.some((term) => text.includes(lc(term)));
+  }
+  if (/glass|glaz|curtain wall/.test(rejectedText)) {
+    return GLASS_RISK_TERMS.some((term) => text.includes(lc(term)));
+  }
+  if (/sci-fi|futur|alien|blob|parametric/.test(rejectedText)) {
+    return CONTEXT_RISK_TERMS.some((term) => text.includes(lc(term)));
+  }
+  return false;
+}
+
+function isFranceOrAlgeriaContext({ brief, site, localEvidence } = {}) {
+  const text = lc(
+    [
+      localEvidence?.jurisdictionId,
+      localEvidence?.label,
+      brief?.jurisdiction,
+      brief?.site_input?.address,
+      brief?.site_input?.country,
+      site?.country,
+      site?.countryName,
+      site?.address,
+    ]
+      .filter(Boolean)
+      .join(" "),
+  );
+  return /\b(france|algeria)\b/.test(text);
 }
 
 function isTerracedContext({ brief, localEvidence, compiledProject }) {
@@ -566,6 +608,39 @@ export function resolveStyleConflicts({
       resolvedWeights,
       0.05,
       "Climate conflict reduced portfolio influence.",
+    );
+    resolvedWeights = capped.weights;
+    if (capped.redistribution) redistributions.push(capped.redistribution);
+  }
+
+  if (
+    isFranceOrAlgeriaContext({ brief, site, localEvidence }) &&
+    hasAnyTerm(portfolioTokens, UK_VERNACULAR_BLEED_TERMS)
+  ) {
+    rejectedInfluences.push(
+      makeRejectedInfluence({
+        influence: "UK vernacular portfolio language",
+        rejectedBy: "local/jurisdiction",
+        reason:
+          "Resolved France/Algeria jurisdiction evidence outranks incompatible UK-vernacular portfolio references.",
+      }),
+    );
+    conflicts.push({
+      conflict_id: "jurisdiction-overrides-uk-vernacular-portfolio",
+      higher_priority: "local",
+      lower_priority: "portfolio",
+      higher_priority_kept:
+        localEvidence?.jurisdictionId || "resolved non-UK jurisdiction",
+      lower_priority_dropped: "UK vernacular portfolio language",
+      severity: "warning",
+      summary:
+        "Local jurisdiction evidence rejected UK-vernacular portfolio language.",
+      source: "styleBlendManifest",
+    });
+    const capped = capPortfolioWeight(
+      resolvedWeights,
+      0.05,
+      "Jurisdiction conflict reduced incompatible portfolio influence.",
     );
     resolvedWeights = capped.weights;
     if (capped.redistribution) redistributions.push(capped.redistribution);
@@ -766,9 +841,8 @@ function deriveLanguage({ localValue, userValues, portfolioValues, rejected }) {
   if (localValue) return { value: localValue, source: "local" };
   const user = uniqueStrings(userValues)[0] || null;
   if (user) return { value: user, source: "user" };
-  const rejectedText = rejected.map((entry) => lc(entry.influence)).join(" ");
   const portfolio = uniqueStrings(portfolioValues).find(
-    (entry) => !rejectedText.includes(lc(entry)),
+    (entry) => !isRejectedPortfolioText(entry, rejected),
   );
   if (portfolio) return { value: portfolio, source: "portfolio" };
   return { value: null, source: null };

@@ -1,4 +1,5 @@
 import {
+  PROJECT_TYPE_SUPPORT_REGISTRY,
   PROJECT_TYPE_ROUTES,
   getProjectTypeSupport,
 } from "../../services/project/projectTypeSupportRegistry.js";
@@ -14,6 +15,17 @@ const supportedCases = [
   ["hospitality", "hospitality", "hotel", 2600, 4],
   ["industrial", "industrial", "warehouse", 2200, 1],
 ];
+
+const enabledProjectGraphCases = PROJECT_TYPE_SUPPORT_REGISTRY.filter(
+  (entry) =>
+    entry.enabledInUi === true &&
+    entry.route === PROJECT_TYPE_ROUTES.PROJECT_GRAPH,
+).map((entry) => [
+  `${entry.categoryId}:${entry.subtypeId}`,
+  entry.categoryId,
+  entry.subtypeId,
+  entry.canonicalBuildingType,
+]);
 
 function expectValidProgramme(spaces, projectDetails, floorCount) {
   expect(spaces.length).toBeGreaterThan(3);
@@ -59,6 +71,38 @@ describe("programmeSpaceGenerator", () => {
       });
 
       expect(result.source).toBe("deterministic_project_graph_template");
+      expectValidProgramme(result.spaces, projectDetails, floorCount);
+    },
+  );
+
+  test.each(enabledProjectGraphCases)(
+    "generates valid programme spaces for every UI-enabled ProjectGraph type: %s",
+    (_label, category, subType, canonicalBuildingType) => {
+      const support = getProjectTypeSupport(category, subType);
+      expect(support).toEqual(
+        expect.objectContaining({
+          enabledInUi: true,
+          route: PROJECT_TYPE_ROUTES.PROJECT_GRAPH,
+          canonicalBuildingType,
+        }),
+      );
+      const floorCount = category === "industrial" ? 1 : 3;
+      const projectDetails = {
+        category,
+        subType,
+        area: 1800,
+        floorCount,
+        floorCountLocked: true,
+      };
+
+      const result = generateDeterministicProgramSpaces({
+        projectDetails,
+        projectTypeSupport: support,
+        floorCount,
+        targetAreaM2: projectDetails.area,
+      });
+
+      expect(result.canonicalBuildingType).toBe(canonicalBuildingType);
       expectValidProgramme(result.spaces, projectDetails, floorCount);
     },
   );

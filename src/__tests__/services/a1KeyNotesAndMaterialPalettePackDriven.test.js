@@ -190,6 +190,60 @@ describe("buildKeyNoteItems — StyleBlend portfolio provenance", () => {
     expect(allText).not.toMatch(/fully glazed/i);
     expect(allText).toMatch(/terracotta baguette screen/i);
   });
+
+  test("does not leak rejected all-glass PDF portfolio evidence into key notes", () => {
+    const styleBlendManifest = {
+      manifestHash: "styleblend-pdf-glass-risk",
+      blendWeights: { local: 0.55, user: 0.2, climate: 0.2, portfolio: 0.05 },
+      localStyleEvidence: { label: "high overheating local context" },
+      portfolioStyleEvidence: {
+        source: "pdf_selectable_text",
+        hasPortfolioEvidence: true,
+        materials: [
+          "all-glass curtain wall",
+          "mirrored facade",
+          "timber solar screen",
+        ],
+        styleKeywords: ["glass box"],
+      },
+      rejectedInfluences: [
+        {
+          influence: "unshaded/high-glass portfolio facade language",
+          rejectedBy: "climate",
+          reason:
+            "Climate suitability outranks portfolio identity where overheating risk is material.",
+        },
+      ],
+      conflicts: [
+        {
+          lower_priority_dropped:
+            "unshaded/high-glass portfolio facade language",
+          summary:
+            "Climate suitability reduced portfolio glazing influence because overheating risk is material.",
+        },
+      ],
+    };
+
+    const groups = buildKeyNoteItems({
+      brief: baseBrief,
+      site: baseSite,
+      climate: { overheating: { risk_level: "high" } },
+      regulations: baseRegulations,
+      localStyle: makeLocalStyleWithPack(null),
+      sheetDesignContext: {
+        styleBlendManifest,
+        styleBlendManifestHash: styleBlendManifest.manifestHash,
+      },
+    });
+    const provenanceGroup = groups.find((g) => g.id === "style_provenance");
+    const allText = provenanceGroup.lines.join(" ");
+
+    expect(allText).not.toMatch(/all-glass curtain wall/i);
+    expect(allText).not.toMatch(/mirrored facade/i);
+    expect(allText).not.toMatch(/glass box/i);
+    expect(allText).toMatch(/Compatible portfolio: timber solar screen/i);
+    expect(allText).toMatch(/Rejected style influences were excluded/i);
+  });
 });
 
 describe("buildKeyNoteItems — QA summary group", () => {

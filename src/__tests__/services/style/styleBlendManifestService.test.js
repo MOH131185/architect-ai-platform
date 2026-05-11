@@ -275,6 +275,103 @@ describe("StyleBlendManifest contract", () => {
       JSON.stringify([france.localStyleEvidence, algeria.localStyleEvidence]),
     ).not.toMatch(/ukVernacularPacks|London stucco|Manchester/i);
   });
+
+  test("France and Algeria PDF portfolio evidence cannot force UK vernacular bleed", () => {
+    const makeUkPdfPortfolio = () => ({
+      name: "uk-vernacular-reference.pdf",
+      type: "application/pdf",
+      isPdf: true,
+      pdf: {
+        pageCount: 4,
+        textExtracted: true,
+        textCharCount: 260,
+        sourceGaps: [],
+      },
+      portfolioStyleEvidence: {
+        source: "pdf_selectable_text",
+        materials: ["london-stucco-terrace", "warm brick"],
+        colours: ["cream"],
+        styleKeywords: ["UK vernacular", "London stucco terrace"],
+        presentationKeywords: ["elevation"],
+        buildingTypes: ["house"],
+        drawingTypes: ["elevation"],
+      },
+    });
+    const france = buildFixture({
+      brief: baseBrief({
+        site_input: { address: "Lyon, France" },
+        jurisdiction: "france",
+      }),
+      jurisdictionPack: loadJurisdictionPack("france"),
+      portfolioItems: [makeUkPdfPortfolio()],
+    });
+    const algeria = buildFixture({
+      brief: baseBrief({
+        site_input: { address: "Alger, Algeria" },
+        jurisdiction: "algeria",
+      }),
+      climate: { overheating: { risk_level: "high" } },
+      jurisdictionPack: loadJurisdictionPack("algeria"),
+      portfolioItems: [makeUkPdfPortfolio()],
+    });
+
+    for (const styleBlendManifest of [france, algeria]) {
+      expect(styleBlendManifest.rejectedInfluences).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            influence: "UK vernacular portfolio language",
+            rejectedBy: "local/jurisdiction",
+          }),
+        ]),
+      );
+      expect(
+        styleBlendManifest.resolvedPalette.map((entry) => entry.name),
+      ).not.toEqual(expect.arrayContaining(["london-stucco-terrace"]));
+
+      const cleanReport = evaluateStyleBlendQA({
+        styleBlendManifest,
+        visualManifest: {
+          styleBlendManifestHash: styleBlendManifest.manifestHash,
+        },
+        a1MaterialPalette: styleBlendManifest.resolvedPalette,
+        promptEvidence: [
+          {
+            panelType: "hero_3d",
+            finalPrompt: `styleBlendManifestHash: ${styleBlendManifest.manifestHash}\nUse resolved local jurisdiction material language.`,
+          },
+        ],
+        strict: true,
+      });
+      expect(
+        cleanReport.issues.some(
+          (issue) => issue.code === "STYLE_BLEND_JURISDICTION_VERNACULAR_BLEED",
+        ),
+      ).toBe(false);
+      expect(
+        cleanReport.issues.some(
+          (issue) => issue.code === "STYLE_BLEND_REJECTED_INFLUENCE_LEAK",
+        ),
+      ).toBe(false);
+
+      const leakingPromptReport = evaluateStyleBlendQA({
+        styleBlendManifest,
+        promptEvidence: [
+          {
+            panelType: "hero_3d",
+            finalPrompt: `styleBlendManifestHash: ${styleBlendManifest.manifestHash}\nUse London stucco terrace language.`,
+          },
+        ],
+        strict: true,
+      });
+      expect(leakingPromptReport.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            code: "STYLE_BLEND_REJECTED_INFLUENCE_LEAK",
+          }),
+        ]),
+      );
+    }
+  });
 });
 
 describe("StyleBlendQA", () => {
