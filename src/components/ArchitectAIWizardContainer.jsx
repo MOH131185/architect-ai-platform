@@ -1655,7 +1655,6 @@ const ArchitectAIWizardContainer = () => {
       setIsGeneratingSpaces(false);
     }
   }, [
-    locationData,
     projectDetails,
     setIsGeneratingSpaces,
     setProgramSpaces,
