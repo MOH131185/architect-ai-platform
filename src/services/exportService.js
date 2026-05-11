@@ -245,6 +245,40 @@ class ExportService {
       throw new Error("Generate a design before downloading deliverables.");
     }
 
+    // Prefer the pre-baked package the generation request stored on the
+    // result. When present, hit the existing GET download endpoint via
+    // downloadStoredDeliverablesPackage — no multi-MB POST body, no
+    // re-upload of compiledProject / projectGraph / a1Png / a1Pdf.
+    const pkg = sheet?.package || sheet?.metadata?.package || null;
+    if (pkg?.packageId && (pkg.signedUrl || pkg.downloadRoute)) {
+      try {
+        return await this.downloadStoredDeliverablesPackage({
+          packageRecord: {
+            ...pkg,
+            projectId:
+              pkg.projectId ||
+              sheet?.projectId ||
+              sheet?.metadata?.projectId ||
+              null,
+            projectName: this.resolveProjectName(sheet),
+          },
+        });
+      } catch (error) {
+        // Surface 404/410 from the prebake route verbatim — the package
+        // expired or was evicted and the caller should re-generate.
+        // Do NOT silently re-upload the full payload behind the user's
+        // back; that would mask the storage drift and burn body limits.
+        throw new Error(
+          error?.message ||
+            "Stored deliverables package unavailable — re-generate the design.",
+        );
+      }
+    }
+
+    // Legacy fallback: no prebake on this sheet (older cached result or
+    // a code path that didn't store one). POST the full payload to the
+    // direct ZIP route. Server's body limits may reject very large
+    // payloads — surface that clearly.
     const payload = this.buildArtifactPackagePayload(sheet);
     const safeName = this.safeProjectName(payload.projectName);
     const fallbackFilename = `${safeName}-deliverables.zip`;
@@ -524,50 +558,99 @@ class ExportService {
   }
 
   /**
+   * Validate that a Blob obtained for PNG export really is an image.
+   * Guards against the silent-corrupt-PNG case where a server error
+   * (HTML body, 0-byte response, JSON error envelope) is saved as .png.
+   * Throws with a clear message on any failure.
+   * @private
+   */
+  validatePngBlob(blob, contentType) {
+    if (!blob || typeof blob.size !== "number") {
+      throw new Error("PNG export produced no response body.");
+    }
+    if (blob.size === 0) {
+      throw new Error("PNG export response was empty (0 bytes).");
+    }
+    const mime = String(contentType || blob.type || "").toLowerCase();
+    if (mime && !mime.startsWith("image/")) {
+      throw new Error(
+        `PNG export response is not an image (Content-Type: ${mime}).`,
+      );
+    }
+  }
+
+  /**
+   * Trigger a browser download for a validated Blob. Uses an object URL
+   * and revokes it on the next microtask to keep the click handler
+   * synchronous. Returns the object URL for callers that need it.
+   * @private
+   */
+  triggerBlobDownload(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    return url;
+  }
+
+  /**
    * Export as PNG
    * @private
    */
   async exportAsPNG(sheet) {
-    // If sheet.url is already a downloadable URL, use it directly
-    if (sheet.url && !sheet.url.startsWith("data:")) {
-      const filename = this.generateFilename(sheet, "png");
+    const filename = this.generateFilename(sheet, "png");
 
-      // Trigger download
-      const link = document.createElement("a");
-      link.href = sheet.url;
-      link.download = filename;
-      link.click();
-
-      return {
-        success: true,
-        url: sheet.url,
-        filename,
-        format: "PNG",
-      };
+    if (!sheet?.url || typeof sheet.url !== "string") {
+      throw new Error("No valid image URL for PNG export");
     }
 
-    // If data URL, convert to blob and download
-    if (sheet.url && sheet.url.startsWith("data:")) {
+    // Data URL path: must be data:image/* with a non-empty payload.
+    // A bare `data:image/png;base64,` or a `data:text/html,...` here
+    // would otherwise be silently saved as a .png on the user's disk.
+    if (sheet.url.startsWith("data:")) {
+      if (!/^data:image\//i.test(sheet.url)) {
+        throw new Error(
+          "PNG export requires a data:image/* URL — refusing to save non-image data as .png.",
+        );
+      }
+      const payloadSeparator = sheet.url.indexOf(",");
+      if (payloadSeparator < 0 || payloadSeparator === sheet.url.length - 1) {
+        throw new Error("PNG export data URL has no payload.");
+      }
       const blob = await this.dataURLToBlob(sheet.url);
-      const url = URL.createObjectURL(blob);
-      const filename = this.generateFilename(sheet, "png");
-
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filename;
-      link.click();
-
-      URL.revokeObjectURL(url);
-
-      return {
-        success: true,
-        url,
-        filename,
-        format: "PNG",
-      };
+      this.validatePngBlob(blob, blob.type);
+      const url = this.triggerBlobDownload(blob, filename);
+      return { success: true, url, filename, format: "PNG" };
     }
 
-    throw new Error("No valid image URL for PNG export");
+    // HTTP(S) URL path: fetch it, verify ok + image content-type + size,
+    // then download as a validated blob. Never use a raw <a download>
+    // on the source URL — that path silently saves whatever the server
+    // returns, including error HTML.
+    const response = await fetch(sheet.url, { method: "GET" });
+    if (!response.ok) {
+      throw new Error(
+        `PNG export failed: HTTP ${response.status} ${response.statusText || ""}`.trim(),
+      );
+    }
+    const contentType = (
+      response.headers?.get?.("content-type") ||
+      response.headers?.get?.("Content-Type") ||
+      ""
+    ).toLowerCase();
+    if (contentType && !contentType.startsWith("image/")) {
+      throw new Error(
+        `PNG export response is not an image (Content-Type: ${contentType}).`,
+      );
+    }
+    const blob = await response.blob();
+    this.validatePngBlob(blob, contentType || blob.type);
+    const url = this.triggerBlobDownload(blob, filename);
+    return { success: true, url, filename, format: "PNG" };
   }
 
   /**
@@ -752,7 +835,8 @@ class ExportService {
   }
 
   /**
-   * Export BIM file (RVT, IFC)
+   * Export BIM file (IFC). RVT is unsupported. IFC requires a real
+   * compiled project with geometryHash — there is no fake-IFC fallback.
    * @param {Object} params - Parameters
    * @returns {Promise<Object>} Export result
    */
@@ -768,57 +852,33 @@ class ExportService {
     }
 
     const compiledProject = this.resolveCompiledProject(sheet);
-    if (compiledProject?.geometryHash) {
-      const filename = this.generateFilename(sheet, "ifc");
-      const response = await fetch("/api/project/export/ifc", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          compiledProject,
-          projectName: this.resolveProjectName(sheet),
-        }),
-      });
-
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.error || `IFC export failed: ${response.status}`);
-      }
-
-      const url = await this.downloadResponseBlob(response, filename);
-      logger.success("Compiled-project BIM export complete", {
-        filename,
-        format: "IFC",
-      });
-      return {
-        success: true,
-        url,
-        filename,
-        format: "IFC",
-      };
+    if (!compiledProject?.geometryHash) {
+      throw new Error(
+        "IFC export requires a compiled project with geometryHash.",
+      );
     }
 
-    const content = this.generateBIMContent(sheet, format);
+    const filename = this.generateFilename(sheet, "ifc");
+    const response = await fetch("/api/project/export/ifc", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        compiledProject,
+        projectName: this.resolveProjectName(sheet),
+      }),
+    });
 
-    // Trigger download
-    const blob = new Blob([content], { type: "application/octet-stream" });
-    const url = URL.createObjectURL(blob);
-    const filename = this.generateFilename(sheet, format.toLowerCase());
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || `IFC export failed: ${response.status}`);
+    }
 
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = filename;
-    link.click();
-
-    URL.revokeObjectURL(url);
-
-    logger.success("BIM export complete", { filename, format });
-
-    return {
-      success: true,
-      url,
+    const url = await this.downloadResponseBlob(response, filename);
+    logger.success("Compiled-project BIM export complete", {
       filename,
-      format,
-    };
+      format: "IFC",
+    });
+    return { success: true, url, filename, format: "IFC" };
   }
 
   async exportWorkbook({ sheet }) {
@@ -878,62 +938,6 @@ class ExportService {
 
     logger.success("GLB export complete", { filename });
     return { success: true, url: modelUrl, filename, format: "GLB" };
-  }
-
-  /**
-   * Generate CAD content
-   * @private
-   */
-  generateCADContent(sheet, format) {
-    // Simplified CAD content generation
-    // In production, this would generate proper DWG/DXF format
-    const dna = sheet.dna || {};
-    const dimensions = dna.dimensions || {};
-
-    return `AutoCAD DXF Export
-Project: ${dna.projectType || "Building"}
-Dimensions: ${dimensions.length}m × ${dimensions.width}m × ${dimensions.height}m
-Materials: ${dna.materials?.map((m) => m.name).join(", ") || "N/A"}
-Generated: ${new Date().toISOString()}
-Seed: ${sheet.seed}
-
-[DXF content would go here]
-`;
-  }
-
-  /**
-   * Generate BIM content
-   * @private
-   */
-  generateBIMContent(sheet, format) {
-    // Simplified BIM content generation
-    // In production, this would generate proper IFC/RVT format
-    const dna = sheet.dna || {};
-    const dimensions = dna.dimensions || {};
-
-    if (format === "IFC") {
-      return `ISO-10303-21;
-HEADER;
-FILE_DESCRIPTION(('ArchiAI Export'), '2;1');
-FILE_NAME('${this.generateFilename(sheet, "ifc")}', '${new Date().toISOString()}', ('ArchiAI'), ('ArchiAI Solution'), '4.0', 'ArchiAI Platform', '');
-FILE_SCHEMA(('IFC4'));
-ENDSEC;
-
-DATA;
-/* Building: ${dna.projectType || "Building"} */
-/* Dimensions: ${dimensions.length}m × ${dimensions.width}m × ${dimensions.height}m */
-/* Materials: ${dna.materials?.map((m) => m.name).join(", ") || "N/A"} */
-ENDSEC;
-
-END-ISO-10303-21;
-`;
-    }
-
-    return `Revit Export
-Project: ${dna.projectType || "Building"}
-Dimensions: ${dimensions.length}m × ${dimensions.width}m × ${dimensions.height}m
-[RVT content would go here]
-`;
   }
 }
 

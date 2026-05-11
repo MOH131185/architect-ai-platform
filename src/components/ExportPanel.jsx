@@ -257,15 +257,35 @@ const ExportPanel = ({
   const totalExportCount = Object.keys(exportsMap).length;
   const deliverablesReady = hasDeliverablePackageArtifacts(designData);
 
-  // Per-format availability + blocked-reason logic.
+  // Per-format availability + blocked-reason logic. Readiness is driven
+  // entirely by the manifest the pipeline (or the client-side fallback in
+  // useArchitectAIWorkflow) attached to the result; we do NOT shortcut
+  // engineering rows on geometryHash alone, because that historically
+  // mislabelled IFC as READY when no real IFC artifact had been produced.
   const isAvailable = (key, fallback = true) =>
     exportsMap?.[key]?.available !== undefined
       ? exportsMap[key].available === true
       : fallback;
 
-  const blockedReason = (key) =>
-    exportsMap?.[key]?.blockedReason ||
-    "Not part of the current compiled bundle.";
+  // Map structured codes from buildClientExportManifest to readable
+  // strings. Unknown codes fall through verbatim — better than swallowing
+  // a useful diagnostic.
+  const BLOCKED_REASON_LABELS = {
+    COMPILED_PROJECT_MISSING: "Compiled project not generated yet.",
+    GEOMETRY_HASH_MISSING: "Compiled geometry unavailable.",
+    IFC_EXPORT_UNAVAILABLE:
+      "IFC export disabled — no real exporter configured.",
+    QUANTITY_TAKEOFF_UNAVAILABLE:
+      "Quantity takeoff not produced for this project type.",
+    DWG_CONVERSION_UNAVAILABLE: "DWG conversion provider not configured.",
+    AUTHORITY_JSON_UNAVAILABLE: "Authority JSON not available.",
+  };
+
+  const blockedReason = (key) => {
+    const raw = exportsMap?.[key]?.blockedReason;
+    if (!raw) return "Not part of the current compiled bundle.";
+    return BLOCKED_REASON_LABELS[raw] || raw;
+  };
 
   return (
     <Card variant="glass" padding="md" className="export-panel">
@@ -346,8 +366,8 @@ const ExportPanel = ({
           icon={Download}
           label="Export as DXF (CAD)"
           formatChip="CAD"
-          available={isAvailable("dxf", false) || Boolean(geometryHash)}
-          blockedReason="Requires compiled geometry."
+          available={isAvailable("dxf", false)}
+          blockedReason={blockedReason("dxf")}
           tooltip="Industry-standard CAD format for AutoCAD / Revit / ArchiCAD."
           onClick={() => void handleExport("dxf", "DXF file")}
         />
@@ -355,8 +375,8 @@ const ExportPanel = ({
           icon={Box}
           label="Export as IFC (BIM)"
           formatChip="BIM"
-          available={isAvailable("ifc", false) || Boolean(geometryHash)}
-          blockedReason="Requires compiled geometry."
+          available={isAvailable("ifc", false)}
+          blockedReason={blockedReason("ifc")}
           tooltip="OpenBIM format for Revit / ArchiCAD / Tekla / Solibri."
           onClick={() => void handleExport("ifc", "IFC file")}
         />
@@ -365,7 +385,7 @@ const ExportPanel = ({
           label="Export Authority JSON"
           formatChip="JSON"
           available={isAvailable("json", false)}
-          blockedReason="JSON authority bundle not in this manifest."
+          blockedReason={blockedReason("json")}
           tooltip="Structured authority bundle of the design (DNA + manifest)."
           onClick={() => void handleExport("json", "Authority JSON")}
         />
@@ -374,7 +394,7 @@ const ExportPanel = ({
           label="Export Excel Estimate"
           formatChip="XLSX"
           available={isAvailable("xlsx", false)}
-          blockedReason="Excel cost workbook not in this manifest."
+          blockedReason={blockedReason("xlsx")}
           tooltip="Cost estimate workbook with quantities and rates."
           onClick={() => void handleExport("xlsx", "Excel estimate")}
         />
@@ -412,18 +432,23 @@ const ExportPanel = ({
         </ExportSection>
       )}
 
-      {/* Footer hint when no manifest exists yet */}
-      {!exportManifest && !hasBlenderRenders && (
-        <Button
-          variant="subtle"
-          size="sm"
-          fullWidth
-          disabled
-          className="!py-2 mt-2"
-        >
-          Generate a design to unlock exports
-        </Button>
-      )}
+      {/* Footer hint when there is genuinely nothing to export yet.
+          Hidden once any deliverable surface exists: manifest, renders,
+          deliverables bundle, or a compiled geometry hash. */}
+      {!exportManifest &&
+        !hasBlenderRenders &&
+        !deliverablesReady &&
+        !geometryHash && (
+          <Button
+            variant="subtle"
+            size="sm"
+            fullWidth
+            disabled
+            className="!py-2 mt-2"
+          >
+            Generate a design to unlock exports
+          </Button>
+        )}
     </Card>
   );
 };
