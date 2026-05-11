@@ -43,10 +43,7 @@ import {
   getCurrentPipelineMode,
   PIPELINE_MODE,
 } from "../config/pipelineMode.js";
-import {
-  sanitizePromptInput,
-  sanitizeDimensionInput,
-} from "../utils/promptSanitizer.js";
+import { sanitizePromptInput } from "../utils/promptSanitizer.js";
 import buildingFootprintService from "../services/buildingFootprintService.js";
 import { resolveUiSiteBoundaryAuthority } from "../services/siteBoundaryUiAuthority.js";
 import { selectContextualBoundaryPolygon } from "../services/siteBoundaryAutoDetectPolicy.js";
@@ -74,10 +71,7 @@ import {
   syncProgramToFloorCount,
 } from "../services/project/floorCountAuthority.js";
 import { normalizeProgramSpaces } from "../services/project/levelUtils.js";
-import {
-  generateDeterministicProgramSpaces,
-  getProgrammeGuidanceForProjectType,
-} from "../services/project/programmeSpaceGenerator.js";
+import { generateDeterministicProgramSpaces } from "../services/project/programmeSpaceGenerator.js";
 import PricingPage from "./PricingPage.jsx";
 import DesignHistoryMenu from "./DesignHistoryMenu.jsx";
 
@@ -104,6 +98,79 @@ import {
 } from "../services/auth/clerkFacade.js";
 
 const ResultsStep = lazy(() => import("./steps/ResultsStep.jsx"));
+
+const MAX_PROGRAMME_AREA_M2 = 100000;
+
+export function sanitizeProgrammeAreaInput(value) {
+  if (value == null || value === "") return null;
+  const numericToken = String(value)
+    .replace(/,/g, "")
+    .match(/\d+(?:\.\d+)?/);
+  const parsed = numericToken ? parseFloat(numericToken[0]) : NaN;
+  if (
+    !Number.isFinite(parsed) ||
+    parsed <= 0 ||
+    parsed > MAX_PROGRAMME_AREA_M2
+  ) {
+    return null;
+  }
+  return Math.round(parsed * 100) / 100;
+}
+
+function logCompileBreadcrumb(label, payload) {
+  if (process.env.NODE_ENV === "production") return;
+  console.info(`[compileProgram] ${label}`, payload);
+}
+
+function normalizeUiProgramSpaces(spaces = [], source = "programme_compile") {
+  const normalized = (Array.isArray(spaces) ? spaces : []).map(
+    (space, index) => {
+      const name = String(space?.name || space?.label || `Space ${index + 1}`);
+      const rawLevelIndex = Number(space?.levelIndex ?? space?.level_index);
+      const fallbackType =
+        space?.type || space?.spaceType || space?.category || "generic";
+      return {
+        ...space,
+        id: space?.id || `space_${source}_${index + 1}`,
+        name,
+        label: String(space?.label || name),
+        area: Math.max(0, Number(space?.area || 0)),
+        count: Math.max(1, Number(space?.count || 1)),
+        type: fallbackType,
+        category: space?.category || fallbackType,
+        spaceType: space?.spaceType || fallbackType,
+        level: space?.level || "Ground",
+        levelIndex: Number.isFinite(rawLevelIndex) ? rawLevelIndex : undefined,
+        level_index: Number.isFinite(rawLevelIndex) ? rawLevelIndex : undefined,
+        source: space?.source || source,
+      };
+    },
+  );
+  normalized._calculatedFloorCount = spaces?._calculatedFloorCount;
+  normalized._floorMetrics = spaces?._floorMetrics ?? null;
+  return normalized;
+}
+
+function uniqueProgramWarnings(...groups) {
+  return Array.from(new Set(groups.flat().filter(Boolean)));
+}
+
+function programSpacesCoverFloorCount(spaces = [], floorCount = 1) {
+  const safeFloorCount = Math.max(1, Math.floor(Number(floorCount) || 1));
+  if (!Array.isArray(spaces) || spaces.length === 0) return false;
+  const calculated = Number(spaces._calculatedFloorCount);
+  const levels = new Set(
+    spaces
+      .map((space) => Number(space?.levelIndex ?? space?.level_index))
+      .filter(Number.isFinite),
+  );
+  return (
+    calculated === safeFloorCount &&
+    Array.from({ length: safeFloorCount }, (_, index) => index).every((index) =>
+      levels.has(index),
+    )
+  );
+}
 
 // Step Progress Bar Component — compact form on mobile, full circles on md+
 const StepProgressBar = ({ steps, currentStep }) => {
@@ -1229,7 +1296,7 @@ const ArchitectAIWizardContainer = () => {
         maxLength: 120,
         allowNewlines: false,
       });
-      const sanitizedArea = sanitizeDimensionInput(projectDetails.area);
+      const sanitizedArea = sanitizeProgrammeAreaInput(projectDetails.area);
       const siteArea = siteMetrics?.areaM2 || 0;
       // Single source of truth for floor count. Every downstream call -
       // residential engine, generic AI prompt, post-gen sync, setProjectDetails -
@@ -1257,10 +1324,20 @@ const ArchitectAIWizardContainer = () => {
         }`,
         compileAuthorityLog,
       );
+      logCompileBreadcrumb("projectTypeSupport", {
+        categoryId: projectTypeSupport.categoryId,
+        subtypeId: projectTypeSupport.subtypeId,
+        route: projectTypeSupport.route,
+        supportStatus: projectTypeSupport.supportStatus,
+        enabledInUi: projectTypeSupport.enabledInUi,
+      });
+      logCompileBreadcrumb("canonicalBuildingType", {
+        canonicalBuildingType: projectTypeSupport.canonicalBuildingType,
+      });
 
       if (!sanitizedProgram || !sanitizedArea) {
         setProgramWarnings([
-          "Provide building type and area to generate a program.",
+          "Provide a supported building type and a valid total area to generate a program.",
         ]);
         return;
       }
@@ -1445,100 +1522,30 @@ const ArchitectAIWizardContainer = () => {
         return spaces;
       }
 
-      // Generic AI path uses the same authoritative floor count as the
-      // residential path. Locked > autoDetected > manual > fallback.
-      const floorCountForPrompt = authoritativeFloorCount;
+      // ProjectGraph non-residential programme rows must appear without
+      // waiting on model availability. The deterministic template is the
+      // runtime source for the visible UI schedule; downstream ProjectGraph
+      // generation receives these rows as the programme lock.
+      const floorCountForProgram = authoritativeFloorCount;
+      const deterministic = generateDeterministicProgramSpaces({
+        projectDetails,
+        projectTypeSupport,
+        floorCount: floorCountForProgram,
+        targetAreaM2: sanitizedArea,
+      });
+      const programSource = deterministic.source;
 
-      const ordinal = (n) => {
-        const mod10 = n % 10;
-        const mod100 = n % 100;
-        if (mod10 === 1 && mod100 !== 11) return `${n}st`;
-        if (mod10 === 2 && mod100 !== 12) return `${n}nd`;
-        if (mod10 === 3 && mod100 !== 13) return `${n}rd`;
-        return `${n}th`;
-      };
-
-      const levelNames = (() => {
-        const levels = ["Ground"];
-        if (floorCountForPrompt >= 2) levels.push("First");
-        if (floorCountForPrompt >= 3) levels.push("Second");
-        if (floorCountForPrompt >= 4) levels.push("Third");
-        for (let i = 5; i <= floorCountForPrompt; i++)
-          levels.push(ordinal(i - 1));
-        return levels;
-      })();
-
-      const programmeGuidance = getProgrammeGuidanceForProjectType(
-        projectTypeSupport.canonicalBuildingType,
+      let spaces = normalizeUiProgramSpaces(
+        deterministic.spaces,
+        programSource,
       );
-      const prompt = `You are an architectural programming expert. Generate a JSON array of spaces for a ${projectTypeSupport.label || sanitizedProgram} totaling ~${sanitizedArea} m². Ensure the total area (area * count sum) is within ±5% of ${sanitizedArea}. Assign each space to ONE of these level names only: ${levelNames.join(", ")}. ${programmeGuidance} Return ONLY the JSON array, no commentary.`;
-      let parsed = [];
-      let programSource = "openai_reasoning";
-      try {
-        const openaiReasoningService = (
-          await import("../services/openaiReasoningService")
-        ).default;
-        const response = await openaiReasoningService.chatCompletion(
-          [
-            {
-              role: "system",
-              content:
-                "Return ONLY a JSON array of objects with: name (string), area (number), count (number), level (string), type/category (string where applicable), notes (optional string).",
-            },
-            { role: "user", content: prompt },
-          ],
-          {
-            max_tokens: 900,
-            temperature: 0.55,
-            task_type: "wizard-program-compile",
-          },
+      if (spaces.length === 0) {
+        const emptyErr = new Error(
+          "Supported project type returned no programme spaces.",
         );
-
-        const content =
-          response?.choices?.[0]?.message?.content || response?.content || "[]";
-        const jsonMatch = content.match(/\[[\s\S]*\]/);
-        if (jsonMatch) {
-          try {
-            parsed = JSON.parse(jsonMatch[0]);
-          } catch (err) {
-            logger.warn("Failed to parse AI program JSON, falling back", err);
-          }
-        }
-      } catch (reasoningErr) {
-        logger.warn(
-          "OpenAI programme compile unavailable; using deterministic template",
-          reasoningErr,
-        );
+        emptyErr.code = "PROGRAMME_SPACES_EMPTY";
+        throw emptyErr;
       }
-
-      if (!Array.isArray(parsed) || parsed.length === 0) {
-        const deterministic = generateDeterministicProgramSpaces({
-          projectDetails,
-          projectTypeSupport,
-          floorCount: floorCountForPrompt,
-          targetAreaM2: parseFloat(projectDetails.area),
-        });
-        parsed = deterministic.spaces;
-        programSource = deterministic.source;
-      }
-
-      // Map to UI schema
-      let spaces = parsed.map((space, index) => ({
-        id: `space_${Date.now()}_${index}`,
-        spaceType:
-          space.spaceType || space.type || space.category || space.name,
-        type: space.type || space.spaceType || space.category || null,
-        category: space.category || space.type || space.spaceType || null,
-        name: String(space.name || space.label || `Space ${index + 1}`),
-        label: String(space.label || space.name || `Space ${index + 1}`),
-        area: Math.max(0, parseFloat(space.area) || 0),
-        count: Math.max(1, parseInt(space.count, 10) || 1),
-        level: space.level || "Ground",
-        levelIndex: space.levelIndex ?? space.level_index ?? undefined,
-        level_index: space.level_index ?? space.levelIndex ?? undefined,
-        notes: space.notes || "",
-        source: space.source || programSource,
-      }));
 
       // Auto level assignment. We always run syncProgramToFloorCount with
       // the authoritative count so that manual floor counts work even when
@@ -1575,16 +1582,19 @@ const ArchitectAIWizardContainer = () => {
         autoFloors = floorMetrics?.optimalFloors || autoFloors;
       }
 
-      const syncResult = syncProgramToFloorCount(
-        spaces,
-        authoritativeFloorCount,
-        {
+      let syncResult = { spaces, warnings: [], changed: false };
+      if (!programSpacesCoverFloorCount(spaces, authoritativeFloorCount)) {
+        syncResult = syncProgramToFloorCount(spaces, authoritativeFloorCount, {
           buildingType: sanitizedProgram,
           projectDetails: { ...projectDetails, floorMetrics },
-        },
-      );
-      spaces = syncResult.spaces;
+        });
+        spaces = normalizeUiProgramSpaces(syncResult.spaces, programSource);
+      }
       spaces._floorMetrics = floorMetrics;
+      logCompileBreadcrumb("generatorSource", {
+        generatorSource: programSource,
+        spacesCount: spaces.length,
+      });
 
       console.info("[compileProgram] generatedProgram", {
         ...compileAuthorityLog,
@@ -1633,11 +1643,14 @@ const ArchitectAIWizardContainer = () => {
           `Auto-detected ${autoFloors} level${autoFloors === 1 ? "" : "s"} from ${Math.round(siteArea)} m² site.`,
         );
       }
-      setProgramWarnings((prev) => [
-        ...prev,
-        ...genericWarnings,
-        ...syncResult.warnings,
-      ]);
+      setProgramWarnings((prev) =>
+        uniqueProgramWarnings(
+          prev,
+          genericWarnings,
+          deterministic.warnings,
+          syncResult.warnings,
+        ),
+      );
 
       setProgramSpaces(spaces);
 
@@ -1649,6 +1662,12 @@ const ArchitectAIWizardContainer = () => {
       return spaces; // Return for callers that need immediate access
     } catch (err) {
       logger.error("Space generation failed", err);
+      setProgramWarnings([
+        err?.code === "PROJECT_TYPE_UNSUPPORTED"
+          ? err.message ||
+            "This project type is not enabled for production generation."
+          : "Programme spaces could not be generated for this project type. Check the building type and area, then try again.",
+      ]);
       setProgramSpaces([]);
       return [];
     } finally {
