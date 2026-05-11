@@ -519,6 +519,66 @@ async function buildPlaceholder(sharp, width, height, type) {
 }
 
 /**
+ * Estimate the maximum character count that will fit in `maxWidthPx` at
+ * `fontSizePx` for the title-block Arial face. We use a conservative
+ * 0.58 width-to-size ratio (slightly above the typical 0.55) so that
+ * latin glyphs with descenders and punctuation also fit. The result is
+ * floored to avoid producing fractional indices.
+ *
+ * @private
+ */
+function fitMaxChars(maxWidthPx, fontSizePx, leftPaddingPx = 16) {
+  const usableWidth = Math.max(40, maxWidthPx - leftPaddingPx - 12);
+  const avgGlyph = Math.max(4, fontSizePx * 0.58);
+  return Math.max(8, Math.floor(usableWidth / avgGlyph));
+}
+
+/**
+ * Fit a title-block text line to a maximum width. Truncates with an
+ * ellipsis only when strictly necessary so the title block remains
+ * readable when project names or addresses are long. The truncation
+ * happens deterministically (no async font metrics) so the rendered
+ * sheet stays stable.
+ *
+ * @private
+ */
+function fitTitleText(text, maxWidthPx, fontSizePx) {
+  if (!text) return "";
+  const max = fitMaxChars(maxWidthPx, fontSizePx);
+  const value = String(text);
+  if (value.length <= max) return value;
+  if (max <= 1) return value.slice(0, 1);
+  return `${value.slice(0, Math.max(1, max - 1))}…`;
+}
+
+/**
+ * Split a project name onto up to two lines when it has a natural
+ * comma break (e.g. "190 Corporation St, Birmingham B4 6QD") and the
+ * single-line form would overflow the title block. Lines are still
+ * length-capped via fitTitleText so a single very long token can't
+ * blow out the header. Returns `[line1]` or `[line1, line2]`.
+ *
+ * @private
+ */
+function splitTitleAcrossLines(text, maxWidthPx, fontSizePx) {
+  const value = String(text || "");
+  const maxChars = fitMaxChars(maxWidthPx, fontSizePx);
+  if (value.length <= maxChars) return [value];
+  const commaIdx = value.indexOf(",");
+  if (commaIdx > 0 && commaIdx < value.length - 1) {
+    const head = value.slice(0, commaIdx).trim();
+    const tail = value.slice(commaIdx + 1).trim();
+    if (head && tail) {
+      return [
+        fitTitleText(head, maxWidthPx, fontSizePx),
+        fitTitleText(tail, maxWidthPx, fontSizePx),
+      ];
+    }
+  }
+  return [fitTitleText(value, maxWidthPx, fontSizePx)];
+}
+
+/**
  * Build title block buffer
  * @private
  */
@@ -531,14 +591,38 @@ async function buildTitleBlockBuffer(sharp, width, height, titleBlock = {}) {
     date = new Date().toISOString().split("T")[0],
   } = titleBlock || {};
 
+  // Long project names and addresses previously overflowed the title
+  // block (e.g. "190 Corporation St, Birmingham B4 6QD" punched past
+  // the building-type line). Wrap the project name onto two lines when
+  // there is a natural comma break, otherwise truncate. Other lines
+  // truncate to a single ellipsised line so the date and scale stay
+  // readable on the right-hand side.
+  const projectNameLines = splitTitleAcrossLines(projectName, width, 22);
+  const projectNameSecondLineY = 60;
+  const stackOffset = projectNameLines.length > 1 ? 24 : 0;
+  const buildingTypeY = 66 + stackOffset;
+  const locationY = 96 + stackOffset;
+  const scaleY = 126 + stackOffset;
+  const fittedBuildingType = fitTitleText(buildingTypeLabel, width, 16);
+  const fittedLocation = fitTitleText(locationDesc, width, 14);
+  const fittedScale = fitTitleText(scale, width, 14);
+  const fittedDate = fitTitleText(`Date: ${date}`, width, 12);
+
+  const projectNameMarkup = projectNameLines
+    .map((line, idx) => {
+      const y = idx === 0 ? 36 : projectNameSecondLineY;
+      return `<text x="16" y="${y}" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#0f172a">${sanitizeSvgText(line)}</text>`;
+    })
+    .join("\n      ");
+
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
     <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
       <rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff" stroke="${FRAME_STROKE_COLOR}" stroke-width="2" rx="${FRAME_RADIUS}" ry="${FRAME_RADIUS}" />
-      <text x="16" y="36" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#0f172a">${sanitizeSvgText(projectName)}</text>
-      <text x="16" y="66" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="600" fill="#1f2937">${sanitizeSvgText(buildingTypeLabel)}</text>
-      <text x="16" y="96" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#374151">${sanitizeSvgText(locationDesc)}</text>
-      <text x="16" y="126" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#374151">${sanitizeSvgText(scale)}</text>
-      <text x="16" y="${height - 16}" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280">Date: ${sanitizeSvgText(date)}</text>
+      ${projectNameMarkup}
+      <text x="16" y="${buildingTypeY}" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="600" fill="#1f2937">${sanitizeSvgText(fittedBuildingType)}</text>
+      <text x="16" y="${locationY}" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#374151">${sanitizeSvgText(fittedLocation)}</text>
+      <text x="16" y="${scaleY}" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#374151">${sanitizeSvgText(fittedScale)}</text>
+      <text x="16" y="${height - 16}" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280">${sanitizeSvgText(fittedDate)}</text>
     </svg>
   `;
 
@@ -762,6 +846,15 @@ async function buildClimateCardBuffer(sharp, width, height, locationData) {
     })
     .toBuffer();
 }
+
+// Exposed for unit tests. Pure helpers with no side effects — they
+// determine deterministic truncation of long titles so the title block
+// SVG never overflows when project names or addresses are long.
+export const __titleBlockInternals = Object.freeze({
+  fitMaxChars,
+  fitTitleText,
+  splitTitleAcrossLines,
+});
 
 export default {
   composeA1Sheet,

@@ -1460,8 +1460,14 @@ export function renderElevationSvg(
   const sheetPolish = resolveElevationPolish(sheetMode);
   const showInternalTitleBlock =
     !sheetMode || options.showInternalTitleBlock === true;
+  // Sheet-mode headroom. The original 8px top / 24px bottom squeezed the
+  // ridge datum and ground line straight to the panel edge on small slots,
+  // clipping rooflines and the topmost level label on Office Studio and
+  // other non-residential elevations. Give a real datum band at top and a
+  // little extra at bottom so labels and the ground stroke survive the
+  // sheet-mode polish.
   const layout = sheetMode
-    ? { left: 16, top: 8, right: 16, bottom: 24 }
+    ? { left: 16, top: 28, right: 16, bottom: 36 }
     : { left: 80, top: 62, right: 94, bottom: 118 };
   const availableWidth = Math.max(1, width - layout.left - layout.right);
   const availableHeight = Math.max(1, height - layout.top - layout.bottom);
@@ -1482,8 +1488,13 @@ export function renderElevationSvg(
     roofLanguage,
     spanM: metrics.width_m,
   });
+  // Roof allowance in metres. The previous sheet-mode floor of 0.56 m left
+  // pitched roofs and parapet upstands butting against the layout edge,
+  // chopping off the ridge datum on small slots. 1.0 m reserves enough
+  // vertical space for ridge + datum label while still letting tall
+  // residential roofs scale up via `riseM`.
   const roofAllowanceM = Math.max(
-    sheetMode ? 0.56 : 1.2,
+    sheetMode ? 1.0 : 1.2,
     Number(roofPitchInfoBase.riseM || 0),
   );
   const scale = Math.min(

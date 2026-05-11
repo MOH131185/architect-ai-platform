@@ -85,8 +85,14 @@ export function getTechnicalPanelRenderSize(
   const slotRect = toPixelRect(slot, WORKING_WIDTH, WORKING_HEIGHT);
   const isPlan = panelType.startsWith("floor_plan_");
   const isSection = panelType.startsWith("section_");
-  const minWidth = isPlan ? 760 : isSection ? 720 : 560;
-  const minHeight = isPlan ? 420 : isSection ? 400 : 320;
+  // Elevation readability floor was 560×320 — that left small board-v2
+  // elevation slots rendering with compressed datums and unreadable
+  // material zone hatch. Bump elevation min to 640×400 so ridge / level
+  // datum labels survive the sheet-mode polish on non-residential
+  // sheets. Plans and sections kept stable to avoid changing the
+  // residential deterministic path.
+  const minWidth = isPlan ? 760 : isSection ? 720 : 640;
+  const minHeight = isPlan ? 420 : isSection ? 400 : 400;
 
   // Render the SVG at the slot's actual aspect ratio. If either dimension
   // would fall below its readability minimum, scale BOTH dimensions up by

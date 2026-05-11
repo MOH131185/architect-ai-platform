@@ -39,9 +39,41 @@ function isInteriorBackgroundPocheZone(wall = {}) {
 const INTERIOR_BACKGROUND_POCHE_FILL = "#f4f5f6";
 const INTERIOR_BACKGROUND_POCHE_OPACITY = 0.92;
 
+// Sheet-mode poche colour & opacity caps.
+//
+// In sheet-mode (rendering into a small A1 panel slot) the heavy `#151515`
+// at 0.86–0.96 opacity used in standalone drafting view bleeds into a
+// dominating black band that swamps adjacent labels — particularly on
+// non-residential sections where the cut zone is wide and uninterrupted.
+// We swap to a slightly lighter graphite and cap opacity, while
+// preserving the truth-state hierarchy (cut_face darkest, cut_profile
+// lighter, then contextual/derived). Stroke and interior hatch stay
+// untouched so the cut hierarchy still reads at a glance.
+const SHEET_POCHE_FILL = "#2a2a2a";
+const SHEET_POCHE_MAX_OPACITY = 0.62;
+const SHEET_POCHE_MIN_OPACITY = 0.36;
+
+function softenOpacityForSheet(raw) {
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return SHEET_POCHE_MIN_OPACITY;
+  if (value <= 0) return 0;
+  // Map the standalone 0.62–0.96 range into the sheet 0.36–0.62 range
+  // while keeping the relative ordering (cut_face stays darkest).
+  const STANDALONE_MIN = 0.6;
+  const STANDALONE_MAX = 0.96;
+  const span = STANDALONE_MAX - STANDALONE_MIN;
+  if (span <= 0) return SHEET_POCHE_MIN_OPACITY;
+  const t = Math.max(0, Math.min(1, (value - STANDALONE_MIN) / span));
+  return (
+    SHEET_POCHE_MIN_OPACITY +
+    t * (SHEET_POCHE_MAX_OPACITY - SHEET_POCHE_MIN_OPACITY)
+  );
+}
+
 export function buildSectionWallDetailMarkup({
   walls = [],
   lineweights = {},
+  sheetMode = false,
 } = {}) {
   const phase21 = phase21SectionGraphicsEnabled();
   const markup = (walls || [])
@@ -73,10 +105,14 @@ export function buildSectionWallDetailMarkup({
       const interiorBackgroundZone = isInteriorBackgroundPocheZone(wall);
       const pocheOpacity = interiorBackgroundZone
         ? INTERIOR_BACKGROUND_POCHE_OPACITY
-        : rawPocheOpacity;
+        : sheetMode
+          ? softenOpacityForSheet(rawPocheOpacity)
+          : rawPocheOpacity;
       const pocheFill = interiorBackgroundZone
         ? INTERIOR_BACKGROUND_POCHE_FILL
-        : "#151515";
+        : sheetMode
+          ? SHEET_POCHE_FILL
+          : "#151515";
       const outlineWeight = isCutFace
         ? Math.max(2, (lineweights.cutOutline || 1.6) * 1.22)
         : isCutProfile
