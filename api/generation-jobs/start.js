@@ -3,6 +3,11 @@ import {
   startJob,
   JOB_ERROR_CODES,
 } from "../../src/services/generation/generationJobService.js";
+import {
+  reserveJobQuota,
+  QUOTA_ERROR_CODES,
+} from "../../src/services/concurrency/quotaService.js";
+import { withProviderSlot } from "../../src/services/concurrency/providerLimiter.js";
 import sliceHandler from "../project/generate-vertical-slice.js";
 
 // The job worker reuses the existing /generate-vertical-slice handler so the
@@ -88,15 +93,47 @@ export default async function handler(req, res) {
     req.headers?.["x-project-id"] ||
     null;
 
+  // Quota gate runs BEFORE we enqueue the job so a denied request never
+  // touches the worker pool. If the gate passes, we own a slot until the
+  // job terminates (succeeded/failed/cancelled), at which point the
+  // wrapped worker releases it.
+  let releaseQuota;
   try {
+    releaseQuota = reserveJobQuota({ userId });
+  } catch (err) {
+    if (
+      err?.code === QUOTA_ERROR_CODES.GLOBAL_CAPACITY_FULL ||
+      err?.code === QUOTA_ERROR_CODES.USER_QUOTA_EXCEEDED
+    ) {
+      return res.status(429).json({
+        error: err.message,
+        code: err.code,
+        limits: err.limits,
+        active: err.active,
+      });
+    }
+    throw err;
+  }
+
+  try {
+    // The generation-worker slot bounds how many heavy slice runs occupy
+    // this process at the same time. Quotas above gate "should this user
+    // start another job?"; the slot gates "should this PROCESS take on
+    // another job RIGHT NOW?". The OpenAI image/reasoning slots stay
+    // available via providerLimiter for future inner-call wrapping.
+    const wrappedWorker = (...args) =>
+      withProviderSlot("generation-worker", () =>
+        defaultGenerationWorker(...args),
+      ).finally(() => releaseQuota());
     const snapshot = startJob({
       payload,
       userId,
       projectId,
-      worker: defaultGenerationWorker,
+      worker: wrappedWorker,
     });
     return res.status(202).json(snapshot);
   } catch (err) {
+    if (releaseQuota) releaseQuota();
     return res.status(500).json({
       error: err?.message || "Failed to start generation job",
       code: "JOB_START_FAILED",
