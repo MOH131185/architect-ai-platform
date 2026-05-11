@@ -36,9 +36,21 @@ async function withDownloadUrls(records, adapter, accessContext) {
     DEFAULT_SIGNED_URL_EXPIRES_SECONDS;
   const hydrated = await Promise.all(
     records.map(async (record) => {
+      // listArtifactPackageHistory matches by record.projectId OR
+      // record.projectGraphId. The per-record access check needs the same
+      // either-or semantics: pass whichever id the caller's accessContext
+      // actually matches, so projectAllowed doesn't deny a row that the
+      // listing layer already authorized.
+      const queriedProjectId = accessContext?.projectId || null;
+      const manifestProjectIdForCheck =
+        queriedProjectId &&
+        queriedProjectId !== record.projectId &&
+        queriedProjectId === record.projectGraphId
+          ? record.projectGraphId
+          : record.projectId;
       const accessDecision = canReadArtifactPackage(accessContext, {
         manifest: {
-          projectId: record.projectId,
+          projectId: manifestProjectIdForCheck,
         },
         metadata: {
           userId: record.userId,

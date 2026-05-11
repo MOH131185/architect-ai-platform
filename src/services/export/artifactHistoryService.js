@@ -142,9 +142,19 @@ export function listArtifactPackageHistory(
   { projectId = null, userId = null, includeDeleted = false } = {},
   state = getHistoryState(),
 ) {
+  // The wizard generates its own designId on the client AFTER the slice
+  // returns; the slice service generates an unrelated projectGraphId on the
+  // server inside the same generation. Either may end up as the panel's
+  // history filter — match on either record.projectId OR
+  // record.projectGraphId so the saved row is findable from both ids
+  // without forcing the wizard to align them upstream.
   return [...state.records.values()]
     .filter((record) => (includeDeleted ? true : record.status !== "deleted"))
-    .filter((record) => (projectId ? record.projectId === projectId : true))
+    .filter((record) =>
+      projectId
+        ? record.projectId === projectId || record.projectGraphId === projectId
+        : true,
+    )
     .filter((record) => (userId ? record.userId === userId : true))
     .sort((a, b) =>
       [b.createdAt || "", b.packageId || ""]

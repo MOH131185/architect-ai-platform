@@ -166,15 +166,28 @@ export default async function handler(req, res) {
           storageRecord.metadata?.packageHash,
         manifest: storageRecord.manifest || {},
       };
-      const historyRecord = recordArtifactPackageHistory(
-        createArtifactHistoryRecord({
-          packageResult: packageResultLike,
-          storageRecord,
-          userId,
-          signedUrlInfo,
-          downloadRoute: fallbackDownloadRoute,
-        }),
-      );
+      // Compact-ref Save: the body.projectId is the wizard's
+      // client-generated designId (the panel's filter key). The storage
+      // manifest's projectId is the slice's auto-generated id (kept on
+      // the record as projectGraphId). Override history.projectId with
+      // the body value so the panel's per-project filter finds the row.
+      // listArtifactPackageHistory matches by projectId OR projectGraphId,
+      // so the slice's id is still queryable too.
+      const baseHistoryRecord = createArtifactHistoryRecord({
+        packageResult: packageResultLike,
+        storageRecord,
+        userId,
+        signedUrlInfo,
+        downloadRoute: fallbackDownloadRoute,
+      });
+      const wizardProjectId =
+        (typeof req.body?.projectId === "string" &&
+          req.body.projectId.trim()) ||
+        null;
+      const historyRecord = recordArtifactPackageHistory({
+        ...baseHistoryRecord,
+        projectId: wizardProjectId || baseHistoryRecord.projectId,
+      });
       return res.status(200).json({
         packageId: storageRecord.packageId,
         packageHash: packageResultLike.packageHash,
