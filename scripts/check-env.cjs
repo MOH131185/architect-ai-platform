@@ -8,6 +8,9 @@
 
 const path = require("path");
 const fs = require("fs");
+const {
+  runProductionStrictChecks,
+} = require("./productionStrictChecks.cjs");
 
 const envPath = path.join(__dirname, "..", ".env");
 if (fs.existsSync(envPath)) {
@@ -265,6 +268,27 @@ function main() {
     console.log(
       "⚠️  TOGETHER_API_KEY is set, but it is not required for the ProjectGraph vertical slice.",
     );
+  }
+
+  // Phase E — production-strict checks. Fatal in production for issues like
+  // REACT_APP_OPENAI_API_KEY (frontend key leak risk), incomplete S3 config,
+  // and non-integer retention/concurrency env values. Non-production runs
+  // surface the same checks but only the warnings section.
+  const { errors: prodErrors, warnings: prodWarnings } =
+    runProductionStrictChecks(process.env);
+  if (prodErrors.length > 0) {
+    console.log("\nProduction-strict errors");
+    console.log("────────────────────────");
+    prodErrors.forEach((msg) => console.log(`  ❌ ${msg}`));
+    console.log(
+      `\n❌ Production-strict validation failed (${prodErrors.length} issue(s)).`,
+    );
+    process.exit(1);
+  }
+  if (prodWarnings.length > 0) {
+    console.log("\nProduction-strict warnings");
+    console.log("──────────────────────────");
+    prodWarnings.forEach((msg) => console.log(`  ⚠️  ${msg}`));
   }
 
   console.log("✅ Environment validation passed.");
