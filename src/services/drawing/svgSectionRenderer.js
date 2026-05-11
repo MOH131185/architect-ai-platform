@@ -1393,8 +1393,12 @@ export function renderSectionSvg(
     roofLanguage,
     spanM: horizontalExtent,
   });
+  // Sheet-mode roof allowance was 0.82 m which clipped ridge datums and
+  // section A-A/B-B labels on non-residential sections where the section
+  // strategy name overlays the top edge. 1.05 m gives a consistent datum
+  // band while staying tighter than the standalone 1.4 m default.
   const roofAllowanceM = Math.max(
-    sheetMode ? 0.82 : 1.4,
+    sheetMode ? 1.05 : 1.4,
     Number(roofPitchInfoBase.riseM || 0),
   );
   const groundAllowanceM = sheetMode ? 1.12 : 0;
@@ -1626,6 +1630,7 @@ export function renderSectionSvg(
       ? buildSectionWallDetailMarkup({
           walls: constructionGeometry.walls,
           lineweights,
+          sheetMode,
         })
       : renderCutWalls(
           constructionGeometry.walls.length
