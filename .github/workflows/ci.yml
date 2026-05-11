@@ -45,6 +45,9 @@ jobs:
     - name: Run load-test smoke (mock-mode, --users 5)
       run: npm run smoke:load
 
+    - name: Run production-readiness smoke (mock-mode, 14/15 checks)
+      run: npm run smoke:production-readiness
+
     - name: Build active app path
       run: npm run build:active
       env:
