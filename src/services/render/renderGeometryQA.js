@@ -168,6 +168,11 @@ async function callOpenAIVisionQA({ pngBytes, expected, modelId, env }) {
   const base64 = Buffer.isBuffer(pngBytes)
     ? pngBytes.toString("base64")
     : Buffer.from(pngBytes).toString("base64");
+  // PR6 (post-audit): only set response_format on models that support JSON
+  // mode. gpt-5.x / gpt-4o / gpt-4.1 / gpt-4-turbo-2024+ support it; older
+  // chat models reject the body. parseQAResponse already strips code-fence
+  // wrappers, so models without JSON mode still produce parseable output.
+  const supportsJsonMode = !modelId || /gpt-(5|4o|4\.1|4-turbo)/i.test(modelId);
   const body = {
     model: modelId,
     messages: [
@@ -182,7 +187,7 @@ async function callOpenAIVisionQA({ pngBytes, expected, modelId, env }) {
         ],
       },
     ],
-    response_format: { type: "json_object" },
+    ...(supportsJsonMode ? { response_format: { type: "json_object" } } : {}),
     max_tokens: 400,
   };
   try {
@@ -204,6 +209,7 @@ async function callOpenAIVisionQA({ pngBytes, expected, modelId, env }) {
         mismatches: [],
         skipped: true,
         reason: `qa_http_${response.status}`,
+        expected,
       };
     }
     const data = await response.json().catch(() => ({}));
@@ -216,6 +222,7 @@ async function callOpenAIVisionQA({ pngBytes, expected, modelId, env }) {
       mismatches,
       skipped: false,
       reason: null,
+      expected,
     };
   } catch (error) {
     return {
@@ -224,6 +231,7 @@ async function callOpenAIVisionQA({ pngBytes, expected, modelId, env }) {
       mismatches: [],
       skipped: true,
       reason: `qa_exception_${error?.name || "unknown"}`,
+      expected,
     };
   }
 }
@@ -241,6 +249,15 @@ export async function verifyRenderAgainstGeometry({
   verifier = null,
 } = {}) {
   const resolvedEnv = pickEnv(env);
+  // PR6: compute `expected` up front so every return site can include it.
+  // The retry loop in projectGraphImageRenderer reads result.expected to
+  // feed amendPromptForRetry's property-lock summary — before PR6 the field
+  // was only computed but never returned, so retries got the AVOID: line
+  // without the corrective property-lock tail.
+  const expected = deriveExpectedPropertiesFromGeometry(
+    projectGeometry || {},
+    panelType,
+  );
   if (!isVisionQAEnabled(resolvedEnv)) {
     return {
       ok: true,
@@ -248,6 +265,7 @@ export async function verifyRenderAgainstGeometry({
       mismatches: [],
       skipped: true,
       reason: "qa_gate_disabled",
+      expected,
     };
   }
   if (!pngBytes) {
@@ -257,12 +275,9 @@ export async function verifyRenderAgainstGeometry({
       mismatches: ["missing render bytes"],
       skipped: true,
       reason: "missing_png_bytes",
+      expected,
     };
   }
-  const expected = deriveExpectedPropertiesFromGeometry(
-    projectGeometry || {},
-    panelType,
-  );
   const resolvedModelId =
     modelId ||
     (() => {
@@ -282,7 +297,7 @@ export async function verifyRenderAgainstGeometry({
       modelId: resolvedModelId,
       env: resolvedEnv,
     });
-    return normaliseInjectedResult(injected);
+    return normaliseInjectedResult(injected, expected);
   }
   if (!resolvedModelId) {
     return {
@@ -291,6 +306,7 @@ export async function verifyRenderAgainstGeometry({
       mismatches: [],
       skipped: true,
       reason: "missing_qa_model",
+      expected,
     };
   }
   return callOpenAIVisionQA({
@@ -301,7 +317,7 @@ export async function verifyRenderAgainstGeometry({
   });
 }
 
-function normaliseInjectedResult(result) {
+function normaliseInjectedResult(result, expected = null) {
   if (!result || typeof result !== "object") {
     return {
       ok: false,
@@ -309,6 +325,7 @@ function normaliseInjectedResult(result) {
       mismatches: ["injected verifier returned no result"],
       skipped: false,
       reason: "verifier_no_result",
+      expected,
     };
   }
   const score =
@@ -328,6 +345,7 @@ function normaliseInjectedResult(result) {
     mismatches,
     skipped: result.skipped === true,
     reason: result.reason || null,
+    expected,
   };
 }
 

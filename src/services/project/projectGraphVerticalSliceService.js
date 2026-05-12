@@ -5355,6 +5355,12 @@ function layoutRoomsForLevel({
   layoutSeed = null,
   buildingType = null,
   enforceNDSS = false,
+  // PR6 (post-audit): optional Set used by the warn-only NDSS path to
+  // dedup violation log lines across multiple levels in a single build.
+  // Each signature is `${roomName}:${ruleKey}:${kind}`. Default null
+  // means no dedup (legacy behaviour); buildProjectGeometryFromProgramme
+  // creates one Set per build and passes it here.
+  ndssWarnSink = null,
 }) {
   const levelId = `level-${levelIndex}`;
   const rooms = [];
@@ -5465,15 +5471,30 @@ function layoutRoomsForLevel({
       }
       // Warn-only path: log so violations are visible in CI without
       // breaking the run.
-      // eslint-disable-next-line no-console
-      console.warn(
-        `[ndssValidator] level ${levelIndex}: ${stamped
-          .map(
-            (v) =>
-              `${v.roomName || v.roomId || "(unnamed)"} [${v.ruleKey}]: ${v.message}`,
-          )
-          .join("; ")}`,
-      );
+      //
+      // PR6 (post-audit): when an ndssWarnSink Set is provided, dedup by
+      // signature so a 5-storey dwelling with repeating violations across
+      // levels doesn't flood the log with the same message 60 times. Each
+      // distinct (room, rule, kind) tuple logs at most once per build.
+      const unseenForLog = ndssWarnSink
+        ? stamped.filter((v) => {
+            const sig = `${v.roomName || v.roomId || "(unnamed)"}:${v.ruleKey}:${v.kind}`;
+            if (ndssWarnSink.has(sig)) return false;
+            ndssWarnSink.add(sig);
+            return true;
+          })
+        : stamped;
+      if (unseenForLog.length > 0) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[ndssValidator] level ${levelIndex}: ${unseenForLog
+            .map(
+              (v) =>
+                `${v.roomName || v.roomId || "(unnamed)"} [${v.ruleKey}]: ${v.message}`,
+            )
+            .join("; ")}`,
+        );
+      }
     }
   }
 
@@ -5529,6 +5550,11 @@ function buildProjectGeometryFromProgramme({
   const stairs = [];
   const footprints = [];
 
+  // PR6 (post-audit): one Set per build, shared across every level layout,
+  // so the NDSS warn path doesn't log the same (room, rule, kind) triple
+  // multiple times when the same defect repeats across storeys.
+  const ndssWarnSink = new Set();
+
   for (let levelIndex = 0; levelIndex < levelCount; levelIndex += 1) {
     const levelId = `level-${levelIndex}`;
     const levelRooms = groups[levelIndex] || [];
@@ -5554,6 +5580,7 @@ function buildProjectGeometryFromProgramme({
       // PR2: NDSS hard-throw is opt-in until existing dwelling fixtures are
       // migrated to NDSS-compliant sizes. Brief opts in via enforce_ndss.
       enforceNDSS: brief?.enforce_ndss === true || brief?.enforceNDSS === true,
+      ndssWarnSink,
     });
     rooms.push(...layout.rooms);
     if (layout.stair && levelIndex + 1 < levelCount) {
@@ -6612,24 +6639,36 @@ function deriveSiteZones(site = {}, bbox = {}) {
   const orientation = String(site?.main_entry?.orientation || "south")
     .trim()
     .toLowerCase();
+  // PR6 (post-audit): boundary-confidence-0.4 briefs commonly emit compound
+  // orientations like "northwest" / "southeast" / "NW". Strip to the first
+  // cardinal letter so the driveway lands on the right edge instead of
+  // collapsing into the south branch. We deliberately match anything
+  // starting with the letter (no word boundary) so "northwest"/"nw" map
+  // to "north", "southeast"/"se" map to "south" (the default), etc.
+  const primaryCardinal = (() => {
+    if (/^n/.test(orientation)) return "north";
+    if (/^e/.test(orientation)) return "east";
+    if (/^w/.test(orientation)) return "west";
+    return "south";
+  })();
   const driveWidthRatio = 0.22;
   const driveDepthRatio = 0.22;
   const drivePolygon =
-    orientation === "north"
+    primaryCardinal === "north"
       ? rectangleToPolygon(
           minX + width * (0.5 - driveWidthRatio / 2),
           minY + height * 0.04,
           width * driveWidthRatio,
           height * driveDepthRatio,
         )
-      : orientation === "east"
+      : primaryCardinal === "east"
         ? rectangleToPolygon(
             minX + width * (1 - driveDepthRatio - 0.04),
             minY + height * (0.5 - driveWidthRatio / 2),
             width * driveDepthRatio,
             height * driveWidthRatio,
           )
-        : orientation === "west"
+        : primaryCardinal === "west"
           ? rectangleToPolygon(
               minX + width * 0.04,
               minY + height * (0.5 - driveWidthRatio / 2),
@@ -6637,7 +6676,7 @@ function deriveSiteZones(site = {}, bbox = {}) {
               height * driveWidthRatio,
             )
           : rectangleToPolygon(
-              // south (default + "northwest" etc.)
+              // south default (also catches sw / se compound → south primary)
               minX + width * (0.5 - driveWidthRatio / 2),
               minY + height * (1 - driveDepthRatio - 0.04),
               width * driveWidthRatio,
@@ -7810,10 +7849,17 @@ export function buildKeyNoteItems({
         const openings = Array.isArray(projectGeometry?.openings)
           ? projectGeometry.openings
           : [];
-        const hasRooflight = openings.some(
-          (opening) =>
-            String(opening?.kind || opening?.type || "").toLowerCase() ===
-            "rooflight",
+        // PR6 (post-audit): broaden the kind match. The original PR4 check
+        // was strict equality on "rooflight", but the ProjectGraph schema
+        // and downstream services use a mix of variants — rooflight,
+        // skylight, sky_light, sky-light, roof_window, roof-light, etc.
+        // The regex accepts any of those (case-insensitive).
+        const ROOFLIGHT_KIND_REGEX =
+          /^(rooflight|sky[_\s-]?light|roof[_\s-]?(window|light))$/i;
+        const hasRooflight = openings.some((opening) =>
+          ROOFLIGHT_KIND_REGEX.test(
+            String(opening?.kind || opening?.type || "").trim(),
+          ),
         );
         if (projectGeometry && !hasRooflight) {
           lines.push("Concealed gutters.");
@@ -10943,6 +10989,25 @@ async function buildA1Sheet({
       status: null,
       score: null,
     };
+    // PR6 (post-audit): derive a top-level status from the adjacency status
+    // and the quantitative score so the PDF /Subject can read passed / warn /
+    // fail instead of always "unknown". Adjacency status (when defined) wins
+    // its band; quantitative score fills in when adjacency hasn't run. The
+    // composite score is the quantitative score when present.
+    const __adj = panelQaSummary.programmeAdjacency;
+    const __quant = panelQaSummary.quantitative;
+    const __score =
+      __quant && typeof __quant.score === "number" ? __quant.score : null;
+    panelQaSummary.score = __score;
+    panelQaSummary.status = (() => {
+      if (__adj?.status === "fail") return "fail";
+      if (__score != null && __score < 50) return "fail";
+      if (__adj?.status === "warn") return "warn";
+      if (__score != null && __score < 75) return "warn";
+      if (__adj?.status === "pass") return "passed";
+      if (__score != null && __score >= 75) return "passed";
+      return "unknown";
+    })();
   }
 
   const supplementalPanelArtifacts = await buildSheetPanelArtifacts({

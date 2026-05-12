@@ -446,6 +446,11 @@ export function topUpMaterialPaletteWithCanonical(
   const known = new Set(
     result.map((entry) => String(entry?.name || "").toLowerCase()),
   );
+  // PR6 (post-audit): track whether the incoming palette already has a ROOF
+  // material so we don't re-add Dark Grey Roof Tile (the canonical fallback)
+  // after normalizeMaterialPaletteEntries deliberately deduped down to one
+  // roof. Without this guard, the sheet ships two roofs again.
+  let hasRoof = result.some((entry) => inferMaterialCategory(entry) === "ROOF");
   for (
     let i = 0;
     i < CANONICAL_FALLBACK_MATERIALS.length && result.length < targetSize;
@@ -454,15 +459,20 @@ export function topUpMaterialPaletteWithCanonical(
     const fallback = CANONICAL_FALLBACK_MATERIALS[i];
     const key = fallback.name.toLowerCase();
     if (known.has(key)) continue;
-    known.add(key);
-    result.push({
+    const fallbackEntry = {
       name: fallback.name,
       hexColor:
         KIND_HEX[fallback.kind] ||
         HEX_INDEX_FALLBACKS[i % HEX_INDEX_FALLBACKS.length],
       application: KIND_APPLICATION[fallback.kind] || "finish",
       source: "deterministic_fallback_topup",
-    });
+    };
+    if (inferMaterialCategory(fallbackEntry) === "ROOF") {
+      if (hasRoof) continue;
+      hasRoof = true;
+    }
+    known.add(key);
+    result.push(fallbackEntry);
   }
   return result.slice(0, targetSize);
 }

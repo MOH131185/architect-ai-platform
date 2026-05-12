@@ -71,13 +71,19 @@ export function resolveNdssRuleKey(room = {}, occupancy = null) {
   // beyond the principal as ambiguous; many family houses have a single
   // third bedroom). The caller can override via `occupancy` ("single" or
   // "double") or via room.name containing "double"/"twin"/"master".
+  //
+  // PR6 (post-audit): "Principal" / "Master" still trigger double via the
+  // existing regex regardless of whether "bedroom" or "suite" follows. The
+  // new tail allows generic "Suite N" / "Guest suite" to fall through to
+  // the bedroom-class check (was returning null before, skipping NDSS
+  // entirely for those rooms).
   if (/^principal\b|\bmaster\b|\bbedroom\s*1\b/.test(haystack)) {
     return "bedroom_double";
   }
   if (/\bdouble\b|\btwin\b/.test(haystack)) {
     return "bedroom_double";
   }
-  if (/bedroom/.test(haystack)) {
+  if (/\bbedroom\b|\bsuite\b/.test(haystack)) {
     if (occupancy === "double") return "bedroom_double";
     return "bedroom_single";
   }
