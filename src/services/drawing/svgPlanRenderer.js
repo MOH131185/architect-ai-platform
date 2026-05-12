@@ -124,7 +124,7 @@ function getRoomDimensionText(room = {}) {
 
   const primary = Math.max(width, depth);
   const secondary = Math.min(width, depth);
-  return `${primary.toFixed(1)} x ${secondary.toFixed(1)} M`;
+  return `${primary.toFixed(1)} × ${secondary.toFixed(1)} m`;
 }
 
 function projectRoomRect(room = {}, project) {
@@ -334,7 +334,7 @@ function renderRoomLabel(room = {}, project, theme, options = {}) {
   const labelPoint = project(centroid);
   const name = escapeXml(uppercaseLabel(room.name, "ROOM"));
   const areaValue = Number(room.actual_area || room.target_area_m2 || 0);
-  const areaText = `${Number.isFinite(areaValue) ? areaValue.toFixed(1) : "0.0"} M2`;
+  const areaText = `${Number.isFinite(areaValue) ? areaValue.toFixed(1) : "0.0"} m²`;
   const dimensionText = getRoomDimensionText(room);
   const secondaryLine = dimensionText
     ? `${dimensionText} / ${areaText}`

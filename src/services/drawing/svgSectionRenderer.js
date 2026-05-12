@@ -1005,7 +1005,7 @@ function renderCutRooms(
       const heightPx =
         room.height ?? Math.max(24, Number(level.height_m || 3.2) * scale);
       const rawName = String(room.name || room.id || "ROOM").toUpperCase();
-      const areaText = `${Number(room.actual_area || room.target_area_m2 || 0).toFixed(1)} M2`;
+      const areaText = `${Number(room.actual_area || room.target_area_m2 || 0).toFixed(1)} m²`;
       const labelWidth = Math.max(28, widthPx - 12);
       const nameLines = splitRoomLabel(rawName, roomNameFont, labelWidth);
       const nameFont = fitTextFontSize(
