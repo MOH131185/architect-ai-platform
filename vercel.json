@@ -152,7 +152,7 @@
       "headers": [
         {
           "key": "Access-Control-Allow-Origin",
-          "value": "https://www.archiaisolution.pro"
+          "value": "https://archiaisolution.com"
         },
         {
           "key": "Access-Control-Allow-Methods",
