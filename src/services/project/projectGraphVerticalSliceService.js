@@ -14786,6 +14786,46 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     },
   };
 
+  // Engineering-export authority gate. ProjectGraph generation can
+  // succeed for document outputs (A1 sheet, PDF, PNG) while engineering
+  // exports (DXF, IFC, JSON, XLSX) are blocked because compiled-project
+  // geometry is missing or unhashed. Capture this as a structured
+  // sourceGap so the QA report and downstream auditors can see the
+  // exact code, while keeping the document path intact.
+  // The hook's buildClientExportManifest call already produces the
+  // correct per-row blockedReason from these same conditions; this
+  // record is for visibility and for the manual smoke probe.
+  const engineeringExportGaps = (() => {
+    if (!compiledProject) {
+      return [
+        {
+          code: "COMPILED_PROJECT_MISSING",
+          surface: "engineering_exports",
+          severity: "blocking",
+          message:
+            "Engineering exports cannot be generated because compiled project geometry is missing.",
+        },
+      ];
+    }
+    const hash = compiledProject.geometryHash;
+    if (typeof hash !== "string" || hash.length === 0) {
+      return [
+        {
+          code: "GEOMETRY_HASH_MISSING",
+          surface: "engineering_exports",
+          severity: "blocking",
+          message:
+            "Engineering exports cannot be generated because the compiled project has no geometry hash.",
+        },
+      ];
+    }
+    return [];
+  })();
+  const engineeringExportReadiness = {
+    ready: engineeringExportGaps.length === 0,
+    sourceGaps: engineeringExportGaps,
+  };
+
   return {
     success: qa.status === "pass",
     pipelineVersion: PROJECT_GRAPH_VERTICAL_SLICE_VERSION,
@@ -14795,6 +14835,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     seedSource: generationLifecycle.seedSource,
     variationMode: generationLifecycle.variationMode,
     generationLifecycle,
+    engineeringExportReadiness,
     metadata: {
       generationSeed: generationLifecycle.generationSeed,
       seedSource: generationLifecycle.seedSource,
@@ -14803,6 +14844,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       geometryHash: compiledProject.geometryHash,
       visualManifestHash: visualManifest.manifestHash,
       styleBlendManifestHash: styleBlendManifest.manifestHash,
+      engineeringExportReadiness,
       jurisdictionPack: jurisdictionPackSummary,
       jurisdictionPackResolution: {
         source: jurisdictionPackResolution.source,

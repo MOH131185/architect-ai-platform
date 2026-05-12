@@ -27,6 +27,7 @@ import StatusChip from "./ui/StatusChip.jsx";
 import { Tooltip } from "./ui/feedback/Tooltip.jsx";
 import { useToastContext } from "./ui/ToastProvider.jsx";
 import exportService from "../services/exportService.js";
+import buildClientExportManifest from "../services/export/buildClientExportManifest.js";
 import ArtifactHistoryPanel from "./export/ArtifactHistoryPanel.jsx";
 
 /**
@@ -245,11 +246,35 @@ const ExportPanel = ({
   const hasBlendFile = !!blenderOutputs?.manifest?.blendFile;
 
   const geometryHash = designData?.compiledProject?.geometryHash || null;
-  const exportManifest =
-    designData?.exportManifest ||
-    designData?.sheetArtifactManifest?.exportManifest ||
-    designData?.metadata?.exportManifest ||
-    null;
+  // Manifest resolution priority: server-attached > sheet-artifact >
+  // metadata > in-component synthesis. The synthesis kicks in only when
+  // (a) no upstream manifest is present and (b) compiledProject exists —
+  // it reuses the same buildClientExportManifest the hook uses, so the
+  // authority gates (IFC_GEOMETRY_INSUFFICIENT etc.) are identical.
+  // Without this fallback a single dropped result.exportManifest would
+  // silently render every engineering row BLOCKED with no reason text.
+  const exportManifest = useMemo(() => {
+    const fromResult =
+      designData?.exportManifest ||
+      designData?.sheetArtifactManifest?.exportManifest ||
+      designData?.metadata?.exportManifest ||
+      null;
+    if (fromResult) return fromResult;
+    if (!designData?.compiledProject) return null;
+    return buildClientExportManifest({
+      compiledProject: designData.compiledProject,
+      projectQuantityTakeoff:
+        designData?.projectQuantityTakeoff ||
+        designData?.artifacts?.projectQuantityTakeoff ||
+        null,
+      geometryHash:
+        designData?.geometryHash ||
+        designData?.compiledProject?.geometryHash ||
+        null,
+      projectName: designData?.projectGraph?.brief?.project_name,
+      pipelineVersion: designData?.pipelineVersion,
+    });
+  }, [designData]);
   const exportsMap = exportManifest?.exports || {};
   const availableExportCount = Object.values(exportsMap).filter(
     (entry) => entry?.available,
