@@ -5476,14 +5476,34 @@ function layoutRoomsForLevel({
       // signature so a 5-storey dwelling with repeating violations across
       // levels doesn't flood the log with the same message 60 times. Each
       // distinct (room, rule, kind) tuple logs at most once per build.
-      const unseenForLog = ndssWarnSink
+      //
+      // PR7 (production hardening): the same sink (renamed to a structured
+      // collector when the caller passes an object with a `.violations`
+      // array) also accumulates the actual violation objects so the slice
+      // service can demote the sheet's QA status and surface a visible
+      // NDSS caveat in Key Notes. The legacy Set-only path is preserved
+      // for backward compatibility with callers passing a plain Set.
+      const ndssSeen =
+        ndssWarnSink && ndssWarnSink.seen instanceof Set
+          ? ndssWarnSink.seen
+          : ndssWarnSink instanceof Set
+            ? ndssWarnSink
+            : null;
+      const ndssCollected =
+        ndssWarnSink && Array.isArray(ndssWarnSink.violations)
+          ? ndssWarnSink.violations
+          : null;
+      const unseenForLog = ndssSeen
         ? stamped.filter((v) => {
             const sig = `${v.roomName || v.roomId || "(unnamed)"}:${v.ruleKey}:${v.kind}`;
-            if (ndssWarnSink.has(sig)) return false;
-            ndssWarnSink.add(sig);
+            if (ndssSeen.has(sig)) return false;
+            ndssSeen.add(sig);
             return true;
           })
         : stamped;
+      if (ndssCollected) {
+        unseenForLog.forEach((v) => ndssCollected.push(v));
+      }
       if (unseenForLog.length > 0) {
         // eslint-disable-next-line no-console
         console.warn(
@@ -5550,10 +5570,15 @@ function buildProjectGeometryFromProgramme({
   const stairs = [];
   const footprints = [];
 
-  // PR6 (post-audit): one Set per build, shared across every level layout,
-  // so the NDSS warn path doesn't log the same (room, rule, kind) triple
-  // multiple times when the same defect repeats across storeys.
-  const ndssWarnSink = new Set();
+  // PR6 (post-audit): one collector per build, shared across every level
+  // layout, so the NDSS warn path doesn't log the same (room, rule, kind)
+  // triple multiple times when the same defect repeats across storeys.
+  //
+  // PR7 (production hardening): the collector also accumulates the actual
+  // violation objects so they can demote the sheet's QA status and surface
+  // a visible NDSS caveat in Key Notes. The "passed" status on the PDF
+  // /Subject is misleading when NDSS warnings fire silently in CI logs.
+  const ndssWarnSink = { seen: new Set(), violations: [] };
 
   for (let levelIndex = 0; levelIndex < levelCount; levelIndex += 1) {
     const levelId = `level-${levelIndex}`;
@@ -5723,6 +5748,11 @@ function buildProjectGeometryFromProgramme({
       generator: PROJECT_GRAPH_VERTICAL_SLICE_VERSION,
       strategy: "projectgraph-first",
     },
+    // PR7 (production hardening): surface the NDSS violations collected
+    // during layout so downstream consumers can demote the PDF QA status
+    // and render a visible caveat in Key Notes. Empty array when none
+    // detected; populated only on dwelling briefs (NDSS is dwelling-scope).
+    ndss_warnings: ndssWarnSink.violations.slice(),
   };
 
   return projectGeometry;
@@ -7193,6 +7223,12 @@ function splitNoteLines(note = "", maxChars = 36, maxLines = 3) {
 const KEY_NOTE_GROUP_ORDER = Object.freeze([
   "style_provenance",
   "design_rationale",
+  // PR7 (production hardening): regulatory_caveats sits high in the list
+  // so an NDSS / Part L caveat appears near the top of the Key Notes panel
+  // — it is information an architect should see before scanning the
+  // technical specs below. Empty group is filtered out by the
+  // .filter(group => group.lines.length > 0) tail.
+  "regulatory_caveats",
   "external_walls",
   "roof",
   "windows_doors",
@@ -7882,10 +7918,66 @@ export function buildKeyNoteItems({
     },
     heating_ventilation: {
       heading: "Heating / Ventilation",
-      lines: [
-        "Air-source heat pump with underfloor heating to ground floor.",
-        "MVHR (mechanical ventilation with heat recovery) ducted through ceiling void.",
-      ],
+      lines: (() => {
+        const targetStoreys = Number(brief?.target_storeys || 0);
+        const lines = [
+          "Air-source heat pump with underfloor heating to ground floor.",
+        ];
+        // PR7 (production hardening): the MVHR-through-ceiling-void claim
+        // assumes a service void above the ground floor. Single-storey
+        // briefs with a raked roof have no ceiling void — emit a wall-
+        // mounted MEV/MVHR phrasing instead so the Key Note line matches
+        // what would actually get built.
+        if (targetStoreys >= 2) {
+          lines.push(
+            "MVHR (mechanical ventilation with heat recovery) ducted through ceiling void.",
+          );
+        } else {
+          lines.push(
+            "MVHR (mechanical ventilation with heat recovery) wall- or roof-mounted; ducts run within service zones (no ceiling void on single-storey plan).",
+          );
+        }
+        return lines;
+      })(),
+    },
+    regulatory_caveats: {
+      heading: "Regulatory caveats",
+      lines: (() => {
+        // PR7 (production hardening): when the NDSS validator flagged
+        // sub-minimum rooms in warn-only mode (brief.enforce_ndss !== true),
+        // the PDF /Subject would otherwise read "QA status: passed" while
+        // the design quietly fails the standard. Surface a concise caveat
+        // here so reviewing architects and planning portals see the
+        // mismatch on the sheet itself. Each violation collapses to one
+        // line; cap at 5 to keep the panel readable.
+        const ndssWarnings = Array.isArray(qaSummary?.ndssWarnings)
+          ? qaSummary.ndssWarnings
+          : [];
+        if (ndssWarnings.length === 0) return [];
+        const summarised = ndssWarnings.slice(0, 5).map((v) => {
+          const room = v.roomName || v.roomId || "(unnamed)";
+          if (v.kind === "min_area") {
+            return `${room}: area ${v.observedM2 ?? "?"} m² below NDSS minimum ${v.requiredM2 ?? "?"} m² (${v.ruleKey || "rule"}).`;
+          }
+          if (v.kind === "min_width") {
+            return `${room}: width ${v.observedM ?? "?"} m below NDSS minimum ${v.requiredM ?? "?"} m (${v.ruleKey || "rule"}).`;
+          }
+          if (v.kind === "aspect_ratio") {
+            return `${room}: aspect ratio ${v.observedAspect ?? "?"}:1 exceeds defensive cap ${v.maxAspect ?? 2.5}:1.`;
+          }
+          return `${room}: ${v.message || "(unknown violation)"}`;
+        });
+        const moreCount = ndssWarnings.length - summarised.length;
+        if (moreCount > 0) {
+          summarised.push(
+            `+ ${moreCount} more violation${moreCount === 1 ? "" : "s"} (see build log).`,
+          );
+        }
+        summarised.unshift(
+          "NDSS warnings: design has rooms below the England Nationally Described Space Standard. Resolve before issuing for planning.",
+        );
+        return summarised;
+      })(),
     },
     drainage: {
       heading: "Drainage",
@@ -8344,6 +8436,11 @@ export function buildTitleBlockPanelArtifact({
       brief?.checked_by ||
       "—",
   ).trim();
+  // PR7 (production hardening): when both authorship fields are still at
+  // their defaults ("AI" / em-dash), no human has signed off on the
+  // deliverable. Surface this visibly so a reviewer at a planning portal
+  // can't miss it — a red DRAFT band rendered above the metadata rows.
+  const isUnverifiedDraft = drawnBy === "AI" && checkedBy === "—";
   const architectName = String(
     brief?.architect ||
       sheetDesignContext?.architect ||
@@ -8423,12 +8520,24 @@ export function buildTitleBlockPanelArtifact({
         `<text x="34" y="${724 + index * 18}" font-family="Arial, sans-serif" font-size="12" fill="#555555">${escapeXml(line)}</text>`,
     )
     .join("\n  ");
-  const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="title_block" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-brief-input-hash="${escapeXml(brief?.brief_input_hash || "")}" data-title-block-grid="project-scale-status-date-drawing-rev">
+  // PR7 (production hardening): bold red DRAFT band rendered above the
+  // metadata rows when the deliverable has no human authorship metadata.
+  // Sits between the programme label and the row stack so a reviewer
+  // can't miss it on the rendered sheet. data-draft-flag stamped on the
+  // root svg for downstream QA / archive tools.
+  const draftBandSvg = isUnverifiedDraft
+    ? `<g data-draft-flag="true">
+    <rect x="34" y="186" width="552" height="22" fill="#b3261e" />
+    <text x="44" y="202" font-family="Arial, sans-serif" font-size="13" font-weight="700" fill="#ffffff">DRAFT — AI-DRAWN, AWAITING HUMAN REVIEW</text>
+  </g>`
+    : "";
+  const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="title_block" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-brief-input-hash="${escapeXml(brief?.brief_input_hash || "")}" data-title-block-grid="project-scale-status-date-drawing-rev" data-unverified-draft="${isUnverifiedDraft ? "true" : "false"}">
   <rect width="${width}" height="${height}" fill="#ffffff"/>
   <rect x="18" y="18" width="584" height="864" fill="none" stroke="#111111" stroke-width="3"/>
   ${titleSvg}
   <text x="34" y="170" font-family="Arial, sans-serif" font-size="20" fill="#333333">${escapeXml(programmeLabel.toUpperCase())}</text>
-  <line x1="34" y1="206" x2="586" y2="206" stroke="#111111" stroke-width="2"/>
+  ${draftBandSvg}
+  <line x1="34" y1="216" x2="586" y2="216" stroke="#111111" stroke-width="2"/>
   ${rowSvg}
   <line x1="34" y1="780" x2="586" y2="780" stroke="#111111" stroke-width="1"/>
   <line x1="34" y1="704" x2="586" y2="704" stroke="#999999" stroke-width="1"/>
@@ -10973,6 +11082,20 @@ async function buildA1Sheet({
         earlyQuantitative = null;
       }
     }
+    // PR7 (production hardening): NDSS violations collected during geometry
+    // layout demote the QA status. Without this, a brief with bedrooms
+    // below the 7.5 m² single minimum could ship with PDF /Subject
+    // "QA status: passed" because the warn-only path never feeds back into
+    // the status reducer. We treat any NDSS warning as at least "warn"
+    // severity; an enforce_ndss=true brief that hit a violation would have
+    // already thrown ProgrammeNDSSViolationError upstream.
+    const ndssWarnings = Array.isArray(
+      compiledProject?.projectGeometry?.ndss_warnings,
+    )
+      ? compiledProject.projectGeometry.ndss_warnings
+      : Array.isArray(compiledProject?.ndss_warnings)
+        ? compiledProject.ndss_warnings
+        : [];
     panelQaSummary = {
       programmeAdjacency: earlyAdjacencyResult
         ? {
@@ -10988,22 +11111,30 @@ async function buildA1Sheet({
       qualitative: null,
       status: null,
       score: null,
+      ndssWarnings,
     };
     // PR6 (post-audit): derive a top-level status from the adjacency status
     // and the quantitative score so the PDF /Subject can read passed / warn /
     // fail instead of always "unknown". Adjacency status (when defined) wins
     // its band; quantitative score fills in when adjacency hasn't run. The
     // composite score is the quantitative score when present.
+    //
+    // PR7 (production hardening): any NDSS warnings demote the result from
+    // "passed" to "warn" so the PDF /Subject doesn't falsely signal NDSS
+    // compliance when the design has known sub-minimum bedrooms / WCs / etc.
     const __adj = panelQaSummary.programmeAdjacency;
     const __quant = panelQaSummary.quantitative;
     const __score =
       __quant && typeof __quant.score === "number" ? __quant.score : null;
     panelQaSummary.score = __score;
+    const __hasNdssWarnings = ndssWarnings.length > 0;
     panelQaSummary.status = (() => {
       if (__adj?.status === "fail") return "fail";
       if (__score != null && __score < 50) return "fail";
       if (__adj?.status === "warn") return "warn";
       if (__score != null && __score < 75) return "warn";
+      // PR7: NDSS warnings demote an otherwise-passing build to "warn".
+      if (__hasNdssWarnings) return "warn";
       if (__adj?.status === "pass") return "passed";
       if (__score != null && __score >= 75) return "passed";
       return "unknown";
@@ -11630,6 +11761,18 @@ async function buildA1PdfArtifact({
   const pdfDoc = await PDFDocument.create();
   pdfDoc.setTitle(`${brief.project_name} A1 ProjectGraph sheet`);
   pdfDoc.setSubject(`QA status: ${qaStatus}`);
+  // PR7 (production hardening): set /Author so print shops, planning
+  // portals and downstream archivers see who authored the deliverable.
+  // Falls through brief.team.drawn_by → brief.architect → the platform
+  // signature so AI-drawn sheets at minimum carry the platform name.
+  pdfDoc.setAuthor(
+    String(
+      brief?.team?.drawn_by ||
+        brief?.team?.drawnBy ||
+        brief?.architect ||
+        "Architecture AI Platform",
+    ).trim() || "Architecture AI Platform",
+  );
   pdfDoc.setProducer(
     `${PROJECT_GRAPH_VERTICAL_SLICE_VERSION}:${projectGraphId}`,
   );
