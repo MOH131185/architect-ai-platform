@@ -1728,11 +1728,31 @@ export function useArchitectAIWorkflow() {
           params.designSpec?.deliveryStages ||
           params.designSpec?.v2Bundle?.deliveryStages ||
           null;
-        const exportManifest =
+        // Parity with the PROJECT_GRAPH branch at line 1484: if no
+        // server-attached manifest is available and compiledProject is
+        // present, synthesise a client_fallback manifest from the same
+        // builder. Without this fallback the V2 / multi_panel result
+        // would render every engineering row BLOCKED with no specific
+        // blockedReason (root cause C in the export-manifest debug).
+        const serverExportManifest =
           multiPanelResult?.metadata?.exportManifest ||
           params.designSpec?.exportManifest ||
           params.designSpec?.v2Bundle?.exportManifest ||
           null;
+        const exportManifest =
+          serverExportManifest ||
+          (compiledProject
+            ? buildClientExportManifest({
+                compiledProject,
+                projectQuantityTakeoff,
+                geometryHash,
+                projectName:
+                  params.designSpec?.projectName ||
+                  multiPanelResult?.projectName ||
+                  null,
+                pipelineVersion,
+              })
+            : null);
         const reviewSurface =
           multiPanelResult?.metadata?.reviewSurface ||
           params.designSpec?.reviewSurface ||

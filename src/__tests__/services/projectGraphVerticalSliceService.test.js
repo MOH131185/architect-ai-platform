@@ -662,6 +662,19 @@ describe("projectGraphVerticalSliceService", () => {
 
     expect(result.success).toBe(true);
     expect(result.qa.status).toBe("pass");
+    // Engineering-export authority gate (PR follow-up to PR #138):
+    // happy path must declare engineering exports ready with no source
+    // gaps so the ExportPanel renders DXF/IFC/JSON/XLSX correctly.
+    expect(result.engineeringExportReadiness).toEqual({
+      ready: true,
+      sourceGaps: [],
+    });
+    expect(result.metadata.engineeringExportReadiness).toEqual({
+      ready: true,
+      sourceGaps: [],
+    });
+    expect(typeof result.geometryHash).toBe("string");
+    expect(result.geometryHash.length).toBeGreaterThan(0);
     expect(result.projectGraph.schema_version).toBe("project-graph-v1");
     expect(result.projectGraph.programme.spaces.length).toBeGreaterThan(4);
     expect(result.projectGraph.drawings.drawings.length).toBeGreaterThanOrEqual(

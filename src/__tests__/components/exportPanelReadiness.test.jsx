@@ -210,4 +210,103 @@ describe("ExportPanel readiness rendering", () => {
 
     unmount();
   });
+
+  // Belt-and-braces: when the hook didn't attach exportManifest but
+  // compiledProject (with geometry) is on the result, ExportPanel must
+  // synthesise the manifest itself rather than render every engineering
+  // row BLOCKED with no reason. Same builder, same authority gates.
+  test("synthesises manifest in-component when designData has compiledProject but no exportManifest", () => {
+    const designData = {
+      compiledProject: compiledWithGeometry(),
+      // No exportManifest field on purpose — must be synthesised.
+    };
+
+    const { container, unmount } = renderComponent(
+      <ExportPanel designData={designData} onExport={jest.fn()} />,
+    );
+
+    const dxfBtn = rowByLabel(container, "Export as DXF");
+    const ifcBtn = rowByLabel(container, "Export as IFC");
+    const jsonBtn = rowByLabel(container, "Export Authority JSON");
+    const xlsxBtn = rowByLabel(container, "Export Excel Estimate");
+
+    expect(dxfBtn.disabled).toBe(false);
+    expect(ifcBtn.disabled).toBe(false);
+    expect(jsonBtn.disabled).toBe(false);
+    // XLSX is still blocked because there's no takeoff; same builder.
+    expect(xlsxBtn.disabled).toBe(true);
+
+    // The "N/Y exports ready from the compiled bundle" subtitle
+    // proves the synthesised manifest is being honoured.
+    expect(container.textContent).toMatch(
+      /exports ready from the compiled bundle/i,
+    );
+
+    unmount();
+  });
+
+  test("in-component synthesis lights up XLSX when projectQuantityTakeoff has items", () => {
+    const designData = {
+      compiledProject: compiledWithGeometry(),
+      projectQuantityTakeoff: {
+        items: [
+          {
+            category: "areas",
+            item: "Gross Floor Area",
+            quantity: 50,
+            unit: "m2",
+          },
+        ],
+      },
+      // No exportManifest field — must be synthesised.
+    };
+
+    const { container, unmount } = renderComponent(
+      <ExportPanel designData={designData} onExport={jest.fn()} />,
+    );
+
+    const dxfBtn = rowByLabel(container, "Export as DXF");
+    const jsonBtn = rowByLabel(container, "Export Authority JSON");
+    const xlsxBtn = rowByLabel(container, "Export Excel Estimate");
+
+    expect(dxfBtn.disabled).toBe(false);
+    expect(jsonBtn.disabled).toBe(false);
+    expect(xlsxBtn.disabled).toBe(false);
+
+    unmount();
+  });
+
+  test("server-attached exportManifest wins over in-component synthesis", () => {
+    // Build a sentinel manifest with a non-default source value so we can
+    // tell which one ExportPanel rendered against. If the synthesis was
+    // (incorrectly) preferred over the server one, the source would
+    // change to "client_fallback".
+    const serverManifest = buildClientExportManifest({
+      compiledProject: compiledWithGeometry(),
+      projectQuantityTakeoff: {
+        items: [{ category: "areas", item: "GFA", quantity: 100, unit: "m2" }],
+      },
+    });
+    // Mutate the source to mimic an actual server-attached manifest.
+    serverManifest.source = "server_attached_v2";
+
+    const designData = {
+      compiledProject: compiledWithGeometry(),
+      // Server-attached manifest has different XLSX availability than the
+      // synthesis would (server says ready, synthesis without takeoff
+      // would say blocked). We give the synthesis NO takeoff to make the
+      // divergence observable, and rely on the server manifest being the
+      // one that's actually used.
+      exportManifest: serverManifest,
+    };
+
+    const { container, unmount } = renderComponent(
+      <ExportPanel designData={designData} onExport={jest.fn()} />,
+    );
+
+    const xlsxBtn = rowByLabel(container, "Export Excel Estimate");
+    expect(xlsxBtn.disabled).toBe(false);
+
+    unmount();
+  });
 });
