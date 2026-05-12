@@ -25,6 +25,7 @@ const BLOCKED_REASONS = Object.freeze({
   COMPILED_PROJECT_MISSING: "COMPILED_PROJECT_MISSING",
   GEOMETRY_HASH_MISSING: "GEOMETRY_HASH_MISSING",
   IFC_EXPORT_UNAVAILABLE: "IFC_EXPORT_UNAVAILABLE",
+  IFC_GEOMETRY_INSUFFICIENT: "IFC_GEOMETRY_INSUFFICIENT",
   QUANTITY_TAKEOFF_UNAVAILABLE: "QUANTITY_TAKEOFF_UNAVAILABLE",
   DWG_CONVERSION_UNAVAILABLE: "DWG_CONVERSION_UNAVAILABLE",
   AUTHORITY_JSON_UNAVAILABLE: "AUTHORITY_JSON_UNAVAILABLE",
@@ -47,6 +48,13 @@ export function buildClientExportManifest({
   const hasCompiledProject = Boolean(compiledProject);
   const hasGeometry = Boolean(resolvedHash);
   const hasTakeoff = Boolean(projectQuantityTakeoff?.items?.length);
+  const wallCount = Array.isArray(compiledProject?.walls)
+    ? compiledProject.walls.length
+    : 0;
+  const levelCount = Array.isArray(compiledProject?.levels)
+    ? compiledProject.levels.length
+    : 0;
+  const ifcGeometrySufficient = hasGeometry && wallCount > 0 && levelCount > 0;
   const glbUrl =
     compiledProject?.artifacts?.glbUrl ||
     compiledProject?.artifacts?.modelGlb ||
@@ -56,6 +64,12 @@ export function buildClientExportManifest({
   const geometryBlockedReason = hasCompiledProject
     ? BLOCKED_REASONS.GEOMETRY_HASH_MISSING
     : BLOCKED_REASONS.COMPILED_PROJECT_MISSING;
+
+  function ifcBlockedReason() {
+    if (!hasCompiledProject) return BLOCKED_REASONS.COMPILED_PROJECT_MISSING;
+    if (!hasGeometry) return BLOCKED_REASONS.GEOMETRY_HASH_MISSING;
+    return BLOCKED_REASONS.IFC_GEOMETRY_INSUFFICIENT;
+  }
 
   return {
     schema_version: "compiled-export-manifest-v1",
@@ -82,24 +96,18 @@ export function buildClientExportManifest({
         blockedReason: geometryBlockedReason,
       }),
       ifc: entry({
-        available: hasGeometry,
+        available: ifcGeometrySufficient,
         format: "IFC",
         method: "POST",
         endpoint: "/api/project/export/ifc",
-        blockedReason: hasGeometry
-          ? null
-          : hasCompiledProject
-            ? BLOCKED_REASONS.GEOMETRY_HASH_MISSING
-            : BLOCKED_REASONS.COMPILED_PROJECT_MISSING,
+        blockedReason: ifcGeometrySufficient ? null : ifcBlockedReason(),
       }),
       json: entry({
         available: hasGeometry,
         format: "JSON",
         method: "POST",
         endpoint: "/api/project/export/json",
-        blockedReason: hasGeometry
-          ? null
-          : BLOCKED_REASONS.AUTHORITY_JSON_UNAVAILABLE,
+        blockedReason: hasGeometry ? null : geometryBlockedReason,
       }),
       xlsx: entry({
         available: hasGeometry && hasTakeoff,

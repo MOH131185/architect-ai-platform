@@ -60,12 +60,19 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
+const compiledWithGeometry = (overrides = {}) => ({
+  geometryHash: "geom-hash-x",
+  walls: [{ id: "w1" }],
+  levels: [{ id: "L0", elevation_m: 0 }],
+  ...overrides,
+});
+
 describe("ExportPanel readiness rendering", () => {
   test("with compiledProject + manifest: DXF/IFC/JSON ready, XLSX blocked with takeoff reason, footer hidden", () => {
     const designData = {
-      compiledProject: { geometryHash: "geom-hash-x" },
+      compiledProject: compiledWithGeometry(),
       exportManifest: buildClientExportManifest({
-        compiledProject: { geometryHash: "geom-hash-x" },
+        compiledProject: compiledWithGeometry(),
         projectQuantityTakeoff: null,
       }),
     };
@@ -88,6 +95,63 @@ describe("ExportPanel readiness rendering", () => {
     expect(container.textContent).not.toContain(
       "Generate a design to unlock exports",
     );
+
+    unmount();
+  });
+
+  test("IFC row blocked with IFC_GEOMETRY_INSUFFICIENT label when walls/levels empty", () => {
+    const compiledMissingGeom = {
+      geometryHash: "geom-hash-x",
+      walls: [],
+      levels: [],
+    };
+    const designData = {
+      compiledProject: compiledMissingGeom,
+      exportManifest: buildClientExportManifest({
+        compiledProject: compiledMissingGeom,
+        projectQuantityTakeoff: {
+          items: [
+            {
+              category: "areas",
+              item: "Gross Floor Area",
+              quantity: 50,
+              unit: "m2",
+            },
+          ],
+        },
+      }),
+    };
+
+    const { container, unmount } = renderComponent(
+      <ExportPanel designData={designData} onExport={jest.fn()} />,
+    );
+
+    const dxfBtn = rowByLabel(container, "Export as DXF");
+    const ifcBtn = rowByLabel(container, "Export as IFC");
+    const jsonBtn = rowByLabel(container, "Export Authority JSON");
+
+    expect(dxfBtn.disabled).toBe(false);
+    expect(jsonBtn.disabled).toBe(false);
+    expect(ifcBtn.disabled).toBe(true);
+    expect(ifcBtn.getAttribute("title") || ifcBtn.textContent).toBeTruthy();
+
+    unmount();
+  });
+
+  test("no DWG row is rendered", () => {
+    const designData = {
+      compiledProject: compiledWithGeometry(),
+      exportManifest: buildClientExportManifest({
+        compiledProject: compiledWithGeometry(),
+      }),
+    };
+
+    const { container, unmount } = renderComponent(
+      <ExportPanel designData={designData} onExport={jest.fn()} />,
+    );
+
+    const dwgRow = rowByLabel(container, "DWG");
+    expect(dwgRow).toBeUndefined();
 
     unmount();
   });

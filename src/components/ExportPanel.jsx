@@ -275,6 +275,8 @@ const ExportPanel = ({
     GEOMETRY_HASH_MISSING: "Compiled geometry unavailable.",
     IFC_EXPORT_UNAVAILABLE:
       "IFC export disabled — no real exporter configured.",
+    IFC_GEOMETRY_INSUFFICIENT:
+      "Not enough compiled geometry for a meaningful IFC export.",
     QUANTITY_TAKEOFF_UNAVAILABLE:
       "Quantity takeoff not produced for this project type.",
     DWG_CONVERSION_UNAVAILABLE: "DWG conversion provider not configured.",

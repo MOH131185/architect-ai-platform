@@ -131,6 +131,7 @@ import {
   getProjectTypeSupport,
 } from "./projectTypeSupportRegistry.js";
 import { resolveMainEntryDirection } from "../site/mainEntryDirectionService.js";
+import { buildProjectQuantityTakeoff } from "./projectQuantityTakeoffService.js";
 
 export const PROJECT_GRAPH_SCHEMA_VERSION = "project-graph-v1";
 export const PROJECT_GRAPH_VERTICAL_SLICE_VERSION =
@@ -14512,6 +14513,11 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     ...initialGraph,
     project_id: projectGraphId,
   };
+  const projectQuantityTakeoff = compiledProject?.geometryHash
+    ? buildProjectQuantityTakeoff(compiledProject, {
+        pipelineVersion: PROJECT_GRAPH_VERTICAL_SLICE_VERSION,
+      })
+    : null;
   const artifacts = {
     drawings: drawingArtifacts,
     panelArtifacts: primary.panelArtifacts || {},
@@ -14540,6 +14546,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     openaiRequestIds: openaiQaMetadata.openaiRequestIds,
     openaiUsage: openaiQaMetadata.openaiUsage,
     compiledProject,
+    projectQuantityTakeoff,
     projectGeometry,
     sheetSeries: renderedSheets.map(
       ({ sheetPlan, sheetArtifact: sa, pdf }) => ({

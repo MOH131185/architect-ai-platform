@@ -62,7 +62,14 @@ describe("compiledProjectExportService", () => {
     expect(ifc).toContain("IFCBUILDING");
     expect(workbook.workbookArray).toBeTruthy();
     expect(workbook.manifest?.tabs).toEqual(
-      expect.arrayContaining(["Summary", "Quantities", "UnitRates", "Totals"]),
+      expect.arrayContaining([
+        "Summary",
+        "Quantity Takeoff",
+        "Cost Estimate",
+        "Spaces & Areas",
+        "Materials",
+        "Assumptions & Exclusions",
+      ]),
     );
   });
 });
