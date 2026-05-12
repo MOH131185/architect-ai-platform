@@ -11,6 +11,12 @@ export default async function handler(req, res) {
 
   try {
     const { compiledProject, projectName = "ArchiAI_Project" } = req.body || {};
+    if (!compiledProject?.geometryHash) {
+      return res.status(400).json({
+        error: "compiledProject with geometryHash is required",
+        code: "GEOMETRY_HASH_MISSING",
+      });
+    }
     const ifc = exportCompiledProjectToIFC({ compiledProject, projectName });
     const safeName = String(projectName)
       .replace(/[^a-zA-Z0-9_-]/g, "_")
@@ -22,8 +28,14 @@ export default async function handler(req, res) {
     );
     return res.status(200).send(ifc);
   } catch (error) {
-    return res.status(500).json({
-      error: error.message || "IFC export failed",
-    });
+    const message = error?.message || "IFC export failed";
+    if (message.includes("IFC_GEOMETRY_INSUFFICIENT")) {
+      return res.status(400).json({
+        error:
+          "Compiled geometry is insufficient for a meaningful IFC export (no walls or storeys).",
+        code: "IFC_GEOMETRY_INSUFFICIENT",
+      });
+    }
+    return res.status(500).json({ error: message });
   }
 }

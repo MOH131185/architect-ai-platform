@@ -47,6 +47,59 @@ class ExportService {
     );
   }
 
+  resolveDesignMetadata(sheet = {}) {
+    const metadata = sheet?.metadata || {};
+    return {
+      projectId:
+        sheet?.projectId || sheet?.project_id || metadata?.projectId || null,
+      projectGraphId:
+        sheet?.projectGraphId ||
+        sheet?.projectGraph?.project_id ||
+        metadata?.projectGraphId ||
+        null,
+      visualManifestHash:
+        sheet?.visualManifestHash ||
+        sheet?.artifacts?.visualManifestHash ||
+        metadata?.visualManifestHash ||
+        null,
+      styleBlendManifestHash:
+        sheet?.styleBlendManifestHash ||
+        sheet?.artifacts?.styleBlendManifestHash ||
+        metadata?.styleBlendManifestHash ||
+        null,
+      jurisdictionPack:
+        metadata?.jurisdictionPack ||
+        sheet?.jurisdictionPack ||
+        sheet?.artifacts?.jurisdictionPack ||
+        null,
+      jurisdictionPackResolution:
+        metadata?.jurisdictionPackResolution ||
+        sheet?.jurisdictionPackResolution ||
+        null,
+      countryCode:
+        sheet?.countryCode ||
+        metadata?.countryCode ||
+        sheet?.jurisdictionPack?.countryCode ||
+        null,
+      region:
+        sheet?.region ||
+        metadata?.region ||
+        sheet?.jurisdictionPack?.region ||
+        null,
+      exportManifest:
+        sheet?.exportManifest ||
+        metadata?.exportManifest ||
+        sheet?.sheetArtifactManifest?.exportManifest ||
+        null,
+    };
+  }
+
+  resolveQaSummary(sheet = {}) {
+    return (
+      sheet?.qa || sheet?.metadata?.qa || sheet?.artifacts?.qaReport || null
+    );
+  }
+
   resolveProjectName(sheet = {}) {
     return (
       sheet?.projectName ||
@@ -820,7 +873,11 @@ class ExportService {
         compiledProject,
         projectQuantityTakeoff: this.resolveProjectQuantityTakeoff(sheet),
         sheetArtifactManifest: this.resolveSheetArtifactManifest(sheet),
+        designMetadata: this.resolveDesignMetadata(sheet),
+        qaSummary: this.resolveQaSummary(sheet),
         projectName: this.resolveProjectName(sheet),
+        pipelineVersion:
+          sheet?.pipelineVersion || sheet?.metadata?.pipelineVersion || null,
       }),
     });
 
@@ -901,8 +958,15 @@ class ExportService {
         compiledProject,
         projectQuantityTakeoff,
         projectName: this.resolveProjectName(sheet),
+        projectAddress:
+          sheet?.brief?.site_address ||
+          sheet?.projectGraph?.brief?.site_address ||
+          sheet?.metadata?.projectAddress ||
+          null,
         qualityTier: sheet?.programBrief?.qualityTier || "mid",
         region: "uk-average",
+        pipelineVersion:
+          sheet?.pipelineVersion || sheet?.metadata?.pipelineVersion || null,
       }),
     });
 

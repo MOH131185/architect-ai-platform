@@ -17,10 +17,17 @@ import {
   BLOCKED_REASONS,
 } from "../../services/export/buildClientExportManifest.js";
 
+const compiledWithGeometry = (overrides = {}) => ({
+  geometryHash: "geom-hash-123",
+  walls: [{ id: "w1" }, { id: "w2" }],
+  levels: [{ id: "L0", elevation_m: 0 }],
+  ...overrides,
+});
+
 describe("buildClientExportManifest", () => {
-  test("DXF/IFC/JSON ready when compiledProject.geometryHash present", () => {
+  test("DXF/IFC/JSON ready when compiledProject has geometryHash, walls and storeys", () => {
     const manifest = buildClientExportManifest({
-      compiledProject: { geometryHash: "geom-hash-123" },
+      compiledProject: compiledWithGeometry(),
     });
     expect(manifest.exports.dxf.available).toBe(true);
     expect(manifest.exports.dxf.blockedReason).toBeUndefined();
@@ -30,9 +37,39 @@ describe("buildClientExportManifest", () => {
     expect(manifest.exports.json.blockedReason).toBeUndefined();
   });
 
+  test("IFC blocked with IFC_GEOMETRY_INSUFFICIENT when geometryHash exists but no walls", () => {
+    const manifest = buildClientExportManifest({
+      compiledProject: {
+        geometryHash: "geom-hash-123",
+        walls: [],
+        levels: [{ id: "L0" }],
+      },
+    });
+    expect(manifest.exports.dxf.available).toBe(true);
+    expect(manifest.exports.json.available).toBe(true);
+    expect(manifest.exports.ifc.available).toBe(false);
+    expect(manifest.exports.ifc.blockedReason).toBe(
+      BLOCKED_REASONS.IFC_GEOMETRY_INSUFFICIENT,
+    );
+  });
+
+  test("IFC blocked with IFC_GEOMETRY_INSUFFICIENT when geometryHash exists but no levels", () => {
+    const manifest = buildClientExportManifest({
+      compiledProject: {
+        geometryHash: "geom-hash-123",
+        walls: [{ id: "w1" }],
+        levels: [],
+      },
+    });
+    expect(manifest.exports.ifc.available).toBe(false);
+    expect(manifest.exports.ifc.blockedReason).toBe(
+      BLOCKED_REASONS.IFC_GEOMETRY_INSUFFICIENT,
+    );
+  });
+
   test("XLSX blocked with QUANTITY_TAKEOFF_UNAVAILABLE when geometry present but no takeoff", () => {
     const manifest = buildClientExportManifest({
-      compiledProject: { geometryHash: "geom-hash-123" },
+      compiledProject: compiledWithGeometry(),
       projectQuantityTakeoff: null,
     });
     expect(manifest.exports.xlsx.available).toBe(false);
@@ -43,7 +80,7 @@ describe("buildClientExportManifest", () => {
 
   test("XLSX ready when geometry AND a non-empty takeoff are present", () => {
     const manifest = buildClientExportManifest({
-      compiledProject: { geometryHash: "geom-hash-123" },
+      compiledProject: compiledWithGeometry(),
       projectQuantityTakeoff: { items: [{ code: "wall_a", quantity: 12 }] },
     });
     expect(manifest.exports.xlsx.available).toBe(true);
@@ -52,7 +89,7 @@ describe("buildClientExportManifest", () => {
 
   test("XLSX blocked with QUANTITY_TAKEOFF_UNAVAILABLE when takeoff items array is empty", () => {
     const manifest = buildClientExportManifest({
-      compiledProject: { geometryHash: "geom-hash-123" },
+      compiledProject: compiledWithGeometry(),
       projectQuantityTakeoff: { items: [] },
     });
     expect(manifest.exports.xlsx.available).toBe(false);
@@ -95,7 +132,7 @@ describe("buildClientExportManifest", () => {
 
   test("DWG is always blocked with DWG_CONVERSION_UNAVAILABLE", () => {
     const withGeometry = buildClientExportManifest({
-      compiledProject: { geometryHash: "geom-hash-123" },
+      compiledProject: compiledWithGeometry(),
     });
     expect(withGeometry.exports.dwg.available).toBe(false);
     expect(withGeometry.exports.dwg.blockedReason).toBe(
@@ -117,15 +154,14 @@ describe("buildClientExportManifest", () => {
 
   test("GLB surfaces only when compiledProject.artifacts.glbUrl is set", () => {
     const without = buildClientExportManifest({
-      compiledProject: { geometryHash: "g" },
+      compiledProject: compiledWithGeometry(),
     });
     expect(without.exports.glb.available).toBe(false);
 
     const withModel = buildClientExportManifest({
-      compiledProject: {
-        geometryHash: "g",
+      compiledProject: compiledWithGeometry({
         artifacts: { glbUrl: "https://example.test/model.glb" },
-      },
+      }),
     });
     expect(withModel.exports.glb.available).toBe(true);
     expect(withModel.exports.glb.url).toBe("https://example.test/model.glb");
@@ -133,7 +169,7 @@ describe("buildClientExportManifest", () => {
 
   test("manifest carries schema_version, pipelineVersion, and geometryHash for downstream consumers", () => {
     const manifest = buildClientExportManifest({
-      compiledProject: { geometryHash: "geom-hash-456" },
+      compiledProject: compiledWithGeometry({ geometryHash: "geom-hash-456" }),
       pipelineVersion: "project-graph-vertical-slice-v1",
       projectName: "Office Studio",
     });

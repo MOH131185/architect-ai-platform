@@ -5,6 +5,7 @@ import {
 } from "./v2ProjectContracts.js";
 import { buildCanonicalDrawingModelFromCompiledProject } from "../cad/canonicalDrawingModel.js";
 import { exportCanonicalDrawingModelToDXF } from "../cad/canonicalDxfExporter.js";
+import ukRateCardV1 from "../../data/costRateCards/uk_v1.json";
 
 function round(value, precision = 3) {
   const numeric = Number(value);
@@ -184,26 +185,164 @@ function createIfcGuid(seed = "compiled-project") {
   return guid;
 }
 
-const UK_RATE_TABLE = {
-  areas: {
-    "Gross Floor Area": 1650,
-    "Slab Area": 140,
-    "Roof Area": 155,
-  },
-  envelope: {
-    "External Wall Area": 125,
-    "Glazing Area": 520,
-    "Envelope Perimeter": 42,
-  },
-  finishes: {
-    "Internal Floor Finish": 48,
-  },
-  counts: {
-    Doors: 420,
-    Windows: 860,
-    Stairs: 4800,
-  },
-};
+// Rate cards live in src/data/costRateCards/<id>.json. The residential UK
+// card is loaded by default. Non-residential building types fall back to
+// quantity-only mode (no inferred rates) — see resolveRateCard().
+const RATE_CARDS = [ukRateCardV1];
+
+const RESIDENTIAL_BUILDING_TYPES = new Set([
+  "residential",
+  "house",
+  "apartment",
+  "flat",
+  "dwelling",
+  "home",
+  "residential_house",
+  "residential_apartment",
+  "uk_residential",
+  "cottage",
+  "bungalow",
+  "detached",
+  "semi_detached",
+  "terrace",
+  "terraced",
+  "townhouse",
+  "villa",
+  "duplex",
+]);
+
+function slugify(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function resolveBuildingType(compiledProject) {
+  return (
+    compiledProject?.brief?.buildingType ||
+    compiledProject?.brief?.building_type ||
+    compiledProject?.metadata?.buildingType ||
+    compiledProject?.metadata?.projectType ||
+    compiledProject?.projectType ||
+    null
+  );
+}
+
+function resolveRateCard(buildingType) {
+  const normalized = slugify(buildingType).replace(/-/g, "_");
+  for (const card of RATE_CARDS) {
+    if (normalized && card.buildingTypes?.[normalized]) {
+      return { card, key: normalized };
+    }
+  }
+  if (RESIDENTIAL_BUILDING_TYPES.has(normalized)) {
+    const card = RATE_CARDS.find((c) => c.buildingTypes?.residential);
+    if (card) return { card, key: "residential" };
+  }
+  // Default: no rate card matched. Workbook will run in quantity-only mode.
+  return { card: null, key: null };
+}
+
+function resolveRate(rateCard, rateCardKey, category, item) {
+  if (!rateCard || !rateCardKey) return null;
+  const bucket = rateCard.buildingTypes?.[rateCardKey]?.rates?.[category];
+  if (!bucket) return null;
+  const value = bucket[item];
+  if (!Number.isFinite(Number(value)) || Number(value) <= 0) return null;
+  return Number(value);
+}
+
+function levelLookup(compiledProject) {
+  const map = new Map();
+  for (const level of compiledProject?.levels || []) {
+    map.set(level.id, level);
+  }
+  return map;
+}
+
+function aggregateMaterials(compiledProject) {
+  const buckets = new Map();
+  const push = (material, discipline, quantity, unit, source, evidence) => {
+    if (!material) return;
+    const key = `${discipline}::${material}::${unit}`;
+    const existing = buckets.get(key);
+    const numeric = Number(quantity);
+    const safeQty = Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
+    if (existing) {
+      existing.quantity = round(existing.quantity + safeQty, 3);
+      if (evidence && !existing.evidence) existing.evidence = evidence;
+      return;
+    }
+    buckets.set(key, {
+      material,
+      discipline,
+      quantity: round(safeQty, 3),
+      unit,
+      source,
+      evidence: evidence || null,
+    });
+  };
+
+  const levels = levelLookup(compiledProject);
+
+  for (const wall of compiledProject?.walls || []) {
+    const length = Number(wall.length_m || lineLength(wall.start, wall.end));
+    const height = Number(
+      wall.height_m || levels.get(wall.levelId)?.height_m || 3,
+    );
+    const area = Number.isFinite(length * height) ? length * height : 0;
+    push(
+      wall.material || wall.material_id,
+      wall.exterior ? "envelope" : "internal",
+      area,
+      "m2",
+      wall.exterior ? "wall_exterior" : "wall_internal",
+      wall.material_evidence || null,
+    );
+  }
+  for (const slab of compiledProject?.slabs || []) {
+    const area = Number(slab.area_m2 || polygonArea(slab.polygon || []));
+    push(
+      slab.material,
+      "structural",
+      area,
+      "m2",
+      "slab",
+      slab.material_evidence,
+    );
+  }
+  for (const plane of compiledProject?.roof?.planes || []) {
+    const area = Number(plane.area_m2 || polygonArea(plane.polygon || []));
+    push(
+      plane.material || compiledProject?.roof?.material,
+      "envelope",
+      area,
+      "m2",
+      "roof",
+      plane.material_evidence ||
+        compiledProject?.roof?.material_evidence ||
+        null,
+    );
+  }
+  return Array.from(buckets.values()).sort((a, b) =>
+    `${a.discipline}|${a.material}`.localeCompare(
+      `${b.discipline}|${b.material}`,
+    ),
+  );
+}
+
+function polygonArea(points = []) {
+  if (!Array.isArray(points) || points.length < 3) return 0;
+  let area = 0;
+  for (let index = 0; index < points.length; index += 1) {
+    const current = points[index];
+    const next = points[(index + 1) % points.length];
+    area += Number(current.x || 0) * Number(next.y || 0);
+    area -= Number(next.x || 0) * Number(current.y || 0);
+  }
+  return Math.abs(area) / 2;
+}
 
 export function exportCompiledProjectToDXF({
   compiledProject,
@@ -244,6 +383,17 @@ export function exportCompiledProjectToIFC({
   if (!compiledProject?.geometryHash) {
     throw new Error(
       "Compiled project with geometryHash is required for IFC export.",
+    );
+  }
+  const wallCount = Array.isArray(compiledProject.walls)
+    ? compiledProject.walls.length
+    : 0;
+  const levelCount = Array.isArray(compiledProject.levels)
+    ? compiledProject.levels.length
+    : 0;
+  if (wallCount === 0 || levelCount === 0) {
+    throw new Error(
+      "IFC_GEOMETRY_INSUFFICIENT: compiled geometry has no walls or storeys.",
     );
   }
 
@@ -540,6 +690,8 @@ export function buildCostWorkbook({
   projectName = "ArchiAI Project",
   qualityTier = "mid",
   region = "uk-average",
+  projectAddress = null,
+  pipelineVersion = UK_RESIDENTIAL_V2_PIPELINE_VERSION,
 } = {}) {
   if (!compiledProject?.geometryHash || !takeoff?.items?.length) {
     throw new Error(
@@ -550,86 +702,251 @@ export function buildCostWorkbook({
   const workbook = XLSX.utils.book_new();
   workbook.Props = {
     Title: `${projectName} Cost Workbook`,
-    Subject: "Architect AI Residential V2 Cost Workbook",
+    Subject: "Architect AI Compiled Project Cost Workbook",
     Author: "ArchiAI Solution Ltd",
-    CreatedDate: new Date(),
   };
 
+  const buildingType = resolveBuildingType(compiledProject);
+  const { card: rateCard, key: rateCardKey } = resolveRateCard(buildingType);
   const qualityFactor =
-    qualityTier === "premium" ? 1.15 : qualityTier === "baseline" ? 0.92 : 1;
+    rateCard?.qualityFactors?.[qualityTier] ??
+    (qualityTier === "premium" ? 1.15 : qualityTier === "baseline" ? 0.92 : 1);
   const regionFactor =
-    region === "london" ? 1.14 : region === "northern" ? 0.94 : 1;
+    rateCard?.regionFactors?.[region] ??
+    (region === "london" ? 1.14 : region === "northern" ? 0.94 : 1);
+  const rateCardMissing = !rateCard || !rateCardKey;
+  const rateCardLabel = rateCardMissing
+    ? `rate card not configured for ${buildingType || "unknown building type"} (${region})`
+    : `${rateCard.id} v${rateCard.version}`;
+  const jurisdictionLabel =
+    compiledProject?.metadata?.jurisdictionPack?.id ||
+    compiledProject?.jurisdictionPack?.id ||
+    compiledProject?.countryCode ||
+    null;
 
-  const quantityRows = takeoff.items.map((item, index) => ({
-    "#": index + 1,
-    Category: item.category,
-    Item: item.item,
-    Unit: item.unit,
-    Quantity: item.quantity,
-  }));
-  const ratesRows = takeoff.items.map((item) => {
-    const baseRate =
-      UK_RATE_TABLE[item.category]?.[item.item] ||
-      UK_RATE_TABLE[item.category]?.default ||
-      0;
-    const unitRate = round(baseRate * qualityFactor * regionFactor, 2);
-    return {
-      Category: item.category,
-      Item: item.item,
-      Unit: item.unit,
-      BaseRateGBP: round(baseRate, 2),
-      AdjustedRateGBP: unitRate,
-    };
+  // Stable, deterministic ordering for all derived rows.
+  const sortedItems = [...takeoff.items].sort((a, b) => {
+    const aKey = `${slugify(a.category)}|${slugify(a.item)}`;
+    const bKey = `${slugify(b.category)}|${slugify(b.item)}`;
+    return aKey.localeCompare(bKey);
   });
-  const totalsRows = takeoff.items.map((item) => {
-    const rateEntry = ratesRows.find((row) => row.Item === item.item);
-    const lineTotal = round(
-      item.quantity * Number(rateEntry?.AdjustedRateGBP || 0),
-      2,
+
+  const enriched = sortedItems.map((item, index) => {
+    const itemCode =
+      `${slugify(item.category)}-${slugify(item.item)}` || `item-${index + 1}`;
+    const baseRate = resolveRate(
+      rateCard,
+      rateCardKey,
+      item.category,
+      item.item,
     );
+    const adjustedRate =
+      baseRate != null
+        ? round(baseRate * qualityFactor * regionFactor, 2)
+        : null;
+    const subtotal =
+      adjustedRate != null
+        ? round(Number(item.quantity) * adjustedRate, 2)
+        : null;
     return {
-      Category: item.category,
-      Item: item.item,
-      Quantity: item.quantity,
-      Unit: item.unit,
-      RateGBP: rateEntry?.AdjustedRateGBP || 0,
-      LineTotalGBP: lineTotal,
+      itemCode,
+      description: item.item,
+      category: item.category,
+      unit: item.unit,
+      quantity: Number(item.quantity) || 0,
+      sourceElement: item.metadata?.sourceElement || item.category,
+      level: item.metadata?.level || "—",
+      baseRate,
+      adjustedRate,
+      subtotal,
     };
   });
-  const grandTotal = round(
-    totalsRows.reduce((sum, row) => sum + Number(row.LineTotalGBP || 0), 0),
-    2,
+
+  const grandTotal = enriched.reduce(
+    (sum, row) => sum + (row.subtotal != null ? row.subtotal : 0),
+    0,
+  );
+  const totalEstimatedCost = rateCardMissing ? null : round(grandTotal, 2);
+
+  // ===== Summary ============================================================
+  const summarySheet = XLSX.utils.aoa_to_sheet([
+    ["Field", "Value"],
+    ["Project Name", projectName],
+    ["Address", projectAddress || "—"],
+    ["Jurisdiction", jurisdictionLabel || "—"],
+    ["Building Type", buildingType || "—"],
+    ["Geometry Hash", compiledProject.geometryHash],
+    ["Pipeline Version", pipelineVersion],
+    ["Total GIA (m²)", Number(takeoff.summary?.grossFloorAreaM2 || 0)],
+    [
+      "Total Estimated Cost (GBP)",
+      totalEstimatedCost != null ? totalEstimatedCost : "rate card missing",
+    ],
+    ["Rate Card", rateCardLabel],
+    ["Quality Tier", qualityTier],
+    ["Region", region],
+    ["Currency", "GBP"],
+    [
+      "Disclaimer",
+      rateCardMissing
+        ? "Preliminary estimate only — not a contractor quotation. No rate card configured for this building type; cost columns are unavailable."
+        : `Preliminary estimate only — not a contractor quotation. Rates from ${rateCardLabel}.`,
+    ],
+  ]);
+
+  // ===== Quantity Takeoff ===================================================
+  const quantityTakeoffRows = enriched.map((row) => ({
+    "Item Code": row.itemCode,
+    Description: row.description,
+    "Discipline/Category": row.category,
+    Quantity: row.quantity,
+    Unit: row.unit,
+    "Source Element": row.sourceElement,
+    Level: row.level,
+    "Geometry Hash": compiledProject.geometryHash,
+  }));
+  const quantityTakeoffSheet = XLSX.utils.json_to_sheet(quantityTakeoffRows);
+
+  // ===== Cost Estimate =====================================================
+  const costEstimateRows = enriched.map((row) => ({
+    "Item Code": row.itemCode,
+    Description: row.description,
+    Quantity: row.quantity,
+    Unit: row.unit,
+    "Rate (GBP)": row.adjustedRate != null ? row.adjustedRate : "—",
+    "Subtotal (GBP)": row.subtotal != null ? row.subtotal : "—",
+    "Rate Source": rateCardMissing
+      ? "rate card missing"
+      : `${rateCard.id} v${rateCard.version} (${rateCardKey})`,
+    Confidence: rateCardMissing
+      ? "n/a"
+      : rateCard.buildingTypes?.[rateCardKey]?.confidence || "medium",
+    Assumptions: rateCardMissing
+      ? "No rate card configured for this building type."
+      : `Quality x${qualityFactor}, region x${regionFactor}.`,
+  }));
+  const costEstimateSheet = XLSX.utils.json_to_sheet(costEstimateRows);
+
+  // ===== Spaces & Areas =====================================================
+  const levelMap = levelLookup(compiledProject);
+  const spaceRows = [...(compiledProject.rooms || [])]
+    .map((room, index) => ({
+      "Space ID": room.id || `space-${index + 1}`,
+      Name: room.name || `Space ${index + 1}`,
+      "Type/Category": room.type || room.category || room.usage || "general",
+      Level: levelMap.get(room.levelId)?.name || room.levelId || "—",
+      "Area (m²)": round(
+        Number(
+          room.actual_area_m2 ||
+            room.target_area_m2 ||
+            polygonArea(room.polygon || []),
+        ) || 0,
+        2,
+      ),
+    }))
+    .sort((a, b) => String(a["Space ID"]).localeCompare(String(b["Space ID"])));
+  const spacesSheet = XLSX.utils.json_to_sheet(
+    spaceRows.length
+      ? spaceRows
+      : [
+          {
+            "Space ID": "—",
+            Name: "—",
+            "Type/Category": "—",
+            Level: "—",
+            "Area (m²)": 0,
+          },
+        ],
   );
 
-  const summarySheet = XLSX.utils.json_to_sheet([
+  // ===== Materials ==========================================================
+  const materialEntries = aggregateMaterials(compiledProject);
+  const materialRows = materialEntries.length
+    ? materialEntries.map((entry) => ({
+        Material: entry.material,
+        Discipline: entry.discipline,
+        "Area / Quantity": entry.quantity,
+        Unit: entry.unit,
+        Source: entry.source,
+        "Jurisdiction Evidence":
+          entry.evidence?.summary ||
+          entry.evidence?.id ||
+          (entry.evidence ? "see compiled project" : "—"),
+      }))
+    : [
+        {
+          Material: "—",
+          Discipline: "—",
+          "Area / Quantity": 0,
+          Unit: "—",
+          Source: "—",
+          "Jurisdiction Evidence": "No material data on compiled project.",
+        },
+      ];
+  const materialsSheet = XLSX.utils.json_to_sheet(materialRows);
+
+  // ===== Assumptions & Exclusions ==========================================
+  const assumptionsExclusionsRows = [
     {
-      Project: projectName,
-      GeometryHash: compiledProject.geometryHash,
-      PipelineVersion: UK_RESIDENTIAL_V2_PIPELINE_VERSION,
-      QualityTier: qualityTier,
-      Region: region,
-      GrossFloorAreaM2: takeoff.summary?.grossFloorAreaM2 || 0,
-      TotalGBP: grandTotal,
+      Section: "Assumptions",
+      Detail: "Preliminary estimate only — not a contractor quotation.",
     },
-  ]);
-  const quantitiesSheet = XLSX.utils.json_to_sheet(quantityRows);
-  const ratesSheet = XLSX.utils.json_to_sheet(ratesRows);
-  const totalsSheet = XLSX.utils.json_to_sheet(totalsRows);
-  const assumptionsSheet = XLSX.utils.json_to_sheet([
-    { Assumption: "Market", Value: region },
-    { Assumption: "Quality tier", Value: qualityTier },
-    { Assumption: "Pricing basis", Value: "Internal UK residential table" },
     {
-      Assumption: "Compiler authority",
-      Value: compiledProject.metadata?.source || "compiled_project",
+      Section: "Assumptions",
+      Detail: `Rate card: ${rateCardLabel}.`,
     },
-  ]);
+    {
+      Section: "Assumptions",
+      Detail: `Quality factor ${qualityFactor}, region factor ${regionFactor}.`,
+    },
+    {
+      Section: "Assumptions",
+      Detail:
+        "Quantities derived deterministically from compiled project geometry — they are indicative early-stage takeoffs and not measured site quantities.",
+    },
+    { Section: "Exclusions", Detail: "VAT excluded." },
+    {
+      Section: "Exclusions",
+      Detail: "Professional fees excluded unless explicitly included.",
+    },
+    {
+      Section: "Exclusions",
+      Detail: "Contingency: 0% (apply downstream as appropriate).",
+    },
+    {
+      Section: "Exclusions",
+      Detail:
+        "Local authority / statutory fees, planning fees, and CIL excluded unless configured.",
+    },
+    {
+      Section: "Exclusions",
+      Detail:
+        "Abnormals (ground conditions, demolition, infrastructure) excluded.",
+    },
+    {
+      Section: "Exclusions",
+      Detail:
+        "Furniture, fittings & equipment (FF&E) excluded unless itemised.",
+    },
+  ];
+  const assumptionsExclusionsSheet = XLSX.utils.json_to_sheet(
+    assumptionsExclusionsRows,
+  );
 
   XLSX.utils.book_append_sheet(workbook, summarySheet, "Summary");
-  XLSX.utils.book_append_sheet(workbook, quantitiesSheet, "Quantities");
-  XLSX.utils.book_append_sheet(workbook, ratesSheet, "UnitRates");
-  XLSX.utils.book_append_sheet(workbook, totalsSheet, "Totals");
-  XLSX.utils.book_append_sheet(workbook, assumptionsSheet, "Assumptions");
+  XLSX.utils.book_append_sheet(
+    workbook,
+    quantityTakeoffSheet,
+    "Quantity Takeoff",
+  );
+  XLSX.utils.book_append_sheet(workbook, costEstimateSheet, "Cost Estimate");
+  XLSX.utils.book_append_sheet(workbook, spacesSheet, "Spaces & Areas");
+  XLSX.utils.book_append_sheet(workbook, materialsSheet, "Materials");
+  XLSX.utils.book_append_sheet(
+    workbook,
+    assumptionsExclusionsSheet,
+    "Assumptions & Exclusions",
+  );
 
   const workbookArray = XLSX.write(workbook, {
     bookType: "xlsx",
@@ -637,15 +954,16 @@ export function buildCostWorkbook({
   });
   const manifest = createCostWorkbookManifest({
     geometryHash: compiledProject.geometryHash,
-    pipelineVersion: UK_RESIDENTIAL_V2_PIPELINE_VERSION,
+    pipelineVersion,
     tabs: workbook.SheetNames,
     assumptions: [
-      "Internal UK residential rate table",
+      `Rate card: ${rateCardLabel}`,
       `Quality factor ${qualityFactor}`,
       `Region factor ${regionFactor}`,
+      "Preliminary estimate only — not a contractor quotation",
     ],
     totals: {
-      totalGbp: grandTotal,
+      totalGbp: totalEstimatedCost != null ? totalEstimatedCost : null,
       grossFloorAreaM2: takeoff.summary?.grossFloorAreaM2 || 0,
     },
   });
@@ -655,7 +973,11 @@ export function buildCostWorkbook({
     workbookArray,
     manifest,
     currency: "GBP",
-    totalGbp: grandTotal,
+    totalGbp: totalEstimatedCost,
+    rateCard: rateCardMissing
+      ? null
+      : { id: rateCard.id, version: rateCard.version, key: rateCardKey },
+    rateCardMissing,
   };
 }
 

@@ -1,0 +1,48 @@
+{
+  "schema_version": "cost-rate-card-v1",
+  "id": "uk_v1",
+  "version": "1.0.0",
+  "currency": "GBP",
+  "region": "uk-average",
+  "disclaimer": "Preliminary indicative rates derived from internal UK residential cost references. Not a contractor quotation. Excludes VAT, professional fees, statutory fees, contingency, and abnormals unless explicitly stated.",
+  "buildingTypes": {
+    "residential": {
+      "confidence": "medium",
+      "rates": {
+        "areas": {
+          "Gross Floor Area": 1650,
+          "Slab Area": 140,
+          "Roof Area": 155
+        },
+        "envelope": {
+          "External Wall Area": 125,
+          "External Wall Length": 0,
+          "Glazing Area": 520,
+          "Envelope Perimeter": 42
+        },
+        "finishes": {
+          "Internal Floor Finish": 48
+        },
+        "counts": {
+          "Doors": 420,
+          "Windows": 860,
+          "Stairs": 4800
+        }
+      }
+    }
+  },
+  "regionFactors": {
+    "london": 1.14,
+    "south-east": 1.06,
+    "uk-average": 1.0,
+    "midlands": 0.98,
+    "northern": 0.94,
+    "scotland": 0.95,
+    "wales": 0.95
+  },
+  "qualityFactors": {
+    "baseline": 0.92,
+    "mid": 1.0,
+    "premium": 1.15
+  }
+}

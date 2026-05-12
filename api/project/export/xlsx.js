@@ -14,16 +14,33 @@ export default async function handler(req, res) {
       compiledProject,
       projectQuantityTakeoff,
       projectName = "ArchiAI_Project",
+      projectAddress = null,
       qualityTier = "mid",
       region = "uk-average",
+      pipelineVersion = null,
     } = req.body || {};
+
+    if (!compiledProject?.geometryHash) {
+      return res.status(400).json({
+        error: "compiledProject with geometryHash is required",
+        code: "GEOMETRY_HASH_MISSING",
+      });
+    }
+    if (!projectQuantityTakeoff?.items?.length) {
+      return res.status(400).json({
+        error: "Quantity takeoff is required for workbook export.",
+        code: "QUANTITY_TAKEOFF_UNAVAILABLE",
+      });
+    }
 
     const workbook = buildCostWorkbook({
       compiledProject,
       takeoff: projectQuantityTakeoff,
       projectName,
+      projectAddress,
       qualityTier,
       region,
+      ...(pipelineVersion ? { pipelineVersion } : {}),
     });
     const safeName = String(projectName)
       .replace(/[^a-zA-Z0-9_-]/g, "_")
