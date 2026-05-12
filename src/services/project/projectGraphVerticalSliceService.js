@@ -6598,50 +6598,66 @@ function deriveSiteZones(site = {}, bbox = {}) {
     .filter((zone) => zone.type && zone.polygon.length >= 3);
   if (normalizedExplicit.length) return normalizedExplicit;
 
+  // PR4: drop the speculative four-zone default (lawn / patio / drive /
+  // planting) for a committed two-zone default (LAWN + DRIVE). The reviewed
+  // A1 sheet showed all four legend rows while only the green lawn and a
+  // grey driveway slot were visibly drawn — patio and planting collapsed
+  // into invisible slivers. Two zones lets the legend reflect what's
+  // actually drawn, and the driveway slot is positioned by main entry
+  // orientation so it lands on the access edge instead of always south.
   const minX = Number(bbox.min_x || 0);
   const minY = Number(bbox.min_y || 0);
   const width = Math.max(1, Number(bbox.width || 24));
   const height = Math.max(1, Number(bbox.height || 16));
+  const orientation = String(site?.main_entry?.orientation || "south")
+    .trim()
+    .toLowerCase();
+  const driveWidthRatio = 0.22;
+  const driveDepthRatio = 0.22;
+  const drivePolygon =
+    orientation === "north"
+      ? rectangleToPolygon(
+          minX + width * (0.5 - driveWidthRatio / 2),
+          minY + height * 0.04,
+          width * driveWidthRatio,
+          height * driveDepthRatio,
+        )
+      : orientation === "east"
+        ? rectangleToPolygon(
+            minX + width * (1 - driveDepthRatio - 0.04),
+            minY + height * (0.5 - driveWidthRatio / 2),
+            width * driveDepthRatio,
+            height * driveWidthRatio,
+          )
+        : orientation === "west"
+          ? rectangleToPolygon(
+              minX + width * 0.04,
+              minY + height * (0.5 - driveWidthRatio / 2),
+              width * driveDepthRatio,
+              height * driveWidthRatio,
+            )
+          : rectangleToPolygon(
+              // south (default + "northwest" etc.)
+              minX + width * (0.5 - driveWidthRatio / 2),
+              minY + height * (1 - driveDepthRatio - 0.04),
+              width * driveWidthRatio,
+              height * driveDepthRatio,
+            );
   return [
     {
       type: "lawn",
       label: "Lawn",
       polygon: rectangleToPolygon(
-        minX + width * 0.1,
-        minY + height * 0.08,
-        width * 0.8,
-        height * 0.38,
-      ),
-    },
-    {
-      type: "patio",
-      label: "Patio",
-      polygon: rectangleToPolygon(
-        minX + width * 0.24,
-        minY + height * 0.5,
-        width * 0.52,
-        height * 0.16,
+        minX + width * 0.06,
+        minY + height * 0.06,
+        width * 0.88,
+        height * 0.88,
       ),
     },
     {
       type: "drive",
       label: "Drive",
-      polygon: rectangleToPolygon(
-        minX + width * 0.08,
-        minY + height * 0.68,
-        width * 0.28,
-        height * 0.24,
-      ),
-    },
-    {
-      type: "planting",
-      label: "Planting",
-      polygon: rectangleToPolygon(
-        minX + width * 0.78,
-        minY + height * 0.18,
-        width * 0.12,
-        height * 0.64,
-      ),
+      polygon: drivePolygon,
     },
   ];
 }
@@ -7046,8 +7062,10 @@ export function buildMaterialPalettePanelArtifact({
       labelFontSize: 17,
       subLabelFontSize: 13,
       fontFamily: "Arial, sans-serif",
-      labelMaxChars: 22,
-      subLabelMaxChars: 26,
+      // PR4: lifted from 22 to 32 chars so labels like "RENDER WITH DETAILED
+      // CORNICE" stop truncating to "RENDER WITH DETAILE..." on the sheet.
+      labelMaxChars: 32,
+      subLabelMaxChars: 32,
       strokeWidth: 2,
       showCategoryLabel: true,
       categoryFontSize: 11,
@@ -7545,6 +7563,13 @@ export function buildKeyNoteItems({
   sheetDesignContext = null,
   qaSummary = null,
   architectReasoningManifest = null,
+  // PR4: optional ProjectGraph geometry so static Key Notes claims can be
+  // plan-validated. When supplied, the "rooflights where indicated on
+  // plan" suffix is suppressed when projectGeometry has no opening with
+  // kind === "rooflight" (and similar). When omitted (legacy callers /
+  // pre-compile contexts) the original static lines are kept verbatim
+  // to preserve backward compatibility.
+  projectGeometry = null,
 }) {
   const ctxMaterials =
     Array.isArray(sheetDesignContext?.materials) &&
@@ -7771,12 +7796,32 @@ export function buildKeyNoteItems({
     },
     roof: {
       heading: "Roof",
-      lines: [
-        roofDesc
-          ? `Roof: ${roofDesc}.`
-          : "Pitched roof per regional vernacular.",
-        "Concealed gutters; rooflights where indicated on plan.",
-      ],
+      lines: (() => {
+        const lines = [
+          roofDesc
+            ? `Roof: ${roofDesc}.`
+            : "Pitched roof per regional vernacular.",
+        ];
+        // PR4: plan-validate the rooflight claim. Many briefs have no
+        // rooflights in their ProjectGraph openings; in that case the
+        // line "rooflights where indicated on plan" misleads the reader.
+        // When projectGeometry is unavailable we keep the legacy line for
+        // backward compat.
+        const openings = Array.isArray(projectGeometry?.openings)
+          ? projectGeometry.openings
+          : [];
+        const hasRooflight = openings.some(
+          (opening) =>
+            String(opening?.kind || opening?.type || "").toLowerCase() ===
+            "rooflight",
+        );
+        if (projectGeometry && !hasRooflight) {
+          lines.push("Concealed gutters.");
+        } else {
+          lines.push("Concealed gutters; rooflights where indicated on plan.");
+        }
+        return lines;
+      })(),
     },
     windows_doors: {
       heading: "Windows / Doors",
@@ -7865,6 +7910,7 @@ export function buildKeyNotesPanelArtifact({
   sheetDesignContext = null,
   qaSummary = null,
   architectReasoningManifest = null,
+  projectGeometry = null,
 }) {
   const width = 560;
   const height = 900;
@@ -7877,6 +7923,7 @@ export function buildKeyNotesPanelArtifact({
     sheetDesignContext,
     qaSummary,
     architectReasoningManifest,
+    projectGeometry,
   });
   let cursorY = 102;
   const groupSvg = groups
@@ -9364,6 +9411,12 @@ async function buildSheetPanelArtifacts({
     sheetDesignContext,
     qaSummary,
     architectReasoningManifest,
+    // PR4: pass compiledProject as projectGeometry so Key Notes can
+    // plan-validate claims against actual openings (e.g. drop the
+    // "rooflights where indicated on plan" suffix when no rooflight
+    // openings exist). The shape matches the convention used elsewhere
+    // in this file (e.g. drawing pipeline at :10760).
+    projectGeometry: compiledProject || null,
   });
   const titleBlock = buildTitleBlockPanelArtifact({
     projectGraphId,
@@ -15128,6 +15181,10 @@ export const __projectGraphVerticalSliceInternals = Object.freeze({
   dwellingProgrammeTemplate,
   buildTemplateProgramSpaces,
   layoutRoomsForLevel,
+  // PR4 (A1 defect remediation): site-zone synthesiser exposed so the PR4
+  // test can assert the LAWN + DRIVE default without spinning up the full
+  // site context panel.
+  deriveSiteZones,
 });
 
 export default {
