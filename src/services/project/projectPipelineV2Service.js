@@ -139,6 +139,12 @@ function alignProgramSpacesToResolvedLevels({
     0,
   );
 
+  // maxFloors is intentionally omitted: the subtype table inside
+  // autoLevelAssignmentService caps each residential subtype accurately
+  // (detached/semi/villa = 3, terraced = 4, apartment-building = 8, etc.),
+  // and the returned floorMetrics now includes programToSiteRatio,
+  // effectiveCoverage, setbackReduction and exceedsSubtypeCap which
+  // propagate automatically via stampProgramSpaceMetadata.
   const floorMetrics =
     Number.isFinite(Number(siteAreaM2)) && Number(siteAreaM2) > 0
       ? autoLevelAssignmentService.calculateOptimalLevels(
@@ -147,7 +153,6 @@ function alignProgramSpacesToResolvedLevels({
           {
             buildingType: subType || "residential",
             subType: subType || null,
-            maxFloors: 4,
           },
         )
       : null;
