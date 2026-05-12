@@ -416,4 +416,63 @@ describe("ArchitectAIWizardContainer programme UI flow", () => {
     expect(container.querySelectorAll("tbody tr").length).toBeGreaterThan(1);
     unmount();
   });
+
+  test("live auto-detect effect resets to null when site area is 0", async () => {
+    const { unmount } = renderComponent(
+      baseProjectDetails({
+        category: "commercial",
+        subType: "office",
+        program: "office",
+        area: 1200,
+        floorCount: 3,
+        floorCountLocked: false,
+        autoDetectedFloorCount: 4,
+        floorMetrics: { optimalFloors: 4 },
+      }),
+      {
+        siteMetrics: { areaM2: 0 },
+      },
+    );
+
+    await flushPromises();
+
+    expect(mockLastProjectDetails.autoDetectedFloorCount).toBeNull();
+    expect(mockLastProjectDetails.floorMetrics).toBeNull();
+    unmount();
+  });
+
+  test("live auto-detect surfaces programToSiteRatio + exceedsSubtypeCap for non-residential over-cap", async () => {
+    // Warehouse cap = 2 storeys. With siteArea 600 m² and programme 2400 m²
+    // even at circulation 1.0 the demand exceeds cap (2400 / (600 × 0.665) ≈ 6),
+    // so exceedsSubtypeCap=true regardless of template variance.
+    const { container, unmount } = renderComponent(
+      baseProjectDetails({
+        category: "industrial",
+        subType: "warehouse",
+        program: "warehouse",
+        area: 2400,
+        floorCount: 2,
+        floorCountLocked: false,
+      }),
+      {
+        siteMetrics: { areaM2: 600 },
+      },
+    );
+
+    await clickGenerate(container);
+    await flushPromises();
+
+    expect(mockLastProjectDetails.floorMetrics).toEqual(
+      expect.objectContaining({
+        programToSiteRatio: expect.any(Number),
+        setbackReduction: expect.any(Number),
+        effectiveCoverage: expect.any(Number),
+        exceedsSubtypeCap: true,
+      }),
+    );
+    expect(container.textContent).toMatch(
+      /Programme density.*demands.*warehouse caps at 2/i,
+    );
+    unmount();
+  });
 });

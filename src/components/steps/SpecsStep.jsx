@@ -487,11 +487,57 @@ const SpecsStep = ({
                           auto
                         </span>
                       </div>
-                      {projectDetails.floorMetrics?.reasoning && (
-                        <p className="mt-1 line-clamp-2 text-xs text-white/55">
-                          {projectDetails.floorMetrics.reasoning}
+                      {Number.isFinite(
+                        projectDetails.floorMetrics?.programToSiteRatio,
+                      ) &&
+                      Number.isFinite(
+                        projectDetails.floorMetrics?.coverageRatio,
+                      ) ? (
+                        <p
+                          className="mt-1 text-xs tabular-nums text-white/65"
+                          title={
+                            projectDetails.floorMetrics?.reasoning || undefined
+                          }
+                        >
+                          Programme{" "}
+                          {projectDetails.floorMetrics.programToSiteRatio.toFixed(
+                            2,
+                          )}
+                          × site at{" "}
+                          {Math.round(
+                            projectDetails.floorMetrics.coverageRatio * 100,
+                          )}
+                          % coverage
                         </p>
+                      ) : (
+                        projectDetails.floorMetrics?.reasoning && (
+                          <p className="mt-1 line-clamp-2 text-xs text-white/55">
+                            {projectDetails.floorMetrics.reasoning}
+                          </p>
+                        )
                       )}
+                      {projectDetails.floorMetrics?.exceedsSubtypeCap &&
+                        Number.isFinite(
+                          projectDetails.floorMetrics?.demandFloors,
+                        ) &&
+                        Number.isFinite(
+                          projectDetails.floorMetrics?.maxFloorsAllowed,
+                        ) && (
+                          <div className="mt-2 rounded border border-warning-500/30 bg-warning-500/5 px-2 py-1 text-[11px] text-warning-200">
+                            Density exceeds{" "}
+                            {projectDetails.subType ||
+                              projectDetails.program ||
+                              "subtype"}{" "}
+                            cap of{" "}
+                            {projectDetails.floorMetrics.maxFloorsAllowed} —
+                            programme demands{" "}
+                            {projectDetails.floorMetrics.demandFloors} storey
+                            {projectDetails.floorMetrics.demandFloors === 1
+                              ? ""
+                              : "s"}
+                            .
+                          </div>
+                        )}
                     </div>
                   )}
 

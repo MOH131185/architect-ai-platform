@@ -507,10 +507,26 @@ const ArchitectAIWizardContainer = () => {
     };
   }, []);
 
-  // Auto-detect optimal floor count from site + area (unless locked by user)
+  // Auto-detect optimal floor count from site + area (unless locked by user).
+  // Input priority: sum of current programme spaces (when populated) →
+  // projectDetails.area as a fallback before Compile has run. The compile-time
+  // call sites also use the sum-of-spaces input, so this keeps live and
+  // post-Compile auto-detect in lock-step.
   useEffect(() => {
     const siteArea = siteMetrics?.areaM2;
-    const totalArea = parseFloat(projectDetails?.area);
+    const programmeAreaSum = Array.isArray(programSpaces)
+      ? programSpaces.reduce(
+          (sum, space) =>
+            sum +
+            Math.max(0, parseFloat(space?.area || 0)) *
+              Math.max(1, parseInt(space?.count || 1, 10) || 1),
+          0,
+        )
+      : 0;
+    const totalArea =
+      programmeAreaSum > 0
+        ? programmeAreaSum
+        : parseFloat(projectDetails?.area);
 
     const hasInputs =
       typeof siteArea === "number" &&
@@ -551,6 +567,22 @@ const ArchitectAIWizardContainer = () => {
         },
       );
 
+      // Service may return optimalFloors=null when its own siteArea guard
+      // trips (e.g. siteMetrics flipped to 0 between render and effect).
+      // Treat that as "no auto value" — do not stomp the previous count.
+      if (floorMetrics.optimalFloors == null) {
+        setProjectDetails((prev) => {
+          if (!prev) return prev;
+          if (
+            prev.autoDetectedFloorCount === null &&
+            prev.floorMetrics === null
+          )
+            return prev;
+          return { ...prev, autoDetectedFloorCount: null, floorMetrics: null };
+        });
+        return;
+      }
+
       setProjectDetails((prev) => {
         if (!prev) return prev;
 
@@ -575,7 +607,11 @@ const ArchitectAIWizardContainer = () => {
           prev.floorMetrics?.actualFootprint ===
             next.floorMetrics?.actualFootprint &&
           prev.floorMetrics?.maxFloorsAllowed ===
-            next.floorMetrics?.maxFloorsAllowed;
+            next.floorMetrics?.maxFloorsAllowed &&
+          prev.floorMetrics?.programToSiteRatio ===
+            next.floorMetrics?.programToSiteRatio &&
+          prev.floorMetrics?.exceedsSubtypeCap ===
+            next.floorMetrics?.exceedsSubtypeCap;
 
         return unchanged ? prev : next;
       });
@@ -587,6 +623,7 @@ const ArchitectAIWizardContainer = () => {
     projectDetails?.program,
     projectDetails?.subType,
     projectDetails?.category,
+    programSpaces,
     projectDetails?.floorCountLocked,
     siteMetrics?.areaM2,
     setProjectDetails,
@@ -1364,7 +1401,6 @@ const ArchitectAIWizardContainer = () => {
                 {
                   buildingType: sanitizedProgram,
                   subType,
-                  maxFloors: 4,
                   circulationFactor: 1.0,
                 },
               )
@@ -1413,7 +1449,6 @@ const ArchitectAIWizardContainer = () => {
                 {
                   buildingType: sanitizedProgram,
                   subType,
-                  maxFloors: 4,
                   circulationFactor: 1.0,
                 },
               )
@@ -1493,6 +1528,18 @@ const ArchitectAIWizardContainer = () => {
         if (recommendedFloorCount !== authoritativeFloorCount) {
           baseWarnings.push(
             `Site-fit recommends ${recommendedFloorCount} level${recommendedFloorCount === 1 ? "" : "s"}; programme uses ${authoritativeFloorCount} (${auth.source}).`,
+          );
+        }
+        if (
+          floorMetrics?.exceedsSubtypeCap &&
+          Number.isFinite(floorMetrics?.demandFloors) &&
+          Number.isFinite(floorMetrics?.maxFloorsAllowed)
+        ) {
+          const ratioText = Number.isFinite(floorMetrics?.programToSiteRatio)
+            ? floorMetrics.programToSiteRatio.toFixed(2)
+            : "n/a";
+          baseWarnings.push(
+            `Programme density (ratio ${ratioText}) demands ${floorMetrics.demandFloors} storey${floorMetrics.demandFloors === 1 ? "" : "s"} but ${subType} caps at ${floorMetrics.maxFloorsAllowed} — trim programme or pick a denser subtype.`,
           );
         }
         if (programBrief.clampedBy === "subtype-max") {
@@ -1575,7 +1622,6 @@ const ArchitectAIWizardContainer = () => {
           {
             buildingType: sanitizedProgram,
             subType: projectDetails.subType || null,
-            maxFloors: 10,
             circulationFactor: hasExplicitCirculation ? 1.0 : 1.15,
           },
         );
@@ -1641,6 +1687,20 @@ const ArchitectAIWizardContainer = () => {
       } else if (autoFloors) {
         genericWarnings.push(
           `Auto-detected ${autoFloors} level${autoFloors === 1 ? "" : "s"} from ${Math.round(siteArea)} m² site.`,
+        );
+      }
+      if (
+        floorMetrics?.exceedsSubtypeCap &&
+        Number.isFinite(floorMetrics?.demandFloors) &&
+        Number.isFinite(floorMetrics?.maxFloorsAllowed)
+      ) {
+        const ratioText = Number.isFinite(floorMetrics?.programToSiteRatio)
+          ? floorMetrics.programToSiteRatio.toFixed(2)
+          : "n/a";
+        const subtypeLabel =
+          projectDetails.subType || sanitizedProgram || "subtype";
+        genericWarnings.push(
+          `Programme density (ratio ${ratioText}) demands ${floorMetrics.demandFloors} storey${floorMetrics.demandFloors === 1 ? "" : "s"} but ${subtypeLabel} caps at ${floorMetrics.maxFloorsAllowed} — trim programme or pick a denser subtype.`,
         );
       }
       setProgramWarnings((prev) =>

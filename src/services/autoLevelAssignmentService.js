@@ -82,6 +82,79 @@ const SUBTYPE_COVERAGE_RATIOS = {
 };
 
 /**
+ * Sub-type specific setback reductions
+ * Fraction of the coverage-allowed footprint that survives after typical
+ * front/side/rear setbacks for each sub-type. Lower = more land lost to
+ * setbacks. Terraced and warehouse plots lose almost nothing because the
+ * party walls / industrial yards run to the boundary; detached, villa and
+ * kindergarten plots lose 25–30% to garden / play / shadow setbacks.
+ */
+const SUBTYPE_SETBACK_REDUCTION = {
+  // Residential
+  "detached-house": 0.75,
+  "semi-detached-house": 0.85,
+  "terraced-house": 0.95,
+  villa: 0.7,
+  cottage: 0.8,
+  mansion: 0.7,
+  "multi-family": 0.85,
+  duplex: 0.85,
+  "apartment-building": 0.85,
+  condominium: 0.85,
+  "residential-tower": 0.8,
+
+  // Healthcare
+  clinic: 0.85,
+  "dental-clinic": 0.85,
+  "health-center": 0.85,
+  hospital: 0.8,
+  pharmacy: 0.9,
+
+  // Commercial
+  office: 0.85,
+  coworking: 0.85,
+  retail: 0.95,
+  "shopping-center": 0.85,
+  restaurant: 0.9,
+  cafe: 0.9,
+
+  // Educational
+  school: 0.8,
+  kindergarten: 0.75,
+  "training-center": 0.85,
+  library: 0.85,
+
+  // Hospitality
+  hotel: 0.85,
+  hostel: 0.85,
+  "bed-breakfast": 0.85,
+
+  // Industrial
+  warehouse: 0.95,
+  factory: 0.9,
+  workshop: 0.9,
+  "logistics-center": 0.9,
+
+  // Cultural & Public
+  museum: 0.85,
+  gallery: 0.85,
+  theater: 0.85,
+  "community-center": 0.85,
+
+  // Sports & Recreation
+  gym: 0.85,
+  "sports-hall": 0.85,
+  "swimming-pool": 0.85,
+
+  // Religious
+  church: 0.85,
+  mosque: 0.85,
+  temple: 0.85,
+};
+
+const DEFAULT_SETBACK_REDUCTION = 0.85;
+
+/**
  * Sub-type specific maximum floor limits (UK typical)
  */
 const SUBTYPE_MAX_FLOORS = {
@@ -166,7 +239,24 @@ class AutoLevelAssignmentService {
   }
 
   /**
-   * Calculate optimal number of levels based on program area and site area
+   * Calculate optimal number of levels based on program area and site area.
+   *
+   * Returned `floorMetrics` shape (stable contract for callers):
+   *   - optimalFloors          number|null  null when site area is missing
+   *   - fallbackReason         string|null  "no-site-area" when guarded out
+   *   - programToSiteRatio     number|null  totalProgramArea / siteArea
+   *   - effectiveCoverage      number|null  coverage × setbackReduction
+   *   - setbackReduction       number|null  the value actually used
+   *   - exceedsSubtypeCap      boolean      true when programme demanded
+   *                                          more floors than subtype/maxFloors cap
+   *   - subtypeMaxFloors       number|null  the subtype cap when known
+   *   - reasoning              string       human-readable explanation
+   *   - (legacy)               minFloorsNeeded, maxFloorsAllowed,
+   *                            actualFootprint, maxFootprintArea,
+   *                            siteCoveragePercent, fitsWithinSite,
+   *                            floorHeight, totalHeight, coverageRatio,
+   *                            subType, floorPolicy
+   *
    * @param {number} totalProgramArea - Total area of all program spaces (m²)
    * @param {number} siteArea - Site area from location (m²)
    * @param {Object} options - Optional parameters
@@ -176,25 +266,67 @@ class AutoLevelAssignmentService {
   calculateOptimalLevels(totalProgramArea, siteArea, options = {}) {
     const {
       buildingType = "mixed-use",
-      subType = null, // NEW: Specific sub-type ID for precise ratios
+      subType = null, // Specific sub-type ID for precise ratios
       maxHeight = Infinity,
-      maxFloors = 10,
+      maxFloors = null, // null = let subtype table decide; falls back to 10
       minFloorHeight = 2.7, // meters
       typicalFloorHeight = 3.0, // meters
       coverageRatio = 0.6, // 60% default site coverage
       circulationFactor = 1.15, // 15% circulation allowance
     } = options;
 
+    const numericProgramArea = Number(totalProgramArea);
+    const numericSiteArea = Number(siteArea);
+    const safeProgramArea = Number.isFinite(numericProgramArea)
+      ? Math.max(0, numericProgramArea)
+      : 0;
+    const safeSiteArea = Number.isFinite(numericSiteArea) ? numericSiteArea : 0;
+
     logger.info(
       "Calculating optimal floor count",
       {
-        programArea: totalProgramArea,
-        siteArea,
+        programArea: safeProgramArea,
+        siteArea: safeSiteArea,
         buildingType,
         subType,
       },
       "🏢",
     );
+
+    // Guard: without a positive site area the program/site ratio is undefined.
+    // Returning a null shape avoids the previous Infinity → silent clamp at
+    // maxFloors pattern. Callers must skip writing autoDetectedFloorCount.
+    if (!(safeSiteArea > 0)) {
+      logger.warn(
+        "Skipping floor auto-detect: site area is missing or non-positive",
+        { siteArea: safeSiteArea },
+      );
+      return {
+        optimalFloors: null,
+        fallbackReason: "no-site-area",
+        programToSiteRatio: null,
+        effectiveCoverage: null,
+        setbackReduction: null,
+        exceedsSubtypeCap: false,
+        subtypeMaxFloors:
+          subType && SUBTYPE_MAX_FLOORS[subType]
+            ? SUBTYPE_MAX_FLOORS[subType]
+            : null,
+        minFloorsNeeded: null,
+        maxFloorsAllowed: null,
+        actualFootprint: null,
+        maxFootprintArea: null,
+        siteCoveragePercent: null,
+        fitsWithinSite: false,
+        floorHeight: typicalFloorHeight,
+        totalHeight: null,
+        coverageRatio: null,
+        subType,
+        floorPolicy: null,
+        reasoning:
+          "Site area unknown — auto floor detection skipped. Provide a site location to enable proportion-based level recommendation.",
+      };
+    }
 
     // Step 1: Adjust coverage ratio - prioritize sub-type specific ratio
     let adjustedCoverage = coverageRatio;
@@ -224,38 +356,58 @@ class AutoLevelAssignmentService {
       adjustedCoverage = 0.65; // 65% for medium-density
     }
 
-    // Step 2: Calculate buildable footprint
-    const setbackReduction = 0.85; // 15% lost to setbacks
-    const maxFootprintArea = siteArea * adjustedCoverage * setbackReduction;
+    // Step 2: Calculate buildable footprint with subtype-aware setback
+    const setbackReduction =
+      subType && SUBTYPE_SETBACK_REDUCTION[subType]
+        ? SUBTYPE_SETBACK_REDUCTION[subType]
+        : DEFAULT_SETBACK_REDUCTION;
+    const effectiveCoverage = adjustedCoverage * setbackReduction;
+    const maxFootprintArea = safeSiteArea * effectiveCoverage;
 
-    logger.info(`   Site area: ${siteArea.toFixed(0)}m²`);
+    logger.info(`   Site area: ${safeSiteArea.toFixed(0)}m²`);
     logger.info(`   Coverage ratio: ${(adjustedCoverage * 100).toFixed(0)}%`);
+    logger.info(
+      `   Setback reduction: ${(setbackReduction * 100).toFixed(0)}%`,
+    );
+    logger.info(
+      `   Effective coverage: ${(effectiveCoverage * 100).toFixed(0)}%`,
+    );
     logger.info(`   Max footprint: ${maxFootprintArea.toFixed(0)}m²`);
 
     // Step 3: Account for circulation
-    const totalAreaWithCirculation = totalProgramArea * circulationFactor;
+    const totalAreaWithCirculation = safeProgramArea * circulationFactor;
+    const programToSiteRatio = safeProgramArea / safeSiteArea;
 
-    logger.info(`   Program area: ${totalProgramArea.toFixed(0)}m²`);
+    logger.info(`   Program area: ${safeProgramArea.toFixed(0)}m²`);
     logger.info(
       `   With circulation: ${totalAreaWithCirculation.toFixed(0)}m²`,
     );
+    logger.info(`   Program/site ratio: ${programToSiteRatio.toFixed(2)}`);
 
-    // Step 4: Calculate minimum floors needed
-    const minFloorsNeeded = Math.ceil(
-      totalAreaWithCirculation / maxFootprintArea,
-    );
+    // Step 4: Calculate minimum floors needed. If maxFootprintArea is 0
+    // (impossible coverage), treat minFloors as 1 to avoid Infinity. The
+    // siteArea guard above already covers the common no-site case.
+    const minFloorsNeeded =
+      maxFootprintArea > 0
+        ? Math.ceil(totalAreaWithCirculation / maxFootprintArea)
+        : 1;
 
     logger.info(`   Min floors needed: ${minFloorsNeeded}`);
 
     // Step 5: Check height restrictions and sub-type limits
-    let maxFloorsAllowed = maxFloors;
+    const callerMaxFloors =
+      Number.isFinite(Number(maxFloors)) && Number(maxFloors) > 0
+        ? Math.max(1, Math.floor(Number(maxFloors)))
+        : 10;
+    let maxFloorsAllowed = callerMaxFloors;
 
-    // First, apply sub-type specific max floors if available (UK typical limits)
-    if (subType && SUBTYPE_MAX_FLOORS[subType]) {
-      maxFloorsAllowed = Math.min(
-        maxFloorsAllowed,
-        SUBTYPE_MAX_FLOORS[subType],
-      );
+    // Subtype-specific max floors (UK typical limits)
+    const subtypeMaxFloors =
+      subType && SUBTYPE_MAX_FLOORS[subType]
+        ? SUBTYPE_MAX_FLOORS[subType]
+        : null;
+    if (subtypeMaxFloors !== null) {
+      maxFloorsAllowed = Math.min(maxFloorsAllowed, subtypeMaxFloors);
       logger.info(`   Max floors (sub-type ${subType}): ${maxFloorsAllowed}`);
     }
 
@@ -266,17 +418,18 @@ class AutoLevelAssignmentService {
       logger.info(`   Max floors allowed (height): ${maxFloorsAllowed}`);
     }
 
-    // Step 6: Determine optimal floor count
-    let optimalFloors = Math.min(
-      Math.max(minFloorsNeeded, 1),
-      maxFloorsAllowed,
-    );
+    // Step 6: Determine optimal floor count. The clamp is the policy
+    // (subtype cap wins over demand), but we record exceedsSubtypeCap so
+    // the UI can surface a warning instead of silently capping.
+    const demandFloors = Math.max(minFloorsNeeded, 1);
+    const exceedsSubtypeCap = demandFloors > maxFloorsAllowed;
+    let optimalFloors = Math.min(demandFloors, maxFloorsAllowed);
     const floorPolicy = resolveResidentialFloorCountPolicy(
       {
         buildingType,
         subType,
-        area: totalProgramArea,
-        targetAreaM2: totalProgramArea,
+        area: safeProgramArea,
+        targetAreaM2: safeProgramArea,
         floorCountLocked: options.floorCountLocked === true,
       },
       optimalFloors,
@@ -294,76 +447,108 @@ class AutoLevelAssignmentService {
 
     // Step 8: Check if fits within site
     const fitsWithinSite = actualFootprint <= maxFootprintArea;
-    const siteCoveragePercent = (actualFootprint / siteArea) * 100;
+    const siteCoveragePercent = (actualFootprint / safeSiteArea) * 100;
 
     logger.info(`   Optimal floors: ${optimalFloors}`);
     logger.info(`   Actual footprint: ${actualFootprint.toFixed(0)}m²`);
     logger.info(`   Site coverage: ${siteCoveragePercent.toFixed(1)}%`);
     logger.info(`   Fits within site: ${fitsWithinSite ? "YES ✅" : "NO ❌"}`);
+    if (exceedsSubtypeCap) {
+      logger.warn(
+        `   Programme demands ${demandFloors} storeys but ${subType || buildingType} caps at ${maxFloorsAllowed} — clamped to ${optimalFloors} with exceedsSubtypeCap=true`,
+      );
+    }
 
     return {
       optimalFloors,
+      fallbackReason: null,
       minFloorsNeeded,
       maxFloorsAllowed,
+      demandFloors,
       actualFootprint,
       maxFootprintArea,
       siteCoveragePercent,
       fitsWithinSite,
       floorHeight: typicalFloorHeight,
       totalHeight: optimalFloors * typicalFloorHeight,
-      coverageRatio: adjustedCoverage, // Include for UI display
-      subType, // Include for reference
+      coverageRatio: adjustedCoverage,
+      effectiveCoverage,
+      setbackReduction,
+      programToSiteRatio,
+      exceedsSubtypeCap,
+      subtypeMaxFloors,
+      subType,
       floorPolicy,
-      reasoning: this._generateFloorCountReasoning(
-        optimalFloors,
-        totalProgramArea,
-        siteArea,
-        actualFootprint,
-        maxFootprintArea,
+      reasoning: this._generateFloorCountReasoning({
+        floors: optimalFloors,
+        programArea: safeProgramArea,
+        siteArea: safeSiteArea,
+        circulationFactor,
+        adjustedCoverage,
+        setbackReduction,
+        programToSiteRatio,
+        demandFloors,
+        maxFloorsAllowed,
+        subtypeMaxFloors,
+        exceedsSubtypeCap,
         buildingType,
-      ),
+        subType,
+      }),
     };
   }
 
   /**
-   * Generate reasoning for floor count decision
+   * Generate reasoning for floor count decision. Signature is an options
+   * object so callers can pass the ratio + setback + cap context.
    * @private
    */
-  _generateFloorCountReasoning(
+  _generateFloorCountReasoning({
     floors,
     programArea,
     siteArea,
-    footprint,
-    maxFootprint,
-    buildingType,
-  ) {
+    circulationFactor,
+    adjustedCoverage,
+    setbackReduction,
+    programToSiteRatio,
+    demandFloors,
+    maxFloorsAllowed,
+    subtypeMaxFloors,
+    exceedsSubtypeCap,
+    subType,
+  } = {}) {
     const reasons = [];
 
+    const ratioText =
+      Number.isFinite(programToSiteRatio) && programToSiteRatio > 0
+        ? programToSiteRatio.toFixed(2)
+        : "n/a";
+    const coveragePct = Number.isFinite(adjustedCoverage)
+      ? Math.round(adjustedCoverage * 100)
+      : null;
+    const setbackPct = Number.isFinite(setbackReduction)
+      ? Math.round(setbackReduction * 100)
+      : null;
+
     reasons.push(
-      `${floors} floors optimal to fit ${programArea.toFixed(0)}m² program within ${siteArea.toFixed(0)}m² site`,
+      `Programme ${programArea.toFixed(0)}m² × ${circulationFactor.toFixed(2)} circulation ÷ (site ${siteArea.toFixed(0)}m² × ${coveragePct}% coverage × ${setbackPct}% setback) ⇒ ratio ${ratioText} ⇒ ${demandFloors} storey${demandFloors === 1 ? "" : "s"} required`,
     );
 
-    if (footprint > maxFootprint * 0.9) {
+    if (exceedsSubtypeCap) {
+      const capLabel = subType ? `${subType} cap` : "subtype cap";
       reasons.push(
-        `Footprint utilization high (${((footprint / maxFootprint) * 100).toFixed(0)}%) - efficient site usage`,
+        `Clamped to ${floors} storey${floors === 1 ? "" : "s"} (${capLabel} ${maxFloorsAllowed}) — consider trimming programme or picking a denser subtype`,
       );
-    } else if (footprint < maxFootprint * 0.5) {
-      reasons.push(
-        `Footprint utilization low (${((footprint / maxFootprint) * 100).toFixed(0)}%) - consider reducing floors or increasing program`,
-      );
+    } else if (subtypeMaxFloors && demandFloors === maxFloorsAllowed) {
+      reasons.push(`At subtype cap ${maxFloorsAllowed}`);
     }
 
     if (floors === 1) {
-      reasons.push(
-        "Single-story design - ideal for accessibility and horizontal circulation",
-      );
+      reasons.push("Single-storey: accessible, horizontal circulation only");
     } else if (floors === 2) {
-      reasons.push(
-        "Two-story design - good balance of compactness and accessibility",
-      );
+      reasons.push("Two-storey: compact, accessible with one stair core");
     } else if (floors >= 3) {
       reasons.push(
-        `${floors}-story design - vertical circulation (stairs/lift) required`,
+        `${floors}-storey: vertical circulation (stairs/lift) required`,
       );
     }
 
@@ -707,6 +892,31 @@ class AutoLevelAssignmentService {
       buildingType,
       ...constraints,
     });
+
+    // Step 2b: If site area was missing, the service returns optimalFloors=null.
+    // Pass spaces through unchanged so callers can fall back to their own count
+    // (locked, manual, or fallback) without crashing autoAssignSpacesToLevels.
+    if (floorCalc.optimalFloors == null) {
+      logger.warn(
+        "AUTO-ASSIGNMENT: skipped (no site area). Passing spaces through.",
+      );
+      return {
+        success: false,
+        fallbackReason: floorCalc.fallbackReason || "no-site-area",
+        assignedSpaces: programSpaces,
+        floorCount: null,
+        floorMetrics: floorCalc,
+        summary: {
+          totalSpaces: programSpaces.length,
+          totalArea: totalProgramArea,
+          siteArea,
+          floors: null,
+          footprint: null,
+          siteCoverage: null,
+          reasoning: floorCalc.reasoning,
+        },
+      };
+    }
 
     // Step 3: Auto-assign spaces to levels
     const assignedSpaces = this.autoAssignSpacesToLevels(
