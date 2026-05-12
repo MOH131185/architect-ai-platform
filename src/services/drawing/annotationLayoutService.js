@@ -117,7 +117,7 @@ function layoutPlanAnnotations(
     const placement = choosePlacement(
       {
         id: `annotation:room:${room.id}`,
-        text: `${labelText} ${areaValue.toFixed(1)} M2`,
+        text: `${labelText} ${areaValue.toFixed(1)} m²`,
         x: anchor.x,
         y: anchor.y,
         fontSize: compactRoom ? 11.25 : 12.5,

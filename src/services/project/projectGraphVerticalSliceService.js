@@ -6759,9 +6759,11 @@ function buildSiteContextPanelArtifact({
   <path d="M 64 642 C 186 600 272 620 354 574 C 440 526 552 540 806 488" fill="none" stroke="#c8c8c8" stroke-width="28" opacity="0.55"/>
   <path d="M 64 642 C 186 600 272 620 354 574 C 440 526 552 540 806 488" fill="none" stroke="#ffffff" stroke-width="18" opacity="0.85"/>
   <text x="450" y="104" font-family="Arial, sans-serif" font-size="26" font-weight="700" text-anchor="middle" fill="#111111">${boundaryLabel}</text>`;
-  const areaLabel = boundaryEstimated
-    ? `Site area: ${site.area_m2} m2 (context) | Boundary source: ${site.boundary_source || "estimated"} | Confidence: ${site.boundary_confidence ?? "n/a"} | Main entry: ${site.main_entry?.orientation || "north"} (${site.main_entry?.source || "fallback"})`
-    : `Site area: ${site.area_m2} m2 | Boundary source: ${manualVerifiedBoundary ? "manual_verified" : site.boundary_source || "site_polygon"} | Confidence: ${site.boundary_confidence ?? "n/a"} | Main entry: ${site.main_entry?.orientation || "north"} (${site.main_entry?.source || "fallback"})`;
+  // User-facing label keeps only site area + main entry direction. Source,
+  // confidence and inferred/fallback flags remain available on the wrapping
+  // <svg data-boundary-source data-boundary-confidence data-main-entry-…>
+  // attributes for QA without leaking pipeline uncertainty onto the sheet.
+  const areaLabel = `Site area: ${site.area_m2} m² | Main entry: ${site.main_entry?.orientation || "north"}`;
   const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="site_context" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-site-map-source="${escapeXml(mapSource)}" data-site-map-image="${hasMapImage ? "true" : "false"}" data-boundary-source="${escapeXml(manualVerifiedBoundary ? "manual_verified" : site.boundary_source || "")}" data-boundary-confidence="${escapeXml(String(site.boundary_confidence ?? ""))}" data-main-entry-orientation="${escapeXml(site.main_entry?.orientation || "")}">
   <defs>
     <marker id="main-entry-arrowhead" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
@@ -6792,7 +6794,7 @@ function buildSiteContextPanelArtifact({
   <circle cx="806" cy="112" r="46" fill="none" stroke="#111111" stroke-width="2"/>
   <text x="806" y="58" font-family="Arial, sans-serif" font-size="32" font-weight="700" text-anchor="middle" fill="#111111">N</text>
   <text x="450" y="342" font-family="Arial, sans-serif" font-size="24" text-anchor="middle" fill="#333333">${boundaryEstimated ? "Proposed Footprint" : "Rear Garden"}</text>
-  <text x="450" y="682" font-family="Arial, sans-serif" font-size="24" text-anchor="middle" fill="#333333">${boundaryEstimated ? "Estimated Boundary" : "Front Garden"}</text>
+  <text x="450" y="682" font-family="Arial, sans-serif" font-size="24" text-anchor="middle" fill="#333333">${boundaryEstimated ? "Site Boundary" : "Front Garden"}</text>
   ${streetLabelSvg}
   ${siteAddressSvg}
   ${siteZones.legend}
@@ -6966,7 +6968,6 @@ export function buildMaterialPalettePanelArtifact({
   <defs>${defs}</defs>
   <rect width="${width}" height="${height}" fill="#ffffff"/>
   <text x="34" y="48" font-family="Arial, sans-serif" font-size="32" font-weight="700" fill="#111111">MATERIAL PALETTE</text>
-  <text x="34" y="78" font-family="Arial, sans-serif" font-size="13" fill="#444444">StyleBlendManifest ${escapeXml(String(styleBlendManifestHash || "n/a").slice(0, 18))}</text>
   <line x1="34" y1="66" x2="666" y2="66" stroke="#111111" stroke-width="2"/>
   ${cards}
 </svg>`;
@@ -7560,16 +7561,9 @@ export function buildKeyNoteItems({
           rejectedInfluences: [],
         }
       : null);
-  if (styleBlend?.manifestHash) {
-    styleProvenanceLines.push(
-      `StyleBlendManifest: ${String(styleBlend.manifestHash).slice(0, 18)}.`,
-    );
-  }
-  if (styleBlend?.blendWeights) {
-    styleProvenanceLines.push(
-      `Blend weights: local ${Math.round((styleBlend.blendWeights.local || 0) * 100)}%, user ${Math.round((styleBlend.blendWeights.user || 0) * 100)}%, climate ${Math.round((styleBlend.blendWeights.climate || 0) * 100)}%, portfolio ${Math.round((styleBlend.blendWeights.portfolio || 0) * 100)}%.`,
-    );
-  }
+  // Manifest hash + blend weights are pipeline internals; they stay on
+  // <svg data-style-blend-manifest-hash="…"> for QA but no longer appear on
+  // the user-facing Key Notes panel.
   if (styleBlend?.localStyleEvidence?.label) {
     styleProvenanceLines.push(
       `Local style: ${String(styleBlend.localStyleEvidence.label).slice(0, 120)}.`,
@@ -7932,8 +7926,97 @@ function toTitleCaseLabel(value) {
   );
 }
 
+// Inner connector words that stay lowercase when they appear *between* two
+// hyphens in a hyphenated place name ("Stoke-on-Trent", "Newcastle-under-Lyme",
+// "Henley-in-Arden"). Leading and trailing segments are always capitalised.
+const HYPHENATED_PLACENAME_CONNECTORS = new Set([
+  "on",
+  "in",
+  "upon",
+  "under",
+  "the",
+  "of",
+  "and",
+  "le",
+  "la",
+  "by",
+  "sur",
+  "sous",
+  "en",
+]);
+
+function capitaliseFirst(word) {
+  if (!word) return word;
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
+// Title-cases an address segment, preserving hyphenated place-name conventions
+// (so "stoke-on-trent" → "Stoke-on-Trent", not "Stoke-On-Trent" or
+// "Stoke-on-trent"). Used for the non-postcode portion of an address.
+function titleCaseAddressSegment(segment) {
+  const lower = String(segment || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+  if (!lower) return "";
+  // Split keeping spaces and commas as separators so we can re-join faithfully.
+  return lower
+    .split(/(\s+|,)/)
+    .map((token) => {
+      if (!/^[a-z]/.test(token)) return token;
+      const parts = token.split("-");
+      return parts
+        .map((part, idx) => {
+          if (
+            idx > 0 &&
+            idx < parts.length - 1 &&
+            HYPHENATED_PLACENAME_CONNECTORS.has(part)
+          ) {
+            return part;
+          }
+          return capitaliseFirst(part);
+        })
+        .join("-");
+    })
+    .join("");
+}
+
+// Splits an address on the UK postcode, Title Cases the rest, uppercases the
+// postcode, and rejoins. Idempotent. If no postcode is present the whole
+// string is Title Cased. Does not correct misspellings — the
+// brief.address_override path exists for that.
+function normalizeAddressCasing(address) {
+  const raw = String(address || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!raw) return "";
+  const postcodeRegex = /\b[A-Za-z]{1,2}\d[A-Za-z\d]?\s*\d[A-Za-z]{2}\b/;
+  const match = raw.match(postcodeRegex);
+  if (!match) {
+    return titleCaseAddressSegment(raw);
+  }
+  const postcode = match[0].toUpperCase().replace(/\s+/g, " ").trim();
+  const before = raw.slice(0, match.index).trim();
+  const after = raw.slice(match.index + match[0].length).trim();
+  const parts = [
+    before ? titleCaseAddressSegment(before) : "",
+    postcode,
+    after ? titleCaseAddressSegment(after) : "",
+  ].filter(Boolean);
+  return parts.join(" ").replace(/\s+,/g, ",").replace(/\s+/g, " ").trim();
+}
+
 function resolveBriefAddress(brief = {}, projectContext = null) {
-  return String(
+  const override =
+    brief?.address_override ||
+    brief?.addressOverride ||
+    projectContext?.address_override ||
+    projectContext?.addressOverride ||
+    null;
+  if (override) {
+    return String(override).replace(/\s+/g, " ").trim();
+  }
+  const raw = String(
     brief?.site_input?.address ||
       brief?.siteInput?.address ||
       brief?.address ||
@@ -7947,10 +8030,12 @@ function resolveBriefAddress(brief = {}, projectContext = null) {
   )
     .replace(/\s+/g, " ")
     .trim();
+  return normalizeAddressCasing(raw);
 }
 
 function formatAddressForProjectTitle(address = "") {
-  const compact = normalizeTitleText(address);
+  const compact = normalizeAddressCasing(address);
+  if (!compact) return "";
   const withoutPostcode = compact
     .replace(/\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i, "")
     .replace(/\s*,\s*$/g, "")
@@ -10330,6 +10415,13 @@ function buildVisualPanelStatusBadge(artifact = null) {
         artifactMetadataValue(artifact, "imageRenderFallbackReason") ||
         "image_generation_disabled_or_unavailable",
     };
+  }
+  // Success-path provenance badge is dev/QA only — opt-in via env. In
+  // production the badge would leak pipeline internals onto the client-facing
+  // sheet. The fallback badge above is *not* gated: render failures must
+  // remain visible in every build.
+  if (process.env.A1_SHOW_PROVENANCE_BADGES !== "true") {
+    return null;
   }
   return {
     label: "IMAGE2 EDIT",
@@ -14926,6 +15018,14 @@ export const __projectGraphVerticalSliceInternals = Object.freeze({
   wrapPngAsSvgPanel,
   // Phase 4: exposed for unit testing the upstream-gate technical-blocker fold.
   applyUpstreamGateTechnicalBlockersToQa,
+  // PR1 (A1 defect remediation): address normalization helpers exposed for
+  // unit testing the brief.address_override + Title Case + postcode uppercase
+  // path.
+  resolveBriefAddress,
+  formatAddressForProjectTitle,
+  normalizeAddressCasing,
+  titleCaseAddressSegment,
+  buildVisualPanelStatusBadge,
 });
 
 export default {
