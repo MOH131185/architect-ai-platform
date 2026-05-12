@@ -135,6 +135,16 @@ const OPTIONAL_PRESENTATION = [
       "Optional material swatch thumbnails; separate from ProjectGraph visual panels",
   },
   {
+    name: "A1_RENDER_GEOMETRY_QA_ENABLED",
+    description:
+      "Set true to enable the photoreal-render vs ProjectGraph vision-QA loop (PR5). Off by default; opting in adds one STEP_09_3D_QA_MODEL call per panel plus up to 2 retries on geometry drift.",
+  },
+  {
+    name: "A1_SHOW_PROVENANCE_BADGES",
+    description:
+      "Set true to render the IMAGE2 EDIT provenance badge on photoreal panels (dev/QA only). Default off so the badge does not leak onto client-facing sheets.",
+  },
+  {
     name: "OPENAI_ALLOW_REACT_APP_SERVER_KEY",
     description:
       "Local-dev only compatibility fallback for REACT_APP_OPENAI_API_KEY",

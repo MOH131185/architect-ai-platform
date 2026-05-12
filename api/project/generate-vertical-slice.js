@@ -1,5 +1,6 @@
 import { setCorsHeaders, handlePreflight } from "../_shared/cors.js";
 import { buildArchitectureProjectVerticalSlice } from "../../src/services/project/projectGraphVerticalSliceService.js";
+import { ProgrammeNDSSViolationError } from "../../src/services/project/ndssValidator.js";
 import { buildArtifactPackageWithPdfStitching } from "../../src/services/export/artifactPackageService.js";
 import {
   getDefaultArtifactStorageAdapter,
@@ -193,6 +194,21 @@ export default async function handler(req, res) {
     }
     return res.status(result.success ? 200 : 422).json(result);
   } catch (error) {
+    // PR7 (production hardening): NDSS violations are an unprocessable-
+    // brief problem, not a server crash. Return 422 with the structured
+    // violation list so the caller can show the architect exactly which
+    // rooms breach which rule (and which target_gia_m2 / target_bedrooms
+    // combination would resolve it).
+    if (error instanceof ProgrammeNDSSViolationError) {
+      return res.status(422).json({
+        success: false,
+        error: error.message,
+        code: "PROGRAMME_NDSS_VIOLATION",
+        ndss_violations: Array.isArray(error.violations)
+          ? error.violations
+          : [],
+      });
+    }
     return res.status(500).json({
       success: false,
       error: error.message || "ProjectGraph vertical slice generation failed",
