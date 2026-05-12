@@ -5,7 +5,7 @@ import {
 } from "./v2ProjectContracts.js";
 import { buildCanonicalDrawingModelFromCompiledProject } from "../cad/canonicalDrawingModel.js";
 import { exportCanonicalDrawingModelToDXF } from "../cad/canonicalDxfExporter.js";
-import ukRateCardV1 from "../../data/costRateCards/uk_v1.json";
+import ukRateCardV1 from "../../data/costRateCards/uk_v1.json" with { type: "json" };
 
 function round(value, precision = 3) {
   const numeric = Number(value);
