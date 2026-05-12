@@ -414,6 +414,19 @@ export async function renderProjectGraphPanelImage({
   prompt,
   geometryHash,
   env = process.env,
+  // PR5 (A1 defect remediation): optional ProjectGraph geometry used by
+  // the vision-QA verifier to score the rendered image against canonical
+  // properties. When omitted, QA is skipped silently (same behaviour as
+  // pre-PR5).
+  projectGeometry = null,
+  // PR5: opt-in retry-on-drift count. Default 0 keeps pre-PR5 behaviour;
+  // production opts in via the renderer caller passing `maxQARetries: 2`
+  // when A1_RENDER_GEOMETRY_QA_ENABLED=true. Capped at 2 to bound cost.
+  maxQARetries = 0,
+  // PR5: testable verifier injection. When supplied, used in place of
+  // the default OpenAI vision call. Tests pass mocks; production leaves
+  // this null and the verifier resolves STEP_09_3D_QA_MODEL itself.
+  qaVerifier = null,
 } = {}) {
   const config = getProjectGraphImageProviderConfig(env);
   if (!config.imageGenEnabled) {
@@ -474,15 +487,86 @@ export async function renderProjectGraphPanelImage({
       },
     });
 
-    const result = await callOpenAIImageEdit({
-      imageBuffer: referencePng,
-      prompt,
-      panelType,
-      env,
-    });
+    // PR5: render-then-verify-then-retry loop. Default maxQARetries=0
+    // preserves the pre-PR5 single-shot behaviour. When the caller opts
+    // in (maxQARetries>=1) AND the env gate A1_RENDER_GEOMETRY_QA_ENABLED
+    // is set, each render is scored against the canonical ProjectGraph
+    // properties; on a sub-threshold score we amend the prompt with the
+    // mismatch list and re-render up to `maxQARetries` times before
+    // falling back to the deterministic SVG.
+    const clampedRetries = Math.max(0, Math.min(2, Number(maxQARetries) || 0));
+    let activePrompt = prompt;
+    let lastResult = null;
+    let lastQa = null;
+    let attempts = 0;
+    const qaAttemptLog = [];
+
+    while (attempts <= clampedRetries) {
+      attempts += 1;
+      lastResult = await callOpenAIImageEdit({
+        imageBuffer: referencePng,
+        prompt: activePrompt,
+        panelType,
+        env,
+      });
+
+      if (clampedRetries === 0) {
+        // QA loop opted out — keep pre-PR5 single-call behaviour.
+        break;
+      }
+
+      // Lazy-import to keep the verifier optional. When the env gate is
+      // disabled the module returns ok:true / skipped:true immediately.
+      const { verifyRenderAgainstGeometry, amendPromptForRetry } =
+        await import("./renderGeometryQA.js");
+      lastQa = await verifyRenderAgainstGeometry({
+        pngBytes: lastResult.pngBuffer,
+        projectGeometry,
+        panelType,
+        env,
+        verifier: qaVerifier,
+      });
+      qaAttemptLog.push({
+        attempt: attempts,
+        score: lastQa.score,
+        ok: lastQa.ok,
+        skipped: lastQa.skipped,
+        reason: lastQa.reason,
+        mismatches: lastQa.mismatches,
+      });
+      if (lastQa.ok || lastQa.skipped) break;
+      if (attempts > clampedRetries) break;
+      // Amend the prompt with the mismatch list and try again.
+      const expected = lastQa.expected || null;
+      activePrompt = amendPromptForRetry(prompt, lastQa.mismatches, expected);
+    }
+
+    if (lastQa && !lastQa.ok && !lastQa.skipped) {
+      // Exhausted retries with sub-threshold scores — fall back to the
+      // deterministic SVG axonometric. The badge flips to
+      // "DETERMINISTIC FALLBACK" via the artifact metadata flag.
+      logger.warn(
+        `[OpenAI] FALLBACK panel=${panelType} reason=geometry_drift score=${lastQa.score}`,
+        {
+          panelType,
+          attempts,
+          score: lastQa.score,
+          mismatches: lastQa.mismatches,
+        },
+      );
+      return handleFallback({
+        panelType,
+        geometryHash,
+        reason: "geometry_drift",
+        config,
+        error: new Error(
+          `Render QA failed after ${attempts} attempts; mismatches: ${(lastQa.mismatches || []).join("; ") || "(none)"}`,
+        ),
+      });
+    }
 
     return {
-      pngBuffer: result.pngBuffer,
+      pngBuffer: lastResult.pngBuffer,
       provider: "openai",
       providerUsed: "openai",
       imageProviderUsed: "openai",
@@ -490,8 +574,8 @@ export async function renderProjectGraphPanelImage({
       imageRenderFallbackReason: null,
       fallbackReason: null,
       openaiConfigured: true,
-      requestId: result.requestId,
-      usage: result.usage,
+      requestId: lastResult.requestId,
+      usage: lastResult.usage,
       provenance: {
         renderer: RENDERER_VERSION,
         panelType,
@@ -500,17 +584,20 @@ export async function renderProjectGraphPanelImage({
         imageProviderUsed: "openai",
         imageRenderFallback: false,
         imageRenderFallbackReason: null,
-        model: result.model,
-        size: result.size,
-        revisedPrompt: result.revisedPrompt,
-        requestId: result.requestId,
-        usage: result.usage,
-        keySource: result.keySource,
-        keyLast4: result.keyLast4,
-        orgConfigured: result.orgConfigured,
-        projectConfigured: result.projectConfigured,
+        model: lastResult.model,
+        size: lastResult.size,
+        revisedPrompt: lastResult.revisedPrompt,
+        requestId: lastResult.requestId,
+        usage: lastResult.usage,
+        keySource: lastResult.keySource,
+        keyLast4: lastResult.keyLast4,
+        orgConfigured: lastResult.orgConfigured,
+        projectConfigured: lastResult.projectConfigured,
         sourceGeometryHash: geometryHash,
         referenceSource: "compiled_3d_control_svg",
+        // PR5 provenance: QA loop attempt history. Absent when
+        // maxQARetries === 0 (pre-PR5 default).
+        qaAttempts: qaAttemptLog.length > 0 ? qaAttemptLog : null,
       },
     };
   } catch (error) {

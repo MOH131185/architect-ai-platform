@@ -8274,7 +8274,29 @@ export function buildTitleBlockPanelArtifact({
     brief?.revision || brief?.rev || sheetPlan?.revision || "P01",
   ).trim();
   const dateLabel = String(
-    brief?.brief_date || brief?.date || sheetPlan?.date || todayIsoDate(),
+    brief?.brief_date ||
+      brief?.date ||
+      sheetPlan?.date ||
+      // PR5: add sheetPlan.issue_date to the fallback chain so the title
+      // block can honour an explicit issue date independent of brief_date
+      // (the latter is the brief's authoring date, the former is the
+      // sheet's issue date — different lifecycle events).
+      sheetPlan?.issue_date ||
+      sheetPlan?.issueDate ||
+      todayIsoDate(),
+  ).trim();
+  // PR5: surface drawn-by / checked-by initials in the title block so the
+  // sheet carries a clear authorship trail. brief.team.{drawn_by,
+  // checked_by} are the canonical inputs; defaults flag the deliverable
+  // as AI-drawn / unchecked when no team metadata is supplied.
+  const drawnBy = String(
+    brief?.team?.drawn_by || brief?.team?.drawnBy || brief?.drawn_by || "AI",
+  ).trim();
+  const checkedBy = String(
+    brief?.team?.checked_by ||
+      brief?.team?.checkedBy ||
+      brief?.checked_by ||
+      "—",
   ).trim();
   const architectName = String(
     brief?.architect ||
@@ -8315,6 +8337,11 @@ export function buildTitleBlockPanelArtifact({
     ["Target GIA", `${round(brief?.target_gia_m2 || 0, 1)} m²`],
     ["Storeys", `${brief?.target_storeys || 1}`],
     [labelFor("ribaStage", "RIBA Stage"), ribaStageLabel],
+    // PR5: authorship rows so the sheet carries who drew it and whether
+    // a human has signed off. Defaults flag the deliverable as AI-drawn
+    // and unchecked when no team metadata is supplied.
+    [labelFor("drawnBy", "Drawn by"), drawnBy],
+    [labelFor("checkedBy", "Checked by"), checkedBy],
   ];
   const rowStartY = 232;
   const rowGap = 50;
@@ -11134,6 +11161,10 @@ async function buildA1Sheet({
     },
     sheetPanelArtifacts: supplementalPanelArtifacts,
     panelArtifacts,
+    // PR5: expose the panel-level QA summary so the caller can pipe its
+    // status into the PDF /Subject (was hardcoded to "pending"). Empty
+    // when QA hasn't been computed for this sheet.
+    qaSummary: panelQaSummary,
   };
 }
 
@@ -14214,6 +14245,12 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       geometryHash: compiledProject.geometryHash,
       sheetArtifact: sheetResult.sheetArtifact,
       renderIntent: pdfRenderIntent,
+      // PR5: pipe the panel-level QA status (passed / warn / fail) into
+      // the PDF /Subject. Falls back to "unknown" when qaSummary has no
+      // resolved status. Replaces the hardcoded "pending" string seen in
+      // the metadata of the reviewed A1 PDF.
+      qaStatus:
+        (sheetResult?.qaSummary && sheetResult.qaSummary.status) || "unknown",
     });
     __vsMark = __vsLog(
       `build_a1_pdf[${sheetTag}]`,
