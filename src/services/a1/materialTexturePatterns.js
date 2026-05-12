@@ -407,7 +407,25 @@ export function normalizeMaterialPaletteEntries({
     });
   }
 
-  return Array.from(byName.values()).slice(0, 8);
+  // PR4: dedup ROOF entries. The reviewed A1 sheet shipped CONCRETE TILE,
+  // NATURAL SLATE and SLATE all in the same palette — three roof finishes
+  // for a single roof. Architecturally the palette must commit to one
+  // primary roof material. Keep the first ROOF-category entry encountered
+  // (collection order privileges project_graph / local_style over later
+  // sources) and drop the rest. Other categories (EXTERIOR, OPENINGS,
+  // DETAIL, LANDSCAPE) keep their multi-entry behaviour because dwellings
+  // legitimately have primary + secondary façade materials, multiple
+  // window finishes, etc.
+  const entries = Array.from(byName.values());
+  let seenRoof = false;
+  const deduped = entries.filter((entry) => {
+    if (inferMaterialCategory(entry) !== "ROOF") return true;
+    if (seenRoof) return false;
+    seenRoof = true;
+    return true;
+  });
+
+  return deduped.slice(0, 8);
 }
 
 /**
