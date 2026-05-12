@@ -5989,12 +5989,17 @@ function buildDrawingSet(compiledProject, options = {}) {
         panel_type: panelType,
         source_model_hash: compiledProject.geometryHash,
         source_project_graph_id: null,
+        // PR3: elevations move to 1:100 to match the plans and the UK
+        // residential convention. Other drawing types (site, axonometric,
+        // construction details) keep the 1:200 fallback.
         scale:
           drawingType === "floor_plan"
             ? "1:100"
             : drawingType === "section"
               ? "1:100"
-              : "1:200",
+              : drawingType === "elevation"
+                ? "1:100"
+                : "1:200",
         level_id: panelType.startsWith("floor_plan_")
           ? panel.technicalQualityMetadata?.level_id || null
           : null,

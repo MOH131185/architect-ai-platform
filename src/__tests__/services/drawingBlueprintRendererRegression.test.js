@@ -354,7 +354,11 @@ describe("Blueprint renderer regressions", () => {
       expect(drawing.svg).not.toContain("#2c78c4");
       expect(drawing.svg).not.toContain("#f6ede3");
     });
-    expect(plan.svg).not.toContain('id="north-arrow"');
+    // PR3 (A1 defect remediation): per-floor-plan north arrows are now
+    // always rendered, including in sheetMode. The reviewed A1 sheet only
+    // had a north arrow on the site panel; the architect critique flagged
+    // that each floor plan should carry its own consistent N glyph.
+    expect(plan.svg).toContain('id="north-arrow"');
     expect(plan.svg).not.toContain('id="title-block"');
     expect(elevation.svg).not.toContain('id="phase7-elevation-title-block"');
     expect(section.svg).not.toContain('id="phase8-section-title-block"');

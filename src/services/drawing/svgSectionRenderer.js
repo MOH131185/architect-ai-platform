@@ -608,13 +608,32 @@ function renderLevelDatums(
   const secondaryStroke = polishSize(lineweights.secondary || 1, strokeScale);
   const primaryLabelFont = polishSize(9, fontScale);
   const secondaryLabelFont = polishSize(8.5, fontScale);
-  levelProfiles.forEach((level) => {
+  // PR3: when the topmost level's top_m coincides with the EAVES datum (the
+  // common case for a single-roof, no-flat-roof building) we drop its label
+  // to avoid the duplicate "FFL ROOF +6.40m / EAVES +6.40m" pair seen on
+  // the reviewed A1 sheet. The EAVES datum is the architectural truth
+  // for the top-of-wall plate; we don't want the redundant ceiling datum
+  // text. The dashed ceiling line itself is still drawn.
+  const candidateEavesM = Number(options.eavesHeightM);
+  const lastLevelIndex = levelProfiles.length - 1;
+  const TOP_LEVEL_EAVES_TOLERANCE_M = 0.05;
+  levelProfiles.forEach((level, index) => {
     const topY = baseY - level.top_m * scale;
     const midY =
       baseY - (level.bottom_m + Number(level.height_m || 3.2) / 2) * scale;
     lines.push(
       `<line class="cad-section-ceiling-datum cad-lineweight-detail" x1="${baseX}" y1="${topY}" x2="${baseX + widthPx}" y2="${topY}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${datumWeight}" stroke-dasharray="10 6" data-datum-role="ceiling" />`,
     );
+    const topCoincidesWithEaves =
+      index === lastLevelIndex &&
+      Number.isFinite(candidateEavesM) &&
+      candidateEavesM > 0 &&
+      Math.abs(level.top_m - candidateEavesM) <= TOP_LEVEL_EAVES_TOLERANCE_M;
+    if (topCoincidesWithEaves) {
+      // Skip this level's ceiling-height label. The EAVES datum emitted
+      // below will represent the same elevation with the correct name.
+      return;
+    }
     labels.push(`
       <g class="phase8-section-level-label">
         <line x1="${baseX - 52}" y1="${topY}" x2="${baseX - 6}" y2="${topY}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${secondaryStroke}" />
@@ -2155,6 +2174,13 @@ export function renderSectionSvg(
     },
   };
 }
+
+// PR3 (A1 defect remediation): expose renderLevelDatums for unit-testing the
+// FFL / EAVES / RIDGE chain and the topmost-level de-dup behaviour without
+// having to spin up a full renderSectionSvg with complete geometry.
+export const __svgSectionRendererInternals = Object.freeze({
+  renderLevelDatums,
+});
 
 export default {
   renderSectionSvg,

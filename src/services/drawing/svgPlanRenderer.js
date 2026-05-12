@@ -1527,7 +1527,7 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
   ${roomLabelMarkup ? `<g id="plan-room-labels" class="cad-layer-annotations">${roomLabelMarkup}</g>` : ""}
   ${sectionMarkers.markup}
   ${dimensionMarkup}
-  ${!sheetMode ? renderNorthArrow(width, layout, theme, geometry.site?.north_orientation_deg || 0) : ""}
+  ${renderNorthArrow(width, layout, theme, geometry.site?.north_orientation_deg || 0)}
   ${titleBlock}
   ${scaleBar.markup}
   ${options.overlayMarkup || ""}
@@ -1553,7 +1553,7 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
       geometry_completeness: geometrySummary.completeness,
       room_label_count: options.hideRoomLabels ? 0 : levelRooms.length,
       area_label_count: options.hideRoomLabels ? 0 : levelRooms.length,
-      has_north_arrow: !sheetMode,
+      has_north_arrow: true,
       has_title_block: showInternalTitleBlock,
       has_legend: false,
       has_external_dimensions: true,

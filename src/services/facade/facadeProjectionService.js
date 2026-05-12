@@ -298,6 +298,14 @@ export function projectFacadeGeometry(geometry = {}, orientation = "south") {
       if (!wall || resolveEntitySide(wall) !== side) {
         return null;
       }
+      // PR3: only doors on exterior walls appear on elevation views.
+      // Interior doors (between rooms) shouldn't be projected onto the
+      // facade — the reviewed A1 sheet showed D01–D09 because every
+      // internal door from the slice service was being numbered alongside
+      // the front + back entrances.
+      if (wall.exterior !== true) {
+        return null;
+      }
       return projectOpening(door, wall, bounds, side, levelProfiles, "door");
     })
     .filter(Boolean);
