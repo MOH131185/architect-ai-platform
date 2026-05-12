@@ -2202,10 +2202,14 @@ describe("projectGraphVerticalSliceService", () => {
     expect(
       result.projectGraph.programme.template_provenance.resolved_template,
     ).toBe("community");
+    // PR2: dwellingProgrammeTemplate room names changed when the template
+    // became parametric on target_bedrooms. "Bedroom 3 or study" is now
+    // simply "Bedroom 3"; the sentinel set tracks the post-PR2 names so
+    // the assertion still catches a dwelling-typical leak.
     const dwellingSpaceNames = new Set([
       "Principal bedroom",
       "Bedroom 2",
-      "Bedroom 3 or study",
+      "Bedroom 3",
     ]);
     const hasDwellingSpace = result.projectGraph.programme.spaces.some(
       (space) => dwellingSpaceNames.has(space.name),

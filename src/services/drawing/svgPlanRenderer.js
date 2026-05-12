@@ -325,7 +325,30 @@ function buildTransform(bounds, width, height, layout = {}) {
   };
 }
 
+// Exported for the PR2 stair-label-dedup unit test.
+export function isStairLikeName(name) {
+  const lower = String(name || "")
+    .trim()
+    .toLowerCase();
+  return (
+    lower === "stair" || lower === "stair core" || /^stair[\s-]/i.test(lower)
+  );
+}
+
 function renderRoomLabel(room = {}, project, theme, options = {}) {
+  // PR2: suppress duplicate "STAIR" labels on plan. The geometric stair
+  // object is rendered separately by renderStairMarkup (which only emits
+  // the "UP" arrow — no STAIR text). Some upstream programme paths emit a
+  // room named "Stair" / "Stair Core" alongside the geometric stair, which
+  // produced the dual STAIR labels on the reviewed A1 sheet. Suppress the
+  // room-label only when the room's type does NOT confirm it's a stair room
+  // (rooms genuinely typed as stair via residentialProgramEngine still get
+  // their label).
+  const roomType = String(room.type || room.program_type || "").toLowerCase();
+  if (isStairLikeName(room.name) && roomType !== "stair") {
+    return "";
+  }
+
   const bbox = resolveRoomBBox(room);
   const centroid = pointFrom(room.centroid, {
     x: (Number(bbox.min_x) + Number(bbox.max_x)) / 2,

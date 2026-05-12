@@ -76,6 +76,10 @@ import {
   runRegulationRules,
   summarizeRuleResults,
 } from "../regulation/runRules.js";
+import {
+  validateRoomsAgainstNDSS,
+  ProgrammeNDSSViolationError,
+} from "./ndssValidator.js";
 import { buildLocalStylePackV2 } from "../style/localStylePack.js";
 import {
   buildStyleBlendManifest,
@@ -1531,7 +1535,52 @@ function communityProgrammeTemplate(upperLevel) {
   ];
 }
 
-function dwellingProgrammeTemplate(upperLevel) {
+// PR2: parametric on targetBedrooms. The original 3-bed template is preserved
+// (targetBedrooms = 3 → identical ratios to the pre-PR2 version) so existing
+// briefs are unaffected. 4-bed and 5-bed briefs are now supported; 1-bed and
+// 2-bed are also supported. Ratios per bedroom count are tuned so the total
+// programme ratio sums to ~1.0 regardless of N — the bedroom budget stays at
+// 0.34 of target_gia_m2 and is distributed across N bedrooms with descending
+// shares so the principal stays the largest. WC and utility are split into
+// two service rooms so neither collapses into a long-thin slot (the reviewed
+// A1 sheet produced a 3.6 × 1.1 m "WC" from the combined 0.05 cell).
+const DWELLING_BEDROOM_RATIOS = Object.freeze({
+  1: [0.34],
+  2: [0.2, 0.14],
+  3: [0.14, 0.11, 0.09],
+  4: [0.12, 0.09, 0.07, 0.06],
+  5: [0.1, 0.08, 0.06, 0.05, 0.05],
+});
+
+function clampDwellingBedroomCount(value) {
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n)) return 3;
+  return Math.min(5, Math.max(1, n));
+}
+
+function dwellingProgrammeTemplate(upperLevel, targetBedrooms = 3) {
+  const bedroomCount = clampDwellingBedroomCount(targetBedrooms);
+  const bedroomRatios = DWELLING_BEDROOM_RATIOS[bedroomCount];
+  const bedrooms = bedroomRatios.map((ratio, idx) => {
+    if (idx === 0) {
+      return [
+        "Principal bedroom",
+        "main bedroom",
+        "private",
+        ratio,
+        upperLevel,
+        "medium",
+      ];
+    }
+    return [
+      `Bedroom ${idx + 1}`,
+      "secondary bedroom",
+      "private",
+      ratio,
+      upperLevel,
+      "medium",
+    ];
+  });
   return [
     [
       "Entrance hall",
@@ -1543,14 +1592,8 @@ function dwellingProgrammeTemplate(upperLevel) {
     ],
     ["Living room", "family living space", "public", 0.18, 0, "high"],
     ["Kitchen dining", "cooking and dining space", "public", 0.16, 0, "high"],
-    [
-      "WC and utility",
-      "ground floor WC and utility",
-      "service",
-      0.05,
-      0,
-      "low",
-    ],
+    ["WC", "ground floor WC", "service", 0.025, 0, "low"],
+    ["Utility", "ground floor utility", "service", 0.025, 0, "low"],
     [
       "Ground circulation",
       "horizontal circulation",
@@ -1559,23 +1602,7 @@ function dwellingProgrammeTemplate(upperLevel) {
       0,
       "medium",
     ],
-    [
-      "Principal bedroom",
-      "main bedroom",
-      "private",
-      0.14,
-      upperLevel,
-      "medium",
-    ],
-    ["Bedroom 2", "secondary bedroom", "private", 0.11, upperLevel, "medium"],
-    [
-      "Bedroom 3 or study",
-      "flexible bedroom or study",
-      "private",
-      0.09,
-      upperLevel,
-      "medium",
-    ],
+    ...bedrooms,
     ["Bathroom", "family bathroom", "service", 0.05, upperLevel, "low"],
     [
       "Upper circulation and store",
@@ -4056,7 +4083,7 @@ function typedProjectGraphProgrammeTemplate(buildingType, upperLevel) {
   ]);
 }
 
-function getProgrammeTemplate(buildingType, upperLevel) {
+function getProgrammeTemplate(buildingType, upperLevel, options = {}) {
   const typedTemplate = typedProjectGraphProgrammeTemplate(
     buildingType,
     upperLevel,
@@ -4071,7 +4098,7 @@ function getProgrammeTemplate(buildingType, upperLevel) {
   switch (buildingType) {
     case "dwelling":
       return {
-        template: dwellingProgrammeTemplate(upperLevel),
+        template: dwellingProgrammeTemplate(upperLevel, options.targetBedrooms),
         fallback: false,
       };
     case "community":
@@ -4132,12 +4159,33 @@ function buildTemplateProgramSpaces(brief) {
   const { template, fallback, fallbackFrom } = getProgrammeTemplate(
     brief.building_type,
     templateUpperLevel,
+    {
+      // PR2: thread brief.target_bedrooms through to dwellingProgrammeTemplate.
+      // Other templates ignore the option.
+      targetBedrooms: brief?.target_bedrooms ?? brief?.targetBedrooms,
+    },
   );
 
   const upperLevelCount = Math.max(0, totalStoreys - 1);
   let upperRotation = 0;
-  const remapLevelIndex = (rawLevelIndex) => {
+  // PR2: WC and Utility (and the generic ground-floor stair pinning) must stay
+  // on level 0 even when the building has multiple upper storeys. Without this
+  // guard the rotation could shunt a "service" space upward when the template
+  // had it tagged for the ground floor.
+  const isGroundPinnedName = (name) => {
+    const lower = String(name || "").toLowerCase();
+    return (
+      lower === "wc" ||
+      lower === "utility" ||
+      lower === "entrance hall" ||
+      lower === "ground circulation"
+    );
+  };
+  const remapLevelIndex = (rawLevelIndex, name, zone) => {
     if (rawLevelIndex <= 0 || upperLevelCount <= 0) {
+      return 0;
+    }
+    if (zone === "service" && isGroundPinnedName(name)) {
       return 0;
     }
     if (upperLevelCount === 1) {
@@ -4150,7 +4198,7 @@ function buildTemplateProgramSpaces(brief) {
 
   const spaces = template.map(
     ([name, fn, zone, ratio, levelIndex, daylight], index) => {
-      const remappedLevel = remapLevelIndex(levelIndex);
+      const remappedLevel = remapLevelIndex(levelIndex, name, zone);
       return {
         space_id: createStableId("space", brief.project_name, name, index),
         name,
@@ -5305,6 +5353,8 @@ function layoutRoomsForLevel({
   windows,
   mainEntryOrientation = null,
   layoutSeed = null,
+  buildingType = null,
+  enforceNDSS = false,
 }) {
   const levelId = `level-${levelIndex}`;
   const rooms = [];
@@ -5391,6 +5441,42 @@ function layoutRoomsForLevel({
         }
       : null;
 
+  // PR2: enforce NDSS England minima + a defensive aspect-ratio cap for
+  // dwelling layouts. Other building types follow different programme
+  // standards and are not validated here. Throwing surfaces the violations
+  // to the brief author rather than silently shipping unbuildable plans.
+  //
+  // Default is warn-only so the new check does not break existing test
+  // fixtures that happen to ship sub-NDSS sizes (e.g. the 75 m² Kensington
+  // reference brief). Briefs that genuinely want hard enforcement set
+  // brief.enforce_ndss = true, which flows in as enforceNDSS = true on this
+  // call. Once the existing fixtures are migrated to NDSS-compliant sizes
+  // (PR3+) the default can flip to throw.
+  if (buildingType === "dwelling") {
+    const violations = validateRoomsAgainstNDSS(rooms);
+    if (violations.length > 0) {
+      const stamped = violations.map((v) => ({
+        ...v,
+        levelId,
+        levelIndex,
+      }));
+      if (enforceNDSS) {
+        throw new ProgrammeNDSSViolationError(stamped);
+      }
+      // Warn-only path: log so violations are visible in CI without
+      // breaking the run.
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[ndssValidator] level ${levelIndex}: ${stamped
+          .map(
+            (v) =>
+              `${v.roomName || v.roomId || "(unnamed)"} [${v.ruleKey}]: ${v.message}`,
+          )
+          .join("; ")}`,
+      );
+    }
+  }
+
   return { rooms, stair };
 }
 
@@ -5464,6 +5550,10 @@ function buildProjectGeometryFromProgramme({
       windows,
       mainEntryOrientation: site?.main_entry?.orientation || null,
       layoutSeed: normalizeGenerationSeed(brief.generation_seed),
+      buildingType: brief?.building_type || null,
+      // PR2: NDSS hard-throw is opt-in until existing dwelling fixtures are
+      // migrated to NDSS-compliant sizes. Brief opts in via enforce_ndss.
+      enforceNDSS: brief?.enforce_ndss === true || brief?.enforceNDSS === true,
     });
     rooms.push(...layout.rooms);
     if (layout.stair && levelIndex + 1 < levelCount) {
@@ -15026,6 +15116,13 @@ export const __projectGraphVerticalSliceInternals = Object.freeze({
   normalizeAddressCasing,
   titleCaseAddressSegment,
   buildVisualPanelStatusBadge,
+  // PR2 (A1 defect remediation): dwelling programme template + the wrapper
+  // that threads brief.target_bedrooms through it. Exposed so the PR2 test
+  // file can assert on bedroom count, WC/Utility split, and ground-floor
+  // pinning without spinning up the full vertical-slice pipeline.
+  dwellingProgrammeTemplate,
+  buildTemplateProgramSpaces,
+  layoutRoomsForLevel,
 });
 
 export default {
