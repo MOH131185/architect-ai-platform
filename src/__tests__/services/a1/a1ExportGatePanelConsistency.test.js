@@ -32,7 +32,8 @@ function basePassingGateInputs(overrides = {}) {
     enforceRenderedText: false,
   };
   const sheetArtifact = {
-    svgString: "<svg/>",
+    svgString: "<svg></svg>",
+    svgHash: "sheet-svg-hash",
     sheet_size_mm: { width: 841, height: 594 },
     width: 9933,
     height: 7016,
@@ -49,6 +50,7 @@ function basePassingGateInputs(overrides = {}) {
     heightPt: 1683.7,
     textRenderMode: "font_paths",
     rasterIntegrityStatus: "pass",
+    sourceSvgHash: "sheet-svg-hash",
     pdfBytes: 12345,
   };
   return {
@@ -84,6 +86,106 @@ function fresh2DPanel(panelType, overrides = {}) {
   return {
     panel_type: panelType,
     geometryHash: GEOMETRY_HASH,
+    ...overrides,
+  };
+}
+
+function liveShape3DPanel(panelType, overrides = {}) {
+  const cameraId = `compiled-camera-${panelType}`;
+  const viewDirection =
+    panelType === "axonometric"
+      ? "south+west"
+      : panelType === "interior_3d"
+        ? "interior_room_cutaway_control"
+        : "south+east";
+  return {
+    type: panelType,
+    panelType,
+    panel_type: panelType,
+    status: "ready",
+    hasSvg: true,
+    source_model_hash: GEOMETRY_HASH,
+    geometryHash: GEOMETRY_HASH,
+    sourceGeometryHash: GEOMETRY_HASH,
+    visualManifestHash: VISUAL_MANIFEST_HASH,
+    materialPaletteHash: PALETTE_HASH,
+    paletteHash: PALETTE_HASH,
+    visualIdentityLocked: true,
+    controlViewType:
+      panelType === "interior_3d"
+        ? "interior_room_cutaway_control"
+        : panelType === "axonometric"
+          ? "axonometric_massing_opening_control"
+          : "exterior_massing_opening_control",
+    cameraId,
+    viewDirection,
+    svgString: '<svg data-panel-id="live-3d"/>',
+    metadata: {
+      panelType,
+      geometryHash: GEOMETRY_HASH,
+      sourceGeometryHash: GEOMETRY_HASH,
+      visualManifestHash: VISUAL_MANIFEST_HASH,
+      materialPaletteHash: PALETTE_HASH,
+      paletteHash: PALETTE_HASH,
+      cameraId,
+      viewDirection,
+      camera: { visibleSides: viewDirection.split("+") },
+    },
+    ...overrides,
+  };
+}
+
+function liveShape2DPanel(panelType, overrides = {}) {
+  return {
+    type: panelType,
+    panelType,
+    panel_type: panelType,
+    status: "ready",
+    hasSvg: true,
+    source_model_hash: GEOMETRY_HASH,
+    geometryHash: GEOMETRY_HASH,
+    sourceGeometryHash: GEOMETRY_HASH,
+    authoritySource: "compiled_project",
+    authorityUsed: "compiled_project_canonical_pack",
+    technicalDrawing: true,
+    renderer: "deterministic_svg",
+    provider: "deterministic",
+    providerUsed: "deterministic_svg",
+    imageProviderUsed: "none",
+    svgString: '<svg data-panel-id="live-2d"/>',
+    metadata: {
+      panelType,
+      geometryHash: GEOMETRY_HASH,
+      sourceGeometryHash: GEOMETRY_HASH,
+      authoritySource: "compiled_project",
+      authorityUsed: "compiled_project_canonical_pack",
+      technicalDrawing: true,
+      renderer: "deterministic_svg",
+    },
+    ...overrides,
+  };
+}
+
+function liveShapeMaterialPalettePanel(overrides = {}) {
+  return {
+    type: "material_palette",
+    panelType: "material_palette",
+    panel_type: "material_palette",
+    status: "ready",
+    hasSvg: true,
+    source_model_hash: GEOMETRY_HASH,
+    geometryHash: GEOMETRY_HASH,
+    sourceGeometryHash: GEOMETRY_HASH,
+    materialPaletteHash: PALETTE_HASH,
+    paletteHash: PALETTE_HASH,
+    svgString: '<svg data-panel-id="material_palette"/>',
+    metadata: {
+      panelType: "material_palette",
+      geometryHash: GEOMETRY_HASH,
+      sourceGeometryHash: GEOMETRY_HASH,
+      materialPaletteHash: PALETTE_HASH,
+      paletteHash: PALETTE_HASH,
+    },
     ...overrides,
   };
 }
@@ -163,6 +265,150 @@ describe("evaluateFinalA1ExportGate — Phase 4 panel-consistency evidence wirin
         /PANEL_GEOMETRY_HASH_MISMATCH|VISUAL_MANIFEST_HASH_MISSING|FLOOR_COUNT_MISMATCH|ROOF_TYPE_MISMATCH/,
       );
     }
+  });
+
+  test("ProjectGraph live-shape panel evidence carries Phase 4 metadata without warnings", () => {
+    const result = evaluateFinalA1ExportGate(
+      basePassingGateInputs({
+        compiledProject: compiledProject(),
+        visualManifest: visualManifest(),
+        materialPalette: materialPalette(),
+        panels: [
+          liveShape3DPanel("hero_3d"),
+          liveShape2DPanel("floor_plan_ground"),
+          liveShape2DPanel("elevation_north"),
+          liveShape2DPanel("section_AA"),
+          liveShapeMaterialPalettePanel(),
+        ],
+        visualPanels: [
+          liveShape3DPanel("exterior_render"),
+          liveShape3DPanel("interior_3d"),
+          liveShape3DPanel("axonometric"),
+        ],
+      }),
+    );
+
+    const ev = result.evidence.panelConsistencyStatus;
+    expect(ev.evaluated).toBe(true);
+    expect(ev.status).toBe("pass");
+    for (const drawing of result.evidence.panelConsistencyStatus.raw.mismatches
+      .geometryHash) {
+      expect(drawing.severity).not.toBe("warning");
+    }
+    expect(ev.codes).not.toEqual(
+      expect.arrayContaining([
+        PANEL_CONSISTENCY_CODES.PANEL_GEOMETRY_HASH_MISSING,
+        PANEL_CONSISTENCY_CODES.VISUAL_MANIFEST_HASH_MISSING,
+        PANEL_CONSISTENCY_CODES.MATERIAL_PALETTE_HASH_MISSING,
+        PANEL_CONSISTENCY_CODES.CAMERA_VIEW_METADATA_MISSING,
+      ]),
+    );
+  });
+
+  test("ProjectGraph live-shape materialPaletteHash mismatch blocks final gate", () => {
+    const result = evaluateFinalA1ExportGate(
+      basePassingGateInputs({
+        compiledProject: compiledProject(),
+        visualManifest: visualManifest(),
+        materialPalette: materialPalette({ hash: "palette-gate-different" }),
+        panels: [
+          liveShape3DPanel("hero_3d"),
+          liveShape2DPanel("floor_plan_ground"),
+          liveShapeMaterialPalettePanel(),
+        ],
+        visualPanels: [
+          liveShape3DPanel("exterior_render"),
+          liveShape3DPanel("interior_3d"),
+          liveShape3DPanel("axonometric"),
+        ],
+      }),
+    );
+
+    expect(result.status).toBe("blocked");
+    expect(result.allowed).toBe(false);
+    expect(result.evidence.panelConsistencyStatus.codes).toContain(
+      PANEL_CONSISTENCY_CODES.MATERIAL_PALETTE_HASH_MISMATCH,
+    );
+    expect(
+      result.blockers.some((blocker) =>
+        blocker.includes(
+          PANEL_CONSISTENCY_CODES.MATERIAL_PALETTE_HASH_MISMATCH,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  test("ProjectGraph live-shape missing camera/view warns without blocking", () => {
+    const result = evaluateFinalA1ExportGate(
+      basePassingGateInputs({
+        compiledProject: compiledProject(),
+        visualManifest: visualManifest(),
+        materialPalette: materialPalette(),
+        panels: [
+          liveShape2DPanel("floor_plan_ground"),
+          liveShapeMaterialPalettePanel(),
+        ],
+        visualPanels: [
+          liveShape3DPanel("hero_3d", {
+            cameraId: null,
+            viewDirection: null,
+            metadata: {
+              panelType: "hero_3d",
+              geometryHash: GEOMETRY_HASH,
+              sourceGeometryHash: GEOMETRY_HASH,
+              visualManifestHash: VISUAL_MANIFEST_HASH,
+              materialPaletteHash: PALETTE_HASH,
+              paletteHash: PALETTE_HASH,
+            },
+          }),
+          liveShape3DPanel("exterior_render"),
+          liveShape3DPanel("interior_3d"),
+          liveShape3DPanel("axonometric"),
+        ],
+      }),
+    );
+
+    expect(result.allowed).toBe(true);
+    expect(result.evidence.panelConsistencyStatus.status).toBe("warning");
+    expect(result.evidence.panelConsistencyStatus.codes).toContain(
+      PANEL_CONSISTENCY_CODES.CAMERA_VIEW_METADATA_MISSING,
+    );
+    expect(result.evidence.panelConsistencyStatus.blockers).toEqual([]);
+  });
+
+  test("ProjectGraph live-shape 2D drawing evidence carries geometry authority", () => {
+    const drawings = {
+      plan: [liveShape2DPanel("floor_plan_ground")],
+      elevation: [liveShape2DPanel("elevation_north")],
+      section: [liveShape2DPanel("section_AA")],
+    };
+
+    const result = evaluateFinalA1ExportGate(
+      basePassingGateInputs({
+        compiledProject: compiledProject(),
+        visualManifest: visualManifest(),
+        materialPalette: materialPalette(),
+        panels: [liveShape3DPanel("hero_3d"), liveShapeMaterialPalettePanel()],
+        visualPanels: [
+          liveShape3DPanel("exterior_render"),
+          liveShape3DPanel("interior_3d"),
+          liveShape3DPanel("axonometric"),
+        ],
+        drawings,
+      }),
+    );
+
+    for (const drawing of [
+      ...drawings.plan,
+      ...drawings.elevation,
+      ...drawings.section,
+    ]) {
+      expect(drawing.geometryHash).toBe(GEOMETRY_HASH);
+      expect(drawing.sourceGeometryHash).toBe(GEOMETRY_HASH);
+      expect(drawing.authoritySource).toBe("compiled_project");
+      expect(drawing.authorityUsed).toBe("compiled_project_canonical_pack");
+    }
+    expect(result.evidence.panelConsistencyStatus.status).toBe("pass");
   });
 
   test("3D panel with stale geometryHash → gate blocked + panelConsistencyStatus blocked", () => {

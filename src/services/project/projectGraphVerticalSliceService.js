@@ -7045,22 +7045,13 @@ function buildSiteContextPanelArtifact({
   };
 }
 
-export function buildMaterialPalettePanelArtifact({
-  projectGraphId,
+function resolveProjectGraphMaterialPaletteEntries({
   localStyle,
   compiledProject,
   styleDNA,
   brief,
-  geometryHash,
-  // Phase 2 — when present, the SheetDesignContext supplies the canonical
-  // materials list (normalized via getCanonicalMaterialPalette + DNA fallback).
-  // We prefer ctx.materials over the localStyle / DNA collection so style +
-  // material + climate stay coherent across panels. When absent, fall back to
-  // the legacy Phase E collection logic.
   sheetDesignContext = null,
-}) {
-  const width = 700;
-  const height = 900;
+} = {}) {
   const ctxMaterials = Array.isArray(sheetDesignContext?.materials)
     ? sheetDesignContext.materials.filter(
         (entry) => entry && (entry.name || entry.hexColor || entry.hex),
@@ -7075,14 +7066,12 @@ export function buildMaterialPalettePanelArtifact({
           styleDNA,
           brief,
         });
-  // UK regional vernacular pack (paper §4.3): when the slice resolved a
+
+  // UK regional vernacular pack (paper section 4.3): when the slice resolved a
   // London-stucco / Edinburgh-tenement / Cotswolds-cottage / etc. pack on
   // localStyle.style_provenance, prepend the pack's named materials so they
-  // lead the 2×4 grid instead of being drowned by the canonical 8-material
-  // top-up. The shared normaliser only consults localStyle.material_palette
-  // (which is overridden by sheetDesignContext.materials, see ctxMaterials
-  // above), so this prepend is the surgical fix without touching the
-  // SheetDesignContext canonical-materials path.
+  // lead the 2x4 grid instead of being drowned by the canonical 8-material
+  // top-up.
   const packMaterialNames = Array.isArray(
     localStyle?.style_provenance?.materials,
   )
@@ -7110,9 +7099,75 @@ export function buildMaterialPalettePanelArtifact({
   const mergedBaseMaterials = packEntries.length
     ? [...packEntries, ...(Array.isArray(baseMaterials) ? baseMaterials : [])]
     : baseMaterials;
+
   // Always render up to 8 cards; if the collection is short, top up from the
-  // canonical 8-material fallback so the 2×4 grid stays visually balanced.
-  const materials = topUpMaterialPaletteWithCanonical(mergedBaseMaterials, 8);
+  // canonical 8-material fallback so the 2x4 grid stays visually balanced.
+  return topUpMaterialPaletteWithCanonical(mergedBaseMaterials, 8);
+}
+
+function buildProjectGraphMaterialPaletteHash({
+  geometryHash,
+  materials,
+  sheetDesignContext = null,
+  styleBlendManifestHash = null,
+} = {}) {
+  const materialEntries = (Array.isArray(materials) ? materials : []).map(
+    (material, index) => ({
+      index,
+      name: material?.name || null,
+      application: material?.application || material?.use || null,
+      category: material?.category || null,
+      hex: material?.hexColor || material?.hex || null,
+      source: material?.source || null,
+    }),
+  );
+  if (!materialEntries.length && !styleBlendManifestHash) return null;
+  return computeCDSHashSync({
+    version: "project-graph-material-palette-v1",
+    geometryHash: geometryHash || null,
+    sheetDesignContextHash: sheetDesignContext?.contextHash || null,
+    styleBlendManifestHash:
+      styleBlendManifestHash ||
+      sheetDesignContext?.styleBlendManifestHash ||
+      null,
+    materials: materialEntries,
+  });
+}
+
+export function buildMaterialPalettePanelArtifact({
+  projectGraphId,
+  localStyle,
+  compiledProject,
+  styleDNA,
+  brief,
+  geometryHash,
+  // Phase 2 — when present, the SheetDesignContext supplies the canonical
+  // materials list (normalized via getCanonicalMaterialPalette + DNA fallback).
+  // We prefer ctx.materials over the localStyle / DNA collection so style +
+  // material + climate stay coherent across panels. When absent, fall back to
+  // the legacy Phase E collection logic.
+  sheetDesignContext = null,
+}) {
+  const width = 700;
+  const height = 900;
+  const styleBlendManifestHash =
+    sheetDesignContext?.styleBlendManifestHash ||
+    sheetDesignContext?.styleBlendManifest?.manifestHash ||
+    localStyle?.styleBlendManifestHash ||
+    null;
+  const materials = resolveProjectGraphMaterialPaletteEntries({
+    localStyle,
+    compiledProject,
+    styleDNA,
+    brief,
+    sheetDesignContext,
+  });
+  const materialPaletteHash = buildProjectGraphMaterialPaletteHash({
+    geometryHash,
+    materials,
+    sheetDesignContext,
+    styleBlendManifestHash,
+  });
   const { defs, cards, cardMetadata } = buildMaterialPaletteCards({
     materials,
     layout: {
@@ -7141,11 +7196,6 @@ export function buildMaterialPalettePanelArtifact({
       categoryOffset: 10,
     },
   });
-  const styleBlendManifestHash =
-    sheetDesignContext?.styleBlendManifestHash ||
-    sheetDesignContext?.styleBlendManifest?.manifestHash ||
-    localStyle?.styleBlendManifestHash ||
-    null;
   const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="material_palette" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-style-blend-manifest-hash="${escapeXml(styleBlendManifestHash || "")}">
   <defs>${defs}</defs>
   <rect width="${width}" height="${height}" fill="#ffffff"/>
@@ -7171,6 +7221,8 @@ export function buildMaterialPalettePanelArtifact({
     panelType: "material_palette",
     source_model_hash: geometryHash,
     geometryHash,
+    materialPaletteHash,
+    paletteHash: materialPaletteHash,
     authoritySource: "project_graph_compiled_geometry",
     svgHash,
     width,
@@ -7182,6 +7234,8 @@ export function buildMaterialPalettePanelArtifact({
       source: "project_graph_material_palette",
       panelType: "material_palette",
       geometryHash,
+      materialPaletteHash,
+      paletteHash: materialPaletteHash,
       materialCount: materials.length,
       materials,
       cardMetadata,
@@ -9074,6 +9128,24 @@ function controlViewTypeForPanelType(panelType = "") {
   return null;
 }
 
+function cameraViewDirectionFromMetadata(camera = null) {
+  if (!camera || typeof camera !== "object") return null;
+  if (Array.isArray(camera.visibleSides) && camera.visibleSides.length) {
+    return camera.visibleSides
+      .map((side) => String(side || "").trim())
+      .filter(Boolean)
+      .join("+");
+  }
+  const yaw = Number(camera.yawDeg);
+  const pitch = Number(camera.pitchDeg);
+  if (Number.isFinite(yaw) || Number.isFinite(pitch)) {
+    return `yaw_${Number.isFinite(yaw) ? yaw : "na"}_pitch_${
+      Number.isFinite(pitch) ? pitch : "na"
+    }`;
+  }
+  return null;
+}
+
 function buildVisualControlConsistencyMetadata(visualManifest = null) {
   if (!visualManifest || typeof visualManifest !== "object") return null;
   return {
@@ -9214,6 +9286,7 @@ export async function buildVisual3DPanelArtifacts({
   // Phase 4 — optional SheetDesignContext for cutaway programme injection
   // and identity metadata propagation.
   sheetDesignContext = null,
+  materialPaletteHash = null,
 }) {
   // Phase 4 — feature flag gate. Default off; production behaviour
   // unchanged. Server-side env override is `PROJECT_GRAPH_AXONOMETRIC_CUTAWAY_ENABLED=true`.
@@ -9238,6 +9311,25 @@ export async function buildVisual3DPanelArtifacts({
     geometryHash,
     views: REQUIRED_3D_A1_PANEL_TYPES,
   });
+  const styleBlendManifestHash =
+    visualManifest?.styleBlendManifestHash ||
+    sheetDesignContext?.styleBlendManifestHash ||
+    localStyle?.styleBlendManifestHash ||
+    null;
+  const resolvedMaterialPaletteHash =
+    materialPaletteHash ||
+    buildProjectGraphMaterialPaletteHash({
+      geometryHash,
+      materials: resolveProjectGraphMaterialPaletteEntries({
+        localStyle,
+        compiledProject,
+        styleDNA,
+        brief,
+        sheetDesignContext,
+      }),
+      sheetDesignContext,
+      styleBlendManifestHash,
+    });
   const entries = await Promise.all(
     REQUIRED_3D_A1_PANEL_TYPES.map(async (panelType) => {
       const renderInput = renderInputs[panelType] || {};
@@ -9368,10 +9460,6 @@ export async function buildVisual3DPanelArtifacts({
       const requestId =
         renderProvenance?.requestId || renderResult?.requestId || null;
       const usage = renderProvenance?.usage || renderResult?.usage || null;
-      const styleBlendManifestHash =
-        visualManifest?.styleBlendManifestHash ||
-        sheetDesignContext?.styleBlendManifestHash ||
-        null;
       const generationSeed = normalizeGenerationSeed(brief?.generation_seed);
       const seedSource = brief?.seedSource || null;
       const variationMode = brief?.variationMode || null;
@@ -9379,6 +9467,17 @@ export async function buildVisual3DPanelArtifacts({
         renderInput.controlViewType ||
         renderInput.metadata?.controlViewType ||
         controlViewTypeForPanelType(panelType);
+      const cameraMetadata = renderInput.metadata?.camera || null;
+      const cameraId =
+        renderInput.cameraId ||
+        renderInput.metadata?.cameraId ||
+        `compiled-camera-${panelType}`;
+      const viewDirection =
+        renderInput.viewDirection ||
+        renderInput.metadata?.viewDirection ||
+        cameraViewDirectionFromMetadata(cameraMetadata) ||
+        controlViewType ||
+        null;
       const semanticViewClass =
         panelType === "interior_3d"
           ? "interior"
@@ -9413,10 +9512,14 @@ export async function buildVisual3DPanelArtifacts({
           visualManifestId: visualManifest?.manifestId || null,
           visualManifestHash: visualManifest?.manifestHash || null,
           styleBlendManifestHash,
+          materialPaletteHash: resolvedMaterialPaletteHash,
+          paletteHash: resolvedMaterialPaletteHash,
           visualIdentityLocked: Boolean(visualManifest?.manifestHash),
           visualControlConsistency: controlConsistency,
           referenceSource: "compiled_3d_control_svg",
           controlViewType,
+          cameraId,
+          viewDirection,
           provider,
           providerUsed,
           imageProviderUsed,
@@ -9496,7 +9599,11 @@ export async function buildVisual3DPanelArtifacts({
             visualManifestId: visualManifest?.manifestId || null,
             visualManifestHash: visualManifest?.manifestHash || null,
             styleBlendManifestHash,
+            materialPaletteHash: resolvedMaterialPaletteHash,
+            paletteHash: resolvedMaterialPaletteHash,
             visualIdentityLocked: Boolean(visualManifest?.manifestHash),
+            cameraId,
+            viewDirection,
             buildingTypology: visualManifest?.buildingTypology || null,
             attachmentType: visualManifest?.attachmentType || null,
             partyWallSides: Array.isArray(visualManifest?.partyWallSides)
@@ -9623,6 +9730,7 @@ async function buildSheetPanelArtifacts({
         region,
         visualManifest,
         sheetDesignContext,
+        materialPaletteHash: materialPalette.materialPaletteHash || null,
       }))
     : {};
   return {
@@ -14748,6 +14856,18 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
           artifact.visualManifestId || metadata.visualManifestId || null,
         visualManifestHash:
           artifact.visualManifestHash || metadata.visualManifestHash || null,
+        materialPaletteHash:
+          artifact.materialPaletteHash ||
+          metadata.materialPaletteHash ||
+          artifact.paletteHash ||
+          metadata.paletteHash ||
+          null,
+        paletteHash:
+          artifact.paletteHash ||
+          metadata.paletteHash ||
+          artifact.materialPaletteHash ||
+          metadata.materialPaletteHash ||
+          null,
         visualIdentityLocked:
           artifact.visualIdentityLocked === true ||
           metadata.visualIdentityLocked === true,
@@ -14774,6 +14894,15 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
           artifact.controlSvgHash || metadata.controlSvgHash || null,
         controlViewType:
           artifact.controlViewType || metadata.controlViewType || null,
+        cameraId:
+          artifact.cameraId ||
+          metadata.cameraId ||
+          (metadata.camera ? `compiled-camera-${panelType}` : null),
+        viewDirection:
+          artifact.viewDirection ||
+          metadata.viewDirection ||
+          cameraViewDirectionFromMetadata(metadata.camera) ||
+          null,
         promptHash: artifact.promptHash || metadata.promptHash || null,
         svgHash: artifact.svgHash || metadata.svgHash || null,
         svgString: artifact.svgString || placement?.svgString || null,
@@ -14790,6 +14919,32 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     );
     const materialPaletteForGate = materialPaletteArtifact
       ? {
+          hash:
+            materialPaletteArtifact.materialPaletteHash ||
+            materialPaletteArtifact.paletteHash ||
+            materialPaletteArtifact.metadata?.materialPaletteHash ||
+            materialPaletteArtifact.metadata?.paletteHash ||
+            null,
+          materialPaletteHash:
+            materialPaletteArtifact.materialPaletteHash ||
+            materialPaletteArtifact.metadata?.materialPaletteHash ||
+            materialPaletteArtifact.paletteHash ||
+            materialPaletteArtifact.metadata?.paletteHash ||
+            null,
+          paletteHash:
+            materialPaletteArtifact.paletteHash ||
+            materialPaletteArtifact.metadata?.paletteHash ||
+            materialPaletteArtifact.materialPaletteHash ||
+            materialPaletteArtifact.metadata?.materialPaletteHash ||
+            null,
+          materials:
+            materialPaletteArtifact.metadata?.materials ||
+            materialPaletteArtifact.materials ||
+            [],
+          primary:
+            materialPaletteArtifact.metadata?.materials?.[0] ||
+            materialPaletteArtifact.materials?.[0] ||
+            null,
           cards:
             materialPaletteArtifact.cardMetadata ||
             materialPaletteArtifact.metadata?.cardMetadata ||
@@ -14818,6 +14973,22 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
         drawingsForGate.plan.push({
           panel_type: artifact?.panel_type || null,
           level_id: artifact?.metadata?.level_id || null,
+          geometryHash:
+            artifact?.geometryHash ||
+            artifact?.sourceGeometryHash ||
+            artifact?.source_model_hash ||
+            artifact?.metadata?.geometryHash ||
+            artifact?.metadata?.sourceGeometryHash ||
+            null,
+          sourceGeometryHash:
+            artifact?.sourceGeometryHash ||
+            artifact?.geometryHash ||
+            artifact?.source_model_hash ||
+            artifact?.metadata?.sourceGeometryHash ||
+            artifact?.metadata?.geometryHash ||
+            null,
+          authoritySource: "compiled_project",
+          authorityUsed: "compiled_project_canonical_pack",
           svg,
           sheet_mode: planSheetMode,
           window_count: inferDrawingWindowCount(artifact, svg),
@@ -14841,6 +15012,22 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       } else if (dt === "elevation") {
         drawingsForGate.elevation.push({
           panel_type: artifact?.panel_type || null,
+          geometryHash:
+            artifact?.geometryHash ||
+            artifact?.sourceGeometryHash ||
+            artifact?.source_model_hash ||
+            artifact?.metadata?.geometryHash ||
+            artifact?.metadata?.sourceGeometryHash ||
+            null,
+          sourceGeometryHash:
+            artifact?.sourceGeometryHash ||
+            artifact?.geometryHash ||
+            artifact?.source_model_hash ||
+            artifact?.metadata?.sourceGeometryHash ||
+            artifact?.metadata?.geometryHash ||
+            null,
+          authoritySource: "compiled_project",
+          authorityUsed: "compiled_project_canonical_pack",
           svg,
           window_count: inferDrawingWindowCount(artifact, svg),
           technicalQualityMetadata:
@@ -14852,6 +15039,22 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
         drawingsForGate.section.push({
           panel_type: artifact?.panel_type || null,
           section_id: sectionIdentifierForPanel(artifact?.panel_type),
+          geometryHash:
+            artifact?.geometryHash ||
+            artifact?.sourceGeometryHash ||
+            artifact?.source_model_hash ||
+            artifact?.metadata?.geometryHash ||
+            artifact?.metadata?.sourceGeometryHash ||
+            null,
+          sourceGeometryHash:
+            artifact?.sourceGeometryHash ||
+            artifact?.geometryHash ||
+            artifact?.source_model_hash ||
+            artifact?.metadata?.sourceGeometryHash ||
+            artifact?.metadata?.geometryHash ||
+            null,
+          authoritySource: "compiled_project",
+          authorityUsed: "compiled_project_canonical_pack",
           svg,
           stair_count: inferSectionStairCount(artifact, svg),
           floor_count: inferSectionFloorCount(artifact),

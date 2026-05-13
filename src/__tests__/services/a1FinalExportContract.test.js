@@ -77,6 +77,11 @@ function healthyProjectAuthorityEvidence() {
               imageProviderUsed: "none",
             }
           : {
+              visualManifestHash: "manifest-hash-OK",
+              materialPaletteHash: "palette-hash-OK",
+              paletteHash: "palette-hash-OK",
+              cameraId: `compiled-camera-${type}`,
+              viewDirection: "south+east",
               providerUsed: "deterministic",
               imageProviderUsed: "deterministic",
             }),
@@ -484,6 +489,7 @@ describe("a1FinalExportContract", () => {
           type.startsWith("section_");
         const isProjectPanel =
           isTechnicalPanel ||
+          type === "site_diagram" ||
           ["hero_3d", "exterior_render", "axonometric", "interior_3d"].includes(
             type,
           );
@@ -508,6 +514,11 @@ describe("a1FinalExportContract", () => {
                 ...(isTechnicalPanel
                   ? {}
                   : {
+                      visualManifestHash: "manifest-hash-OK",
+                      materialPaletteHash: "palette-hash-OK",
+                      paletteHash: "palette-hash-OK",
+                      cameraId: `compiled-camera-${type}`,
+                      viewDirection: "south+east",
                       providerUsed: "deterministic",
                       imageProviderUsed: "deterministic",
                     }),
@@ -531,6 +542,10 @@ describe("a1FinalExportContract", () => {
           geometryHash: "geometry-hash-OK",
           sourceGeometryHash: "geometry-hash-OK",
           visualManifestHash: "manifest-hash-OK",
+          materialPaletteHash: "palette-hash-OK",
+          paletteHash: "palette-hash-OK",
+          cameraId: `compiled-camera-${type}`,
+          viewDirection: "south+east",
           visualIdentityLocked: true,
           referenceSource: "compiled_3d_control_svg",
           provider: "openai",
@@ -542,6 +557,9 @@ describe("a1FinalExportContract", () => {
       );
 
     const buildHealthyMaterialPalette = () => ({
+      hash: "palette-hash-OK",
+      materialPaletteHash: "palette-hash-OK",
+      paletteHash: "palette-hash-OK",
       cards: [
         {
           materialSignature: "sig-brick",
