@@ -528,9 +528,14 @@ const FLOOR_ROW_DESCRIPTORS = {
     ],
     // 3-floor row uses GRID_12COL's existing per-floor slots; no override.
   },
+  // Phase 3 layout: row-1 Y/height MUST mirror GRID_PRESENTATION_V3 so
+  // applyFloorRow's re-tile doesn't overwrite the floor-plan slots back
+  // into the title bar's 10mm + 6mm safe band. Keeping the row-2 boundary
+  // at 0.335 means height = 0.335 - A1_CONTENT_TOP_NORMALIZED - 0.015 gap
+  // ≈ 0.293. See composeCoreLayoutResolveLayout.test.js for the gate.
   "presentation-v3": {
-    y: 0.015,
-    height: 0.305,
+    y: A1_CONTENT_TOP_NORMALIZED,
+    height: 0.293,
     one: { x: 0.235, width: 0.43 },
     two: [
       { x: 0.235, width: 0.21 },
