@@ -1367,6 +1367,46 @@ export function getDefaultArtifactStorageAdapter() {
   return globalThis.__archiaiDefaultArtifactStorageAdapter;
 }
 
+/**
+ * Production durability advisory for the default artifact storage adapter.
+ *
+ * The Phase 1 export-fix stores the master A1 SVG via the storage adapter
+ * (`putBlobArtifact`) so `/api/a1/export` can resolve it via `artifactRef`
+ * across Vercel cold-starts. That guarantee only holds when the configured
+ * adapter is itself durable. This helper makes the active configuration
+ * inspectable for callers (slice handler, monitoring, smoke tests) and
+ * tells operators when they need to upgrade.
+ *
+ *   - "s3": durable cross-instance, suitable for production.
+ *   - "filesystem": durable for the lifetime of the host. On Vercel that is
+ *      one warm instance only — fine for preview, not for cross-instance.
+ *   - "memory": not durable. Loses everything on process restart or cold
+ *      start. Acceptable for unit tests and local dev only.
+ *
+ * The slice handler can react to this (e.g. log a warning or refuse to
+ * advertise the durable artifactRef path) by inspecting the returned
+ * `durable` flag.
+ */
+export function getArtifactStorageAdapterStatus(adapter) {
+  const a = adapter || getDefaultArtifactStorageAdapter();
+  const caps = a?.adapterCapabilities || {};
+  const name = caps.adapter || "unknown";
+  const persistent = caps.persistent === true;
+  // S3 is the only adapter that survives cross-instance reads under
+  // production / preview conditions. Filesystem persists on a single host
+  // but Vercel functions get a fresh `/tmp` on cold starts, so we treat it
+  // as "instance-durable" rather than "production-durable".
+  const productionDurable = name === "s3";
+  const instanceDurable = persistent === true;
+  return {
+    adapter: name,
+    persistent,
+    productionDurable,
+    instanceDurable,
+    supportsBlobArtifact: typeof a?.putBlobArtifact === "function",
+  };
+}
+
 export function setDefaultArtifactStorageAdapter(adapter) {
   globalThis.__archiaiDefaultArtifactStorageAdapter = adapter;
 }
@@ -1416,6 +1456,7 @@ export default {
   createS3ArtifactStorageAdapter,
   resolveArtifactStorageAdapter,
   getDefaultArtifactStorageAdapter,
+  getArtifactStorageAdapterStatus,
   setDefaultArtifactStorageAdapter,
   clearInMemoryArtifactStorage,
   verifySignedDownloadToken,

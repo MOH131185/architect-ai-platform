@@ -22,9 +22,11 @@ import path from "path";
 import os from "os";
 
 // Stateful sharp mock. Tests can override `mockSharpToBuffer` to change the
-// returned PNG bytes; the factory always rebuilds a fresh chainable so the
-// .resize().png().toBuffer() chain works regardless of test order.
+// returned PNG bytes, or `mockSharpMetadata` to feed bogus dimensions into the
+// PNG-source PDF density gate; the factory rebuilds a fresh chainable so the
+// .resize().png().flatten().toBuffer() chain works regardless of test order.
 let mockSharpToBuffer = jest.fn();
+let mockSharpMetadata = jest.fn();
 let mockSharpFactory = jest.fn();
 
 jest.mock("sharp", () => ({
@@ -130,6 +132,13 @@ beforeEach(() => {
     pdfMetadata: {},
   });
   mockSharpToBuffer.mockReset().mockResolvedValue(VALID_PNG_BYTES);
+  // Default to full-A1 dimensions so the existing raster_pdf_from_png test
+  // passes the FINAL_A1_PDF_MIN_RATIO gate. Tests that exercise the "PNG is
+  // too small" path override per-test.
+  mockSharpMetadata.mockReset().mockResolvedValue({
+    width: 9933,
+    height: 7016,
+  });
   // Reinstall the chainable factory each test so mockReset+test-suite isolation
   // (which would otherwise drop the implementation set at module load time)
   // never strands the chainable in an `undefined` state.
@@ -137,7 +146,9 @@ beforeEach(() => {
     const chainable = {
       resize: jest.fn(() => chainable),
       png: jest.fn(() => chainable),
+      flatten: jest.fn(() => chainable),
       toBuffer: () => mockSharpToBuffer(),
+      metadata: () => mockSharpMetadata(),
     };
     return chainable;
   });
@@ -493,10 +504,18 @@ describe("/api/a1/export — handler", () => {
     expect(res.rawBody.slice(0, 4).toString("utf8")).toBe("%PDF");
   });
 
-  test("format=pdf, source=png too small → 422", async () => {
-    mockBuildPrintReadyPdf.mockRejectedValueOnce(
-      new Error("buildPrintReadyPdfFromPng refused: preview density"),
-    );
+  test("format=pdf, source=png too small → 422 (real PNG dimensions feed the gate)", async () => {
+    // The handler reads PNG metadata via sharp and passes (widthPx, heightPx)
+    // into buildPrintReadyPdfFromPng. A preview-density input (e.g. 1024×768)
+    // must hit FINAL_A1_PDF_MIN_RATIO and surface as 422 — it must NOT be
+    // relabelled as 9933×7016.
+    mockSharpMetadata.mockResolvedValueOnce({ width: 1024, height: 768 });
+    mockBuildPrintReadyPdf.mockImplementationOnce(async (_buf, opts) => {
+      // Assert the handler is passing the REAL dimensions, not the A1 target.
+      expect(opts.widthPx).toBe(1024);
+      expect(opts.heightPx).toBe(768);
+      throw new Error("buildPrintReadyPdfFromPng refused: preview density");
+    });
     const ref = writeArtifact("a1-tiny.png", VALID_PNG_BYTES);
     const req = makeRequest({
       designId: "tiny",
@@ -507,6 +526,34 @@ describe("/api/a1/export — handler", () => {
     await handler(req, res);
     expect(res.statusCode).toBe(422);
     expect(res.body.error.code).toBe("FINAL_A1_RASTER_TOO_SMALL");
+  });
+
+  test("format=pdf, source=png at full A1 density passes real dimensions to the gate", async () => {
+    // The successful raster_pdf_from_png path receives the actual PNG
+    // dimensions (9933×7016 from the metadata mock) — not the route's
+    // pre-baked target. This guards against a regression that hardcodes
+    // A1 dimensions for any PNG source.
+    mockSharpMetadata.mockResolvedValueOnce({ width: 9933, height: 7016 });
+    let capturedOpts = null;
+    mockBuildPrintReadyPdf.mockImplementationOnce(async (_buf, opts) => {
+      capturedOpts = opts;
+      return { pdfBuffer: VALID_PDF_BYTES, pdfMetadata: {} };
+    });
+    const ref = writeArtifact("a1-fullsize.png", VALID_PNG_BYTES);
+    const req = makeRequest({
+      designId: "full",
+      format: "pdf",
+      artifactPath: ref,
+    });
+    const res = captureResponse();
+    await handler(req, res);
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["X-A1-Export-Builder"]).toBe("raster_pdf_from_png");
+    expect(capturedOpts).toMatchObject({
+      widthPx: 9933,
+      heightPx: 7016,
+      isFinalA1: true,
+    });
   });
 
   test("format=pdf, pdfArtifactPath → passthrough", async () => {
@@ -719,7 +766,11 @@ describe("/api/a1/export — artifactRef (durable storage)", () => {
     expect(res.body.error.code).toBe("ARTIFACT_REF_ADAPTER_UNSUPPORTED");
   });
 
-  test("adapter SVG containing <script> → rejected by universal denylist", async () => {
+  test("adapter SVG containing <script> → rejected as STORED_SVG_BLOCKED", async () => {
+    // Blob sources surface as STORED_SVG_BLOCKED (vs. INLINE_SVG_BLOCKED for
+    // a client-supplied data URL / raw string). Splitting the codes lets
+    // observability separate "untrusted upload" from "corrupted server-side
+    // artifact" without changing the underlying 400 response.
     const evil = "<svg><script>alert(1)</script></svg>";
     mockGetBlobArtifact.mockResolvedValueOnce({
       found: true,
@@ -739,13 +790,16 @@ describe("/api/a1/export — artifactRef (durable storage)", () => {
       res,
     );
     expect(res.statusCode).toBe(400);
-    expect(res.body.error.code).toBe("INLINE_SVG_BLOCKED");
+    expect(res.body.error.code).toBe("STORED_SVG_BLOCKED");
     expect(mockSharpFactory).not.toHaveBeenCalled();
   });
 
-  test("file-transport SVG containing <script> → rejected by universal denylist", async () => {
+  test("file-transport SVG containing foreignObject → rejected as STORED_SVG_BLOCKED", async () => {
     // The original handler only sanitised inline sources; this asserts the
     // defense-in-depth that also rejects stored files (compose-output dir).
+    // The error code distinguishes the stored path from the inline path so
+    // dashboards can separate "untrusted client upload" from "corrupted
+    // server-side artifact".
     const ref = writeArtifact(
       "a1-evil.svg",
       Buffer.from("<svg><foreignObject></foreignObject></svg>", "utf8"),
@@ -760,7 +814,176 @@ describe("/api/a1/export — artifactRef (durable storage)", () => {
       res,
     );
     expect(res.statusCode).toBe(400);
-    expect(res.body.error.code).toBe("INLINE_SVG_BLOCKED");
+    expect(res.body.error.code).toBe("STORED_SVG_BLOCKED");
     expect(mockSharpFactory).not.toHaveBeenCalled();
+  });
+
+  test("blob artifact with foreignObject is rejected as STORED_SVG_BLOCKED", async () => {
+    const evilSvg = "<svg><foreignObject></foreignObject></svg>";
+    mockGetBlobArtifact.mockResolvedValueOnce({
+      found: true,
+      packageId: "pkg-stored-evil",
+      kind: "a1-sheet-svg",
+      contentType: "image/svg+xml; charset=utf-8",
+      bytes: Buffer.from(evilSvg, "utf8"),
+      byteLength: Buffer.byteLength(evilSvg, "utf8"),
+    });
+    const res = captureResponse();
+    await handler(
+      makeRequest({
+        designId: "pkg-stored-evil",
+        format: "png",
+        artifactRef: { packageId: "pkg-stored-evil", kind: "a1-sheet-svg" },
+      }),
+      res,
+    );
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error.code).toBe("STORED_SVG_BLOCKED");
+  });
+});
+
+// Phase 1 review amendments — magic-byte classification across every
+// resolver branch, blob-artifact bytes vs. contentType, data:application/pdf
+// inline support, and the full-density / preview-density distinction.
+describe("/api/a1/export — magic-byte classification (data URLs and blobs)", () => {
+  test("data:image/png;base64 carrying SVG bytes does NOT pass png dispatch", async () => {
+    const svgB64 = Buffer.from("<svg></svg>", "utf8").toString("base64");
+    const res = captureResponse();
+    await handler(
+      makeRequest({
+        designId: "masquerade",
+        format: "png",
+        artifactPath: `data:image/png;base64,${svgB64}`,
+      }),
+      res,
+    );
+    // Classifier sees `<svg` bytes → kind="svg". For format=png with
+    // source=svg the handler rasterises (sharp_svg_to_png) rather than
+    // returning the SVG bytes labelled as PNG. The contract being tested:
+    // the handler MUST NOT return Content-Type: image/png with raw SVG
+    // bytes in the body. The output must be real PNG bytes.
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["X-A1-Export-Builder"]).toBe("sharp_svg_to_png");
+    expect(res.rawBody.slice(0, 8).equals(VALID_PNG_BYTES.slice(0, 8))).toBe(
+      true,
+    );
+  });
+
+  test("data:image/png;base64 carrying HTML bytes → 400 UNRECOGNISED_ARTIFACT_FORMAT", async () => {
+    // HTML doesn't classify as png/pdf/svg → kind="unknown" → handler returns
+    // 400 rather than passing arbitrary bytes through the png path.
+    const htmlB64 = Buffer.from("<html></html>", "utf8").toString("base64");
+    const res = captureResponse();
+    await handler(
+      makeRequest({
+        designId: "html-as-png",
+        format: "png",
+        artifactPath: `data:image/png;base64,${htmlB64}`,
+      }),
+      res,
+    );
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error.code).toBe("UNRECOGNISED_ARTIFACT_FORMAT");
+  });
+
+  test("data:image/svg+xml;base64 carrying PNG bytes is reclassified by bytes", async () => {
+    // The label says svg+xml but the decoded bytes start with the PNG
+    // signature. With format=svg the handler must NOT pass these bytes
+    // through as SVG — classify-by-bytes routes it to INVALID_INPUT.
+    const pngBase64 = VALID_PNG_BYTES.toString("base64");
+    const res = captureResponse();
+    await handler(
+      makeRequest({
+        designId: "png-as-svg",
+        format: "svg",
+        artifactPath: `data:image/svg+xml;base64,${pngBase64}`,
+      }),
+      res,
+    );
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error.code).toBe("INVALID_INPUT");
+  });
+
+  test("blob artifact with contentType image/png but SVG bytes is reclassified by bytes", async () => {
+    // Adapter returns contentType=image/png but bytes are SVG. Handler must
+    // NOT trust contentType. With format=svg the resolver sees `<svg`
+    // magic bytes and serves the SVG; with format=png it routes through
+    // sharp rasterisation rather than returning SVG-as-PNG.
+    const svgString = "<svg><rect/></svg>";
+    mockGetBlobArtifact.mockResolvedValueOnce({
+      found: true,
+      packageId: "pkg-mismatch",
+      kind: "a1-sheet-svg",
+      contentType: "image/png", // LYING about the bytes
+      bytes: Buffer.from(svgString, "utf8"),
+      byteLength: Buffer.byteLength(svgString, "utf8"),
+    });
+    const res = captureResponse();
+    await handler(
+      makeRequest({
+        designId: "pkg-mismatch",
+        format: "svg",
+        artifactRef: { packageId: "pkg-mismatch", kind: "a1-sheet-svg" },
+      }),
+      res,
+    );
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["Content-Type"]).toBe("image/svg+xml; charset=utf-8");
+  });
+
+  test("blob artifact with contentType image/png but HTML bytes → 400 UNRECOGNISED", async () => {
+    mockGetBlobArtifact.mockResolvedValueOnce({
+      found: true,
+      packageId: "pkg-html",
+      kind: "a1-sheet-svg",
+      contentType: "image/png",
+      bytes: Buffer.from("<html><body/></html>", "utf8"),
+      byteLength: 20,
+    });
+    const res = captureResponse();
+    await handler(
+      makeRequest({
+        designId: "pkg-html",
+        format: "png",
+        artifactRef: { packageId: "pkg-html", kind: "a1-sheet-svg" },
+      }),
+      res,
+    );
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error.code).toBe("UNRECOGNISED_ARTIFACT_FORMAT");
+  });
+
+  test("data:application/pdf;base64 routes through the new PDF data URL branch", async () => {
+    const pdfBase64 = VALID_PDF_BYTES.toString("base64");
+    const res = captureResponse();
+    await handler(
+      makeRequest({
+        designId: "inline-pdf",
+        format: "pdf",
+        artifactPath: `data:application/pdf;base64,${pdfBase64}`,
+      }),
+      res,
+    );
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["Content-Type"]).toBe("application/pdf");
+    expect(res.headers["X-A1-Export-Builder"]).toBe("passthrough");
+    expect(res.rawBody.slice(0, 4).toString("utf8")).toBe("%PDF");
+  });
+
+  test("data:application/pdf;base64 with non-PDF bytes does not return as PDF", async () => {
+    const htmlBase64 = Buffer.from("<html></html>", "utf8").toString("base64");
+    const res = captureResponse();
+    await handler(
+      makeRequest({
+        designId: "html-as-pdf",
+        format: "pdf",
+        artifactPath: `data:application/pdf;base64,${htmlBase64}`,
+      }),
+      res,
+    );
+    expect(res.statusCode).toBe(400);
+    expect(["UNRECOGNISED_ARTIFACT_FORMAT", "INVALID_INPUT"]).toContain(
+      res.body.error.code,
+    );
   });
 });

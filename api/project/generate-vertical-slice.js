@@ -4,6 +4,7 @@ import { ProgrammeNDSSViolationError } from "../../src/services/project/ndssVali
 import { buildArtifactPackageWithPdfStitching } from "../../src/services/export/artifactPackageService.js";
 import {
   getDefaultArtifactStorageAdapter,
+  getArtifactStorageAdapterStatus,
   DEFAULT_SIGNED_URL_EXPIRES_SECONDS,
   BLOB_KIND_A1_SHEET_SVG,
 } from "../../src/services/export/artifactStorageService.js";
@@ -107,17 +108,30 @@ export const __verticalSlicePrebakeInternals = {
 // export-side optimisation. When neither path is available the client falls
 // back to the inline data URL gate in `exportService.buildA1ExportRequestBody`,
 // which surfaces a clear error rather than producing a corrupt download.
-async function persistMasterSvgForExport(result, { designId, packageId } = {}) {
+// Exported for unit tests (persistMasterSvgForExport.test.js). Verifies the
+// real URL-encoded byte size precheck and the dual filesystem + durable
+// adapter writes against in-memory adapters.
+export async function persistMasterSvgForExport(
+  result,
+  { designId, packageId } = {},
+) {
   if (!result || !result.success) return result;
   const a1Sheet = result?.artifacts?.a1Sheet;
   const svgString = a1Sheet?.svgString;
   if (typeof svgString !== "string" || svgString.length === 0) {
     return result;
   }
-  // Cheap precheck: if the URL-encoded SVG is going to fit in the inline
-  // budget anyway, skip both disk + adapter writes.
-  const approxEncodedBytes = svgString.length * 2 + 64;
-  if (approxEncodedBytes <= 180 * 1024) {
+  // Compute the ACTUAL URL-encoded data URL size — the previous approximation
+  // (svgString.length * 2 + 64) systematically over-estimated for ASCII-heavy
+  // sheets and under-estimated for sheets full of percent-escaped glyphs.
+  // The inline budget mirrors `/api/a1/export`'s 256 KB request-body cap with
+  // ~36 KB of envelope headroom (designId, projectName, sheetHash, JSON
+  // structure overhead).
+  const INLINE_DATA_URL_BUDGET_BYTES = 220 * 1024;
+  const encodedDataUrl =
+    "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgString);
+  const dataUrlBytes = Buffer.byteLength(encodedDataUrl, "utf8");
+  if (dataUrlBytes <= INLINE_DATA_URL_BUDGET_BYTES) {
     return result;
   }
   const sanitisedDesignId =
@@ -163,7 +177,15 @@ async function persistMasterSvgForExport(result, { designId, packageId } = {}) {
   if (packageId) {
     try {
       const adapter = getDefaultArtifactStorageAdapter();
-      if (typeof adapter?.putBlobArtifact === "function") {
+      const status = getArtifactStorageAdapterStatus(adapter);
+      if (!status.productionDurable) {
+        console.warn(
+          "[generate-vertical-slice] storage adapter is not production-durable:",
+          status,
+          "— svgArtifactRef will only resolve on the same instance. Set ARTIFACT_STORAGE_PROVIDER=s3 (with bucket + access keys) for cross-instance durability.",
+        );
+      }
+      if (status.supportsBlobArtifact) {
         const stored = await adapter.putBlobArtifact({
           packageId,
           kind: BLOB_KIND_A1_SHEET_SVG,
@@ -176,10 +198,15 @@ async function persistMasterSvgForExport(result, { designId, packageId } = {}) {
             svgArtifactRef: {
               packageId,
               kind: BLOB_KIND_A1_SHEET_SVG,
-              adapter:
-                stored.adapter || adapter.adapterCapabilities?.adapter || null,
+              adapter: stored.adapter || status.adapter || null,
               byteLength: stored.byteLength || null,
-              available: true,
+              productionDurable: status.productionDurable,
+              // `available: true` means "safe to rely on across cold-starts".
+              // Only advertise that when the adapter genuinely persists
+              // cross-instance — otherwise the client falls back to
+              // svgOutputFile / inline, both of which the export route also
+              // accepts.
+              available: status.productionDurable === true,
             },
           };
         }

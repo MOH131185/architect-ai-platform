@@ -224,7 +224,45 @@ function readArtifactBytes(artifactPath, outputDir) {
     };
   }
 
-  // 2) data:image/png;base64
+  // 2) data:application/pdf;base64 — decode then classify by actual magic
+  //    bytes. Matches the symmetry of the PNG/SVG data URL branches so
+  //    `resolvePdfArtifactPath()` on the client can pass a small base64 PDF
+  //    inline (e.g. when the slice emits `a1Pdf.dataUrl`) without hitting
+  //    400 UNSUPPORTED_ARTIFACT_PATH. Anything beyond the 256 KB body cap is
+  //    rejected at the EXPORT_BODY_TOO_LARGE guard above.
+  if (/^data:application\/pdf[;,]/i.test(artifactPath)) {
+    const idx = artifactPath.indexOf(",");
+    if (idx < 0 || idx === artifactPath.length - 1) {
+      return { ok: false, error: { code: "DATA_URL_EMPTY_PAYLOAD" } };
+    }
+    const meta = artifactPath.slice(0, idx).toLowerCase();
+    const payload = artifactPath.slice(idx + 1);
+    if (!meta.includes(";base64")) {
+      return { ok: false, error: { code: "DATA_URL_UNSUPPORTED_ENCODING" } };
+    }
+    let buffer;
+    try {
+      buffer = Buffer.from(payload, "base64");
+    } catch (err) {
+      return {
+        ok: false,
+        error: { code: "DATA_URL_DECODE_FAILED", details: err.message },
+      };
+    }
+    const kind = classifyArtifactKind(buffer);
+    return {
+      ok: true,
+      source: "inline",
+      kind,
+      buffer,
+      svgString: kind === "svg" ? buffer.toString("utf8") : null,
+    };
+  }
+
+  // 3) data:image/png;base64 — decode then classify by actual magic bytes.
+  //    The MIME prefix is advisory only; a caller (or attacker) could put SVG
+  //    or HTML bytes behind a `data:image/png` label. classifyArtifactKind on
+  //    the decoded buffer is the source of truth.
   if (/^data:image\/png[;,]/i.test(artifactPath)) {
     const idx = artifactPath.indexOf(",");
     if (idx < 0 || idx === artifactPath.length - 1) {
@@ -244,10 +282,23 @@ function readArtifactBytes(artifactPath, outputDir) {
         error: { code: "DATA_URL_DECODE_FAILED", details: err.message },
       };
     }
-    return { ok: true, source: "inline", kind: "png", buffer };
+    const kind = classifyArtifactKind(buffer);
+    return {
+      ok: true,
+      source: "inline",
+      kind,
+      buffer,
+      svgString: kind === "svg" ? buffer.toString("utf8") : null,
+    };
   }
 
-  // 3) data:image/svg+xml;{base64|utf8|charset=utf-8|<none>}
+  // 4) data:image/svg+xml;{base64|utf8|charset=utf-8|<none>}
+  //    Two-stage classification:
+  //      (a) for ;base64, classify the RAW decoded bytes first. A PNG or PDF
+  //          smuggled inside a `data:image/svg+xml;base64,…` label is caught
+  //          before any utf-8 round-trip corrupts it.
+  //      (b) for the text-encoded variants, classify the decoded utf-8 string.
+  //    Either way, kind comes from the actual bytes, never the MIME label.
   if (/^data:image\/svg\+xml[;,]/i.test(artifactPath)) {
     const idx = artifactPath.indexOf(",");
     if (idx < 0 || idx === artifactPath.length - 1) {
@@ -255,11 +306,40 @@ function readArtifactBytes(artifactPath, outputDir) {
     }
     const meta = artifactPath.slice(0, idx).toLowerCase();
     const payload = artifactPath.slice(idx + 1);
+
+    if (meta.includes(";base64")) {
+      let rawBuffer;
+      try {
+        rawBuffer = Buffer.from(payload, "base64");
+      } catch (err) {
+        return {
+          ok: false,
+          error: { code: "DATA_URL_DECODE_FAILED", details: err.message },
+        };
+      }
+      // Classify raw bytes — PNG/PDF labelled as svg+xml is caught here.
+      const rawKind = classifyArtifactKind(rawBuffer);
+      if (rawKind === "svg") {
+        return {
+          ok: true,
+          source: "inline",
+          kind: "svg",
+          buffer: rawBuffer,
+          svgString: rawBuffer.toString("utf8"),
+        };
+      }
+      return {
+        ok: true,
+        source: "inline",
+        kind: rawKind,
+        buffer: rawBuffer,
+        svgString: null,
+      };
+    }
+
     let svgString;
     try {
-      if (meta.includes(";base64")) {
-        svgString = Buffer.from(payload, "base64").toString("utf8");
-      } else if (
+      if (
         meta.includes(";utf8") ||
         meta.includes(";utf-8") ||
         meta.includes("charset=utf-8")
@@ -286,24 +366,29 @@ function readArtifactBytes(artifactPath, outputDir) {
         error: { code: "DATA_URL_DECODE_FAILED", details: err.message },
       };
     }
+    const buffer = Buffer.from(svgString, "utf8");
+    const kind = classifyArtifactKind(buffer);
     return {
       ok: true,
       source: "inline",
-      kind: "svg",
-      buffer: Buffer.from(svgString, "utf8"),
-      svgString,
+      kind,
+      buffer,
+      svgString: kind === "svg" ? svgString : null,
     };
   }
 
-  // 4) Raw "<svg" or "<?xml" string
+  // 5) Raw "<svg" or "<?xml" string — classify by bytes to keep the contract
+  //    consistent across resolver branches.
   const trimmedHead = artifactPath.replace(/^﻿/, "").trimStart();
   if (trimmedHead.startsWith("<svg") || trimmedHead.startsWith("<?xml")) {
+    const buffer = Buffer.from(artifactPath, "utf8");
+    const kind = classifyArtifactKind(buffer);
     return {
       ok: true,
       source: "inline",
-      kind: "svg",
-      buffer: Buffer.from(artifactPath, "utf8"),
-      svgString: artifactPath,
+      kind,
+      buffer,
+      svgString: kind === "svg" ? artifactPath : null,
     };
   }
 
@@ -320,8 +405,8 @@ async function readArtifactBytesFromRef(artifactRef) {
     return { ok: false, error: { code: "INVALID_ARTIFACT_REF" } };
   }
   const packageId = String(artifactRef.packageId || "").trim();
-  const kind = String(artifactRef.kind || "").trim();
-  if (!packageId || !kind) {
+  const refKind = String(artifactRef.kind || "").trim();
+  if (!packageId || !refKind) {
     return { ok: false, error: { code: "INVALID_ARTIFACT_REF" } };
   }
   const { getDefaultArtifactStorageAdapter } = await loadArtifactStorage();
@@ -335,33 +420,25 @@ async function readArtifactBytesFromRef(artifactRef) {
       },
     };
   }
-  const result = await adapter.getBlobArtifact({ packageId, kind });
+  const result = await adapter.getBlobArtifact({ packageId, kind: refKind });
   if (!result?.found) {
     return { ok: false, error: { code: "ARTIFACT_NOT_FOUND" } };
   }
   const buffer = Buffer.isBuffer(result.bytes)
     ? result.bytes
     : Buffer.from(result.bytes);
-  const computedKind = classifyArtifactKind(buffer);
-  // Trust the adapter's declared kind only when the bytes confirm it. A
-  // mismatched/unknown classification still yields "unknown" so the per-format
-  // dispatch can return a clean 400.
-  const resolvedKind =
-    computedKind !== "unknown"
-      ? computedKind
-      : /svg/i.test(result.contentType || "")
-        ? "svg"
-        : /pdf/i.test(result.contentType || "")
-          ? "pdf"
-          : /png/i.test(result.contentType || "")
-            ? "png"
-            : "unknown";
+  // Classify by magic bytes only. The adapter's declared `contentType` is
+  // advisory and untrusted: a stored object labelled `image/png` that
+  // actually contains HTML/SVG bytes must be flagged as `unknown`, not
+  // coerced into the labelled kind. Per-format dispatch then returns a
+  // clean 400 instead of silently rasterising HTML or shipping SVG-as-PNG.
+  const kind = classifyArtifactKind(buffer);
   return {
     ok: true,
     source: "blob",
-    kind: resolvedKind,
+    kind,
     buffer,
-    svgString: resolvedKind === "svg" ? buffer.toString("utf8") : null,
+    svgString: kind === "svg" ? buffer.toString("utf8") : null,
     contentType: result.contentType || null,
     storageKey: result.storageKey || null,
     adapter: result.adapter || null,
@@ -371,11 +448,15 @@ async function readArtifactBytesFromRef(artifactRef) {
 async function rasterizeSvgToPng(svgString) {
   const sharp = await loadSharp();
   const buf = Buffer.from(svgString, "utf8");
+  // White-background flatten removes any alpha that survives the SVG render
+  // (e.g. translucent panel fills) so the resulting A1 PNG matches the
+  // print-ready white-paper expectation before pdf-lib embeds it.
   return sharp(buf, { density: FINAL_A1_PDF_DPI })
     .resize(A1_PNG_WIDTH, A1_PNG_HEIGHT, {
       fit: "contain",
       background: { r: 255, g: 255, b: 255, alpha: 1 },
     })
+    .flatten({ background: "#ffffff" })
     .png({ compressionLevel: 6 })
     .toBuffer();
 }
@@ -385,7 +466,56 @@ async function buildVectorPdf(svgString, geometryHash) {
   return buildVectorPdfFromSheetSvg({ svgString, geometryHash });
 }
 
+/**
+ * Read the actual pixel dimensions of a PNG via sharp metadata. Used to feed
+ * `buildPrintReadyPdfFromPng` real (widthPx, heightPx) so the final-A1
+ * density gate (FINAL_A1_PDF_MIN_RATIO * FINAL_A1_PDF_MIN_DPI) refuses
+ * preview-density rasters rather than passing them through under a hardcoded
+ * 9933x7016 label.
+ */
+async function readPngDimensions(pngBuffer) {
+  const sharp = await loadSharp();
+  const meta = await sharp(pngBuffer).metadata();
+  const widthPx = Number(meta?.width);
+  const heightPx = Number(meta?.height);
+  if (
+    !Number.isFinite(widthPx) ||
+    !Number.isFinite(heightPx) ||
+    widthPx <= 0 ||
+    heightPx <= 0
+  ) {
+    throw new Error("Could not read PNG dimensions for final-A1 density gate.");
+  }
+  return { widthPx, heightPx };
+}
+
+/**
+ * Build a print-ready A1 PDF from a PNG that already exists on disk / from a
+ * caller-supplied buffer. The dimensions are derived from the PNG metadata
+ * itself, NOT from the route's A1 target size — a 1024×768 preview PNG must
+ * surface as 422 FINAL_A1_RASTER_TOO_SMALL, not get re-labelled as 9933×7016.
+ */
 async function buildPrintReadyPdfFromPngBuffer(pngBuffer) {
+  const composeRuntime = await loadComposeRuntime();
+  const { widthPx, heightPx } = await readPngDimensions(pngBuffer);
+  return composeRuntime.buildPrintReadyPdfFromPng(pngBuffer, {
+    widthPx,
+    heightPx,
+    dpi: FINAL_A1_PDF_DPI,
+    textRenderMode: "font_paths",
+    rasterIntegrityStatus: "not_run",
+    isFinalA1: true,
+  });
+}
+
+/**
+ * Variant used only by the SVG → raster PDF fallback path. The route has just
+ * rasterised the source SVG to A1_PNG_WIDTH×A1_PNG_HEIGHT at 300 DPI, so we
+ * KNOW the dimensions — we don't need to ask sharp again. Kept as a separate
+ * function to make the contract obvious to reviewers: ONLY this path passes
+ * the hardcoded A1 dimensions, because we are the ones who produced them.
+ */
+async function buildPrintReadyPdfFromOwnRasteredPng(pngBuffer) {
   const composeRuntime = await loadComposeRuntime();
   return composeRuntime.buildPrintReadyPdfFromPng(pngBuffer, {
     widthPx: A1_PNG_WIDTH,
@@ -553,15 +683,20 @@ export default async function handler(req, res) {
   // adapter-backed durable blob. File-transport / blob SVGs were generated by
   // our own pipeline, but defense-in-depth keeps a compromised upstream from
   // routing dangerous SVG content (e.g. `<script>`, external `xlink:href`)
-  // back through the export route.
+  // back through the export route. The error code distinguishes the two
+  // paths so reviewers / dashboards can tell a malicious upload (inline)
+  // from a corrupted stored artifact (file / blob).
   if (read.kind === "svg") {
     const sanitised = sanitizeInlineSvg(read.svgString);
     if (!sanitised.ok) {
+      const code =
+        read.source === "inline" ? "INLINE_SVG_BLOCKED" : "STORED_SVG_BLOCKED";
+      const where = read.source === "inline" ? "Inline" : "Stored";
       return jsonError(
         res,
         400,
-        "INLINE_SVG_BLOCKED",
-        `SVG rejected: contains "${sanitised.blockedToken}".`,
+        code,
+        `${where} SVG rejected: contains "${sanitised.blockedToken}".`,
       );
     }
   }
@@ -720,8 +855,11 @@ export default async function handler(req, res) {
           );
         }
         try {
+          // SVG raster fallback: we just produced this PNG at the A1
+          // dimensions, so we may pass them as-is. PNG-source callers below
+          // must read dimensions from the buffer itself.
           const { pdfBuffer } =
-            await buildPrintReadyPdfFromPngBuffer(pngBuffer);
+            await buildPrintReadyPdfFromOwnRasteredPng(pngBuffer);
           const filename = safeFilename(designId, projectName, "pdf");
           setBinaryHeaders(res, {
             mimeType: "application/pdf",
@@ -755,6 +893,9 @@ export default async function handler(req, res) {
       }
       if (read.kind === "png") {
         try {
+          // PNG-source path reads (widthPx, heightPx) from sharp metadata so
+          // a preview-density input gets 422'd, not silently re-labelled as
+          // a 300 DPI A1 raster.
           const { pdfBuffer } = await buildPrintReadyPdfFromPngBuffer(
             read.buffer,
           );

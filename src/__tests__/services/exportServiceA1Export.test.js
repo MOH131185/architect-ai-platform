@@ -213,6 +213,28 @@ describe("resolveExportArtifactPath priority", () => {
     };
     expect(resolveExportArtifactPath(sheet)).toBeNull();
   });
+
+  test("returns compose-output path when sheet.url is /api/a1/compose-output/...", () => {
+    // V2 multi-panel pipeline can surface the sheet via a direct
+    // compose-output URL; the resolver must prefer it over inline data URLs.
+    const sheet = {
+      metadata: { designId: "x" },
+      url: "/api/a1/compose-output/a1-cs-1-abcdef01.png",
+    };
+    expect(resolveExportArtifactPath(sheet)).toBe(
+      "/api/a1/compose-output/a1-cs-1-abcdef01.png",
+    );
+  });
+
+  test("rejects compose-output URLs with unsafe basenames", () => {
+    const sheet = {
+      metadata: { designId: "x" },
+      url: "/api/a1/compose-output/../etc/passwd",
+    };
+    // Falls through to inline data URL fallback (which is absent here) →
+    // null. The point is we never echo a traversal-style basename back.
+    expect(resolveExportArtifactPath(sheet)).toBeNull();
+  });
 });
 
 describe("exportSheetServerSide → /api/a1/export", () => {

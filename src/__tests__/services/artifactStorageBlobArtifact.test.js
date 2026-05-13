@@ -16,6 +16,8 @@ import os from "os";
 import {
   createInMemoryArtifactStorageAdapter,
   createFilesystemArtifactStorageAdapter,
+  createS3ArtifactStorageAdapter,
+  getArtifactStorageAdapterStatus,
   clearInMemoryArtifactStorage,
   ARTIFACT_STORAGE_NOT_FOUND,
   BLOB_KIND_A1_SHEET_SVG,
@@ -151,5 +153,52 @@ describe("createFilesystemArtifactStorageAdapter — blob artifacts", () => {
       kind: BLOB_KIND_A1_SHEET_SVG,
     });
     expect(got).toEqual({ found: false, code: ARTIFACT_STORAGE_NOT_FOUND });
+  });
+});
+
+describe("getArtifactStorageAdapterStatus — production durability reporting", () => {
+  test("in-memory adapter is NOT production-durable", () => {
+    const adapter = createInMemoryArtifactStorageAdapter();
+    expect(getArtifactStorageAdapterStatus(adapter)).toEqual({
+      adapter: "memory",
+      persistent: false,
+      productionDurable: false,
+      instanceDurable: false,
+      supportsBlobArtifact: true,
+    });
+  });
+
+  test("filesystem adapter is instance-durable but NOT production-durable", () => {
+    // The host filesystem outlives a single process, but on Vercel functions
+    // /tmp is per-instance: a different warm/cold instance starts empty.
+    // We treat that as "instance-durable" rather than production-durable.
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "fs-status-"));
+    try {
+      const adapter = createFilesystemArtifactStorageAdapter({ rootDir: tmp });
+      const status = getArtifactStorageAdapterStatus(adapter);
+      expect(status.adapter).toBe("filesystem");
+      expect(status.persistent).toBe(true);
+      expect(status.instanceDurable).toBe(true);
+      expect(status.productionDurable).toBe(false);
+      expect(status.supportsBlobArtifact).toBe(true);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("S3 adapter is production-durable", () => {
+    // We don't need real credentials to assert capability shape.
+    const adapter = createS3ArtifactStorageAdapter({
+      bucket: "test-bucket",
+      region: "us-east-1",
+      accessKeyId: "stub",
+      secretAccessKey: "stub",
+      fetchImpl: async () => ({ ok: true }),
+    });
+    const status = getArtifactStorageAdapterStatus(adapter);
+    expect(status.adapter).toBe("s3");
+    expect(status.persistent).toBe(true);
+    expect(status.productionDurable).toBe(true);
+    expect(status.supportsBlobArtifact).toBe(true);
   });
 });

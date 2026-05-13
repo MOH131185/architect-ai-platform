@@ -231,6 +231,21 @@ export function resolveExportArtifactPath(sheet, { format } = {}) {
     }
   }
 
+  // Direct compose-output reference exposed as `sheet.url`. This happens when
+  // the V2 multi-panel pipeline writes the PNG to disk and surfaces the path
+  // as the viewer URL (not as `metadata.outputFile`). Goes BEFORE the data
+  // URL fallback so a same-instance file reference is always preferred over
+  // re-uploading bytes.
+  if (
+    typeof sheet?.url === "string" &&
+    sheet.url.startsWith("/api/a1/compose-output/")
+  ) {
+    const name = basenameFromPath(sheet.url);
+    if (isSafeArtifactBasename(name)) {
+      return `/api/a1/compose-output/${name}`;
+    }
+  }
+
   // Inline data URL fallback — only when small enough to fit the request cap.
   if (typeof sheet?.url === "string" && sheet.url.startsWith("data:")) {
     if (sheet.url.length <= EXPORT_REQUEST_INLINE_BUDGET_BYTES) {
