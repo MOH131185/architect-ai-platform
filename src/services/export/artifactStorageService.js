@@ -11,13 +11,54 @@ export const DEFAULT_SIGNED_URL_EXPIRES_SECONDS = 15 * 60;
 export const DEFAULT_S3_REGION = "us-east-1";
 export const ARTIFACT_STORAGE_KEY_PREFIX = "artifact-packages";
 
+// Phase 1 export-fix — blob-artifact additions. The slice handler stores the
+// master A1 SVG via `putBlobArtifact({packageId, kind: BLOB_KIND_A1_SHEET_SVG,
+// bytes})` so the export route can recover it across cold-starts / instances,
+// not just from the same Vercel function's `/tmp`. Each adapter implements the
+// pair below; the value space is intentionally narrow (small ProjectGraph
+// artifacts), not a general blob store.
+export const BLOB_KIND_A1_SHEET_SVG = "a1-sheet-svg";
+const BLOB_KIND_SAFE = /^[a-z0-9-]+$/;
+const BLOB_EXT_FROM_KIND = {
+  [BLOB_KIND_A1_SHEET_SVG]: "svg",
+};
+const BLOB_CONTENT_TYPE_FROM_KIND = {
+  [BLOB_KIND_A1_SHEET_SVG]: "image/svg+xml; charset=utf-8",
+};
+
+function sanitizeBlobKind(kind) {
+  const safe = String(kind || "").trim();
+  if (!BLOB_KIND_SAFE.test(safe)) {
+    throw new Error(
+      `Invalid blob kind "${kind}". Use a known slug (e.g. ${BLOB_KIND_A1_SHEET_SVG}).`,
+    );
+  }
+  return safe;
+}
+
+function blobKey({ packageId, kind }) {
+  const safeId = sanitizePackageId(packageId);
+  const safeKind = sanitizeBlobKind(kind);
+  return `${safeId}:${safeKind}`;
+}
+
+function blobStorageKey({ packageId, kind }) {
+  const safeId = sanitizePackageId(packageId);
+  const safeKind = sanitizeBlobKind(kind);
+  const ext = BLOB_EXT_FROM_KIND[safeKind] || "bin";
+  return `${ARTIFACT_STORAGE_KEY_PREFIX}/_blobs/${safeId}/${safeKind}.${ext}`;
+}
+
 const MEMORY_STATE_KEY = "__archiaiArtifactPackageStorage";
 
 function getMemoryState() {
   if (!globalThis[MEMORY_STATE_KEY]) {
     globalThis[MEMORY_STATE_KEY] = {
       packages: new Map(),
+      blobs: new Map(),
     };
+  } else if (!globalThis[MEMORY_STATE_KEY].blobs) {
+    globalThis[MEMORY_STATE_KEY].blobs = new Map();
   }
   return globalThis[MEMORY_STATE_KEY];
 }
@@ -368,6 +409,58 @@ export function createInMemoryArtifactStorageAdapter(options = {}) {
         .map(visibleStorageRecord);
       return records;
     },
+
+    // Phase 1 export-fix: blob-artifact pair (in-memory). Keyed by
+    // `<packageId>:<kind>` so each adapter instance stores at most one blob
+    // per (package, kind). The slice handler writes a1-sheet-svg here; the
+    // /api/a1/export route reads it back when the client sends an artifactRef.
+    async putBlobArtifact({ packageId, kind, bytes, contentType = null }) {
+      const safeId = sanitizePackageId(packageId);
+      if (!safeId) throw new Error("packageId required for blob artifact");
+      const safeKind = sanitizeBlobKind(kind);
+      const cloned = cloneBytes(bytes);
+      state.blobs.set(blobKey({ packageId: safeId, kind: safeKind }), {
+        packageId: safeId,
+        kind: safeKind,
+        contentType:
+          contentType ||
+          BLOB_CONTENT_TYPE_FROM_KIND[safeKind] ||
+          "application/octet-stream",
+        bytes: cloned,
+        byteLength: cloned.byteLength,
+        storedAt: nowDate(now).toISOString(),
+        storageKey: blobStorageKey({ packageId: safeId, kind: safeKind }),
+        adapterName,
+      });
+      return {
+        stored: true,
+        packageId: safeId,
+        kind: safeKind,
+        byteLength: cloned.byteLength,
+        adapter: adapterName,
+      };
+    },
+
+    async getBlobArtifact({ packageId, kind }) {
+      const safeId = sanitizePackageId(packageId);
+      const safeKind = sanitizeBlobKind(kind);
+      const entry = state.blobs.get(
+        blobKey({ packageId: safeId, kind: safeKind }),
+      );
+      if (!entry) {
+        return { found: false, code: ARTIFACT_STORAGE_NOT_FOUND };
+      }
+      return {
+        found: true,
+        packageId: safeId,
+        kind: safeKind,
+        contentType: entry.contentType,
+        bytes: cloneBytes(entry.bytes),
+        byteLength: entry.byteLength,
+        storedAt: entry.storedAt,
+        adapter: adapterName,
+      };
+    },
   };
 }
 
@@ -648,6 +741,61 @@ export function createFilesystemArtifactStorageAdapter(options = {}) {
           .join(":")
           .localeCompare([a.storedAt || "", a.packageId || ""].join(":")),
       );
+    },
+
+    // Phase 1 export-fix: blob-artifact pair (filesystem). Writes/reads
+    // <rootDir>/<ARTIFACT_STORAGE_KEY_PREFIX>/_blobs/<safeId>/<kind>.<ext>
+    // so blobs survive process restarts (the dev case) and Vercel /tmp
+    // instance lifetimes (the same-instance Vercel case). On AWS Lambda
+    // /tmp is per-instance but durable for the instance lifetime, so this
+    // is still strictly better than the legacy compose-output-only path.
+    async putBlobArtifact({ packageId, kind, bytes, contentType = null }) {
+      const fs = await import("node:fs/promises");
+      const path = await import("node:path");
+      const safeId = sanitizePackageId(packageId);
+      if (!safeId) throw new Error("packageId required for blob artifact");
+      const safeKind = sanitizeBlobKind(kind);
+      const storageKey = blobStorageKey({ packageId: safeId, kind: safeKind });
+      const filePath = path.join(rootDir, storageKey);
+      await ensureDir(path.dirname(filePath));
+      const buffer = bytesToBuffer(bytes);
+      await fs.writeFile(filePath, buffer);
+      return {
+        stored: true,
+        packageId: safeId,
+        kind: safeKind,
+        byteLength: buffer.length,
+        adapter: adapterName,
+        storageKey,
+        contentType:
+          contentType ||
+          BLOB_CONTENT_TYPE_FROM_KIND[safeKind] ||
+          "application/octet-stream",
+      };
+    },
+
+    async getBlobArtifact({ packageId, kind }) {
+      const fs = await import("node:fs/promises");
+      const path = await import("node:path");
+      const safeId = sanitizePackageId(packageId);
+      const safeKind = sanitizeBlobKind(kind);
+      const storageKey = blobStorageKey({ packageId: safeId, kind: safeKind });
+      const filePath = path.join(rootDir, storageKey);
+      if (!(await fileExists(filePath))) {
+        return { found: false, code: ARTIFACT_STORAGE_NOT_FOUND };
+      }
+      const buffer = await fs.readFile(filePath);
+      return {
+        found: true,
+        packageId: safeId,
+        kind: safeKind,
+        contentType:
+          BLOB_CONTENT_TYPE_FROM_KIND[safeKind] || "application/octet-stream",
+        bytes: new Uint8Array(buffer),
+        byteLength: buffer.length,
+        adapter: adapterName,
+        storageKey,
+      };
     },
   };
 }
@@ -1076,6 +1224,69 @@ export function createS3ArtifactStorageAdapter(options = {}) {
       const _unused = { projectId, userId };
       return [];
     },
+
+    // Phase 1 export-fix: blob-artifact pair (S3-compatible). Stores the
+    // master A1 SVG (and any future small per-package artifact) as an object
+    // under <ARTIFACT_STORAGE_KEY_PREFIX>/_blobs/<safeId>/<kind>.<ext>.
+    // The export route reads it back via getBlobArtifact when the client
+    // sends an artifactRef. Object lifecycle / retention is handled by the
+    // bucket policy (same as the zips).
+    async putBlobArtifact({ packageId, kind, bytes, contentType = null }) {
+      const safeId = sanitizePackageId(packageId);
+      if (!safeId) throw new Error("packageId required for blob artifact");
+      const safeKind = sanitizeBlobKind(kind);
+      const storageKey = blobStorageKey({ packageId: safeId, kind: safeKind });
+      const resolvedContentType =
+        contentType ||
+        BLOB_CONTENT_TYPE_FROM_KIND[safeKind] ||
+        "application/octet-stream";
+      const bodyBytes = normalizeBytes(bytes);
+      const response = await requestObject({
+        method: "PUT",
+        key: storageKey,
+        body: bodyBytes,
+        contentType: resolvedContentType,
+        metadata: { packageId: safeId, kind: safeKind },
+      });
+      if (!response.ok) {
+        throw new Error(
+          `S3 putBlobArtifact failed: ${response.status} ${response.statusText || ""}`.trim(),
+        );
+      }
+      return {
+        stored: true,
+        packageId: safeId,
+        kind: safeKind,
+        byteLength: bodyBytes.byteLength,
+        adapter: "s3",
+        storageKey,
+        contentType: resolvedContentType,
+      };
+    },
+
+    async getBlobArtifact({ packageId, kind }) {
+      const safeId = sanitizePackageId(packageId);
+      const safeKind = sanitizeBlobKind(kind);
+      const storageKey = blobStorageKey({ packageId: safeId, kind: safeKind });
+      const response = await requestObject({ method: "GET", key: storageKey });
+      if (!response.ok) {
+        return { found: false, code: ARTIFACT_STORAGE_NOT_FOUND };
+      }
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      return {
+        found: true,
+        packageId: safeId,
+        kind: safeKind,
+        contentType:
+          response.headers?.get?.("content-type") ||
+          BLOB_CONTENT_TYPE_FROM_KIND[safeKind] ||
+          "application/octet-stream",
+        bytes,
+        byteLength: bytes.byteLength,
+        adapter: "s3",
+        storageKey,
+      };
+    },
   };
 }
 
@@ -1196,6 +1407,7 @@ export default {
   DEFAULT_SIGNED_URL_EXPIRES_SECONDS,
   DEFAULT_S3_REGION,
   ARTIFACT_STORAGE_KEY_PREFIX,
+  BLOB_KIND_A1_SHEET_SVG,
   buildArtifactStorageKey,
   computeRetentionExpiresAt,
   resolveRetentionDays,

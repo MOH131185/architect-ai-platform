@@ -56,12 +56,15 @@ function baseSheet() {
 
 describe("exportService.exportAsPNG — non-image guard", () => {
   test("rejects data:text/html with a clear error and no download", async () => {
+    // Phase 1 export-fix tightened the gate from `data:image/*` to
+    // `data:image/png` — `data:text/html,...` still throws, with a more
+    // specific message.
     await expect(
       exportService.exportAsPNG({
         ...baseSheet(),
         url: "data:text/html,<h1>not a png</h1>",
       }),
-    ).rejects.toThrow(/data:image\/\*/);
+    ).rejects.toThrow(/data:image\/png/i);
     expect(HTMLAnchorElement.prototype.click).not.toHaveBeenCalled();
   });
 
@@ -189,4 +192,70 @@ describe("exportService.exportAsPNG — non-image guard", () => {
     );
     expect(HTMLAnchorElement.prototype.click).not.toHaveBeenCalled();
   });
+
+  // --- Phase 1 export-fix amendments ------------------------------------
+  // The previous data URL gate was `^data:image\//i`, which let
+  // `data:image/svg+xml,...` payloads through. After the magic-byte
+  // tightening, only `data:image/png` is accepted on this path, and the
+  // decoded bytes must start with the 8-byte PNG signature. These guards
+  // prevent the historical bug where a `.png` file on disk was actually
+  // SVG content and image viewers rejected it as corrupt.
+
+  test("rejects data:image/svg+xml even when caller mislabels it as PNG", async () => {
+    // A bad caller could try to smuggle SVG bytes through `exportAsPNG` by
+    // passing `data:image/svg+xml;...`. After Phase 1, this fails at the
+    // data URL gate, not silently downloaded as `.png`.
+    await expect(
+      exportService.exportAsPNG({
+        ...baseSheet(),
+        url: "data:image/svg+xml;charset=utf-8,%3Csvg/%3E",
+      }),
+    ).rejects.toThrow(/data:image\/png/i);
+    expect(HTMLAnchorElement.prototype.click).not.toHaveBeenCalled();
+  });
+
+  test("rejects data:image/png whose decoded bytes are actually <svg> markup", async () => {
+    // MIME prefix says PNG but the bytes are SVG — exactly the masquerade
+    // the original report describes. Magic-byte validation rejects it.
+    const svgBytes = new TextEncoderShim().encode("<svg></svg>");
+    const masquerade = `data:image/png;base64,${Buffer.from(svgBytes).toString("base64")}`;
+
+    const blob = new Blob([svgBytes], { type: "image/png" });
+    jest.spyOn(exportService, "dataURLToBlob").mockResolvedValue(blob);
+
+    await expect(
+      exportService.exportAsPNG({
+        ...baseSheet(),
+        url: masquerade,
+      }),
+    ).rejects.toThrow(/PNG signature/i);
+    expect(HTMLAnchorElement.prototype.click).not.toHaveBeenCalled();
+  });
+
+  test("rejects HTTP response with image/png CT but non-PNG bytes", async () => {
+    const htmlBlob = new Blob(["<html>err</html>"], { type: "image/png" });
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      headers: headerBag({ "Content-Type": "image/png" }),
+      blob: jest.fn().mockResolvedValue(htmlBlob),
+    });
+
+    await expect(
+      exportService.exportAsPNG({
+        ...baseSheet(),
+        url: "https://example.test/lies.png",
+      }),
+    ).rejects.toThrow(/PNG signature/i);
+    expect(HTMLAnchorElement.prototype.click).not.toHaveBeenCalled();
+  });
 });
+
+// jsdom in CRA's test runtime ships without TextEncoder; provide a tiny
+// ASCII-only encoder for the magic-byte masquerade fixtures above.
+class TextEncoderShim {
+  encode(str) {
+    const out = new Uint8Array(str.length);
+    for (let i = 0; i < str.length; i++) out[i] = str.charCodeAt(i) & 0xff;
+    return out;
+  }
+}

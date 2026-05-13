@@ -12,6 +12,260 @@
 
 import logger from "../utils/logger.js";
 
+// Browser-safe basename helper. Do NOT import Node's `path` here — this module
+// is bundled into the wizard React app and runs in the browser. Handles both
+// POSIX and Windows-shaped strings (compose-output filenames may surface as
+// either depending on host OS) plus optional query/hash suffixes.
+export function basenameFromPath(p) {
+  if (typeof p !== "string" || p.length === 0) return "";
+  const lastSlash = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
+  const name = lastSlash >= 0 ? p.slice(lastSlash + 1) : p;
+  return name.split(/[?#]/)[0];
+}
+
+const SAFE_BASENAME = /^[a-zA-Z0-9._-]+\.(png|pdf|svg)$/;
+export function isSafeArtifactBasename(name) {
+  return typeof name === "string" && SAFE_BASENAME.test(name);
+}
+
+// Hard ceiling for the request body to `/api/a1/export`. The server enforces
+// the same cap; the client refuses early so we never round-trip a multi-MB
+// data URL across JSON.
+export const EXPORT_REQUEST_INLINE_BUDGET_BYTES = 220 * 1024;
+
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+const PDF_SIGNATURE = [0x25, 0x50, 0x44, 0x46];
+
+async function readBlobHeader(blob, n) {
+  // jsdom older builds don't fully implement Blob.prototype.slice().arrayBuffer();
+  // fall back to reading the whole blob and slicing the resulting Uint8Array.
+  // For real browser blobs the cost is identical because both paths just hit
+  // the underlying byte storage.
+  let buffer;
+  if (typeof blob.arrayBuffer === "function") {
+    buffer = await blob.arrayBuffer();
+  } else {
+    // Final fallback for environments missing both .slice().arrayBuffer() and
+    // top-level .arrayBuffer() — wrap via Response which jsdom supports.
+    buffer = await new Response(blob).arrayBuffer();
+  }
+  return new Uint8Array(buffer).slice(0, n);
+}
+
+export async function validatePngMagicBytes(blob) {
+  if (!blob || typeof blob.size !== "number") {
+    throw new Error("PNG export aborted: no response blob.");
+  }
+  if (blob.size === 0) {
+    throw new Error("PNG export aborted: empty response body.");
+  }
+  const head = await readBlobHeader(blob, PNG_SIGNATURE.length);
+  if (!PNG_SIGNATURE.every((b, i) => head[i] === b)) {
+    throw new Error(
+      "PNG export aborted: payload does not start with PNG signature (89 50 4E 47 0D 0A 1A 0A).",
+    );
+  }
+}
+
+export async function validatePdfMagicBytes(blob) {
+  if (!blob || typeof blob.size !== "number") {
+    throw new Error("PDF export aborted: no response blob.");
+  }
+  if (blob.size === 0) {
+    throw new Error("PDF export aborted: empty response body.");
+  }
+  const head = await readBlobHeader(blob, PDF_SIGNATURE.length);
+  if (!PDF_SIGNATURE.every((b, i) => head[i] === b)) {
+    throw new Error("PDF export aborted: payload does not start with %PDF.");
+  }
+}
+
+// Byte-level prefix match. All target prefixes ("<svg", "<?xml") and the
+// UTF-8 BOM are ASCII / fixed byte sequences, so we don't need TextDecoder
+// (which is absent under CRA's older jsdom test runtime).
+const SVG_PREFIX_BYTES = [0x3c, 0x73, 0x76, 0x67]; // "<svg"
+const XML_PREFIX_BYTES = [0x3c, 0x3f, 0x78, 0x6d, 0x6c]; // "<?xml"
+const UTF8_BOM_BYTES = [0xef, 0xbb, 0xbf];
+
+function bytesStartWith(bytes, prefix, offset = 0) {
+  for (let i = 0; i < prefix.length; i++) {
+    if (bytes[offset + i] !== prefix[i]) return false;
+  }
+  return true;
+}
+
+function skipUtf8Whitespace(bytes, start) {
+  let i = start;
+  // Skip ASCII whitespace: space (0x20), tab (0x09), LF (0x0a), CR (0x0d).
+  while (
+    i < bytes.length &&
+    (bytes[i] === 0x20 ||
+      bytes[i] === 0x09 ||
+      bytes[i] === 0x0a ||
+      bytes[i] === 0x0d)
+  ) {
+    i++;
+  }
+  return i;
+}
+
+export async function validateSvgMagicBytes(blob) {
+  if (!blob || typeof blob.size !== "number") {
+    throw new Error("SVG export aborted: no response blob.");
+  }
+  if (blob.size === 0) {
+    throw new Error("SVG export aborted: empty response body.");
+  }
+  const headBuf = await readBlobHeader(blob, 512);
+  let cursor = bytesStartWith(headBuf, UTF8_BOM_BYTES)
+    ? UTF8_BOM_BYTES.length
+    : 0;
+  cursor = skipUtf8Whitespace(headBuf, cursor);
+  if (
+    !bytesStartWith(headBuf, SVG_PREFIX_BYTES, cursor) &&
+    !bytesStartWith(headBuf, XML_PREFIX_BYTES, cursor)
+  ) {
+    throw new Error(
+      "SVG export aborted: payload does not begin with <svg or <?xml.",
+    );
+  }
+}
+
+function magicByteValidatorFor(format) {
+  switch (String(format || "").toLowerCase()) {
+    case "png":
+      return validatePngMagicBytes;
+    case "pdf":
+      return validatePdfMagicBytes;
+    case "svg":
+      return validateSvgMagicBytes;
+    default:
+      throw new Error(
+        `Unsupported export format for magic-byte check: ${format}`,
+      );
+  }
+}
+
+/**
+ * Resolve a compact durable reference the new /api/a1/export route can
+ * consume — preferred over `artifactPath` because it survives Vercel cold-
+ * start / cross-instance reads. Returns `null` when the slice did not file
+ * a durable blob (caller falls back to `resolveExportArtifactPath`).
+ */
+export function resolveExportArtifactRef(sheet) {
+  const a1Sheet = sheet?.artifacts?.a1Sheet || sheet?.a1Sheet || {};
+  const ref = a1Sheet?.svgArtifactRef;
+  if (!ref || typeof ref !== "object") return null;
+  if (ref.available === false) return null;
+  if (typeof ref.packageId !== "string" || ref.packageId.length === 0) {
+    return null;
+  }
+  if (typeof ref.kind !== "string" || ref.kind.length === 0) {
+    return null;
+  }
+  return {
+    packageId: ref.packageId,
+    kind: ref.kind,
+  };
+}
+
+/**
+ * Resolve a compact artifactPath the new /api/a1/export route can consume.
+ *
+ * Priority:
+ *   1. metadata.svgOutputFile (preferred for SVG-master sheets persisted by
+ *      api/project/generate-vertical-slice).
+ *   2. artifacts.a1Sheet.svgOutputFile / svgUrl (slice service surface).
+ *   3. metadata.outputFile with transport === "file" (legacy compose PNG).
+ *   4. sheet.url when it is a `data:` URL under EXPORT_REQUEST_INLINE_BUDGET_BYTES.
+ *   5. null — caller throws a clear error so we never POST a multi-MB body.
+ */
+export function resolveExportArtifactPath(sheet, { format } = {}) {
+  const meta = sheet?.metadata || {};
+  const a1Sheet = sheet?.artifacts?.a1Sheet || sheet?.a1Sheet || {};
+
+  // Prefer SVG file-transport when present (most reliable post Phase 1).
+  if (typeof meta.svgOutputFile === "string" && meta.svgOutputFile) {
+    const name = basenameFromPath(meta.svgOutputFile);
+    if (isSafeArtifactBasename(name)) {
+      return `/api/a1/compose-output/${name}`;
+    }
+  }
+  if (typeof a1Sheet.svgOutputFile === "string" && a1Sheet.svgOutputFile) {
+    const name = basenameFromPath(a1Sheet.svgOutputFile);
+    if (isSafeArtifactBasename(name)) {
+      return `/api/a1/compose-output/${name}`;
+    }
+  }
+  if (
+    typeof a1Sheet.svgUrl === "string" &&
+    a1Sheet.svgUrl.startsWith("/api/a1/compose-output/")
+  ) {
+    const name = basenameFromPath(a1Sheet.svgUrl);
+    if (isSafeArtifactBasename(name)) {
+      return `/api/a1/compose-output/${name}`;
+    }
+  }
+
+  // Legacy PNG file-transport (V2 multi-panel pipeline).
+  if (
+    meta.transport === "file" &&
+    typeof meta.outputFile === "string" &&
+    meta.outputFile
+  ) {
+    const name = basenameFromPath(meta.outputFile);
+    if (isSafeArtifactBasename(name)) {
+      return `/api/a1/compose-output/${name}`;
+    }
+  }
+
+  // Pre-built PDF reference, used only by exportAsPDF passthrough.
+  if (
+    format === "pdf" &&
+    typeof meta.pdfOutputFile === "string" &&
+    meta.pdfOutputFile
+  ) {
+    const name = basenameFromPath(meta.pdfOutputFile);
+    if (isSafeArtifactBasename(name)) {
+      return `/api/a1/compose-output/${name}`;
+    }
+  }
+
+  // Inline data URL fallback — only when small enough to fit the request cap.
+  if (typeof sheet?.url === "string" && sheet.url.startsWith("data:")) {
+    if (sheet.url.length <= EXPORT_REQUEST_INLINE_BUDGET_BYTES) {
+      return sheet.url;
+    }
+  }
+
+  return null;
+}
+
+export function resolvePdfArtifactPath(sheet) {
+  const meta = sheet?.metadata || {};
+  if (typeof meta.pdfOutputFile === "string" && meta.pdfOutputFile) {
+    const name = basenameFromPath(meta.pdfOutputFile);
+    if (isSafeArtifactBasename(name)) {
+      return `/api/a1/compose-output/${name}`;
+    }
+  }
+  if (typeof sheet?.pdfUrl === "string") {
+    if (sheet.pdfUrl.startsWith("/api/a1/compose-output/")) {
+      const name = basenameFromPath(sheet.pdfUrl);
+      if (isSafeArtifactBasename(name)) {
+        return `/api/a1/compose-output/${name}`;
+      }
+    }
+    if (
+      sheet.pdfUrl.startsWith("data:application/pdf") &&
+      sheet.pdfUrl.length <= EXPORT_REQUEST_INLINE_BUDGET_BYTES
+    ) {
+      return sheet.pdfUrl;
+    }
+  }
+  return null;
+}
+
 /**
  * Export Service
  */
@@ -528,56 +782,122 @@ class ExportService {
   }
 
   /**
-   * Export sheet server-side
+   * Resolve compact request body for POST /api/a1/export.
+   *
+   * Transport preference:
+   *   1. `artifactRef` — durable adapter reference (survives Vercel cold-
+   *      start, same shape as the prebaked artifact-package).
+   *   2. `artifactPath` — filesystem compose-output reference (same-instance).
+   *   3. Inline `data:` URL when small enough.
+   *
+   * Throws when none of the above are usable so the UI surfaces a real
+   * failure rather than silently downloading SVG bytes saved as `.png`.
+   */
+  buildA1ExportRequestBody(sheet, format) {
+    const fmt = String(format || "").toLowerCase();
+    const designId =
+      sheet?.metadata?.designId ||
+      sheet?.designId ||
+      sheet?.projectId ||
+      "unknown";
+    const sheetHash =
+      sheet?.geometryHash ||
+      sheet?.metadata?.geometryHash ||
+      sheet?.sheetArtifactManifest?.geometryHash ||
+      null;
+    const projectName = this.resolveProjectName(sheet);
+
+    const artifactRef = resolveExportArtifactRef(sheet);
+    const artifactPath = artifactRef
+      ? null
+      : resolveExportArtifactPath(sheet, { format: fmt });
+
+    if (!artifactRef && !artifactPath) {
+      throw new Error(
+        "Sheet artifact unavailable for export. Regenerate the design to produce a durable artifact reference, or wait for Phase 2 ephemeral storage.",
+      );
+    }
+
+    const body = {
+      designId,
+      format: fmt,
+      sheetHash,
+      projectName,
+    };
+    if (artifactRef) {
+      body.artifactRef = artifactRef;
+    } else {
+      body.artifactPath = artifactPath;
+    }
+    if (fmt === "pdf") {
+      const pdfArtifactPath = resolvePdfArtifactPath(sheet);
+      if (pdfArtifactPath) {
+        body.pdfArtifactPath = pdfArtifactPath;
+      }
+    }
+    return body;
+  }
+
+  /**
+   * Export sheet server-side via the compact-reference /api/a1/export route.
+   * Replaces the legacy /api/sheet POST (which round-tripped multi-MB data
+   * URLs through JSON and frequently 413'd in serverless). Validates magic
+   * bytes per-format before triggering the browser download.
+   *
    * @private
    */
   async exportSheetServerSide({ sheet, format, env }) {
-    const apiUrl = env?.api?.urls?.sheet || "/api/sheet";
+    const fmt = String(format || "").toLowerCase();
+    const apiUrl = env?.api?.urls?.a1Export || "/api/a1/export";
 
-    logger.debug("Using server-side export", { apiUrl, format });
+    logger.debug("Using compact-reference export", { apiUrl, format: fmt });
 
-    try {
-      const response = await fetch(apiUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          designId: sheet.metadata?.designId || "unknown",
-          sheetId: sheet.metadata?.sheetId || "unknown",
-          sheetType: sheet.metadata?.sheetType || "ARCH",
-          versionId: sheet.metadata?.versionId || "base",
-          sheetMetadata: sheet.metadata,
-          overlays: sheet.metadata?.overlays || [],
-          format: format.toLowerCase(),
-          imageUrl: sheet.url,
-        }),
-      });
+    const body = this.buildA1ExportRequestBody(sheet, fmt);
 
-      if (!response.ok) {
-        throw new Error(`Server export failed: ${response.status}`);
-      }
+    const response = await fetch(apiUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
 
-      const result = await response.json();
-
-      logger.success("Server-side export complete", {
-        url: result.url,
-        format,
-      });
-
-      return {
-        success: true,
-        url: result.url,
-        filename:
-          result.filename || `sheet_${Date.now()}.${format.toLowerCase()}`,
-        format,
-        checksum: result.checksum || null,
-      };
-    } catch (error) {
-      logger.error("Server-side export failed", error);
-
-      // Fallback to client-side
-      logger.warn("Falling back to client-side export");
-      return this.exportSheetClientSide({ sheet, format });
+    if (!response.ok) {
+      const message = await this.readJsonError(
+        response,
+        `A1 export failed: HTTP ${response.status}`,
+      );
+      throw new Error(message);
     }
+
+    const blob = await response.blob();
+    const validator = magicByteValidatorFor(fmt);
+    await validator(blob);
+
+    const fallbackFilename = this.generateFilename(sheet, fmt);
+    const filename = this.filenameFromContentDisposition(
+      response.headers?.get?.("Content-Disposition") ||
+        response.headers?.get?.("content-disposition"),
+      fallbackFilename,
+    );
+    const builderPath =
+      response.headers?.get?.("X-A1-Export-Builder") ||
+      response.headers?.get?.("x-a1-export-builder") ||
+      null;
+    const url = this.triggerBlobDownload(blob, filename);
+
+    logger.success("A1 export complete", {
+      url,
+      filename,
+      format: fmt,
+      builderPath,
+    });
+
+    return {
+      success: true,
+      url,
+      filename,
+      format: format.toUpperCase ? format.toUpperCase() : fmt.toUpperCase(),
+      builderPath,
+    };
   }
 
   /**
@@ -652,6 +972,12 @@ class ExportService {
 
   /**
    * Export as PNG
+   *
+   * Phase 1 tightening: data URL gate now requires `data:image/png` exactly
+   * (was `data:image/*`, which silently let SVG payloads through). Decoded
+   * bytes are checked against the PNG magic signature before download so
+   * a `data:image/png;base64,<svg…>` masquerade is rejected at the source.
+   *
    * @private
    */
   async exportAsPNG(sheet) {
@@ -661,13 +987,10 @@ class ExportService {
       throw new Error("No valid image URL for PNG export");
     }
 
-    // Data URL path: must be data:image/* with a non-empty payload.
-    // A bare `data:image/png;base64,` or a `data:text/html,...` here
-    // would otherwise be silently saved as a .png on the user's disk.
     if (sheet.url.startsWith("data:")) {
-      if (!/^data:image\//i.test(sheet.url)) {
+      if (!/^data:image\/png(?:;|,)/i.test(sheet.url)) {
         throw new Error(
-          "PNG export requires a data:image/* URL — refusing to save non-image data as .png.",
+          "PNG export requires a data:image/png URL — refusing to save non-PNG bytes as .png.",
         );
       }
       const payloadSeparator = sheet.url.indexOf(",");
@@ -676,6 +999,7 @@ class ExportService {
       }
       const blob = await this.dataURLToBlob(sheet.url);
       this.validatePngBlob(blob, blob.type);
+      await validatePngMagicBytes(blob);
       const url = this.triggerBlobDownload(blob, filename);
       return { success: true, url, filename, format: "PNG" };
     }
@@ -702,50 +1026,25 @@ class ExportService {
     }
     const blob = await response.blob();
     this.validatePngBlob(blob, contentType || blob.type);
+    await validatePngMagicBytes(blob);
     const url = this.triggerBlobDownload(blob, filename);
     return { success: true, url, filename, format: "PNG" };
   }
 
   /**
-   * Export as PDF
+   * Export as PDF via the compact-reference /api/a1/export route.
+   *
    * @private
    */
   async exportAsPDF(sheet) {
-    // PDF export requires server-side processing
-    logger.info("Requesting server-side PDF export");
+    logger.info("Requesting compact-reference PDF export");
 
     try {
-      const response = await fetch("/api/sheet", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          designId: sheet.metadata?.designId || "unknown",
-          sheetId: sheet.metadata?.sheetId || "unknown",
-          sheetType: sheet.metadata?.sheetType || "ARCH",
-          versionId: sheet.metadata?.versionId || "base",
-          sheetMetadata: sheet.metadata,
-          overlays: sheet.metadata?.overlays || [],
-          format: "pdf",
-          imageUrl: sheet.url,
-        }),
+      return await this.exportSheetServerSide({
+        sheet,
+        format: "pdf",
+        env: this.env,
       });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(
-          errorData.error?.message ||
-            `Server export failed: ${response.status}`,
-        );
-      }
-
-      const result = await response.json();
-
-      return {
-        success: true,
-        url: result.url,
-        filename: result.filename,
-        format: "PDF",
-      };
     } catch (error) {
       logger.error("PDF export failed", error);
       throw new Error(`PDF export failed: ${error.message}`);

@@ -5,8 +5,13 @@ import { buildArtifactPackageWithPdfStitching } from "../../src/services/export/
 import {
   getDefaultArtifactStorageAdapter,
   DEFAULT_SIGNED_URL_EXPIRES_SECONDS,
+  BLOB_KIND_A1_SHEET_SVG,
 } from "../../src/services/export/artifactStorageService.js";
+import { resolveComposeOutputDir } from "../../src/services/a1/composeRuntime.js";
+import a1ComposePayload from "../../server/utils/a1ComposePayload.cjs";
 import { __artifactPackageExportInternals } from "./export/artifact-package.js";
+
+const { buildComposeSvgUrl } = a1ComposePayload;
 
 const { buildPackageInput, hasPackageSource, safeProjectName } =
   __artifactPackageExportInternals;
@@ -79,6 +84,119 @@ function resolveWizardProjectId(payload = {}, result = {}) {
 export const __verticalSlicePrebakeInternals = {
   resolveWizardProjectId,
 };
+
+// Phase 1 export-fix: persist the master A1 SVG so the new `/api/a1/export`
+// route can recover it without round-tripping a multi-MB data URL through
+// JSON (which 413s on Vercel). Two transports are layered:
+//
+//   1. Filesystem under A1_COMPOSE_OUTPUT_DIR. Fast and matches the existing
+//      compose-output static serve. Survives same-instance dev + Vercel.
+//   2. Durable adapter blob via `putBlobArtifact({packageId, kind: "a1-sheet-svg"})`.
+//      Survives Vercel cold start / cross-instance reads. Backed by the same
+//      storage adapter (in-memory / filesystem / S3) the artifact package
+//      already uses, so production durability follows the existing infra.
+//
+// `result.artifacts.a1Sheet` gets two new fields the client can use to build
+// a compact request body:
+//
+//   - `svgOutputFile` / `svgUrl`  → file-transport (filesystem path)
+//   - `svgArtifactRef`            → durable reference { packageId, kind,
+//                                                       adapter, available }
+//
+// Both writes are opportunistic — slice generation is never failed by an
+// export-side optimisation. When neither path is available the client falls
+// back to the inline data URL gate in `exportService.buildA1ExportRequestBody`,
+// which surfaces a clear error rather than producing a corrupt download.
+async function persistMasterSvgForExport(result, { designId, packageId } = {}) {
+  if (!result || !result.success) return result;
+  const a1Sheet = result?.artifacts?.a1Sheet;
+  const svgString = a1Sheet?.svgString;
+  if (typeof svgString !== "string" || svgString.length === 0) {
+    return result;
+  }
+  // Cheap precheck: if the URL-encoded SVG is going to fit in the inline
+  // budget anyway, skip both disk + adapter writes.
+  const approxEncodedBytes = svgString.length * 2 + 64;
+  if (approxEncodedBytes <= 180 * 1024) {
+    return result;
+  }
+  const sanitisedDesignId =
+    String(
+      designId ||
+        result?.projectGraph?.project_id ||
+        result?.projectGraph?.projectGraphId ||
+        "unknown",
+    )
+      .replace(/[^a-z0-9_-]/gi, "")
+      .slice(0, 60) || "unknown";
+
+  let nextA1Sheet = a1Sheet;
+
+  // (1) Filesystem transport — best-effort.
+  try {
+    const outputDir = resolveComposeOutputDir();
+    const payload = buildComposeSvgUrl({
+      svgString,
+      outputDir,
+      designId: sanitisedDesignId,
+    });
+    if (payload?.success && payload.transport === "file") {
+      nextA1Sheet = {
+        ...nextA1Sheet,
+        transport: "file",
+        svgUrl: payload.sheetUrl,
+        svgOutputFile: payload.svgOutputFile,
+        svgFilename: payload.filename,
+        svgBytes: payload.svgBytes,
+      };
+    }
+  } catch (err) {
+    console.warn(
+      "[generate-vertical-slice] master SVG filesystem persistence skipped:",
+      err?.message || err,
+    );
+  }
+
+  // (2) Durable adapter transport — survives cold starts. Skipped silently
+  //     when no packageId is available (e.g. when prebake is disabled) or
+  //     the adapter does not implement putBlobArtifact.
+  if (packageId) {
+    try {
+      const adapter = getDefaultArtifactStorageAdapter();
+      if (typeof adapter?.putBlobArtifact === "function") {
+        const stored = await adapter.putBlobArtifact({
+          packageId,
+          kind: BLOB_KIND_A1_SHEET_SVG,
+          bytes: Buffer.from(svgString, "utf8"),
+          contentType: "image/svg+xml; charset=utf-8",
+        });
+        if (stored?.stored) {
+          nextA1Sheet = {
+            ...nextA1Sheet,
+            svgArtifactRef: {
+              packageId,
+              kind: BLOB_KIND_A1_SHEET_SVG,
+              adapter:
+                stored.adapter || adapter.adapterCapabilities?.adapter || null,
+              byteLength: stored.byteLength || null,
+              available: true,
+            },
+          };
+        }
+      }
+    } catch (err) {
+      console.warn(
+        "[generate-vertical-slice] master SVG durable persistence skipped:",
+        err?.message || err,
+      );
+    }
+  }
+
+  if (nextA1Sheet !== a1Sheet) {
+    result.artifacts.a1Sheet = nextA1Sheet;
+  }
+  return result;
+}
 
 // Pre-bake the deliverables ZIP into storage during the generation request so
 // the client never has to re-upload tens of MB of artifacts at Save time.
@@ -187,10 +305,21 @@ export default async function handler(req, res) {
         : body;
     const result = await buildArchitectureProjectVerticalSlice(payload);
     if (result && result.success) {
+      // Prebake first so the artifact package is in the durable adapter
+      // before we attempt to file the master SVG as a sibling blob — the
+      // blob keys reuse the same packageId.
       const packageRef = await prebakeArtifactPackage({ result, payload, req });
       if (packageRef) {
         result.package = packageRef;
       }
+      await persistMasterSvgForExport(result, {
+        designId:
+          payload?.projectId ||
+          payload?.designId ||
+          payload?.metadata?.projectId ||
+          null,
+        packageId: packageRef?.packageId || null,
+      });
     }
     return res.status(result.success ? 200 : 422).json(result);
   } catch (error) {

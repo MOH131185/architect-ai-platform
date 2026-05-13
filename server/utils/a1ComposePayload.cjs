@@ -117,6 +117,131 @@ function buildComposeSheetUrl({
     }
 }
 
+/**
+ * Build compose SVG URL — returns data URL or file URL based on size.
+ *
+ * The master A1 sheet SVG sometimes reaches the client as
+ * `data:image/svg+xml;charset=utf-8,<urlencoded>` of several MB. That can no
+ * longer round-trip through JSON POSTs to the new `/api/a1/export` route
+ * (256 KB request-body cap by design). This helper persists the SVG to disk
+ * once and exposes a compact `/api/a1/compose-output/<file>.svg` reference,
+ * mirroring the existing PNG transport-decision pattern in
+ * `buildComposeSheetUrl`.
+ *
+ * @param {Object} params
+ * @param {string} params.svgString - utf-8 SVG markup
+ * @param {number} [params.maxDataUrlBytes] - inline-SVG cap (default 200 KB)
+ * @param {string} params.outputDir - directory to persist large files
+ * @param {string} [params.publicUrlBase] - default `/api/a1/compose-output`
+ * @param {string} [params.designId]
+ * @returns {Object} { success, sheetUrl, transport, svgBytes, sheetUrlBytes,
+ *   svgOutputFile, filename, error?, message? }
+ */
+function buildComposeSvgUrl({
+    svgString,
+    maxDataUrlBytes = 200 * 1024,
+    outputDir,
+    publicUrlBase = '/api/a1/compose-output',
+    designId = 'unknown',
+}) {
+    if (typeof svgString !== 'string' || svgString.length === 0) {
+        return {
+            success: false,
+            error: 'INVALID_SVG',
+            message: 'svgString must be a non-empty utf-8 string',
+            sheetUrl: null,
+        };
+    }
+
+    const svgBytes = Buffer.byteLength(svgString, 'utf8');
+
+    // Inline data URL is only acceptable when the encoded payload fits the
+    // 256 KB cap the export handler enforces — leave ~10 KB of headroom for
+    // request envelope + JSON keys. URL-encoding can expand the payload by
+    // ~3x, so check the encoded length, not the raw utf-8 length.
+    let encodedSvgLength = 0;
+    let encodedSvg = null;
+    if (svgBytes <= maxDataUrlBytes) {
+        try {
+            encodedSvg = encodeURIComponent(svgString);
+            encodedSvgLength =
+                'data:image/svg+xml;charset=utf-8,'.length + encodedSvg.length;
+        } catch (err) {
+            return {
+                success: false,
+                error: 'SVG_ENCODE_FAILED',
+                message: err.message || 'encodeURIComponent failed',
+                svgBytes,
+                sheetUrl: null,
+            };
+        }
+    }
+
+    if (encodedSvg && encodedSvgLength <= maxDataUrlBytes) {
+        const dataUrl = `data:image/svg+xml;charset=utf-8,${encodedSvg}`;
+        return {
+            success: true,
+            sheetUrl: dataUrl,
+            transport: 'dataUrl',
+            svgBytes,
+            sheetUrlBytes: dataUrl.length,
+            svgOutputFile: null,
+        };
+    }
+
+    if (!outputDir) {
+        return {
+            success: false,
+            error: 'OUTPUT_DIR_REQUIRED',
+            message: 'outputDir is required when the SVG exceeds maxDataUrlBytes',
+            svgBytes,
+            maxDataUrlBytes,
+            sheetUrl: null,
+        };
+    }
+
+    try {
+        if (!fs.existsSync(outputDir)) {
+            fs.mkdirSync(outputDir, { recursive: true });
+        }
+
+        const timestamp = Date.now();
+        const hash = crypto
+            .createHash('md5')
+            .update(svgString)
+            .digest('hex')
+            .substring(0, 8);
+        const safeDesignId =
+            String(designId || 'unknown').replace(/[^a-z0-9_-]/gi, '') ||
+            'unknown';
+        const filename = `a1-${safeDesignId}-${timestamp}-${hash}.svg`;
+        const outputFile = path.join(outputDir, filename);
+
+        fs.writeFileSync(outputFile, svgString, { encoding: 'utf8' });
+
+        const fileUrl = `${publicUrlBase}/${filename}`;
+
+        return {
+            success: true,
+            sheetUrl: fileUrl,
+            transport: 'file',
+            svgBytes,
+            sheetUrlBytes: fileUrl.length,
+            svgOutputFile: outputFile,
+            filename,
+        };
+    } catch (error) {
+        return {
+            success: false,
+            error: 'FILE_WRITE_FAILED',
+            message: `Failed to write SVG to disk: ${error.message}`,
+            svgBytes,
+            sheetUrl: null,
+        };
+    }
+}
+
 module.exports = {
     buildComposeSheetUrl,
+    buildComposeSvgUrl,
 };

@@ -2689,17 +2689,23 @@ const ArchitectAIWizardContainer = () => {
   /**
    * Export handlers
    */
+  // Phase 1 export-fix: do NOT swallow export errors here. The caller in
+  // ExportPanel.handleExport relies on a thrown error to surface the failure
+  // state (red toast, no "complete" status). Catching silently was producing
+  // false-success UX when the underlying server route 413'd or returned an
+  // invalid blob. We still log for observability, then rethrow.
   const handleExport = useCallback(
     async (format) => {
       if (!result) return;
 
       try {
-        await exportSheetWorkflow({
+        return await exportSheetWorkflow({
           sheet: result,
           format,
         });
       } catch (err) {
         logger.error("Export failed", err);
+        throw err;
       }
     },
     [result, exportSheetWorkflow],
@@ -2712,9 +2718,10 @@ const ArchitectAIWizardContainer = () => {
       try {
         const { default: exportService } =
           await import("../services/exportService");
-        await exportService.exportCAD({ sheet: result, format });
+        return await exportService.exportCAD({ sheet: result, format });
       } catch (err) {
         logger.error("CAD export failed", err);
+        throw err;
       }
     },
     [result],
@@ -2727,9 +2734,10 @@ const ArchitectAIWizardContainer = () => {
       try {
         const { default: exportService } =
           await import("../services/exportService");
-        await exportService.exportBIM({ sheet: result, format });
+        return await exportService.exportBIM({ sheet: result, format });
       } catch (err) {
         logger.error("BIM export failed", err);
+        throw err;
       }
     },
     [result],

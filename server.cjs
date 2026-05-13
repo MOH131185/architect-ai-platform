@@ -421,6 +421,10 @@ mountDynamicApiRoute('post', '/api/project/export/dxf',     'api/project/export/
 mountDynamicApiRoute('post', '/api/project/export/ifc',     'api/project/export/ifc.js');
 mountDynamicApiRoute('post', '/api/project/export/xlsx',    'api/project/export/xlsx.js');
 mountDynamicApiRoute('post', '/api/project/export/artifact-package', 'api/project/export/artifact-package.js');
+// Compact-reference A1 export route. Accepts {designId, format, artifactPath, …}
+// and returns binary PNG/PDF/SVG. Replaces the legacy /api/sheet path for the
+// ProjectGraph A1 sheet — no large data URLs round-trip through JSON.
+mountDynamicApiRoute('post', '/api/a1/export',                       'api/a1/export.js');
 // Generation job lifecycle (Phase B). Wraps the synchronous slice handler in
 // an async job so heavy ProjectGraph/A1/package work no longer occupies a
 // 2-minute HTTP request. The legacy POST /api/project/generate-vertical-slice
