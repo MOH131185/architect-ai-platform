@@ -9716,9 +9716,15 @@ export function buildPresentationV3SheetPanelSpecs(targetStoreys = 1) {
   const isMultiStorey = storeyCount >= 3;
 
   // Row geometry (mm; A1 landscape = 841×594mm with 10mm side margins).
+  // Phase 3 layout: ROW1_Y now starts at composeCore.A1_CONTENT_TOP_MM
+  // (= title bar bottom 10mm + A1_HEADER_SAFE_BAND_MM 6mm = 16mm) so the
+  // title bar's black fill no longer butts directly against the first row
+  // and titles no longer touch the row-1 panel frames. ROW1_H shrinks by
+  // the same 6mm delta so every subsequent row keeps its previous y
+  // boundary and the existing footer at y=574mm stays clear.
   const ROW_GAP = 8;
-  const ROW1_Y = 10;
-  const ROW1_H = isMultiStorey ? 126 : 172;
+  const ROW1_Y = 16;
+  const ROW1_H = isMultiStorey ? 120 : 166;
   const ROW2_Y = ROW1_Y + ROW1_H + ROW_GAP;
   const ROW2_H = isMultiStorey ? 238 : 172;
   const ROW3_Y = ROW2_Y + ROW2_H + ROW_GAP;
@@ -9943,13 +9949,18 @@ export function buildPresentationV3SheetPanelSpecs(targetStoreys = 1) {
 
 function buildSheetPanelSpecs(targetStoreys = 1) {
   const storeyCount = Math.max(1, Number(targetStoreys) || 1);
+  // Phase 3 layout: bump the legacy (non-presentation-v3) site_context row
+  // below the 16mm composeCore.A1_CONTENT_TOP_MM line so the title bar's
+  // black fill keeps a 6mm safe band. The 4mm delta (12mm → 16mm) is
+  // absorbed by the 170mm tall panel (still well above the 60mm A1
+  // minimum-frame floor).
   const specs = [
     {
       panelType: "site_context",
       x: 10,
-      y: 12,
+      y: 16,
       width: 178,
-      height: 170,
+      height: 166,
       scale: "1:500",
       required: true,
     },
@@ -15311,6 +15322,31 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     sourceGaps: engineeringExportGaps,
   };
 
+  // Phase 3 export-fix: surface the final-A1 export gate at the top level
+  // of the slice result as `a1ExportQa`. The gate already lives at
+  // `artifacts.a1Sheet.quality.exportGate` for diagnostics, but clients
+  // (useArchitectAIWorkflow + ExportPanel) need a fixed top-level location
+  // to drive sheet-export blocking when QA fails. Defensive shape: when
+  // the gate evaluation crashed inside the try/catch at line 14910 we
+  // still expose a warning status with the error message so consumers can
+  // distinguish "QA passed" from "QA evaluation crashed".
+  const a1ExportGate = sheetArtifact?.quality?.exportGate || null;
+  const a1ExportQa = a1ExportGate
+    ? {
+        status: a1ExportGate.status || "warning",
+        allowed: a1ExportGate.allowed !== false,
+        demotedToPreview: a1ExportGate.demotedToPreview === true,
+        blockers: Array.isArray(a1ExportGate.blockers)
+          ? a1ExportGate.blockers
+          : [],
+        warnings: Array.isArray(a1ExportGate.warnings)
+          ? a1ExportGate.warnings
+          : [],
+        scope: a1ExportGate.scope || "compose_final",
+        version: a1ExportGate.version || "phase-f-a1-export-gate-v1",
+      }
+    : null;
+
   return {
     success: qa.status === "pass",
     pipelineVersion: PROJECT_GRAPH_VERTICAL_SLICE_VERSION,
@@ -15321,6 +15357,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     variationMode: generationLifecycle.variationMode,
     generationLifecycle,
     engineeringExportReadiness,
+    a1ExportQa,
     metadata: {
       generationSeed: generationLifecycle.generationSeed,
       seedSource: generationLifecycle.seedSource,

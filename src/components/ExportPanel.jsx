@@ -357,12 +357,45 @@ const ExportPanel = ({
     AUTHORITY_JSON_UNAVAILABLE: "Authority JSON not available.",
     REGENERATE_REQUIRED_FOR_ENGINEERING_EXPORT:
       "Regenerate required — compiled project was not persisted in history.",
+    A1_QA_BLOCKED:
+      "A1 export blocked — sheet failed final layout/readability QA.",
   };
 
   const blockedReason = (key) => {
     const raw = exportsMap?.[key]?.blockedReason;
     if (!raw) return "Not part of the current compiled bundle.";
     return BLOCKED_REASON_LABELS[raw] || raw;
+  };
+
+  // Phase 3 export-fix: when the final-A1 export QA gate flags status
+  // "blocked", PNG / PDF / SVG sheet exports must be disabled — the
+  // print master failed layout / readability validation and shipping it
+  // would produce an unprintable artifact. Engineering rows (DXF / IFC /
+  // JSON / XLSX) keep their Phase 2 readiness logic; QA blocking targets
+  // the SHEET artifact, not the compiled-project bundle. Status "warning"
+  // keeps export available but a banner above the rows surfaces the
+  // warning count.
+  const a1ExportQa = designData?.a1ExportQa || null;
+  const sheetQaBlocked = a1ExportQa?.status === "blocked";
+  const sheetQaWarning = a1ExportQa?.status === "warning";
+  const sheetQaBlockerSummary =
+    Array.isArray(a1ExportQa?.blockers) && a1ExportQa.blockers.length > 0
+      ? `${a1ExportQa.blockers.length} blocker${a1ExportQa.blockers.length === 1 ? "" : "s"}`
+      : null;
+  const SHEET_EXPORT_KEYS = ["png", "pdf", "svg"];
+  const isSheetKey = (key) =>
+    SHEET_EXPORT_KEYS.includes(String(key || "").toLowerCase());
+
+  const sheetExportAvailable = (key, manifestFallback = true) => {
+    if (sheetQaBlocked && isSheetKey(key)) return false;
+    return isAvailable(key, manifestFallback);
+  };
+
+  const sheetExportBlockedReason = (key) => {
+    if (sheetQaBlocked && isSheetKey(key)) {
+      return BLOCKED_REASON_LABELS.A1_QA_BLOCKED;
+    }
+    return blockedReason(key);
   };
 
   return (
@@ -387,6 +420,40 @@ const ExportPanel = ({
           <span className="text-eyebrow mr-2">Authority</span>
           <span className="font-mono break-all text-white/70">
             {geometryHash}
+          </span>
+        </div>
+      )}
+
+      {/* Phase 3 export-fix: surface final-A1 QA status so the user knows
+          WHY sheet exports are disabled (or downgraded). The banner sits
+          ABOVE the export rows so it's visible before the user attempts
+          to download a print master. */}
+      {sheetQaBlocked && (
+        <div
+          className="mb-5 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-200"
+          data-testid="a1-qa-blocked-banner"
+          data-a1-qa-status="blocked"
+        >
+          <span className="text-eyebrow mr-2 text-rose-200">A1 QA</span>
+          <span className="font-medium">
+            A1 export blocked — sheet failed final layout/readability QA.
+          </span>
+          {sheetQaBlockerSummary && (
+            <span className="ml-1 text-rose-300/80">
+              ({sheetQaBlockerSummary})
+            </span>
+          )}
+        </div>
+      )}
+      {sheetQaWarning && !sheetQaBlocked && (
+        <div
+          className="mb-5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200"
+          data-testid="a1-qa-warning-banner"
+          data-a1-qa-status="warning"
+        >
+          <span className="text-eyebrow mr-2 text-amber-200">A1 QA</span>
+          <span className="font-medium">
+            A1 export passed with warnings — review before final print.
           </span>
         </div>
       )}
@@ -422,8 +489,8 @@ const ExportPanel = ({
           icon={FileText}
           label="Export as PDF"
           formatChip="PDF"
-          available={isAvailable("pdf", true)}
-          blockedReason={blockedReason("pdf")}
+          available={sheetExportAvailable("pdf", true)}
+          blockedReason={sheetExportBlockedReason("pdf")}
           tooltip="Print-ready A1 sheet, vector text where possible."
           onClick={() => void handleExport("pdf", "PDF sheet")}
         />
@@ -431,8 +498,8 @@ const ExportPanel = ({
           icon={ImageIcon}
           label="Export as PNG"
           formatChip="PNG"
-          available={isAvailable("png", true)}
-          blockedReason={blockedReason("png")}
+          available={sheetExportAvailable("png", true)}
+          blockedReason={sheetExportBlockedReason("png")}
           tooltip="Raster image of the A1 sheet at full resolution."
           onClick={() => void handleExport("png", "PNG image")}
         />

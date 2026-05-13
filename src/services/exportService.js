@@ -760,6 +760,26 @@ class ExportService {
       "�x",
     );
 
+    // Phase 3 export-fix: refuse to ship a sheet export when the
+    // final-A1 export QA gate flagged the print master as blocked. The
+    // UI gate in ExportPanel disables the buttons, but this is the
+    // service-layer defence in depth: programmatic callers (and the
+    // Save-Package flow during regenerate races) must hit the same
+    // error rather than producing a corrupt print artifact. Engineering
+    // formats run their own readiness checks and are not gated here.
+    const SHEET_FORMATS = new Set(["PNG", "PDF", "SVG"]);
+    if (SHEET_FORMATS.has(fmt) && sheet?.a1ExportQa?.status === "blocked") {
+      const blockerCount = Array.isArray(sheet.a1ExportQa.blockers)
+        ? sheet.a1ExportQa.blockers.length
+        : 0;
+      const detail = blockerCount
+        ? ` (${blockerCount} blocker${blockerCount === 1 ? "" : "s"})`
+        : "";
+      throw new Error(
+        `A1 export blocked — sheet failed final layout/readability QA${detail}.`,
+      );
+    }
+
     // Route DXF to CAD export path
     if (fmt === "DXF") {
       return this.exportCAD({ sheet, format: "DXF", env: effectiveEnv });

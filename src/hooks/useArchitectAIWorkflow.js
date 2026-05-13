@@ -1474,6 +1474,12 @@ async function runProjectGraphVerticalSliceWorkflow({
       verticalSlice.artifacts?.sheetArtifactManifest ||
       verticalSlice.sheetArtifactManifest ||
       null,
+    // Phase 3 export-fix: surface the final-A1 export QA gate at top level
+    // so ExportPanel can block PNG/PDF/SVG export when the print master
+    // failed final layout/readability QA. The diagnostic copy lives at
+    // `artifacts.a1Sheet.quality.exportGate`; this is the contract field
+    // the UI gate consumes.
+    a1ExportQa: verticalSlice.a1ExportQa || null,
     panels: panelMap,
     panelMap,
     panelsByKey: panelMap,

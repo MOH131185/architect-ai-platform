@@ -23,6 +23,10 @@
 export const A1_WIDTH = 9933;
 export const A1_HEIGHT = 7016;
 
+/** A1 landscape in millimetres (used by the live ProjectGraph slice). */
+export const A1_WIDTH_MM = 841;
+export const A1_HEIGHT_MM = 594;
+
 /** Working (preview) resolution */
 export const WORKING_WIDTH = 1792;
 export const WORKING_HEIGHT = 1269;
@@ -34,18 +38,112 @@ export const FRAME_STROKE_WIDTH = 3;
 export const FRAME_STROKE_COLOR = "#d1d5db";
 
 // ---------------------------------------------------------------------------
+// Phase 3 layout / readability — global SSOT.
+//
+// The title bar SVG drawn by `buildSheetTitleBar` (see
+// projectGraphVerticalSliceService.js:10894) occupies y=0..10mm on the master
+// SVG. Without a safe-band gap, content rows starting at the same y bleed
+// into the bar's black fill and the title's descenders touch the panel
+// frames. These constants are the deterministic floor every grid and panel
+// builder respects so the master sheet stays printable.
+// ---------------------------------------------------------------------------
+
+/** Master sheet title-bar height (matches the rect drawn in slice service). */
+export const A1_TITLE_BAR_HEIGHT_MM = 10;
+
+/**
+ * Safe band reserved BELOW the title bar before content panels begin.
+ * Empirically ~6mm = 0.6× one panel-label band; gives the title bar visible
+ * separation from the first row without sacrificing more than ~1% of the
+ * presentation-v3 row-1 height.
+ */
+export const A1_HEADER_SAFE_BAND_MM = 6;
+
+/**
+ * Y coordinate (mm) of the first content row's top edge. Every slice / grid
+ * builder must clamp its row-1 Y to this value or below.
+ */
+export const A1_CONTENT_TOP_MM =
+  A1_TITLE_BAR_HEIGHT_MM + A1_HEADER_SAFE_BAND_MM;
+
+/**
+ * Normalized (0-1) equivalent of `A1_CONTENT_TOP_MM` for grids that use
+ * the legacy normalized-coords convention (board-v2, presentation-v3 grid
+ * specs in composeCore). 16mm / 594mm ≈ 0.0269.
+ */
+export const A1_CONTENT_TOP_NORMALIZED = A1_CONTENT_TOP_MM / A1_HEIGHT_MM;
+
+/**
+ * Minimum text size (mm) for text rendered on the final A1 print master.
+ * Anything smaller falls under perceptual-disappearance at 300 DPI and is
+ * a hard blocker in `a1FinalExportContract.evaluateFinalA1ExportGate`.
+ */
+export const A1_FINAL_MIN_TEXT_SIZE_MM = 2.2;
+
+/**
+ * Minimum stroke weight (mm) for technical line work on the final A1 print
+ * master. Strokes thinner than this round to <1 device pixel at 300 DPI
+ * and disappear on print.
+ */
+export const A1_FINAL_MIN_LINE_WEIGHT_MM = 0.18;
+
+/**
+ * Minimum fraction of a technical-panel slot that the actual content
+ * geometry must occupy (bounding-box area / slot area). Anything below
+ * leaves the panel with vast white margins which read as "missing
+ * drawing" on print. Used by the QA gate to flag low-occupancy plans /
+ * elevations / sections as warnings or blockers.
+ */
+export const A1_TECHNICAL_PANEL_MIN_OCCUPANCY = 0.45;
+
+// ---------------------------------------------------------------------------
 // 12-Column Board Grid (technical-first SSOT for board-v2)
 // Normalised 0-1 coordinates on an A1 landscape sheet.
 // ---------------------------------------------------------------------------
 
+// Phase 3 layout: row 1 Y has been bumped from 0.015 (8.91mm — INSIDE the
+// 10mm title bar) to A1_CONTENT_TOP_NORMALIZED (≈0.0269 = 16mm = title bar
+// bottom + A1_HEADER_SAFE_BAND_MM). Row 1 height shrinks by the same delta
+// so the row-2 Y boundary at 0.235 stays put. Total vertical real estate is
+// preserved everywhere except the very top of the first row.
 export const GRID_12COL = {
   // Row 1 – Supporting visuals and data; hero is evidence, not the board anchor
-  site_diagram: { x: 0.015, y: 0.015, width: 0.16, height: 0.205 },
-  hero_3d: { x: 0.185, y: 0.015, width: 0.22, height: 0.205 },
-  interior_3d: { x: 0.415, y: 0.015, width: 0.14, height: 0.097 },
-  axonometric: { x: 0.415, y: 0.123, width: 0.14, height: 0.097 },
-  material_palette: { x: 0.565, y: 0.015, width: 0.205, height: 0.205 },
-  climate_card: { x: 0.78, y: 0.015, width: 0.205, height: 0.205 },
+  site_diagram: {
+    x: 0.015,
+    y: A1_CONTENT_TOP_NORMALIZED,
+    width: 0.16,
+    height: 0.1931,
+  },
+  hero_3d: {
+    x: 0.185,
+    y: A1_CONTENT_TOP_NORMALIZED,
+    width: 0.22,
+    height: 0.1931,
+  },
+  interior_3d: {
+    x: 0.415,
+    y: A1_CONTENT_TOP_NORMALIZED,
+    width: 0.14,
+    height: 0.0911,
+  },
+  axonometric: {
+    x: 0.415,
+    y: A1_CONTENT_TOP_NORMALIZED + 0.108,
+    width: 0.14,
+    height: 0.097,
+  },
+  material_palette: {
+    x: 0.565,
+    y: A1_CONTENT_TOP_NORMALIZED,
+    width: 0.205,
+    height: 0.1931,
+  },
+  climate_card: {
+    x: 0.78,
+    y: A1_CONTENT_TOP_NORMALIZED,
+    width: 0.205,
+    height: 0.1931,
+  },
 
   // Row 2 – Floor plans (primary board evidence)
   floor_plan_ground: { x: 0.015, y: 0.235, width: 0.32, height: 0.29 },
@@ -73,13 +171,42 @@ export const GRID_12COL = {
 //   Row 3 (bottom): exterior persp | interior persp | material palette | key notes | title block
 // ---------------------------------------------------------------------------
 
+// Phase 3 layout: row 1 Y now respects A1_HEADER_SAFE_BAND_MM (~6mm) below
+// the 10mm title bar. The delta (0.015 → A1_CONTENT_TOP_NORMALIZED, ≈+0.012)
+// is taken off row-1 height so row 2 (and the stacked N/S elevation halves
+// inside row 1) still align with their previous y boundaries.
 export const GRID_PRESENTATION_V3 = {
   // Row 1 — site + plans + N/S elevations
-  site_diagram: { x: 0.015, y: 0.015, width: 0.21, height: 0.305 },
-  floor_plan_ground: { x: 0.235, y: 0.015, width: 0.21, height: 0.305 },
-  floor_plan_first: { x: 0.455, y: 0.015, width: 0.21, height: 0.305 },
-  elevation_north: { x: 0.675, y: 0.015, width: 0.31, height: 0.145 },
-  elevation_south: { x: 0.675, y: 0.175, width: 0.31, height: 0.145 },
+  site_diagram: {
+    x: 0.015,
+    y: A1_CONTENT_TOP_NORMALIZED,
+    width: 0.21,
+    height: 0.293,
+  },
+  floor_plan_ground: {
+    x: 0.235,
+    y: A1_CONTENT_TOP_NORMALIZED,
+    width: 0.21,
+    height: 0.293,
+  },
+  floor_plan_first: {
+    x: 0.455,
+    y: A1_CONTENT_TOP_NORMALIZED,
+    width: 0.21,
+    height: 0.293,
+  },
+  elevation_north: {
+    x: 0.675,
+    y: A1_CONTENT_TOP_NORMALIZED,
+    width: 0.31,
+    height: 0.137,
+  },
+  elevation_south: {
+    x: 0.675,
+    y: A1_CONTENT_TOP_NORMALIZED + 0.148,
+    width: 0.31,
+    height: 0.145,
+  },
 
   // Row 2 — sections + axonometric + E/W elevations
   section_AA: { x: 0.015, y: 0.335, width: 0.21, height: 0.305 },

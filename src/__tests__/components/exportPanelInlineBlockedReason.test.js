@@ -100,4 +100,72 @@ describe("ExportPanel — inline blocked reason rendering", () => {
       /\{geometryHash\s*&&\s*\(\s*\n?\s*<div[^>]*>[\s\S]*?text-eyebrow[\s\S]*?Authority/,
     );
   });
+
+  // --------------------------------------------------------------------
+  // Phase 3 export-fix: A1 QA blocking surface
+  // --------------------------------------------------------------------
+
+  test("BLOCKED_REASON_LABELS includes the A1_QA_BLOCKED label", () => {
+    expect(SOURCE).toMatch(
+      /A1_QA_BLOCKED:\s*\n?\s*"A1 export blocked — sheet failed final layout\/readability QA\."/,
+    );
+  });
+
+  test("ExportPanel reads a1ExportQa.status from designData", () => {
+    expect(SOURCE).toMatch(/designData\?\.a1ExportQa/);
+    expect(SOURCE).toMatch(
+      /sheetQaBlocked\s*=\s*a1ExportQa\?\.status\s*===\s*"blocked"/,
+    );
+    expect(SOURCE).toMatch(
+      /sheetQaWarning\s*=\s*a1ExportQa\?\.status\s*===\s*"warning"/,
+    );
+  });
+
+  test("sheet export rows (PNG/PDF) route through the QA-gated helpers", () => {
+    expect(SOURCE).toMatch(
+      /label="Export as PDF"[\s\S]{0,200}available=\{sheetExportAvailable\("pdf",\s*true\)\}/,
+    );
+    expect(SOURCE).toMatch(
+      /label="Export as PNG"[\s\S]{0,200}available=\{sheetExportAvailable\("png",\s*true\)\}/,
+    );
+    expect(SOURCE).toMatch(
+      /label="Export as PDF"[\s\S]{0,200}blockedReason=\{sheetExportBlockedReason\("pdf"\)\}/,
+    );
+    expect(SOURCE).toMatch(
+      /label="Export as PNG"[\s\S]{0,200}blockedReason=\{sheetExportBlockedReason\("png"\)\}/,
+    );
+  });
+
+  test("sheetExportAvailable returns false for PNG/PDF/SVG when QA blocked", () => {
+    expect(SOURCE).toMatch(
+      /if\s*\(\s*sheetQaBlocked\s*&&\s*isSheetKey\(key\)\s*\)\s*return\s+false/,
+    );
+    expect(SOURCE).toMatch(
+      /SHEET_EXPORT_KEYS\s*=\s*\[\s*"png",\s*"pdf",\s*"svg"\s*\]/,
+    );
+  });
+
+  test("QA-blocked banner is rendered with the required testid + role copy", () => {
+    expect(SOURCE).toMatch(
+      /data-testid="a1-qa-blocked-banner"[\s\S]{0,300}A1 export blocked — sheet failed final layout\/readability QA\./,
+    );
+  });
+
+  test("QA-warning banner is rendered when status === 'warning' and not blocked", () => {
+    expect(SOURCE).toMatch(/data-testid="a1-qa-warning-banner"/);
+    expect(SOURCE).toMatch(/\{sheetQaWarning\s*&&\s*!sheetQaBlocked\s*&&/);
+  });
+
+  test("engineering rows still use the Phase-2 helpers — QA gate is sheet-scoped only", () => {
+    // DXF/IFC/JSON/XLSX continue to read from `isAvailable` + `blockedReason`,
+    // not the new sheet-gated helpers. The QA gate is intentionally
+    // restricted to PNG/PDF/SVG (the print master) — engineering rows
+    // have their own readiness logic (Phase 2 manifest + restore gate).
+    expect(SOURCE).toMatch(
+      /label="Export as DXF \(CAD\)"[\s\S]{0,200}available=\{isAvailable\("dxf",\s*false\)\}/,
+    );
+    expect(SOURCE).toMatch(
+      /label="Export as IFC \(BIM\)"[\s\S]{0,200}available=\{isAvailable\("ifc",\s*false\)\}/,
+    );
+  });
 });
