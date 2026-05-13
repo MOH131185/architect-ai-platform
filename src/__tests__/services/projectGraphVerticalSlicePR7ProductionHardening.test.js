@@ -141,9 +141,7 @@ describe("PR7 — F3: MVHR Key Note swaps phrasing for single-storey briefs", ()
 });
 
 describe("PR7 — F4: env contract declares the new A1 vars", () => {
-  const repoRoot = path.resolve(
-    new URL("../../../", import.meta.url).pathname.replace(/^\//, ""),
-  );
+  const repoRoot = process.cwd();
   const envCheckSource = fs.readFileSync(
     path.join(repoRoot, "scripts", "check-env.cjs"),
     "utf8",
