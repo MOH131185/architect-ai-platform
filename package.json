@@ -71,6 +71,8 @@
     "build": "react-scripts build",
     "build:active": "node scripts/run-build-active.cjs",
     "build:vercel": "CI=false GENERATE_SOURCEMAP=false react-scripts build",
+    "build:analyze": "GENERATE_SOURCEMAP=true react-scripts build",
+    "analyze": "source-map-explorer \"build/static/js/*.js\" --html bundle-report.html",
     "test": "react-scripts test",
     "test:compose:routing": "node scripts/tests/test-compose-core-and-routing.mjs",
     "test:a1:tofu": "node scripts/tests/test-a1-tofu-render.mjs",
@@ -166,7 +168,8 @@
     "husky": "^9.1.7",
     "lint-staged": "^16.2.7",
     "playwright": "^1.57.0",
-    "prettier": "^3.2.5"
+    "prettier": "^3.2.5",
+    "source-map-explorer": "^2.5.3"
   },
   "lint-staged": {
     "*.{js,jsx}": [
