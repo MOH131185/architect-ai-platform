@@ -886,6 +886,24 @@ describe("/api/a1/export — magic-byte classification (data URLs and blobs)", (
     expect(res.body.error.code).toBe("UNRECOGNISED_ARTIFACT_FORMAT");
   });
 
+  test("data:image/svg+xml;base64 carrying PDF bytes is reclassified by bytes (NOT silently treated as SVG)", async () => {
+    // Mirrors the PNG-smuggled-as-SVG case for the PDF magic. Verifies the
+    // resolver isn't biased toward any one masquerade — `%PDF` bytes wrapped
+    // in a `data:image/svg+xml;base64` label are caught the same way.
+    const pdfBase64 = VALID_PDF_BYTES.toString("base64");
+    const res = captureResponse();
+    await handler(
+      makeRequest({
+        designId: "pdf-as-svg",
+        format: "svg",
+        artifactPath: `data:image/svg+xml;base64,${pdfBase64}`,
+      }),
+      res,
+    );
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error.code).toBe("INVALID_INPUT");
+  });
+
   test("data:image/svg+xml;base64 carrying PNG bytes is reclassified by bytes", async () => {
     // The label says svg+xml but the decoded bytes start with the PNG
     // signature. With format=svg the handler must NOT pass these bytes
