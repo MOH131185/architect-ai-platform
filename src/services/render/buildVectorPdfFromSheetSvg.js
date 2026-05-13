@@ -21,9 +21,16 @@
  * those when no explicit `fonts` arg is supplied.
  */
 
-import { PDFDocument, StandardFonts } from "pdf-lib";
 import { parseSvg } from "./_lib/lightweightSvgParser.js";
 import { walkSvgIntoPdf } from "./_lib/svgToPdfWalker.js";
+
+let _pdfLibPromise = null;
+async function loadPdfLib() {
+  if (!_pdfLibPromise) {
+    _pdfLibPromise = import(/* webpackChunkName: "pdf-lib" */ "pdf-lib");
+  }
+  return _pdfLibPromise;
+}
 
 export const VECTOR_PDF_RENDER_MODE = "vector_textpaths_off";
 export const VECTOR_PDF_SCHEMA_VERSION = "vector-pdf-v1";
@@ -161,6 +168,8 @@ export async function buildVectorPdfFromSheetSvg({
     return { ...baseResult, error: "no_view_box" };
   }
   const fontBytes = fonts || extractEmbeddedFonts(svgString);
+
+  const { PDFDocument, StandardFonts } = await loadPdfLib();
 
   let pdfDoc;
   try {

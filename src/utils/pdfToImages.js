@@ -4,13 +4,33 @@
  * Uses pdfjs selectable text and page rendering only. OCR is intentionally not
  * used: image-only PDFs receive a sourceGap so downstream style prompts cannot
  * invent evidence.
+ *
+ * pdfjs-dist is loaded lazily on first PDF read — it's ~470 KB raw / ~140 KB
+ * gzipped and is only needed for the optional portfolio-PDF upload path.
  */
-
-import * as pdfjsLib from "pdfjs-dist/build/pdf.mjs";
 
 export const PDF_TEXT_NOT_SELECTABLE = "PDF_TEXT_NOT_SELECTABLE";
 
 const PDF_WORKER_FILE = "/pdf.worker.min.mjs";
+
+let _pdfjsPromise = null;
+async function loadPdfjs() {
+  if (!_pdfjsPromise) {
+    _pdfjsPromise = import(
+      /* webpackChunkName: "pdfjs-dist" */ "pdfjs-dist/build/pdf.mjs"
+    ).then((mod) => {
+      if (
+        typeof window !== "undefined" &&
+        mod.GlobalWorkerOptions &&
+        !mod.GlobalWorkerOptions.workerSrc
+      ) {
+        mod.GlobalWorkerOptions.workerSrc = `${window.location.origin}${PDF_WORKER_FILE}`;
+      }
+      return mod;
+    });
+  }
+  return _pdfjsPromise;
+}
 const DEFAULT_THUMBNAIL_PAGES = 3;
 const DEFAULT_THUMBNAIL_MAX_SIZE = 900;
 const TEXT_SAMPLE_LIMIT = 700;
@@ -113,12 +133,6 @@ const KEYWORD_GROUPS = Object.freeze({
   ],
 });
 
-function configurePdfWorker() {
-  if (typeof window === "undefined") return;
-  if (pdfjsLib.GlobalWorkerOptions.workerSrc) return;
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `${window.location.origin}${PDF_WORKER_FILE}`;
-}
-
 function compactText(value) {
   return String(value || "")
     .replace(/\s+/g, " ")
@@ -157,7 +171,7 @@ export function extractPortfolioEvidenceFromPdfText(text = "") {
 }
 
 async function loadPdfDocument(pdfFile) {
-  configurePdfWorker();
+  const pdfjsLib = await loadPdfjs();
   const arrayBuffer = await pdfFile.arrayBuffer();
   const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
   return loadingTask.promise;

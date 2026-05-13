@@ -1,8 +1,14 @@
 import path from "path";
 
-import { PDFDocument } from "pdf-lib";
-
 import { A1_WIDTH, A1_HEIGHT } from "./composeCore.js";
+
+let _pdfLibPromise = null;
+async function loadPdfLib() {
+  if (!_pdfLibPromise) {
+    _pdfLibPromise = import(/* webpackChunkName: "pdf-lib" */ "pdf-lib");
+  }
+  return _pdfLibPromise;
+}
 
 // Phase A close-out: final A1 PDFs must embed a 300 DPI raster of the A1
 // sheet (~9933 x 7016 px). Anything below 95% of that is preview density and
@@ -381,6 +387,7 @@ export async function buildPrintReadyPdfFromPng(pngBuffer, options = {}) {
 
   const plan = planPrintReadyPdfBuild(options);
 
+  const { PDFDocument } = await loadPdfLib();
   const pdf = await PDFDocument.create();
   const page = pdf.addPage([plan.widthPt, plan.heightPt]);
   const image = await pdf.embedPng(pngBuffer);

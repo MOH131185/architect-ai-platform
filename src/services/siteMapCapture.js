@@ -4,9 +4,17 @@
  * Includes polygon overlay and scale bar
  */
 
-import html2canvas from 'html2canvas';
-import logger from '../utils/logger.js';
+import logger from "../utils/logger.js";
 
+let _html2canvasPromise = null;
+async function loadHtml2Canvas() {
+  if (!_html2canvasPromise) {
+    _html2canvasPromise = import(
+      /* webpackChunkName: "html2canvas" */ "html2canvas"
+    ).then((mod) => mod.default || mod);
+  }
+  return _html2canvasPromise;
+}
 
 /**
  * Capture site using Google Static Maps API
@@ -16,30 +24,33 @@ import logger from '../utils/logger.js';
 export async function captureStaticMap({ center, polygon = [], zoom = 19 }) {
   const googleMapsApiKey = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
   if (!googleMapsApiKey) {
-    throw new Error('Google Maps API key not configured');
+    throw new Error("Google Maps API key not configured");
   }
 
-  logger.info('🗺️ Using Google Static Maps for accurate capture...');
+  logger.info("🗺️ Using Google Static Maps for accurate capture...");
 
   // Build Static Maps URL
-  const baseUrl = 'https://maps.googleapis.com/maps/api/staticmap';
+  const baseUrl = "https://maps.googleapis.com/maps/api/staticmap";
   const params = new URLSearchParams({
     center: `${center.lat},${center.lng}`,
     zoom: zoom.toString(),
-    size: '1024x768',
-    scale: '2',
-    maptype: 'satellite',
-    key: googleMapsApiKey
+    size: "1024x768",
+    scale: "2",
+    maptype: "satellite",
+    key: googleMapsApiKey,
   });
 
   // Add polygon overlay
   if (polygon.length > 0) {
-    const polygonPath = polygon.map(p => `${p.lat},${p.lng}`).join('|');
-    params.append('path', `color:0xff0000ff|weight:3|fillcolor:0xff000033|${polygonPath}`);
+    const polygonPath = polygon.map((p) => `${p.lat},${p.lng}`).join("|");
+    params.append(
+      "path",
+      `color:0xff0000ff|weight:3|fillcolor:0xff000033|${polygonPath}`,
+    );
   }
 
   // Add center marker
-  params.append('markers', `color:red|${center.lat},${center.lng}`);
+  params.append("markers", `color:red|${center.lat},${center.lng}`);
 
   const url = `${baseUrl}?${params.toString()}`;
 
@@ -67,58 +78,65 @@ export async function captureOverheadMap(containerEl, options = {}) {
     polygon = null,
     zoom = 18,
     center = null,
-    mapInstance = null
+    mapInstance = null,
   } = options;
 
   // Prefer static map capture when possible (exact coordinates, no placeholder math)
   if (!mapInstance && center && polygon) {
     try {
-      logger.info('🗺️ Using Google Static Maps for accurate capture...');
+      logger.info("🗺️ Using Google Static Maps for accurate capture...");
       return await captureStaticMap({ center, polygon, zoom });
     } catch (error) {
-      console.warn('Static Maps failed, falling back to html2canvas...', error);
+      console.warn("Static Maps failed, falling back to html2canvas...", error);
     }
   }
 
   if (!containerEl) {
-    throw new Error('Container element is required');
+    throw new Error("Container element is required");
   }
 
-  logger.info('📸 Capturing overhead site map with html2canvas...');
+  logger.info("📸 Capturing overhead site map with html2canvas...");
 
   try {
     // Step 1: Ensure map is in overhead (orthographic) view
     if (mapInstance) {
       await ensureOverheadMapState(mapInstance, { zoom, center });
     } else {
-      logger.info('ℹ️ Map instance not provided - capturing current view as-is');
+      logger.info(
+        "ℹ️ Map instance not provided - capturing current view as-is",
+      );
     }
 
     // Step 2: Wait for map to stabilize
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
 
     // Step 3: Render polygon overlay if provided
     let polygonOverlayEl = null;
     if (polygon && Array.isArray(polygon) && polygon.length > 0) {
-      polygonOverlayEl = await renderPolygonOverlay(containerEl, polygon, mapInstance);
+      polygonOverlayEl = await renderPolygonOverlay(
+        containerEl,
+        polygon,
+        mapInstance,
+      );
     }
 
     // Step 4: Render scale bar
     const scaleBarEl = await renderScaleBar(containerEl, center, zoom);
 
-    // Step 5: Capture the map container with html2canvas
+    // Step 5: Capture the map container with html2canvas (loaded on demand)
+    const html2canvas = await loadHtml2Canvas();
     const canvas = await html2canvas(containerEl, {
       useCORS: true,
       allowTaint: true,
-      backgroundColor: '#ffffff',
+      backgroundColor: "#ffffff",
       scale: 1,
       logging: false,
       width: containerEl.offsetWidth,
-      height: containerEl.offsetHeight
+      height: containerEl.offsetHeight,
     });
 
     // Step 6: Convert to data URL
-    const dataURL = canvas.toDataURL('image/png');
+    const dataURL = canvas.toDataURL("image/png");
 
     // Step 7: Cleanup overlay elements
     if (polygonOverlayEl) {
@@ -128,11 +146,10 @@ export async function captureOverheadMap(containerEl, options = {}) {
       scaleBarEl.remove();
     }
 
-    logger.info('✅ Site map captured successfully');
+    logger.info("✅ Site map captured successfully");
     return dataURL;
-
   } catch (error) {
-    logger.error('❌ Failed to capture site map:', error);
+    logger.error("❌ Failed to capture site map:", error);
     throw error;
   }
 }
@@ -150,7 +167,7 @@ async function ensureOverheadMapState(mapInstance, { zoom, center }) {
     // Set map to overhead view
     mapInstance.setHeading(0);
     mapInstance.setTilt(0);
-    
+
     if (zoom) {
       mapInstance.setZoom(zoom);
     }
@@ -160,10 +177,9 @@ async function ensureOverheadMapState(mapInstance, { zoom, center }) {
     }
 
     // Wait for map to update
-    await new Promise(resolve => setTimeout(resolve, 500));
-
+    await new Promise((resolve) => setTimeout(resolve, 500));
   } catch (error) {
-    console.warn('⚠️ Could not set map to overhead state:', error);
+    console.warn("⚠️ Could not set map to overhead state:", error);
   }
 }
 
@@ -176,50 +192,57 @@ async function renderPolygonOverlay(containerEl, polygon, mapInstance) {
   }
 
   // Create overlay container
-  const overlay = document.createElement('div');
-  overlay.style.position = 'absolute';
-  overlay.style.top = '0';
-  overlay.style.left = '0';
-  overlay.style.width = '100%';
-  overlay.style.height = '100%';
-  overlay.style.pointerEvents = 'none';
-  overlay.style.zIndex = '1000';
+  const overlay = document.createElement("div");
+  overlay.style.position = "absolute";
+  overlay.style.top = "0";
+  overlay.style.left = "0";
+  overlay.style.width = "100%";
+  overlay.style.height = "100%";
+  overlay.style.pointerEvents = "none";
+  overlay.style.zIndex = "1000";
 
   // Create SVG for polygon
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('width', '100%');
-  svg.setAttribute('height', '100%');
-  svg.style.position = 'absolute';
-  svg.style.top = '0';
-  svg.style.left = '0';
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("width", "100%");
+  svg.setAttribute("height", "100%");
+  svg.style.position = "absolute";
+  svg.style.top = "0";
+  svg.style.left = "0";
 
   // Convert lat/lng to pixel coordinates using proper projection
   let points;
 
-  if (mapInstance && mapInstance.getProjection && window.google && window.google.maps) {
+  if (
+    mapInstance &&
+    mapInstance.getProjection &&
+    window.google &&
+    window.google.maps
+  ) {
     // Use Google Maps projection if available
     const projection = mapInstance.getProjection();
     const bounds = mapInstance.getBounds();
     const ne = bounds.getNorthEast();
     const sw = bounds.getSouthWest();
 
-    points = polygon.map(point => {
-      const latLng = new window.google.maps.LatLng(point.lat, point.lng);
-      const worldPoint = projection.fromLatLngToPoint(latLng);
-      const topLeftWorldPoint = projection.fromLatLngToPoint(ne);
-      const bottomRightWorldPoint = projection.fromLatLngToPoint(sw);
+    points = polygon
+      .map((point) => {
+        const latLng = new window.google.maps.LatLng(point.lat, point.lng);
+        const worldPoint = projection.fromLatLngToPoint(latLng);
+        const topLeftWorldPoint = projection.fromLatLngToPoint(ne);
+        const bottomRightWorldPoint = projection.fromLatLngToPoint(sw);
 
-      // Scale to container dimensions
-      const scale = Math.pow(2, mapInstance.getZoom());
-      const x = (worldPoint.x - topLeftWorldPoint.x) * scale;
-      const y = (worldPoint.y - topLeftWorldPoint.y) * scale;
+        // Scale to container dimensions
+        const scale = Math.pow(2, mapInstance.getZoom());
+        const x = (worldPoint.x - topLeftWorldPoint.x) * scale;
+        const y = (worldPoint.y - topLeftWorldPoint.y) * scale;
 
-      return `${x},${y}`;
-    }).join(' ');
+        return `${x},${y}`;
+      })
+      .join(" ");
   } else {
     // Fallback: Calculate relative positions based on polygon bounds
-    const lats = polygon.map(p => p.lat);
-    const lngs = polygon.map(p => p.lng);
+    const lats = polygon.map((p) => p.lat);
+    const lngs = polygon.map((p) => p.lng);
     const minLat = Math.min(...lats);
     const maxLat = Math.max(...lats);
     const minLng = Math.min(...lngs);
@@ -232,26 +255,36 @@ async function renderPolygonOverlay(containerEl, polygon, mapInstance) {
     const containerWidth = containerEl.offsetWidth;
     const containerHeight = containerEl.offsetHeight;
 
-    points = polygon.map(point => {
-      // Normalize coordinates to 0-1 range with padding
-      const normalizedX = (point.lng - (minLng - lngPadding)) / ((maxLng + lngPadding) - (minLng - lngPadding));
-      const normalizedY = 1 - ((point.lat - (minLat - latPadding)) / ((maxLat + latPadding) - (minLat - latPadding)));
+    points = polygon
+      .map((point) => {
+        // Normalize coordinates to 0-1 range with padding
+        const normalizedX =
+          (point.lng - (minLng - lngPadding)) /
+          (maxLng + lngPadding - (minLng - lngPadding));
+        const normalizedY =
+          1 -
+          (point.lat - (minLat - latPadding)) /
+            (maxLat + latPadding - (minLat - latPadding));
 
-      // Scale to container dimensions with margin
-      const margin = 0.05; // 5% margin on each side
-      const x = (margin + normalizedX * (1 - 2 * margin)) * containerWidth;
-      const y = (margin + normalizedY * (1 - 2 * margin)) * containerHeight;
+        // Scale to container dimensions with margin
+        const margin = 0.05; // 5% margin on each side
+        const x = (margin + normalizedX * (1 - 2 * margin)) * containerWidth;
+        const y = (margin + normalizedY * (1 - 2 * margin)) * containerHeight;
 
-      return `${x},${y}`;
-    }).join(' ');
+        return `${x},${y}`;
+      })
+      .join(" ");
   }
 
-  const polygonEl = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-  polygonEl.setAttribute('points', points);
-  polygonEl.setAttribute('fill', 'rgba(255, 0, 0, 0.2)');
-  polygonEl.setAttribute('stroke', '#ff0000');
-  polygonEl.setAttribute('stroke-width', '3');
-  polygonEl.setAttribute('stroke-dasharray', '5,2');
+  const polygonEl = document.createElementNS(
+    "http://www.w3.org/2000/svg",
+    "polygon",
+  );
+  polygonEl.setAttribute("points", points);
+  polygonEl.setAttribute("fill", "rgba(255, 0, 0, 0.2)");
+  polygonEl.setAttribute("stroke", "#ff0000");
+  polygonEl.setAttribute("stroke-width", "3");
+  polygonEl.setAttribute("stroke-dasharray", "5,2");
 
   svg.appendChild(polygonEl);
   overlay.appendChild(svg);
@@ -274,52 +307,52 @@ async function renderScaleBar(containerEl, center, zoom) {
   const scaleMeters = calculateScaleMeters(zoom, center?.lat || 52.5); // Default to UK latitude
 
   // Create scale bar element
-  const scaleBar = document.createElement('div');
-  scaleBar.style.position = 'absolute';
-  scaleBar.style.bottom = '20px';
-  scaleBar.style.left = '20px';
-  scaleBar.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
-  scaleBar.style.padding = '8px 12px';
-  scaleBar.style.borderRadius = '4px';
-  scaleBar.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
-  scaleBar.style.fontFamily = 'Arial, sans-serif';
-  scaleBar.style.fontSize = '12px';
-  scaleBar.style.fontWeight = 'bold';
-  scaleBar.style.color = '#333';
-  scaleBar.style.zIndex = '1001';
-  scaleBar.style.border = '2px solid #000';
+  const scaleBar = document.createElement("div");
+  scaleBar.style.position = "absolute";
+  scaleBar.style.bottom = "20px";
+  scaleBar.style.left = "20px";
+  scaleBar.style.backgroundColor = "rgba(255, 255, 255, 0.9)";
+  scaleBar.style.padding = "8px 12px";
+  scaleBar.style.borderRadius = "4px";
+  scaleBar.style.boxShadow = "0 2px 4px rgba(0,0,0,0.2)";
+  scaleBar.style.fontFamily = "Arial, sans-serif";
+  scaleBar.style.fontSize = "12px";
+  scaleBar.style.fontWeight = "bold";
+  scaleBar.style.color = "#333";
+  scaleBar.style.zIndex = "1001";
+  scaleBar.style.border = "2px solid #000";
 
   // Create scale bar visual
-  const scaleBarVisual = document.createElement('div');
-  scaleBarVisual.style.width = '100px';
-  scaleBarVisual.style.height = '4px';
-  scaleBarVisual.style.backgroundColor = '#000';
-  scaleBarVisual.style.marginBottom = '4px';
+  const scaleBarVisual = document.createElement("div");
+  scaleBarVisual.style.width = "100px";
+  scaleBarVisual.style.height = "4px";
+  scaleBarVisual.style.backgroundColor = "#000";
+  scaleBarVisual.style.marginBottom = "4px";
 
   scaleBar.appendChild(scaleBarVisual);
 
   // Add scale text
-  const scaleText = document.createElement('div');
+  const scaleText = document.createElement("div");
   scaleText.textContent = `${scaleMeters}m`;
   scaleBar.appendChild(scaleText);
 
   // Add compass rose (simplified)
-  const compassRose = document.createElement('div');
-  compassRose.style.position = 'absolute';
-  compassRose.style.top = '20px';
-  compassRose.style.right = '20px';
-  compassRose.style.width = '60px';
-  compassRose.style.height = '60px';
-  compassRose.style.border = '2px solid #000';
-  compassRose.style.borderRadius = '50%';
-  compassRose.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
-  compassRose.style.display = 'flex';
-  compassRose.style.alignItems = 'center';
-  compassRose.style.justifyContent = 'center';
-  compassRose.style.fontSize = '24px';
-  compassRose.style.fontWeight = 'bold';
-  compassRose.textContent = 'N';
-  compassRose.style.zIndex = '1001';
+  const compassRose = document.createElement("div");
+  compassRose.style.position = "absolute";
+  compassRose.style.top = "20px";
+  compassRose.style.right = "20px";
+  compassRose.style.width = "60px";
+  compassRose.style.height = "60px";
+  compassRose.style.border = "2px solid #000";
+  compassRose.style.borderRadius = "50%";
+  compassRose.style.backgroundColor = "rgba(255, 255, 255, 0.9)";
+  compassRose.style.display = "flex";
+  compassRose.style.alignItems = "center";
+  compassRose.style.justifyContent = "center";
+  compassRose.style.fontSize = "24px";
+  compassRose.style.fontWeight = "bold";
+  compassRose.textContent = "N";
+  compassRose.style.zIndex = "1001";
 
   containerEl.appendChild(scaleBar);
   containerEl.appendChild(compassRose);
@@ -333,11 +366,12 @@ async function renderScaleBar(containerEl, center, zoom) {
 function calculateScaleMeters(zoom, latitude) {
   // Approximate meters per pixel at given zoom and latitude
   // Formula: metersPerPixel = (156543.03392 * Math.cos(lat * Math.PI / 180)) / (2^zoom)
-  const metersPerPixel = (156543.03392 * Math.cos(latitude * Math.PI / 180)) / Math.pow(2, zoom);
-  
+  const metersPerPixel =
+    (156543.03392 * Math.cos((latitude * Math.PI) / 180)) / Math.pow(2, zoom);
+
   // Scale bar width in pixels (100px) * meters per pixel
   const scaleMeters = 100 * metersPerPixel;
-  
+
   // Round to nearest nice number
   if (scaleMeters < 10) {
     return Math.round(scaleMeters);
@@ -352,6 +386,5 @@ function calculateScaleMeters(zoom, latitude) {
 
 export default {
   captureOverheadMap,
-  captureStaticMap
+  captureStaticMap,
 };
-

@@ -23,6 +23,9 @@ genarch/.pytest_cache/
 build/
 dist/
 
+# Bundle analyzer output
+bundle-report.html
+
 # misc
 .DS_Store
 .env.local

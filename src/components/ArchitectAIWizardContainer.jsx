@@ -72,18 +72,13 @@ import {
 } from "../services/project/floorCountAuthority.js";
 import { normalizeProgramSpaces } from "../services/project/levelUtils.js";
 import { generateDeterministicProgramSpaces } from "../services/project/programmeSpaceGenerator.js";
-import PricingPage from "./PricingPage.jsx";
 import DesignHistoryMenu from "./DesignHistoryMenu.jsx";
 
-// Step Components
-import LocationStep from "./steps/LocationStep.jsx";
-import IntelligenceStep from "./steps/IntelligenceStep.jsx";
-import PortfolioStep from "./steps/PortfolioStep.jsx";
-import SpecsStep from "./steps/SpecsStep.jsx";
-import GenerateStep from "./steps/GenerateStep.jsx";
-
-// Landing page
+// Landing page (kept eager — first paint)
 import LandingPage from "./LandingPage.jsx";
+
+// Suspense fallback for lazy step + page chunks
+import StepLoadingSkeleton from "./StepLoadingSkeleton.jsx";
 
 // Import new UI components and layout
 import { Card, Modal } from "./ui";
@@ -97,7 +92,39 @@ import {
   clerkAuthConfigured,
 } from "../services/auth/clerkFacade.js";
 
-const ResultsStep = lazy(() => import("./steps/ResultsStep.jsx"));
+// Step components and full-page views — lazy-loaded so the initial
+// landing-page bundle stays lean. Each becomes its own async chunk;
+// webpackChunkName hints keep build output readable in source-map-explorer.
+const LocationStep = lazy(
+  () =>
+    import(/* webpackChunkName: "step-location" */ "./steps/LocationStep.jsx"),
+);
+const IntelligenceStep = lazy(
+  () =>
+    import(
+      /* webpackChunkName: "step-intelligence" */ "./steps/IntelligenceStep.jsx"
+    ),
+);
+const PortfolioStep = lazy(
+  () =>
+    import(
+      /* webpackChunkName: "step-portfolio" */ "./steps/PortfolioStep.jsx"
+    ),
+);
+const SpecsStep = lazy(
+  () => import(/* webpackChunkName: "step-specs" */ "./steps/SpecsStep.jsx"),
+);
+const GenerateStep = lazy(
+  () =>
+    import(/* webpackChunkName: "step-generate" */ "./steps/GenerateStep.jsx"),
+);
+const ResultsStep = lazy(
+  () =>
+    import(/* webpackChunkName: "step-results" */ "./steps/ResultsStep.jsx"),
+);
+const PricingPage = lazy(
+  () => import(/* webpackChunkName: "page-pricing" */ "./PricingPage.jsx"),
+);
 
 const MAX_PROGRAMME_AREA_M2 = 100000;
 
@@ -428,6 +455,30 @@ const ArchitectAIWizardContainer = () => {
     (result?.a1Sheet?.panelMap &&
       Object.keys(result.a1Sheet.panelMap).length > 0),
   );
+
+  // Warm the first lazy step chunk while the user reads the landing page,
+  // so clicking "Start designing" feels instant. No-op past step 0; uses
+  // requestIdleCallback so slow networks aren't penalised.
+  useEffect(() => {
+    if (currentStep !== 0 || typeof window === "undefined") {
+      return undefined;
+    }
+    const prefetch = () => {
+      import(
+        /* webpackChunkName: "step-location" */ "./steps/LocationStep.jsx"
+      ).catch(() => {});
+    };
+    if (typeof window.requestIdleCallback === "function") {
+      const handle = window.requestIdleCallback(prefetch, { timeout: 2500 });
+      return () => {
+        if (typeof window.cancelIdleCallback === "function") {
+          window.cancelIdleCallback(handle);
+        }
+      };
+    }
+    const timer = window.setTimeout(prefetch, 1500);
+    return () => window.clearTimeout(timer);
+  }, [currentStep]);
 
   // Real-time timer while generation is in progress
   useEffect(() => {
@@ -2784,12 +2835,17 @@ const ArchitectAIWizardContainer = () => {
   );
 
   /**
-   * Render current step
+   * Render current step.
+   *
+   * Wizard steps (1–5), ResultsStep (6) and PricingPage are React.lazy
+   * chunks. A single Suspense boundary here covers every case; LandingPage
+   * (case 0 / default) is eager so the fallback never paints on first load.
    */
   const renderStep = () => {
+    let content;
     switch (currentStep) {
       case 0:
-        return (
+        content = (
           <LandingPage
             onStart={() => setCurrentStep(1)}
             onDemo={() => {
@@ -2798,9 +2854,10 @@ const ArchitectAIWizardContainer = () => {
             historyControl={historyControl}
           />
         );
+        break;
 
       case 1:
-        return (
+        content = (
           <LocationStep
             address={address}
             isDetectingLocation={isDetectingLocation}
@@ -2815,9 +2872,10 @@ const ArchitectAIWizardContainer = () => {
             error={error}
           />
         );
+        break;
 
       case 2:
-        return (
+        content = (
           <IntelligenceStep
             locationData={locationData}
             sitePolygon={sitePolygon}
@@ -2829,9 +2887,10 @@ const ArchitectAIWizardContainer = () => {
             onSitePolygonChange={handleSitePolygonChange}
           />
         );
+        break;
 
       case 3:
-        return (
+        content = (
           <PortfolioStep
             portfolioFiles={portfolioFiles}
             materialWeight={materialWeight}
@@ -2847,9 +2906,10 @@ const ArchitectAIWizardContainer = () => {
             fileInputRef={fileInputRef}
           />
         );
+        break;
 
       case 4:
-        return (
+        content = (
           <SpecsStep
             projectDetails={projectDetails}
             programSpaces={programSpaces}
@@ -2868,9 +2928,10 @@ const ArchitectAIWizardContainer = () => {
             onBack={handleBack}
           />
         );
+        break;
 
       case 5:
-        return (
+        content = (
           <GenerateStep
             isGenerating={loading}
             progress={progress}
@@ -2881,38 +2942,47 @@ const ArchitectAIWizardContainer = () => {
             onViewResults={() => setCurrentStep(6)}
           />
         );
+        break;
 
       case 6:
-        return (
-          <Suspense
-            fallback={
-              <Card className="border border-navy-700 bg-navy-950/70 p-8 text-center text-white">
-                Preparing results workspace...
-              </Card>
-            }
-          >
-            <ResultsStep
-              result={result}
-              designId={generatedDesignId}
-              generationElapsedSeconds={generationElapsedSeconds}
-              onModify={handleModify}
-              onExport={handleExport}
-              onExportCAD={handleExportCAD}
-              onExportBIM={handleExportBIM}
-              onBack={handleBack}
-              onStartNew={handleStartNew}
-            />
-          </Suspense>
+        content = (
+          <ResultsStep
+            result={result}
+            designId={generatedDesignId}
+            generationElapsedSeconds={generationElapsedSeconds}
+            onModify={handleModify}
+            onExport={handleExport}
+            onExportCAD={handleExportCAD}
+            onExportBIM={handleExportBIM}
+            onBack={handleBack}
+            onStartNew={handleStartNew}
+          />
         );
+        break;
 
       default:
-        return (
+        content = (
           <LandingPage
             onStart={() => setCurrentStep(1)}
             historyControl={historyControl}
           />
         );
     }
+    return (
+      <Suspense
+        fallback={
+          <StepLoadingSkeleton
+            label={
+              currentStep === 6
+                ? "Preparing results workspace..."
+                : "Loading..."
+            }
+          />
+        }
+      >
+        {content}
+      </Suspense>
+    );
   };
 
   // Pricing view (full-page, no auth gate needed — users can browse plans)
@@ -2929,7 +2999,9 @@ const ArchitectAIWizardContainer = () => {
         background="default"
         noise={true}
       >
-        <PricingPage onBack={() => setView("wizard")} />
+        <Suspense fallback={<StepLoadingSkeleton label="Loading pricing..." />}>
+          <PricingPage onBack={() => setView("wizard")} />
+        </Suspense>
       </AppShell>
     );
   }
