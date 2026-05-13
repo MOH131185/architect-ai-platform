@@ -9,6 +9,7 @@ import {
   runDrawingConsistencyChecks,
   validateTechnicalPanelContract,
 } from "../validation/drawingConsistencyChecks.js";
+import { runPanelGeometryConsistencyChecks } from "../validation/panelGeometryConsistencyChecks.js";
 
 export const PREVIEW_RENDER_INTENT = "preview";
 export const FINAL_A1_RENDER_INTENT = "final_a1";
@@ -1084,7 +1085,9 @@ function evaluateTechnicalPanelEvidence({
         details: error.details || {},
       });
     }
-    contractBlockers.push(error.message || `${error.code}: Technical panel contract failed.`);
+    contractBlockers.push(
+      error.message || `${error.code}: Technical panel contract failed.`,
+    );
   }
 
   const codes = unique([
@@ -1200,6 +1203,101 @@ function evaluateCrossViewConsistencyEvidence({ drawings, projectGeometry }) {
     codes,
     raw,
     evaluated: true,
+  };
+}
+
+/**
+ * Phase 4 evidence row — 2D/3D panel geometry + material consistency.
+ *
+ * Wraps `runPanelGeometryConsistencyChecks` in the same evidence shape
+ * the gate aggregator expects (`{status, blockers, warnings, codes, raw,
+ * evaluated}`). Silent pass when no Phase 4 inputs are supplied so
+ * legacy call sites that don't yet opt in keep their previous behavior.
+ */
+function evaluatePanelGeometryConsistencyEvidence({
+  compiledProject,
+  visualManifest,
+  materialPalette,
+  panels,
+  visualPanels,
+  drawings,
+  projectGeometry,
+}) {
+  const blockers = [];
+  const warnings = [];
+  const codes = [];
+
+  // The validator handles its own silent-pass when nothing is supplied.
+  // We also short-circuit here so we don't construct an empty allPanels
+  // array each call.
+  const hasInputs =
+    Boolean(compiledProject) ||
+    Boolean(visualManifest) ||
+    Boolean(materialPalette) ||
+    (Array.isArray(panels) && panels.length > 0) ||
+    (panels && typeof panels === "object" && Object.keys(panels).length > 0) ||
+    (Array.isArray(visualPanels) && visualPanels.length > 0) ||
+    Boolean(drawings);
+  if (!hasInputs) {
+    return {
+      status: "pass",
+      blockers,
+      warnings,
+      codes,
+      raw: null,
+      evaluated: false,
+    };
+  }
+
+  // Merge `panels` (technical + visual artifacts) with `visualPanels`
+  // (sometimes passed separately) so the validator sees every 3D panel
+  // it needs to gate.
+  const mergedPanels = []
+    .concat(
+      Array.isArray(panels) ? panels : panels ? Object.values(panels) : [],
+    )
+    .concat(Array.isArray(visualPanels) ? visualPanels : []);
+
+  let raw = null;
+  try {
+    raw = runPanelGeometryConsistencyChecks({
+      compiledProject,
+      visualManifest,
+      materialPalette,
+      panels: mergedPanels,
+      drawings,
+      projectGeometry,
+    });
+  } catch (error) {
+    return {
+      status: "warning",
+      blockers,
+      warnings: [
+        `Panel-consistency evaluator threw: ${error?.message || error}.`,
+      ],
+      codes: [],
+      raw: null,
+      evaluated: false,
+    };
+  }
+
+  if (Array.isArray(raw?.blockers)) blockers.push(...raw.blockers);
+  if (Array.isArray(raw?.warnings)) warnings.push(...raw.warnings);
+  if (Array.isArray(raw?.codes)) codes.push(...raw.codes);
+
+  const status = blockers.length
+    ? "blocked"
+    : warnings.length
+      ? "warning"
+      : "pass";
+
+  return {
+    status,
+    blockers: unique(blockers),
+    warnings: unique(warnings),
+    codes: unique(codes),
+    raw,
+    evaluated: raw?.evaluated === true,
   };
 }
 
@@ -1773,6 +1871,10 @@ export function evaluateFinalA1ExportGate({
   // that don't supply drawings see no behavior change.
   drawings = null,
   projectGeometry = null,
+  // Phase 4 (2D/3D consistency gate) — compiledProject and materialPalette
+  // are also consumed by the panel-consistency validator. Both default to
+  // null; the validator silently passes when neither is supplied.
+  compiledProject = null,
 } = {}) {
   if (!renderContract?.isFinalA1) {
     return {
@@ -1870,6 +1972,20 @@ export function evaluateFinalA1ExportGate({
     drawings,
     projectGeometry,
   });
+  // Phase 4 — 2D/3D geometry + material consistency gate. Folds into the
+  // aggregation loop below alongside cross-view checks; mismatches surface
+  // as structured codes (PANEL_GEOMETRY_HASH_MISMATCH,
+  // VISUAL_MANIFEST_HASH_MISSING, FLOOR_COUNT_MISMATCH, …) that drive
+  // a1ExportQa.status into "blocked" or "warning".
+  const panelConsistencyStatus = evaluatePanelGeometryConsistencyEvidence({
+    compiledProject,
+    visualManifest,
+    materialPalette,
+    panels,
+    visualPanels,
+    drawings,
+    projectGeometry,
+  });
   const visualManifestStatus = evaluateVisualManifestEvidence({
     visualManifest,
     visualPanels,
@@ -1934,6 +2050,7 @@ export function evaluateFinalA1ExportGate({
     requiredPanelStatus,
     technicalPanelStatus,
     crossViewConsistencyStatus,
+    panelConsistencyStatus,
     visualManifestStatus,
     projectPanelAuthorityStatus,
     materialPaletteStatus,
@@ -1969,6 +2086,7 @@ export function evaluateFinalA1ExportGate({
       requiredPanelStatus,
       technicalPanelStatus,
       crossViewConsistencyStatus,
+      panelConsistencyStatus,
       projectPanelAuthorityStatus,
       visualPanelStatus,
       visualManifestStatus,

@@ -14901,6 +14901,11 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       // Phase 4: cross-view consistency evidence inputs.
       drawings: drawingsForGate,
       projectGeometry,
+      // Phase 4 (2D/3D consistency gate) — compiledProject feeds the
+      // panel-consistency validator (geometryHash, levels, roof,
+      // entranceOrientation, openings) so visualManifest mismatches
+      // surface as structured blockers in `a1ExportQa`.
+      compiledProject,
     });
     sheetArtifact.quality = {
       ...(sheetArtifact.quality || {}),
