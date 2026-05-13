@@ -58,6 +58,45 @@ import {
 import { buildProviderHealthSnapshot } from "../../src/services/health/providerHealthService.js";
 import { PDFDocument } from "pdf-lib";
 
+// Phase 1–4 + S3 imports — focused smoke coverage for the export-fix
+// stack landed across PRs #131–#150. Each check imports the actual
+// module the user-facing flow consumes, runs a tiny in-process fixture,
+// and asserts the cross-module wiring (so regressions like "Phase 3
+// gate stops folding Phase 4 mismatches" are caught at the smoke
+// boundary, not just in jest unit tests).
+import { __testing as a1ExportHandlerTesting } from "../../api/a1/export.js";
+import {
+  basenameFromPath,
+  resolveExportArtifactPath,
+  resolveExportArtifactRef,
+  validatePngMagicBytes,
+  validatePdfMagicBytes,
+  validateSvgMagicBytes,
+  EXPORT_REQUEST_INLINE_BUDGET_BYTES,
+} from "../../src/services/exportService.js";
+import exportService from "../../src/services/exportService.js";
+import {
+  buildClientExportManifest,
+  buildCompiledProjectExportSummary,
+  buildExportManifestFromSummary,
+  applyHistoryRestoreGate,
+  BLOCKED_REASONS,
+} from "../../src/services/export/buildClientExportManifest.js";
+import { getArtifactStorageAdapterStatus } from "../../src/services/export/artifactStorageService.js";
+import {
+  A1_CONTENT_TOP_MM,
+  A1_CONTENT_TOP_NORMALIZED,
+  A1_TITLE_BAR_HEIGHT_MM,
+  A1_HEADER_SAFE_BAND_MM,
+  A1_HEIGHT_MM,
+  resolveLayout,
+} from "../../src/services/a1/composeCore.js";
+import { evaluateFinalA1ExportGate } from "../../src/services/a1/a1FinalExportContract.js";
+import {
+  runPanelGeometryConsistencyChecks,
+  PANEL_CONSISTENCY_CODES,
+} from "../../src/services/validation/panelGeometryConsistencyChecks.js";
+
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(__filename), "../..");
 
@@ -581,6 +620,502 @@ async function checkNoSecretLeakage(allResults) {
   return pass("NO_SECRET_LEAKAGE", `no secret needles in serialised results`);
 }
 
+// ─── Phase 1–4 + S3 export-pipeline smoke (added in Phase 5) ─────────────
+
+const PHASE1_PNG_SIGNATURE = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+]);
+
+async function checkPhase1ExportHandlerHelpers() {
+  // The /api/a1/export route is the live transport that fixed the
+  // 413 + SVG-as-PNG bugs. We import its __testing helpers and verify
+  // the classifier + sanitiser still recognise the canonical fixtures.
+  // Catches regressions that would re-open the corrupt-download path
+  // without depending on Sharp / pdf-lib network resources.
+  const { classifyArtifactKind, sanitizeInlineSvg } = a1ExportHandlerTesting;
+  if (classifyArtifactKind(PHASE1_PNG_SIGNATURE) !== "png") {
+    return fail(
+      "PHASE1_EXPORT_HANDLER_HELPERS",
+      "PNG_SIGNATURE_NOT_DETECTED",
+      "classifyArtifactKind no longer detects the PNG signature",
+    );
+  }
+  if (classifyArtifactKind(Buffer.from("%PDF-1.7 …")) !== "pdf") {
+    return fail(
+      "PHASE1_EXPORT_HANDLER_HELPERS",
+      "PDF_SIGNATURE_NOT_DETECTED",
+      "classifyArtifactKind no longer detects %PDF",
+    );
+  }
+  if (classifyArtifactKind(Buffer.from("<svg></svg>")) !== "svg") {
+    return fail(
+      "PHASE1_EXPORT_HANDLER_HELPERS",
+      "SVG_MARKER_NOT_DETECTED",
+      "classifyArtifactKind no longer detects <svg",
+    );
+  }
+  // Anything classifier doesn't recognise stays "unknown" — that's the
+  // path the per-format dispatch uses to surface 400 UNRECOGNISED.
+  if (classifyArtifactKind(Buffer.from("<html></html>")) !== "unknown") {
+    return fail(
+      "PHASE1_EXPORT_HANDLER_HELPERS",
+      "HTML_MISCLASSIFIED",
+      "classifyArtifactKind treats <html> as a known kind",
+    );
+  }
+  const scriptCheck = sanitizeInlineSvg("<svg><script>x</script></svg>");
+  if (scriptCheck.ok !== false) {
+    return fail(
+      "PHASE1_EXPORT_HANDLER_HELPERS",
+      "SVG_DENYLIST_DISABLED",
+      "sanitizeInlineSvg no longer blocks <script>",
+    );
+  }
+  return pass(
+    "PHASE1_EXPORT_HANDLER_HELPERS",
+    "classifier + denylist intact (PNG/PDF/SVG/html + <script>)",
+  );
+}
+
+async function checkPhase1ExportServiceContract() {
+  // The Phase 1 contract: exportService magic-byte validators reject
+  // masquerading payloads, and the inline-budget constant exists so the
+  // client refuses to POST oversized data URLs.
+  if (typeof basenameFromPath !== "function") {
+    return fail(
+      "PHASE1_EXPORT_SERVICE_CONTRACT",
+      "BASENAME_HELPER_MISSING",
+      "exportService no longer exports basenameFromPath",
+    );
+  }
+  if (basenameFromPath("/api/a1/compose-output/a1-x.svg?v=1") !== "a1-x.svg") {
+    return fail(
+      "PHASE1_EXPORT_SERVICE_CONTRACT",
+      "BASENAME_HELPER_REGRESSED",
+      "basenameFromPath no longer strips query suffixes",
+    );
+  }
+  if (!Number.isFinite(EXPORT_REQUEST_INLINE_BUDGET_BYTES)) {
+    return fail(
+      "PHASE1_EXPORT_SERVICE_CONTRACT",
+      "INLINE_BUDGET_MISSING",
+      "EXPORT_REQUEST_INLINE_BUDGET_BYTES is not exported",
+    );
+  }
+  // Magic-byte validators must reject masquerading bytes.
+  const svgAsPngBlob = new Blob([Buffer.from("<svg></svg>")], { type: "image/png" });
+  let rejected = false;
+  try {
+    await validatePngMagicBytes(svgAsPngBlob);
+  } catch {
+    rejected = true;
+  }
+  if (!rejected) {
+    return fail(
+      "PHASE1_EXPORT_SERVICE_CONTRACT",
+      "PNG_MAGIC_BYTE_REGRESSION",
+      "validatePngMagicBytes no longer rejects SVG-as-PNG masquerade",
+    );
+  }
+  // Smoke that all three validators are callable on tiny good fixtures.
+  const goodPng = new Blob([Buffer.concat([PHASE1_PNG_SIGNATURE, Buffer.from([0xff])])], { type: "image/png" });
+  await validatePngMagicBytes(goodPng);
+  const goodPdf = new Blob([Buffer.from("%PDF-1.7\n%%EOF\n")], { type: "application/pdf" });
+  await validatePdfMagicBytes(goodPdf);
+  const goodSvg = new Blob([Buffer.from("<svg/>")], { type: "image/svg+xml" });
+  await validateSvgMagicBytes(goodSvg);
+  return pass(
+    "PHASE1_EXPORT_SERVICE_CONTRACT",
+    "magic-byte validators + basenameFromPath + inline budget present",
+  );
+}
+
+async function checkPhase2EngineeringManifestContract() {
+  // Phase 2 wiring: buildClientExportManifest gates DXF/JSON/XLSX/IFC
+  // by compiledProject geometry + takeoff, and applyHistoryRestoreGate
+  // forces the four engineering rows off when restoredFromHistory and
+  // compiledProject is absent.
+  const compiledProject = {
+    geometryHash: "geom-smoke-phase2",
+    walls: [{}, {}, {}, {}],
+    levels: [{}, {}],
+    openings: [{}, {}, {}, {}, {}, {}],
+  };
+  const takeoff = { items: [{}, {}, {}] };
+  const fresh = buildClientExportManifest({
+    compiledProject,
+    projectQuantityTakeoff: takeoff,
+    geometryHash: compiledProject.geometryHash,
+  });
+  for (const key of ["dxf", "ifc", "json", "xlsx"]) {
+    if (fresh.exports[key]?.available !== true) {
+      return fail(
+        "PHASE2_ENGINEERING_MANIFEST_CONTRACT",
+        "ENGINEERING_NOT_READY_WHEN_FULLY_CAPABLE",
+        `manifest reports ${key} as not ready despite full inputs`,
+      );
+    }
+  }
+
+  // Round-trip: build summary → rebuild manifest → readiness preserved.
+  const summary = buildCompiledProjectExportSummary({
+    compiledProject,
+    projectQuantityTakeoff: takeoff,
+    geometryHash: compiledProject.geometryHash,
+  });
+  if (!summary?.geometryHash) {
+    return fail(
+      "PHASE2_ENGINEERING_MANIFEST_CONTRACT",
+      "SUMMARY_GEOMETRY_HASH_MISSING",
+      "buildCompiledProjectExportSummary did not capture geometryHash",
+    );
+  }
+  const rebuilt = buildExportManifestFromSummary({ summary });
+  if (rebuilt?.exports?.ifc?.available !== true) {
+    return fail(
+      "PHASE2_ENGINEERING_MANIFEST_CONTRACT",
+      "REBUILT_MANIFEST_IFC_BROKEN",
+      "manifest rebuilt from summary lost IFC readiness",
+    );
+  }
+
+  // History gate: restoredFromHistory + !compiledProject → engineering off
+  // with REGENERATE_REQUIRED_FOR_ENGINEERING_EXPORT.
+  const gated = applyHistoryRestoreGate({
+    manifest: rebuilt,
+    restoredFromHistory: true,
+    hasCompiledProject: false,
+  });
+  for (const key of ["dxf", "ifc", "json", "xlsx"]) {
+    if (gated.exports[key]?.available !== false) {
+      return fail(
+        "PHASE2_ENGINEERING_MANIFEST_CONTRACT",
+        "HISTORY_RESTORE_GATE_LEAK",
+        `restored-history manifest still reports ${key} as available`,
+      );
+    }
+    if (
+      gated.exports[key]?.blockedReason !==
+      BLOCKED_REASONS.REGENERATE_REQUIRED_FOR_ENGINEERING_EXPORT
+    ) {
+      return fail(
+        "PHASE2_ENGINEERING_MANIFEST_CONTRACT",
+        "HISTORY_RESTORE_GATE_REASON_DRIFT",
+        `restored-history manifest ${key} has wrong blockedReason`,
+      );
+    }
+  }
+  return pass(
+    "PHASE2_ENGINEERING_MANIFEST_CONTRACT",
+    "manifest readiness + summary round-trip + restored-history gate intact",
+  );
+}
+
+async function checkPhase3LayoutConstants() {
+  // Phase 3 contract: title bar 10mm + safe band 6mm = content top 16mm,
+  // and resolveLayout(presentation-v3) keeps every floor_plan_* slot at
+  // or below A1_CONTENT_TOP_MM for floorCount 1/2/3.
+  if (A1_TITLE_BAR_HEIGHT_MM + A1_HEADER_SAFE_BAND_MM !== A1_CONTENT_TOP_MM) {
+    return fail(
+      "PHASE3_LAYOUT_CONSTANTS",
+      "SAFE_BAND_ARITHMETIC_BROKEN",
+      `title bar + safe band ≠ A1_CONTENT_TOP_MM (got ${A1_CONTENT_TOP_MM})`,
+    );
+  }
+  const tolerance = 0.05;
+  for (const floorCount of [1, 2, 3]) {
+    const { layout } = resolveLayout({
+      layoutTemplate: "presentation-v3",
+      floorCount,
+    });
+    for (const [key, slot] of Object.entries(layout)) {
+      if (!key.startsWith("floor_plan_") || !slot || typeof slot.y !== "number") continue;
+      const topMm = slot.y * A1_HEIGHT_MM;
+      if (topMm < A1_CONTENT_TOP_MM - tolerance) {
+        return fail(
+          "PHASE3_LAYOUT_CONSTANTS",
+          "FLOOR_PLAN_OVERLAPS_TITLE_BAR",
+          `floorCount=${floorCount} ${key} sits at ${topMm.toFixed(2)}mm (above safe-band floor ${A1_CONTENT_TOP_MM}mm)`,
+        );
+      }
+    }
+  }
+  return pass(
+    "PHASE3_LAYOUT_CONSTANTS",
+    `title-bar safe band = ${A1_CONTENT_TOP_MM}mm; floorCount 1/2/3 plans respect floor`,
+  );
+}
+
+async function checkPhase3QaBlocksSheetExport() {
+  // Phase 3 defence-in-depth: exportService refuses PNG / PDF / SVG
+  // when a1ExportQa.status === "blocked". UI gate disables the rows;
+  // service throws so programmatic callers fail closed too.
+  const sheet = {
+    metadata: { designId: "smoke-qa" },
+    geometryHash: "geom-smoke-qa",
+    artifacts: { a1Sheet: { svgString: "<svg/>" } },
+    a1ExportQa: {
+      status: "blocked",
+      allowed: false,
+      blockers: [{ code: "TEXT_TOO_SMALL" }, { code: "HEADER_OVERLAP" }],
+      warnings: [],
+    },
+  };
+  for (const fmt of ["PNG", "PDF", "SVG"]) {
+    let threw = false;
+    let message = "";
+    try {
+      await exportService.exportSheet({ sheet, format: fmt });
+    } catch (err) {
+      threw = true;
+      message = err?.message || "";
+    }
+    if (!threw) {
+      return fail(
+        "PHASE3_QA_BLOCKS_SHEET_EXPORT",
+        "QA_BLOCK_BYPASSED",
+        `exportSheet(${fmt}) did not throw on a1ExportQa.status="blocked"`,
+      );
+    }
+    if (!/A1 export blocked/i.test(message)) {
+      return fail(
+        "PHASE3_QA_BLOCKS_SHEET_EXPORT",
+        "QA_BLOCK_MESSAGE_DRIFT",
+        `exportSheet(${fmt}) threw but message was: ${message}`,
+      );
+    }
+  }
+  return pass(
+    "PHASE3_QA_BLOCKS_SHEET_EXPORT",
+    "PNG / PDF / SVG all refuse when a1ExportQa.status === blocked",
+  );
+}
+
+async function checkPhase4PanelConsistencyValidator() {
+  // Phase 4 unit-level smoke: validator returns "pass" for same-source
+  // panels and "blocked" with a structured code for a geometry-hash
+  // mismatch.
+  const geometryHash = "geom-smoke-p4-abc";
+  const visualManifestHash = "mfst-smoke-p4";
+  const paletteHash = "palette-smoke-p4";
+  const compiledProject = {
+    geometryHash,
+    levels: [{}, {}],
+    openings: [{}, {}, {}, {}, {}, {}, {}, {}],
+    roof: { form: "gable" },
+    entranceOrientation: "south",
+  };
+  const visualManifest = {
+    manifestHash: visualManifestHash,
+    geometryHash,
+    storeyCount: 2,
+    roof: { form: "gable" },
+    entranceOrientation: "south",
+    primaryFacadeMaterial: { name: "brick" },
+    windowRhythmFingerprint: [4, 4],
+  };
+  const materialPalette = { hash: paletteHash, primary: { name: "brick" } };
+  const panel3D = (overrides = {}) => ({
+    panel_type: "hero_3d",
+    geometryHash,
+    visualManifestHash,
+    materialPaletteHash: paletteHash,
+    cameraId: "cam-smoke-01",
+    viewDirection: "south+east",
+    ...overrides,
+  });
+
+  const okResult = runPanelGeometryConsistencyChecks({
+    compiledProject,
+    visualManifest,
+    materialPalette,
+    panels: [panel3D()],
+  });
+  if (okResult.status !== "pass") {
+    return fail(
+      "PHASE4_PANEL_CONSISTENCY_VALIDATOR",
+      "HAPPY_PATH_NOT_PASS",
+      `validator returned ${okResult.status} for a same-source fixture`,
+    );
+  }
+
+  const mismatchResult = runPanelGeometryConsistencyChecks({
+    compiledProject,
+    visualManifest,
+    materialPalette,
+    panels: [panel3D({ geometryHash: "stale-geom-xyz" })],
+  });
+  if (mismatchResult.status !== "blocked") {
+    return fail(
+      "PHASE4_PANEL_CONSISTENCY_VALIDATOR",
+      "MISMATCH_NOT_BLOCKED",
+      `validator returned ${mismatchResult.status} for stale geometryHash`,
+    );
+  }
+  if (!mismatchResult.codes.includes(
+    PANEL_CONSISTENCY_CODES.PANEL_GEOMETRY_HASH_MISMATCH,
+  )) {
+    return fail(
+      "PHASE4_PANEL_CONSISTENCY_VALIDATOR",
+      "MISMATCH_CODE_MISSING",
+      "validator did not surface PANEL_GEOMETRY_HASH_MISMATCH",
+    );
+  }
+  return pass(
+    "PHASE4_PANEL_CONSISTENCY_VALIDATOR",
+    "happy path pass + mismatch blocked with structured code",
+  );
+}
+
+async function checkPhase4GateFoldsPanelConsistency() {
+  // Phase 4 integration: panel-consistency evidence flows into
+  // evaluateFinalA1ExportGate's blockers when 3D panels carry a stale
+  // geometryHash. Asserts the wiring that Phase 3's a1ExportQa relies
+  // on (gate.status === "blocked" → a1ExportQa.status === "blocked").
+  const geometryHash = "geom-smoke-gate-p4";
+  const visualManifestHash = "mfst-smoke-gate";
+  const paletteHash = "palette-smoke-gate";
+  const gate = evaluateFinalA1ExportGate({
+    renderContract: { isFinalA1: true, enforceRenderedText: false },
+    pdfUrl: "/api/a1/compose-output/a1-smoke.pdf",
+    sheetArtifact: {
+      svgString: "<svg/>",
+      sheet_size_mm: { width: 841, height: 594 },
+      width: 9933,
+      height: 7016,
+      metadata: { isFinalA1: true },
+    },
+    pdfMetadata: {
+      version: "a1-pdf-metadata-v1",
+      pdfRenderMode: "raster_textpaths_300dpi",
+      isFinalA1: true,
+      dpi: 300,
+      widthPx: 9933,
+      heightPx: 7016,
+      widthPt: 2384.16,
+      heightPt: 1683.7,
+      textRenderMode: "font_paths",
+      rasterIntegrityStatus: "pass",
+      pdfBytes: 100,
+    },
+    finalSheetRegression: { finalSheetRegressionReady: true },
+    postComposeVerification: {
+      publishability: { status: "pass" },
+      renderedTextZone: { status: "pass" },
+    },
+    glyphIntegrity: { status: "pass" },
+    rasterGlyphIntegrity: { status: "pass" },
+    expectedGeometryHash: geometryHash,
+    compiledProject: {
+      geometryHash,
+      levels: [{}, {}],
+      roof: { form: "gable" },
+      entranceOrientation: "south",
+    },
+    visualManifest: {
+      manifestHash: visualManifestHash,
+      geometryHash,
+      storeyCount: 2,
+      roof: { form: "gable" },
+      entranceOrientation: "south",
+    },
+    materialPalette: { hash: paletteHash },
+    panels: [
+      {
+        panel_type: "hero_3d",
+        geometryHash: "stale-geom-different",
+        visualManifestHash,
+        materialPaletteHash: paletteHash,
+        cameraId: "cam",
+        viewDirection: "south",
+      },
+    ],
+  });
+  if (gate.status !== "blocked") {
+    return fail(
+      "PHASE4_GATE_FOLDS_PANEL_CONSISTENCY",
+      "GATE_DID_NOT_BLOCK",
+      `gate.status=${gate.status} despite a stale 3D geometryHash`,
+    );
+  }
+  if (gate.allowed !== false) {
+    return fail(
+      "PHASE4_GATE_FOLDS_PANEL_CONSISTENCY",
+      "GATE_ALLOWED_DESPITE_BLOCK",
+      "gate.allowed=true despite status=blocked",
+    );
+  }
+  if (gate.evidence?.panelConsistencyStatus?.status !== "blocked") {
+    return fail(
+      "PHASE4_GATE_FOLDS_PANEL_CONSISTENCY",
+      "PANEL_CONSISTENCY_EVIDENCE_NOT_BLOCKED",
+      "evidence.panelConsistencyStatus did not record the block",
+    );
+  }
+  return pass(
+    "PHASE4_GATE_FOLDS_PANEL_CONSISTENCY",
+    "evidence.panelConsistencyStatus → gate.blockers → status=blocked",
+  );
+}
+
+async function checkS3StorageDurabilityAdvisory(mode) {
+  // Production rollout requires a production-durable storage adapter so
+  // svgArtifactRef survives Vercel cold-start. In smoke we only verify
+  // the contract — we never hit S3 from the smoke. When mode=real we
+  // additionally enforce that ARTIFACT_STORAGE_PROVIDER=s3 + bucket +
+  // access key + secret are all present in env.
+  const status = getArtifactStorageAdapterStatus();
+  if (!status || typeof status.adapter !== "string") {
+    return fail(
+      "S3_STORAGE_DURABILITY_ADVISORY",
+      "STORAGE_STATUS_MISSING",
+      "getArtifactStorageAdapterStatus returned no adapter info",
+    );
+  }
+  // Real-mode: enforce S3 env contract.
+  if (mode === "real") {
+    if (status.adapter !== "s3" || status.productionDurable !== true) {
+      return fail(
+        "S3_STORAGE_DURABILITY_ADVISORY",
+        "PRODUCTION_NOT_S3",
+        `--mode real expects an S3 adapter; got adapter=${status.adapter} productionDurable=${status.productionDurable}`,
+      );
+    }
+    const env = process.env || {};
+    const required = [
+      "ARTIFACT_STORAGE_PROVIDER",
+      "ARTIFACT_STORAGE_BUCKET",
+      "ARTIFACT_STORAGE_ACCESS_KEY_ID",
+      "ARTIFACT_STORAGE_SECRET_ACCESS_KEY",
+    ];
+    const missing = required.filter((k) => !env[k]);
+    if (missing.length > 0) {
+      return fail(
+        "S3_STORAGE_DURABILITY_ADVISORY",
+        "S3_ENV_INCOMPLETE",
+        `--mode real but env missing: ${missing.join(", ")}`,
+      );
+    }
+    if (String(env.ARTIFACT_STORAGE_PROVIDER).toLowerCase() !== "s3") {
+      return fail(
+        "S3_STORAGE_DURABILITY_ADVISORY",
+        "ARTIFACT_STORAGE_PROVIDER_NOT_S3",
+        `ARTIFACT_STORAGE_PROVIDER=${env.ARTIFACT_STORAGE_PROVIDER} (must be "s3" in production)`,
+      );
+    }
+    return pass(
+      "S3_STORAGE_DURABILITY_ADVISORY",
+      `S3 adapter active; required env keys present`,
+    );
+  }
+  // Mock mode: report adapter but do not fail when not durable — the
+  // worktree dev environment runs in-memory by design.
+  return pass(
+    "S3_STORAGE_DURABILITY_ADVISORY",
+    `adapter=${status.adapter} productionDurable=${status.productionDurable} (mock mode — set --mode real to enforce S3 env contract)`,
+  );
+}
+
 async function checkProviderPreflight(mode) {
   if (mode !== "real") {
     return skip(
@@ -668,7 +1203,7 @@ async function main() {
   const startedAt = new Date().toISOString();
   const t0 = performance.now();
 
-  // The 14 in-process checks always run; check #15 (preflight) honours --mode.
+  // Pre-Phase-5 in-process checks (PRs #115–#130).
   const checks = [];
   checks.push(await runWithTiming("JURISDICTION_PACKS_LOAD", checkJurisdictionPacks));
   checks.push(await runWithTiming("STYLE_BLEND_DETERMINISM", checkStyleBlendDeterminism));
@@ -683,6 +1218,24 @@ async function main() {
   checks.push(await runWithTiming("PACKAGE_DOWNLOAD_BYTE_EQUALITY", checkPackageDownloadByteEquality));
   checks.push(await runWithTiming("NO_FAKE_DWG_IFC_WHEN_UNAVAILABLE", checkNoFakeDwgIfcWhenUnavailable));
   checks.push(await runWithTiming("NO_IMAGE_GEN_TECHNICAL_DRAWING", checkNoImageGenTechnicalDrawing));
+
+  // Phase 1–4 + S3 export-pipeline regression matrix (PRs #131–#150).
+  // Each check exercises the cross-module wiring that the user-facing
+  // export flow depends on. Mock-mode is sufficient for everything
+  // except the S3 advisory, which enforces env keys only in --mode real.
+  checks.push(await runWithTiming("PHASE1_EXPORT_HANDLER_HELPERS", checkPhase1ExportHandlerHelpers));
+  checks.push(await runWithTiming("PHASE1_EXPORT_SERVICE_CONTRACT", checkPhase1ExportServiceContract));
+  checks.push(await runWithTiming("PHASE2_ENGINEERING_MANIFEST_CONTRACT", checkPhase2EngineeringManifestContract));
+  checks.push(await runWithTiming("PHASE3_LAYOUT_CONSTANTS", checkPhase3LayoutConstants));
+  checks.push(await runWithTiming("PHASE3_QA_BLOCKS_SHEET_EXPORT", checkPhase3QaBlocksSheetExport));
+  checks.push(await runWithTiming("PHASE4_PANEL_CONSISTENCY_VALIDATOR", checkPhase4PanelConsistencyValidator));
+  checks.push(await runWithTiming("PHASE4_GATE_FOLDS_PANEL_CONSISTENCY", checkPhase4GateFoldsPanelConsistency));
+  checks.push(
+    await runWithTiming("S3_STORAGE_DURABILITY_ADVISORY", () =>
+      checkS3StorageDurabilityAdvisory(args.mode),
+    ),
+  );
+
   // Run the secret-leakage check AFTER all others so it can scan their output.
   checks.push(
     await runWithTiming("NO_SECRET_LEAKAGE", () => checkNoSecretLeakage(checks)),
