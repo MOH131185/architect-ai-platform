@@ -1464,6 +1464,16 @@ async function runProjectGraphVerticalSliceWorkflow({
     variationMode: verticalSlice.variationMode || null,
     compiledProject: verticalSlice.artifacts?.compiledProject || null,
     projectGeometry: verticalSlice.artifacts?.projectGeometry || null,
+    // Phase 2 export-fix: surface the engineering bundle at top level so
+    // ExportPanel + downstream consumers can decide readiness without
+    // diving into `artifacts.*` (and so design-history hydration has named
+    // fields to preserve rather than a moving artifacts tree shape).
+    projectQuantityTakeoff:
+      verticalSlice.artifacts?.projectQuantityTakeoff || null,
+    sheetArtifactManifest:
+      verticalSlice.artifacts?.sheetArtifactManifest ||
+      verticalSlice.sheetArtifactManifest ||
+      null,
     panels: panelMap,
     panelMap,
     panelsByKey: panelMap,

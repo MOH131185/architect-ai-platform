@@ -28,6 +28,7 @@ import designHistoryArtifactStore, {
   isDesignHistoryArtifactUrl,
   isStorableDataUrl,
 } from "./designHistoryArtifactStore.js";
+import { buildCompiledProjectExportSummary } from "./export/buildClientExportManifest.js";
 
 const MAX_DESIGNS = 2;
 const MAX_VERSIONS_PER_DESIGN = 3;
@@ -960,6 +961,31 @@ function buildDesignPayload(design, existingDesign = null) {
     delete clonedA1Sheet.dataUrl;
   }
 
+  // Phase 2 export-fix: capture a slim engineering bundle BEFORE
+  // compactA1SheetForHistory strips compiledProject + projectQuantityTakeoff.
+  // The manifest (~600 bytes) and summary (~80 bytes) are tiny compared
+  // to the design record budget, and they're what ExportPanel actually
+  // needs to render correct READY/BLOCKED rows after a history reload.
+  // Without these, reloaded designs render every engineering row as
+  // BLOCKED because the compactor has already dropped the large fields.
+  const preservedExportManifest =
+    design.exportManifest ||
+    design.sheetArtifactManifest?.exportManifest ||
+    design.metadata?.exportManifest ||
+    null;
+  const preservedExportSummary = buildCompiledProjectExportSummary({
+    compiledProject: design.compiledProject || null,
+    projectQuantityTakeoff:
+      design.projectQuantityTakeoff ||
+      design.artifacts?.projectQuantityTakeoff ||
+      null,
+    geometryHash:
+      design.geometryHash ||
+      design.compiledProject?.geometryHash ||
+      sheetMetadata.geometryHash ||
+      null,
+  });
+
   const payload = {
     id: designId,
     designId,
@@ -994,6 +1020,17 @@ function buildDesignPayload(design, existingDesign = null) {
     pdfUrl,
     a1ArtifactManifest: artifactManifest,
     artifactManifest,
+    // Engineering bundle for design history (Phase 2): preserve enough to
+    // render correct readiness on reload without bloating the record. The
+    // raw `compiledProject` / `projectQuantityTakeoff` remain compacted out
+    // for storage-size reasons.
+    exportManifest: preservedExportManifest,
+    compiledProjectExportSummary: preservedExportSummary,
+    geometryHash:
+      design.geometryHash ||
+      design.compiledProject?.geometryHash ||
+      sheetMetadata.geometryHash ||
+      null,
     a1Sheet: {
       ...(clonedA1Sheet || {}),
       sheetId: design.sheetId || clonedA1Sheet?.sheetId || "default",

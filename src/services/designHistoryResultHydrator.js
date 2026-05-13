@@ -1,3 +1,5 @@
+import { buildExportManifestFromSummary } from "./export/buildClientExportManifest.js";
+
 function firstDefined(...values) {
   return values.find((value) => value !== undefined && value !== null);
 }
@@ -104,6 +106,45 @@ export function buildSheetResultFromDesignHistoryEntry(design = {}) {
     metadata.artifactManifest,
   );
 
+  // Phase 2 export-fix: restore the engineering bundle the design history
+  // compactor strips on save. The repository persists a slim
+  // `compiledProjectExportSummary` + `exportManifest` pair specifically so
+  // ExportPanel can render correct READY/BLOCKED rows after a reload.
+  //
+  // The full `compiledProject` is intentionally NOT restored here — it was
+  // never persisted (would blow the localStorage budget). Callers that need
+  // to re-export an engineering format from a restored design either
+  // (a) regenerate, or (b) consume the prebaked artifact-package via
+  // designData.package.signedUrl / downloadRoute. The manifest tells the UI
+  // which formats *would* succeed when those bytes are in scope.
+  const geometryHash = firstDefined(
+    design.geometryHash,
+    sheet.geometryHash,
+    metadata.geometryHash,
+  );
+  const compiledProjectExportSummary = firstDefined(
+    design.compiledProjectExportSummary,
+    sheet.compiledProjectExportSummary,
+    metadata.compiledProjectExportSummary,
+  );
+  let restoredExportManifest = firstDefined(
+    design.exportManifest,
+    sheet.exportManifest,
+    metadata.exportManifest,
+  );
+  if (!restoredExportManifest && compiledProjectExportSummary) {
+    restoredExportManifest = buildExportManifestFromSummary({
+      summary: compiledProjectExportSummary,
+      projectName: design.projectName || metadata.projectName,
+      pipelineVersion: design.pipelineVersion || metadata.pipelineVersion,
+    });
+  }
+  const restoredSheetArtifactManifest = firstDefined(
+    design.sheetArtifactManifest,
+    sheet.sheetArtifactManifest,
+    metadata.sheetArtifactManifest,
+  );
+
   return {
     ...design,
     designId,
@@ -122,6 +163,10 @@ export function buildSheetResultFromDesignHistoryEntry(design = {}) {
     coordinates,
     a1ArtifactManifest: artifactManifest,
     artifactManifest,
+    geometryHash,
+    compiledProjectExportSummary,
+    exportManifest: restoredExportManifest,
+    sheetArtifactManifest: restoredSheetArtifactManifest,
     a1Sheet: {
       ...sheet,
       sheetId: sheet.sheetId || design.sheetId || "default",

@@ -95,6 +95,13 @@ function hasDeliverablePackageArtifacts(designData = {}) {
 
 /**
  * Single export row — consistent layout regardless of format.
+ *
+ * Phase 2 export-fix: when `available === false` and the manifest carries a
+ * blockedReason, render the reason as inline secondary text under the row
+ * label. Previously the reason was only surfaced via a hover tooltip on the
+ * StatusChip, which was effectively invisible to users on touch devices and
+ * to anyone scanning the panel without hovering. The chip + tooltip remain
+ * for screen-reader compatibility; the inline text is the primary signal.
  */
 const ExportRow = ({
   icon: Icon,
@@ -110,6 +117,7 @@ const ExportRow = ({
   const statusTooltip = available
     ? "Generated and ready to download"
     : blockedReason || "Not yet generated";
+  const showInlineReason = !available && Boolean(blockedReason);
 
   const button = (
     <button
@@ -117,6 +125,8 @@ const ExportRow = ({
       onClick={onClick}
       disabled={!available}
       className="group flex w-full items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-left transition-all duration-200 hover:border-white/20 hover:bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-royal-500/30 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white/[0.03]"
+      data-export-status={status}
+      data-export-blocked-reason={showInlineReason ? blockedReason : undefined}
     >
       <span
         className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border ${
@@ -128,8 +138,18 @@ const ExportRow = ({
         <Icon className="h-4 w-4" strokeWidth={1.75} />
       </span>
 
-      <span className="flex-1 truncate text-sm font-medium text-white/85">
-        {label}
+      <span className="flex flex-1 min-w-0 flex-col">
+        <span className="truncate text-sm font-medium text-white/85">
+          {label}
+        </span>
+        {showInlineReason && (
+          <span
+            className="mt-0.5 truncate text-[11px] leading-snug text-amber-300/80"
+            data-testid="export-blocked-reason"
+          >
+            {blockedReason}
+          </span>
+        )}
       </span>
 
       {formatChip && (
@@ -245,7 +265,16 @@ const ExportPanel = ({
     : 0;
   const hasBlendFile = !!blenderOutputs?.manifest?.blendFile;
 
-  const geometryHash = designData?.compiledProject?.geometryHash || null;
+  // Phase 2: prefer the top-level `geometryHash` the workflow now attaches.
+  // It survives design-history hydration even when `compiledProject` does not
+  // (the compactor strips compiledProject on save — see designHistoryRepository
+  // compactA1SheetForHistory). Falling back to `compiledProject?.geometryHash`
+  // keeps the existing freshly-generated path intact.
+  const geometryHash =
+    designData?.geometryHash ||
+    designData?.compiledProject?.geometryHash ||
+    designData?.compiledProjectExportSummary?.geometryHash ||
+    null;
   // Manifest resolution priority: server-attached > sheet-artifact >
   // metadata > in-component synthesis. The synthesis kicks in only when
   // (a) no upstream manifest is present and (b) compiledProject exists —
