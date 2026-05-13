@@ -29,7 +29,15 @@ const BLOCKED_REASONS = Object.freeze({
   QUANTITY_TAKEOFF_UNAVAILABLE: "QUANTITY_TAKEOFF_UNAVAILABLE",
   DWG_CONVERSION_UNAVAILABLE: "DWG_CONVERSION_UNAVAILABLE",
   AUTHORITY_JSON_UNAVAILABLE: "AUTHORITY_JSON_UNAVAILABLE",
+  REGENERATE_REQUIRED_FOR_ENGINEERING_EXPORT:
+    "REGENERATE_REQUIRED_FOR_ENGINEERING_EXPORT",
 });
+
+// Engineering exports that cannot execute without the in-scope
+// `compiledProject` payload. ExportPanel uses this list to gate restored
+// history designs (PNG / PDF / SVG continue to work via the A1 sheet
+// artifact which IS persisted).
+const ENGINEERING_EXPORT_KEYS = Object.freeze(["dxf", "ifc", "json", "xlsx"]);
 
 function entry({ available, format, blockedReason, ...rest }) {
   const row = { available: Boolean(available), format, ...rest };
@@ -217,5 +225,56 @@ export function buildExportManifestFromSummary({
   };
 }
 
-export { BLOCKED_REASONS };
+/**
+ * Phase 2 amendment — restored-history gate for engineering exports.
+ *
+ * The hydrator can restore a manifest (verbatim or rebuilt from summary)
+ * that claims DXF/IFC/JSON/XLSX are READY, because those flags reflect what
+ * was achievable at generation time. The exporters themselves, however,
+ * need the full `compiledProject` body — which is intentionally NOT
+ * persisted (it would blow the localStorage budget). Without this gate
+ * ExportPanel showed clickable READY rows that 4xx'd inside exportService.
+ *
+ * Rule: when `restoredFromHistory === true` AND no `compiledProject` is in
+ * scope, force every engineering key (`ENGINEERING_EXPORT_KEYS`) to
+ * `available: false` with the structured reason
+ * `REGENERATE_REQUIRED_FOR_ENGINEERING_EXPORT`. PNG / PDF / SVG / GLB / DWG
+ * are not touched — sheet exports flow through the Phase 1 compact-
+ * reference route and survive history reload; the DWG row stays blocked
+ * for its own reason (no converter); GLB requires a glbUrl that's already
+ * lost when compiledProject is.
+ *
+ * The function preserves the input manifest's other fields (geometryHash,
+ * schema_version, projectName, etc.) so the Authority chip in the panel
+ * still renders. Pass the original `manifest.source` through so callers
+ * can tell freshly-built manifests apart from gated ones.
+ */
+export function applyHistoryRestoreGate({
+  manifest = null,
+  restoredFromHistory = false,
+  hasCompiledProject = false,
+} = {}) {
+  if (!manifest) return manifest;
+  if (!restoredFromHistory) return manifest;
+  if (hasCompiledProject) return manifest;
+  const exportsIn = manifest.exports || {};
+  const exportsOut = { ...exportsIn };
+  for (const key of ENGINEERING_EXPORT_KEYS) {
+    if (!exportsOut[key]) continue;
+    exportsOut[key] = {
+      ...exportsOut[key],
+      available: false,
+      blockedReason: BLOCKED_REASONS.REGENERATE_REQUIRED_FOR_ENGINEERING_EXPORT,
+    };
+  }
+  return {
+    ...manifest,
+    exports: exportsOut,
+    source: manifest.source
+      ? `${manifest.source}+restore_gated`
+      : "restore_gated",
+  };
+}
+
+export { BLOCKED_REASONS, ENGINEERING_EXPORT_KEYS };
 export default buildClientExportManifest;

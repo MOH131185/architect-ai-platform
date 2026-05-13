@@ -27,7 +27,9 @@ import StatusChip from "./ui/StatusChip.jsx";
 import { Tooltip } from "./ui/feedback/Tooltip.jsx";
 import { useToastContext } from "./ui/ToastProvider.jsx";
 import exportService from "../services/exportService.js";
-import buildClientExportManifest from "../services/export/buildClientExportManifest.js";
+import buildClientExportManifest, {
+  applyHistoryRestoreGate,
+} from "../services/export/buildClientExportManifest.js";
 import ArtifactHistoryPanel from "./export/ArtifactHistoryPanel.jsx";
 
 /**
@@ -288,20 +290,38 @@ const ExportPanel = ({
       designData?.sheetArtifactManifest?.exportManifest ||
       designData?.metadata?.exportManifest ||
       null;
-    if (fromResult) return fromResult;
-    if (!designData?.compiledProject) return null;
-    return buildClientExportManifest({
-      compiledProject: designData.compiledProject,
-      projectQuantityTakeoff:
-        designData?.projectQuantityTakeoff ||
-        designData?.artifacts?.projectQuantityTakeoff ||
-        null,
-      geometryHash:
-        designData?.geometryHash ||
-        designData?.compiledProject?.geometryHash ||
-        null,
-      projectName: designData?.projectGraph?.brief?.project_name,
-      pipelineVersion: designData?.pipelineVersion,
+    const baseManifest =
+      fromResult ||
+      (designData?.compiledProject
+        ? buildClientExportManifest({
+            compiledProject: designData.compiledProject,
+            projectQuantityTakeoff:
+              designData?.projectQuantityTakeoff ||
+              designData?.artifacts?.projectQuantityTakeoff ||
+              null,
+            geometryHash:
+              designData?.geometryHash ||
+              designData?.compiledProject?.geometryHash ||
+              null,
+            projectName: designData?.projectGraph?.brief?.project_name,
+            pipelineVersion: designData?.pipelineVersion,
+          })
+        : null);
+
+    // Phase 2 amendment — restored-history gate. A design reloaded from
+    // history carries `restoredFromHistory: true` and (per design) NO
+    // `compiledProject`: the compactor strips it on save to stay under the
+    // localStorage budget. The hydrator's restored manifest still claims
+    // DXF/IFC/JSON/XLSX were ready at generation time, but those exporters
+    // cannot execute now without the in-scope compiledProject body — so
+    // ExportPanel must NOT show those rows as clickable READY. The gate
+    // preserves the rest of the manifest (geometryHash, schema_version,
+    // PNG/PDF rows, etc.) so the Authority chip and sheet exports still
+    // work normally.
+    return applyHistoryRestoreGate({
+      manifest: baseManifest,
+      restoredFromHistory: designData?.restoredFromHistory === true,
+      hasCompiledProject: Boolean(designData?.compiledProject),
     });
   }, [designData]);
   const exportsMap = exportManifest?.exports || {};
@@ -335,6 +355,8 @@ const ExportPanel = ({
       "Quantity takeoff not produced for this project type.",
     DWG_CONVERSION_UNAVAILABLE: "DWG conversion provider not configured.",
     AUTHORITY_JSON_UNAVAILABLE: "Authority JSON not available.",
+    REGENERATE_REQUIRED_FOR_ENGINEERING_EXPORT:
+      "Regenerate required — compiled project was not persisted in history.",
   };
 
   const blockedReason = (key) => {
