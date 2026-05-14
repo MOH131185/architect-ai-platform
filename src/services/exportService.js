@@ -767,11 +767,18 @@ class ExportService {
     // Save-Package flow during regenerate races) must hit the same
     // error rather than producing a corrupt print artifact. Engineering
     // formats run their own readiness checks and are not gated here.
+    //
+    // Post-UI-smoke QA-wiring fix: also refuse when `allowed === false`.
+    // The slice's buildA1ExportQaFromGate enforces status==="blocked" any
+    // time allowed===false, but this predicate stays defensive so any
+    // older history record or external caller that constructs a1ExportQa
+    // with allowed:false but a non-"blocked" status still hits the gate.
     const SHEET_FORMATS = new Set(["PNG", "PDF", "SVG"]);
-    if (SHEET_FORMATS.has(fmt) && sheet?.a1ExportQa?.status === "blocked") {
-      const blockerCount = Array.isArray(sheet.a1ExportQa.blockers)
-        ? sheet.a1ExportQa.blockers.length
-        : 0;
+    const qa = sheet?.a1ExportQa;
+    const sheetExportBlocked =
+      qa && (qa.status === "blocked" || qa.allowed === false);
+    if (SHEET_FORMATS.has(fmt) && sheetExportBlocked) {
+      const blockerCount = Array.isArray(qa.blockers) ? qa.blockers.length : 0;
       const detail = blockerCount
         ? ` (${blockerCount} blocker${blockerCount === 1 ? "" : "s"})`
         : "";

@@ -97,6 +97,9 @@ import {
   PANEL_CONSISTENCY_CODES,
 } from "../../src/services/validation/panelGeometryConsistencyChecks.js";
 import { buildSheetResultFromDesignHistoryEntry } from "../../src/services/designHistoryResultHydrator.js";
+import { __projectGraphVerticalSliceInternals } from "../../src/services/project/projectGraphVerticalSliceService.js";
+
+const { buildA1ExportQaFromGate } = __projectGraphVerticalSliceInternals;
 
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(__filename), "../..");
@@ -1157,9 +1160,34 @@ async function checkBlocker4A1ExportQaRestored() {
       "buildSheetResultFromDesignHistoryEntry fabricated a1ExportQa when nothing was persisted",
     );
   }
+  // Post-UI-smoke QA-wiring fix — panel QA "fail" must fold into the gate.
+  // Without this, a sheet whose PDF /Subject reads "QA status: fail" can
+  // still appear exportable because the panel-QA reducer and the
+  // structured export gate are separate channels.
+  const folded = buildA1ExportQaFromGate({
+    exportGate: { status: "pass", allowed: true },
+    panelQaSummary: { status: "fail" },
+  });
+  if (folded?.status !== "blocked" || folded?.allowed !== false) {
+    return fail(
+      "BLOCKER4_A1_EXPORTQA_RESTORED",
+      "PANEL_QA_FAIL_NOT_FOLDED",
+      "buildA1ExportQaFromGate did not fold panel QA fail into blocked/allowed:false",
+    );
+  }
+  const hasPanelQaFailedCode = (folded.blockers || []).some(
+    (b) => b?.code === "PANEL_QA_FAILED",
+  );
+  if (!hasPanelQaFailedCode) {
+    return fail(
+      "BLOCKER4_A1_EXPORTQA_RESTORED",
+      "PANEL_QA_FAILED_CODE_MISSING",
+      "buildA1ExportQaFromGate did not append PANEL_QA_FAILED blocker code",
+    );
+  }
   return pass(
     "BLOCKER4_A1_EXPORTQA_RESTORED",
-    "hydrator surfaces a1ExportQa top-level + a1Sheet + metadata when persisted",
+    "hydrator surfaces a1ExportQa + buildA1ExportQaFromGate folds panel QA fail",
   );
 }
 

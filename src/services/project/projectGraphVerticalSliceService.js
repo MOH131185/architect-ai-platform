@@ -9792,6 +9792,91 @@ export function isResidentialBuildingType(buildingType) {
   return false;
 }
 
+// Post-UI-smoke QA-wiring fix: fold the two parallel A1 QA channels
+// (structured export gate vs panel QA reducer) into a single a1ExportQa
+// shape consumed by useArchitectAIWorkflow + ExportPanel + exportService.
+//
+// Why this matters: panel QA returns "fail" / "warn" / "passed" /
+// "unknown" (reducer at line ~11253) and feeds the PDF /Subject metadata
+// only. The export gate returns "pass" / "warning" / "blocked" and feeds
+// a1ExportQa.status. Without this helper a sheet whose own PDF metadata
+// reads "QA status: fail" can still appear exportable, because the panel
+// QA verdict is invisible to the gate's structured aggregation.
+//
+// Contract:
+//   - allowed === false  ⇒  status === "blocked" (no daylight).
+//   - panel QA "fail" (or "failed" / "blocked") appends a PANEL_QA_FAILED
+//     blocker and forces status="blocked", allowed=false.
+//   - panel QA "warn" / "warning" appends a PANEL_QA_WARNING warning when
+//     panel QA didn't already fail; does NOT escalate to blocked.
+//   - Gate `allowed: false` or status "blocked" / "fail" / "failed" maps
+//     to blocked defensively.
+//   - Returns null only when both inputs are absent (preserves the
+//     existing "no gate present yet" semantics).
+//   - Input arrays are not mutated.
+export function buildA1ExportQaFromGate({
+  exportGate = null,
+  panelQaSummary = null,
+} = {}) {
+  if (!exportGate && !panelQaSummary) return null;
+
+  const FAIL = new Set(["fail", "failed", "blocked"]);
+  const WARN = new Set(["warn", "warning"]);
+  const panelRaw = panelQaSummary?.status || panelQaSummary?.qaStatus || null;
+  const panel = panelRaw ? String(panelRaw).toLowerCase() : null;
+  const panelQaFailed = Boolean(panel && FAIL.has(panel));
+  const panelQaWarning = Boolean(!panelQaFailed && panel && WARN.has(panel));
+
+  const gateStatusRaw = exportGate?.status
+    ? String(exportGate.status).toLowerCase()
+    : null;
+  const gateBlocked =
+    exportGate?.allowed === false ||
+    gateStatusRaw === "blocked" ||
+    gateStatusRaw === "fail" ||
+    gateStatusRaw === "failed";
+
+  const blocked = Boolean(panelQaFailed || gateBlocked);
+
+  const blockers = Array.isArray(exportGate?.blockers)
+    ? [...exportGate.blockers]
+    : [];
+  const warnings = Array.isArray(exportGate?.warnings)
+    ? [...exportGate.warnings]
+    : [];
+
+  if (panelQaFailed) {
+    blockers.push({
+      code: "PANEL_QA_FAILED",
+      severity: "blocker",
+      message: "Sheet failed final layout/readability QA.",
+    });
+  } else if (panelQaWarning) {
+    warnings.push({
+      code: "PANEL_QA_WARNING",
+      severity: "warning",
+      message: "Sheet final layout/readability QA reported warnings.",
+    });
+  }
+
+  const status = blocked
+    ? "blocked"
+    : warnings.length || gateStatusRaw === "warning"
+      ? "warning"
+      : "pass";
+
+  return {
+    status,
+    allowed: !blocked,
+    demotedToPreview: exportGate?.demotedToPreview === true,
+    blockers,
+    warnings,
+    scope: exportGate?.scope || "compose_final",
+    version: exportGate?.version || "phase-f-a1-export-gate-v1",
+    panelQaStatus: panelRaw,
+  };
+}
+
 export function resolvePresentationLayoutTemplate(brief = {}) {
   const buildingType =
     brief?.building_type ||
@@ -14596,6 +14681,12 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       sheetDesignContextHash: sheetDesignContext.contextHash,
       styleBlendManifestHash: styleBlendManifest.manifestHash,
       sheetDesignContextVersion: SHEET_DESIGN_CONTEXT_VERSION,
+      // Preserve the panel-level QA summary on sheetArtifact.metadata so it
+      // survives past this per-sheet render loop and feeds the a1ExportQa
+      // fold below (buildA1ExportQaFromGate). Without this, the PDF /Subject
+      // can read "QA status: fail" while the export gate happily passes,
+      // because the two channels never speak to each other.
+      qaSummary: sheetResult.qaSummary || null,
     };
     renderedSheets.push({
       sheetPlan,
@@ -15537,26 +15628,19 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
   // of the slice result as `a1ExportQa`. The gate already lives at
   // `artifacts.a1Sheet.quality.exportGate` for diagnostics, but clients
   // (useArchitectAIWorkflow + ExportPanel) need a fixed top-level location
-  // to drive sheet-export blocking when QA fails. Defensive shape: when
-  // the gate evaluation crashed inside the try/catch at line 14910 we
-  // still expose a warning status with the error message so consumers can
-  // distinguish "QA passed" from "QA evaluation crashed".
+  // to drive sheet-export blocking when QA fails.
+  //
+  // Post-UI-smoke fix (design_1778754838029_pyw45og): the gate alone is
+  // not enough — the panel QA reducer can return "fail" while the
+  // structured gate stays green, which produced a downloadable PDF whose
+  // own /Subject metadata read "QA status: fail". buildA1ExportQaFromGate
+  // folds both channels into a single contract.
   const a1ExportGate = sheetArtifact?.quality?.exportGate || null;
-  const a1ExportQa = a1ExportGate
-    ? {
-        status: a1ExportGate.status || "warning",
-        allowed: a1ExportGate.allowed !== false,
-        demotedToPreview: a1ExportGate.demotedToPreview === true,
-        blockers: Array.isArray(a1ExportGate.blockers)
-          ? a1ExportGate.blockers
-          : [],
-        warnings: Array.isArray(a1ExportGate.warnings)
-          ? a1ExportGate.warnings
-          : [],
-        scope: a1ExportGate.scope || "compose_final",
-        version: a1ExportGate.version || "phase-f-a1-export-gate-v1",
-      }
-    : null;
+  const a1ExportQa = buildA1ExportQaFromGate({
+    exportGate: a1ExportGate,
+    panelQaSummary:
+      sheetArtifact?.metadata?.qaSummary || primary?.qaSummary || null,
+  });
 
   return {
     success: qa.status === "pass",
@@ -15656,6 +15740,9 @@ export const __projectGraphVerticalSliceInternals = Object.freeze({
   // (A1_CONTENT_TOP_MM in composeCore.js). presentation-v3 is already
   // exported via buildPresentationV3SheetPanelSpecs above.
   buildSheetPanelSpecs,
+  // Post-UI-smoke fix: A1 QA fold helper. Tests import via internals so
+  // they don't depend on the rest of this very large module surface.
+  buildA1ExportQaFromGate,
   buildDrawingSet,
   buildSheetSvg,
   buildSheetProvenanceFooter,

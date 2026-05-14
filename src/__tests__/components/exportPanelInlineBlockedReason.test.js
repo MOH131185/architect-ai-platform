@@ -113,12 +113,23 @@ describe("ExportPanel — inline blocked reason rendering", () => {
 
   test("ExportPanel reads a1ExportQa.status from designData", () => {
     expect(SOURCE).toMatch(/designData\?\.a1ExportQa/);
+    // Post-UI-smoke QA-wiring fix: sheetQaBlocked must also fire on
+    // `allowed === false`, not only `status === "blocked"`. The
+    // multiline + flexible whitespace allows either ordering after
+    // prettier wraps the line.
     expect(SOURCE).toMatch(
-      /sheetQaBlocked\s*=\s*a1ExportQa\?\.status\s*===\s*"blocked"/,
+      /sheetQaBlocked\s*=\s*\n?\s*a1ExportQa\?\.status\s*===\s*"blocked"\s*\|\|\s*a1ExportQa\?\.allowed\s*===\s*false/,
     );
     expect(SOURCE).toMatch(
-      /sheetQaWarning\s*=\s*a1ExportQa\?\.status\s*===\s*"warning"/,
+      /sheetQaWarning\s*=\s*!sheetQaBlocked\s*&&\s*a1ExportQa\?\.status\s*===\s*"warning"/,
     );
+  });
+
+  test("sheetQaBlocked fires on allowed:false even when status is not 'blocked' (defence in depth)", () => {
+    // The widened predicate covers cases where a gate demotes via
+    // `allowed: false` but leaves `status: "pass"` or "warning". Without
+    // this, exports could slip past the banner + service refusal.
+    expect(SOURCE).toMatch(/a1ExportQa\?\.allowed\s*===\s*false/);
   });
 
   test("sheet export rows (PNG/PDF) route through the QA-gated helpers", () => {

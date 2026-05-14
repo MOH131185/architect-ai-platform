@@ -121,4 +121,72 @@ describe("exportService.exportSheet — A1 QA blocking (Phase 3)", () => {
       spy.mockRestore();
     }
   });
+
+  // Post-UI-smoke QA-wiring fix — defence in depth widened to also catch
+  // `allowed === false`. The Phase 3 smoke had a sheet whose own PDF
+  // /Subject said "QA status: fail" but a1ExportQa.status was not
+  // "blocked"; the service refusal didn't fire. With the widened
+  // predicate, allowed===false also throws — and the surface message
+  // still surfaces the blocker count.
+  function sheetWithQaAllowedFalse() {
+    return {
+      metadata: {
+        designId: "d-allowed-false",
+        sheetType: "ARCH",
+        versionId: "base",
+      },
+      geometryHash: "geom-2",
+      artifacts: { a1Sheet: { svgString: "<svg/>" } },
+      a1ExportQa: {
+        // Status purposely NOT "blocked" — older history records, gates
+        // that demote via `allowed: false`, or external constructions may
+        // produce this shape. The service must still refuse.
+        status: "pass",
+        allowed: false,
+        blockers: [
+          {
+            code: "PANEL_QA_FAILED",
+            severity: "blocker",
+            message: "Sheet failed final layout/readability QA.",
+          },
+        ],
+        warnings: [],
+      },
+    };
+  }
+
+  for (const fmt of ["PNG", "PDF", "SVG"]) {
+    test(`refuses ${fmt} export when a1ExportQa.allowed === false (even if status is not "blocked")`, async () => {
+      const sheet = sheetWithQaAllowedFalse();
+      await expect(
+        exportService.exportSheet({ sheet, format: fmt }),
+      ).rejects.toThrow(/A1 export blocked/);
+    });
+  }
+
+  test("allowed:false error message includes blocker count + PANEL_QA_FAILED is the surfaced code", async () => {
+    const sheet = sheetWithQaAllowedFalse();
+    await expect(
+      exportService.exportSheet({ sheet, format: "PDF" }),
+    ).rejects.toThrow(/1 blocker/);
+    expect(
+      sheet.a1ExportQa.blockers.some((b) => b.code === "PANEL_QA_FAILED"),
+    ).toBe(true);
+  });
+
+  test("allowed:false does NOT prevent engineering exports", async () => {
+    // Same scoping rule — engineering formats are not gated by sheet QA,
+    // regardless of which predicate (status or allowed) fired.
+    const sheet = sheetWithQaAllowedFalse();
+    const spy = jest
+      .spyOn(exportService, "exportCAD")
+      .mockResolvedValue({ success: true, format: "DXF", filename: "x.dxf" });
+    try {
+      const result = await exportService.exportSheet({ sheet, format: "DXF" });
+      expect(result.success).toBe(true);
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });

@@ -376,8 +376,14 @@ const ExportPanel = ({
   // keeps export available but a banner above the rows surfaces the
   // warning count.
   const a1ExportQa = designData?.a1ExportQa || null;
-  const sheetQaBlocked = a1ExportQa?.status === "blocked";
-  const sheetQaWarning = a1ExportQa?.status === "warning";
+  // Post-UI-smoke QA-wiring fix: also block when `allowed === false`.
+  // buildA1ExportQaFromGate in the slice enforces status==="blocked" any
+  // time allowed===false, but this predicate is defensive so any consumer
+  // that constructs a1ExportQa another way (or via older history records)
+  // still gates correctly.
+  const sheetQaBlocked =
+    a1ExportQa?.status === "blocked" || a1ExportQa?.allowed === false;
+  const sheetQaWarning = !sheetQaBlocked && a1ExportQa?.status === "warning";
   const sheetQaBlockerSummary =
     Array.isArray(a1ExportQa?.blockers) && a1ExportQa.blockers.length > 0
       ? `${a1ExportQa.blockers.length} blocker${a1ExportQa.blockers.length === 1 ? "" : "s"}`
