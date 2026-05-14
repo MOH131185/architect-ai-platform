@@ -65,9 +65,14 @@ function checkStorageProviderConsistency(env) {
     return errors;
   }
   if (provider === "s3") {
+    // Names must match what the runtime adapter actually reads — see
+    // src/services/export/artifactStorageService.js for the consumers:
+    //   ARTIFACT_STORAGE_BUCKET / REGION (renamed from *_S3_* pre-Phase 5).
+    // Legacy *_S3_BUCKET / *_S3_REGION names from older docs no longer flow
+    // through to the S3 adapter, so the strict check enforces the new names.
     const required = [
-      "ARTIFACT_STORAGE_S3_BUCKET",
-      "ARTIFACT_STORAGE_S3_REGION",
+      "ARTIFACT_STORAGE_BUCKET",
+      "ARTIFACT_STORAGE_REGION",
       "AWS_ACCESS_KEY_ID",
       "AWS_SECRET_ACCESS_KEY",
     ];

@@ -144,6 +144,15 @@ export function buildSheetResultFromDesignHistoryEntry(design = {}) {
     sheet.sheetArtifactManifest,
     metadata.sheetArtifactManifest,
   );
+  // Restore the A1 export QA gate so ExportPanel still renders the red
+  // banner and exportService still refuses PNG/PDF/SVG when the original
+  // generation was blocked (Phase 3/4 contract). The repository persists
+  // a small `{ status, blockers: [...] }` summary in versionMetadata.
+  const restoredA1ExportQa = firstDefined(
+    design.a1ExportQa,
+    sheet.a1ExportQa,
+    metadata.a1ExportQa,
+  );
 
   return {
     ...design,
@@ -154,8 +163,8 @@ export function buildSheetResultFromDesignHistoryEntry(design = {}) {
     resultUrl: sheetUrl,
     url: sheetUrl,
     pdfUrl,
-    metadata,
-    sheetMetadata: metadata,
+    metadata: { ...metadata, a1ExportQa: restoredA1ExportQa },
+    sheetMetadata: { ...metadata, a1ExportQa: restoredA1ExportQa },
     panelMap,
     panels,
     panelsByKey: panelMap,
@@ -167,17 +176,19 @@ export function buildSheetResultFromDesignHistoryEntry(design = {}) {
     compiledProjectExportSummary,
     exportManifest: restoredExportManifest,
     sheetArtifactManifest: restoredSheetArtifactManifest,
+    a1ExportQa: restoredA1ExportQa,
     a1Sheet: {
       ...sheet,
       sheetId: sheet.sheetId || design.sheetId || "default",
       url: firstDefined(sheet.url, sheetUrl),
       composedSheetUrl: firstDefined(sheet.composedSheetUrl, sheetUrl),
       pdfUrl: firstDefined(sheet.pdfUrl, pdfUrl),
-      metadata,
+      metadata: { ...metadata, a1ExportQa: restoredA1ExportQa },
       panelMap,
       panels: panelMap || panels,
       coordinates,
       artifactManifest,
+      a1ExportQa: restoredA1ExportQa,
     },
   };
 }

@@ -405,3 +405,61 @@ describe("runPanelGeometryConsistencyChecks — drawings input", () => {
     ).toBe(true);
   });
 });
+
+describe("runPanelGeometryConsistencyChecks — site_context is 2D authority", () => {
+  // Pre-UI-smoke fix #5 — `site_context` is an active panel in the
+  // ProjectGraph 2D set but pre-fix was not in PANEL_TYPE_2D_PREFIXES,
+  // so the validator silently ignored its geometryHash. After the fix it
+  // gets the standard 2D severity split: missing hash = warning,
+  // mismatched hash = blocker.
+
+  function siteContextPanel(overrides = {}) {
+    return {
+      panel_type: "site_context",
+      geometryHash: GEOMETRY_HASH,
+      ...overrides,
+    };
+  }
+
+  test("site_context with matching geometryHash passes", () => {
+    const result = runPanelGeometryConsistencyChecks({
+      compiledProject: freshCompiledProject(),
+      visualManifest: freshVisualManifest(),
+      materialPalette: freshMaterialPalette(),
+      panels: [siteContextPanel()],
+    });
+    expect(result.status).toBe("pass");
+    expect(result.blockers).toEqual([]);
+    expect(result.warnings).toEqual([]);
+  });
+
+  test("site_context missing geometryHash warns (does not block)", () => {
+    const result = runPanelGeometryConsistencyChecks({
+      compiledProject: freshCompiledProject(),
+      visualManifest: freshVisualManifest(),
+      materialPalette: freshMaterialPalette(),
+      panels: [siteContextPanel({ geometryHash: null })],
+    });
+    expect(result.blockers).toEqual([]);
+    expect(result.status).toBe("warning");
+    expect(result.warnings.length).toBeGreaterThan(0);
+  });
+
+  test("site_context with mismatched geometryHash blocks", () => {
+    const result = runPanelGeometryConsistencyChecks({
+      compiledProject: freshCompiledProject(),
+      visualManifest: freshVisualManifest(),
+      materialPalette: freshMaterialPalette(),
+      panels: [siteContextPanel({ geometryHash: "stale-site-context" })],
+    });
+    expect(result.status).toBe("blocked");
+    expect(result.codes).toContain(
+      PANEL_CONSISTENCY_CODES.PANEL_GEOMETRY_HASH_MISMATCH,
+    );
+    expect(
+      result.mismatches.geometryHash.some(
+        (m) => m.panelType === "site_context",
+      ),
+    ).toBe(true);
+  });
+});

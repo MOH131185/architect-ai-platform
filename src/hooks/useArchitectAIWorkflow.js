@@ -1708,15 +1708,23 @@ export function useArchitectAIWorkflow() {
           );
         }
 
+        // Prefer fields from the fresh raw ProjectGraph result over the
+        // input designSpec — for PIPELINE_MODE.PROJECT_GRAPH the raw result
+        // is authoritative for compiledProject / geometryHash / engineering
+        // takeoff. designSpec is the brief input and may carry stale or
+        // missing values from the wizard.
         const compiledProject =
+          multiPanelResult?.compiledProject ||
           params.designSpec?.compiledProject ||
           params.designSpec?.v2Bundle?.compiledProject ||
           null;
         const projectQuantityTakeoff =
+          multiPanelResult?.projectQuantityTakeoff ||
           params.designSpec?.projectQuantityTakeoff ||
           params.designSpec?.v2Bundle?.projectQuantityTakeoff ||
           null;
         const geometryHash =
+          multiPanelResult?.geometryHash ||
           compiledProject?.geometryHash ||
           multiPanelResult?.metadata?.geometryHash ||
           null;
@@ -1751,9 +1759,14 @@ export function useArchitectAIWorkflow() {
         // would render every engineering row BLOCKED with no specific
         // blockedReason (root cause C in the export-manifest debug).
         const serverExportManifest =
+          multiPanelResult?.exportManifest ||
           multiPanelResult?.metadata?.exportManifest ||
           params.designSpec?.exportManifest ||
           params.designSpec?.v2Bundle?.exportManifest ||
+          null;
+        const a1ExportQa =
+          multiPanelResult?.a1ExportQa ||
+          multiPanelResult?.metadata?.a1ExportQa ||
           null;
         const exportManifest =
           serverExportManifest ||
@@ -1774,17 +1787,19 @@ export function useArchitectAIWorkflow() {
           params.designSpec?.reviewSurface ||
           params.designSpec?.v2Bundle?.reviewSurface ||
           null;
-        const sheetArtifactManifest = createSheetArtifactManifest({
-          geometryHash,
-          pipelineVersion,
-          panels: buildManifestPanels(multiPanelResult),
-          confidence: confidence || {},
-          validation: validation || {},
-          authorityReadiness,
-          deliveryStages,
-          exportManifest,
-          reviewSurface,
-        });
+        const sheetArtifactManifest =
+          multiPanelResult?.sheetArtifactManifest ||
+          createSheetArtifactManifest({
+            geometryHash,
+            pipelineVersion,
+            panels: buildManifestPanels(multiPanelResult),
+            confidence: confidence || {},
+            validation: validation || {},
+            authorityReadiness,
+            deliveryStages,
+            exportManifest,
+            reviewSurface,
+          });
 
         const sheetResult = {
           ...multiPanelResult,
@@ -1830,6 +1845,7 @@ export function useArchitectAIWorkflow() {
           exportManifest,
           reviewSurface,
           sheetArtifactManifest,
+          a1ExportQa,
           panelCoordinates:
             multiPanelResult.panelCoordinates || multiPanelResult.coordinates,
           metadata: {
@@ -1844,6 +1860,7 @@ export function useArchitectAIWorkflow() {
             exportManifest,
             reviewSurface,
             sheetArtifactManifest,
+            a1ExportQa,
             panelCount:
               multiPanelResult.metadata?.panelCount ||
               (multiPanelResult.panelMap

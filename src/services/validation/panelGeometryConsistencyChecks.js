@@ -41,6 +41,7 @@ const PANEL_TYPE_2D_PREFIXES = Object.freeze([
   "section_",
   "site_diagram",
   "site_plan",
+  "site_context",
 ]);
 
 const STRUCTURED_CODES = Object.freeze({

@@ -96,6 +96,7 @@ import {
   runPanelGeometryConsistencyChecks,
   PANEL_CONSISTENCY_CODES,
 } from "../../src/services/validation/panelGeometryConsistencyChecks.js";
+import { buildSheetResultFromDesignHistoryEntry } from "../../src/services/designHistoryResultHydrator.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(__filename), "../..");
@@ -1058,6 +1059,110 @@ async function checkPhase4GateFoldsPanelConsistency() {
   );
 }
 
+async function checkBlocker1ProjectGraphAuthorityPreserved() {
+  // Pre-UI-smoke fix #1 — the V2/multi_panel result normaliser must prefer
+  // fields from the fresh raw ProjectGraph result over the input designSpec.
+  // Codex audit caught the chains pulling from designSpec first, which let
+  // stale wizard inputs overwrite correct generation outputs. This check
+  // greps the live source to keep the contract from regressing.
+  const abs = path.join(REPO_ROOT, "src/hooks/useArchitectAIWorkflow.js");
+  const src = await readFile(abs, "utf8");
+  const expectations = [
+    {
+      label: "compiledProject prefers multiPanelResult",
+      re: /const compiledProject\s*=\s*\n\s*multiPanelResult\?\.compiledProject\s*\|\|/,
+    },
+    {
+      label: "projectQuantityTakeoff prefers multiPanelResult",
+      re: /const projectQuantityTakeoff\s*=\s*\n\s*multiPanelResult\?\.projectQuantityTakeoff\s*\|\|/,
+    },
+    {
+      label: "geometryHash prefers multiPanelResult",
+      re: /const geometryHash\s*=\s*\n\s*multiPanelResult\?\.geometryHash\s*\|\|/,
+    },
+    {
+      label: "serverExportManifest prefers multiPanelResult top-level",
+      re: /const serverExportManifest\s*=\s*\n\s*multiPanelResult\?\.exportManifest\s*\|\|/,
+    },
+    {
+      label: "sheetArtifactManifest prefers multiPanelResult",
+      re: /const sheetArtifactManifest\s*=\s*\n\s*multiPanelResult\?\.sheetArtifactManifest\s*\|\|/,
+    },
+    {
+      label: "a1ExportQa extracted with multiPanelResult-first priority",
+      re: /const a1ExportQa\s*=\s*\n\s*multiPanelResult\?\.a1ExportQa\s*\|\|/,
+    },
+  ];
+  const missing = expectations.filter((e) => !e.re.test(src));
+  if (missing.length > 0) {
+    return fail(
+      "BLOCKER1_PROJECTGRAPH_AUTHORITY_PRESERVED",
+      "AUTHORITY_CHAIN_REGRESSED",
+      `useArchitectAIWorkflow is missing ${missing.length} of ${expectations.length} multiPanelResult-first priority chains`,
+      { missing: missing.map((m) => m.label) },
+    );
+  }
+  return pass(
+    "BLOCKER1_PROJECTGRAPH_AUTHORITY_PRESERVED",
+    `${expectations.length}/${expectations.length} multiPanelResult-first chains intact`,
+  );
+}
+
+async function checkBlocker4A1ExportQaRestored() {
+  // Pre-UI-smoke fix #4 — design-history hydrator must surface a1ExportQa
+  // top-level + into a1Sheet/metadata so a QA-blocked design reloaded from
+  // history still refuses PNG/PDF/SVG export.
+  const blocked = {
+    status: "blocked",
+    blockers: [{ code: "PANEL_GEOMETRY_HASH_MISMATCH", severity: "blocker" }],
+  };
+  const restored = buildSheetResultFromDesignHistoryEntry({
+    designId: "smoke-design",
+    composedSheetUrl: "http://example.test/sheet.png",
+    a1Sheet: { sheetId: "default" },
+    metadata: { a1ExportQa: blocked },
+  });
+  if (restored?.a1ExportQa?.status !== "blocked") {
+    return fail(
+      "BLOCKER4_A1_EXPORTQA_RESTORED",
+      "QA_NOT_RESTORED_TOP_LEVEL",
+      "buildSheetResultFromDesignHistoryEntry dropped a1ExportQa from top-level",
+    );
+  }
+  if (restored?.a1Sheet?.a1ExportQa?.status !== "blocked") {
+    return fail(
+      "BLOCKER4_A1_EXPORTQA_RESTORED",
+      "QA_NOT_RESTORED_A1SHEET",
+      "buildSheetResultFromDesignHistoryEntry dropped a1Sheet.a1ExportQa",
+    );
+  }
+  if (restored?.metadata?.a1ExportQa?.status !== "blocked") {
+    return fail(
+      "BLOCKER4_A1_EXPORTQA_RESTORED",
+      "QA_NOT_RESTORED_METADATA",
+      "buildSheetResultFromDesignHistoryEntry dropped metadata.a1ExportQa",
+    );
+  }
+  // Hydrator must also tolerate absence — no false-positive gate.
+  const empty = buildSheetResultFromDesignHistoryEntry({
+    designId: "smoke-design-empty",
+    composedSheetUrl: "http://example.test/sheet.png",
+    a1Sheet: { sheetId: "default" },
+    metadata: {},
+  });
+  if (empty?.a1ExportQa !== undefined && empty?.a1ExportQa !== null) {
+    return fail(
+      "BLOCKER4_A1_EXPORTQA_RESTORED",
+      "QA_FALSE_POSITIVE",
+      "buildSheetResultFromDesignHistoryEntry fabricated a1ExportQa when nothing was persisted",
+    );
+  }
+  return pass(
+    "BLOCKER4_A1_EXPORTQA_RESTORED",
+    "hydrator surfaces a1ExportQa top-level + a1Sheet + metadata when persisted",
+  );
+}
+
 async function checkS3StorageDurabilityAdvisory(mode) {
   // Production rollout requires a production-durable storage adapter so
   // svgArtifactRef survives Vercel cold-start. In smoke we only verify
@@ -1230,6 +1335,10 @@ async function main() {
   checks.push(await runWithTiming("PHASE3_QA_BLOCKS_SHEET_EXPORT", checkPhase3QaBlocksSheetExport));
   checks.push(await runWithTiming("PHASE4_PANEL_CONSISTENCY_VALIDATOR", checkPhase4PanelConsistencyValidator));
   checks.push(await runWithTiming("PHASE4_GATE_FOLDS_PANEL_CONSISTENCY", checkPhase4GateFoldsPanelConsistency));
+  // Pre-UI-smoke Codex audit fix-ups (May 2026) — preserve fresh
+  // ProjectGraph authority + restore a1ExportQa through design history.
+  checks.push(await runWithTiming("BLOCKER1_PROJECTGRAPH_AUTHORITY_PRESERVED", checkBlocker1ProjectGraphAuthorityPreserved));
+  checks.push(await runWithTiming("BLOCKER4_A1_EXPORTQA_RESTORED", checkBlocker4A1ExportQaRestored));
   checks.push(
     await runWithTiming("S3_STORAGE_DURABILITY_ADVISORY", () =>
       checkS3StorageDurabilityAdvisory(args.mode),

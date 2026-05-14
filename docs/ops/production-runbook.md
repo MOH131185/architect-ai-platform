@@ -79,7 +79,7 @@ The `keySource` field reports the env-name only (e.g. `OPENAI_REASONING_API_KEY`
 - Adapter type: check `ARTIFACT_STORAGE_PROVIDER` (`memory` / `filesystem` / `s3`).
 - For S3: verify region, bucket, AWS credentials. Try a one-off:
   ```bash
-  aws s3 ls s3://$ARTIFACT_STORAGE_S3_BUCKET --region $ARTIFACT_STORAGE_S3_REGION
+  aws s3 ls "s3://$ARTIFACT_STORAGE_BUCKET" --region "$ARTIFACT_STORAGE_REGION"
   ```
 - For filesystem: confirm `ARTIFACT_STORAGE_DIR` exists and is writable on the function instance (note: in serverless, only `/tmp` is writable; for persistence use S3).
 

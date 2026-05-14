@@ -88,8 +88,8 @@ describe("productionStrictChecks", () => {
         ARTIFACT_STORAGE_PROVIDER: "s3",
       });
       expect(errors).toHaveLength(1);
-      expect(errors[0]).toMatch(/ARTIFACT_STORAGE_S3_BUCKET/);
-      expect(errors[0]).toMatch(/ARTIFACT_STORAGE_S3_REGION/);
+      expect(errors[0]).toMatch(/ARTIFACT_STORAGE_BUCKET/);
+      expect(errors[0]).toMatch(/ARTIFACT_STORAGE_REGION/);
       expect(errors[0]).toMatch(/AWS_ACCESS_KEY_ID/);
       expect(errors[0]).toMatch(/AWS_SECRET_ACCESS_KEY/);
     });
@@ -98,12 +98,30 @@ describe("productionStrictChecks", () => {
       expect(
         checkStorageProviderConsistency({
           ARTIFACT_STORAGE_PROVIDER: "s3",
-          ARTIFACT_STORAGE_S3_BUCKET: "bucket",
-          ARTIFACT_STORAGE_S3_REGION: "us-east-1",
+          ARTIFACT_STORAGE_BUCKET: "bucket",
+          ARTIFACT_STORAGE_REGION: "us-east-1",
           AWS_ACCESS_KEY_ID: "AKIA...",
           AWS_SECRET_ACCESS_KEY: "secret",
         }),
       ).toEqual([]);
+    });
+
+    test("s3 with only legacy *_S3_* names → reports the new names as missing", () => {
+      // Pre-Phase-5 deployments set ARTIFACT_STORAGE_S3_BUCKET / *_S3_REGION,
+      // but the runtime adapter reads ARTIFACT_STORAGE_BUCKET / REGION. The
+      // strict check must surface the active names so the operator knows what
+      // to rename in Vercel.
+      const errors = checkStorageProviderConsistency({
+        ARTIFACT_STORAGE_PROVIDER: "s3",
+        ARTIFACT_STORAGE_S3_BUCKET: "legacy-bucket",
+        ARTIFACT_STORAGE_S3_REGION: "us-east-1",
+        AWS_ACCESS_KEY_ID: "AKIA...",
+        AWS_SECRET_ACCESS_KEY: "secret",
+      });
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toMatch(/ARTIFACT_STORAGE_BUCKET/);
+      expect(errors[0]).toMatch(/ARTIFACT_STORAGE_REGION/);
+      expect(errors[0]).not.toMatch(/ARTIFACT_STORAGE_S3_BUCKET/);
     });
 
     test("unknown provider → error suggesting the valid set", () => {
@@ -249,7 +267,7 @@ describe("productionStrictChecks", () => {
         errors.find((e) => e.includes("REACT_APP_OPENAI_API_KEY")),
       ).toBeDefined();
       expect(
-        errors.find((e) => e.includes("ARTIFACT_STORAGE_S3_BUCKET")),
+        errors.find((e) => e.includes("ARTIFACT_STORAGE_BUCKET")),
       ).toBeDefined();
       expect(
         errors.find((e) => e.includes("ARTIFACT_PACKAGE_RETENTION_DAYS")),

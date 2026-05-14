@@ -774,6 +774,10 @@ const VERSION_METADATA_KEYS = [
   "qualityScore",
   "qualityGrade",
   "qualityEvaluation",
+  // Persist the A1 export QA gate so a reloaded design still refuses
+  // PNG/PDF/SVG exports when the original generation was blocked
+  // (Phase 3/4 contract). Shape is small: { status, blockers: [...] }.
+  "a1ExportQa",
 ];
 
 function sanitizeVersionMetadata(metadata = {}) {

@@ -10147,7 +10147,9 @@ function buildSheetPanelSpecs(targetStoreys = 1) {
   ];
 
   const floorPlansBlockX = 196;
-  const floorPlansBlockY = 12;
+  // A1_CONTENT_TOP_MM = 16 (title bar 10mm + safe band 6mm). Row 1 panels
+  // start here so they never overlap the title-bar zone — see composeCore.js.
+  const floorPlansBlockY = 16;
   const floorPlansBlockWidth = 354;
   const floorPlansBlockHeight = 170;
   const floorPlanColumns =
@@ -10176,7 +10178,8 @@ function buildSheetPanelSpecs(targetStoreys = 1) {
   }
 
   const elevationsBlockX = 558;
-  const elevationsBlockY = 12;
+  // Same safe-band rule as floorPlansBlockY — top of row 1 must be >= 16mm.
+  const elevationsBlockY = 16;
   const elevationCellWidth = 273;
   const elevationCellHeight = 96;
   const elevationGap = 5;
@@ -15648,6 +15651,11 @@ export const __projectGraphVerticalSliceInternals = Object.freeze({
   compileProject,
   buildArchitectReasoningManifest,
   buildPanelPlacements,
+  // Pre-UI-smoke fix #2: expose the board-v2 panel spec builder so the
+  // safe-band regression test can assert every row-1 panel Y >= 16mm
+  // (A1_CONTENT_TOP_MM in composeCore.js). presentation-v3 is already
+  // exported via buildPresentationV3SheetPanelSpecs above.
+  buildSheetPanelSpecs,
   buildDrawingSet,
   buildSheetSvg,
   buildSheetProvenanceFooter,

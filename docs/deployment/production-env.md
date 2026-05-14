@@ -44,13 +44,15 @@ If `check:env` exits non-zero, fix the reported errors before deploying. Product
 | --------------------------------- | ------------------------ | -------------------------------- |
 | `ARTIFACT_STORAGE_PROVIDER`       | always (recommended)     | `memory`                         |
 | `ARTIFACT_STORAGE_DIR`            | provider=`filesystem`    | —                                |
-| `ARTIFACT_STORAGE_S3_BUCKET`      | provider=`s3`            | —                                |
-| `ARTIFACT_STORAGE_S3_REGION`      | provider=`s3`            | —                                |
+| `ARTIFACT_STORAGE_BUCKET`         | provider=`s3`            | —                                |
+| `ARTIFACT_STORAGE_REGION`         | provider=`s3`            | —                                |
 | `AWS_ACCESS_KEY_ID`               | provider=`s3`            | —                                |
 | `AWS_SECRET_ACCESS_KEY`           | provider=`s3`            | —                                |
 | `ARTIFACT_PACKAGE_SIGNING_SECRET` | optional but recommended | unset → direct download fallback |
 | `ARTIFACT_PACKAGE_RETENTION_DAYS` | optional                 | adapter default                  |
 | `ARTIFACT_SIGNED_URL_TTL_SECONDS` | optional                 | 900 (15 minutes)                 |
+
+> **Renamed since Phase 5**: `ARTIFACT_STORAGE_BUCKET` / `ARTIFACT_STORAGE_REGION` replaced the older `ARTIFACT_STORAGE_S3_BUCKET` / `ARTIFACT_STORAGE_S3_REGION` names. The runtime S3 adapter reads only the new names (see [src/services/export/artifactStorageService.js](../../src/services/export/artifactStorageService.js)). If you predate Phase 5, update Vercel env before the next deploy.
 
 **Recommended for production**: `ARTIFACT_STORAGE_PROVIDER=s3` + signing secret + 30-day retention. The in-memory adapter loses all packages on function-instance recycle.
 
