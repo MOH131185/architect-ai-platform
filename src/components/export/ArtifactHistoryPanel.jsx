@@ -182,6 +182,28 @@ export const ArtifactHistoryPanel = ({
     [history],
   );
 
+  // Post-UI-smoke fix: the /api/project/export/artifact-package/history
+  // endpoint is auth-gated by artifactAccessPolicyService. In anonymous
+  // mode (Clerk publishable key missing) the response is 403 with code
+  // ARTIFACT_ACCESS_USER_REQUIRED — that's by design, not a failure. The
+  // previous red alert ("Could not load saved packages. Artifact package
+  // is not accessible") read like a bug to anonymous users browsing a
+  // generated sheet. Branch the access-gated 403s into a neutral info
+  // message and reserve the red alert for real failures (5xx, network,
+  // other 4xx).
+  const ACCESS_GATED_CODES = new Set([
+    "ARTIFACT_ACCESS_USER_REQUIRED",
+    "ARTIFACT_ACCESS_DENIED",
+    "ARTIFACT_ACCESS_PROJECT_REQUIRED",
+  ]);
+  const isAccessGated = Boolean(
+    error && error.status === 403 && ACCESS_GATED_CODES.has(error.code),
+  );
+  const accessGatedMessage =
+    error?.code === "ARTIFACT_ACCESS_USER_REQUIRED"
+      ? "Sign in to view saved packages."
+      : "Saved package history is unavailable in anonymous mode.";
+
   const handleDownload = useCallback(
     async (record) => {
       if (!isDownloadable(record)) return;
@@ -241,7 +263,7 @@ export const ArtifactHistoryPanel = ({
         </button>
       </div>
 
-      {error && (
+      {error && !isAccessGated && (
         <div
           role="alert"
           className="mb-2 rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1.5 text-[11px] text-red-200"
@@ -258,6 +280,18 @@ export const ArtifactHistoryPanel = ({
           >
             Try again
           </button>
+        </div>
+      )}
+
+      {isAccessGated && (
+        <div
+          className="mb-2 rounded-md border border-white/10 bg-white/[0.04] px-2 py-1.5 text-[11px] text-white/65"
+          data-testid="artifact-history-access-info"
+          data-artifact-access-code={error?.code || ""}
+        >
+          <span className="font-medium text-white/80">
+            {accessGatedMessage}
+          </span>
         </div>
       )}
 

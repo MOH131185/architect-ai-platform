@@ -704,11 +704,24 @@ class ExportService {
     );
 
     if (!response.ok) {
-      const message = await this.readJsonError(
-        response,
-        `Deliverables package history failed: ${response.status}`,
-      );
-      throw new Error(message);
+      // Attach status + structured access code so the UI can distinguish
+      // "anonymous user — sign in to view history" (403
+      // ARTIFACT_ACCESS_USER_REQUIRED) from a real error (5xx, network).
+      // The artifactAccessPolicyService at api/.../history.js returns:
+      //   { error: "Artifact package is not accessible", code: "ARTIFACT_ACCESS_*" }
+      // readJsonError flattens the message; preserve the code separately so
+      // ArtifactHistoryPanel can render a neutral info message instead of a
+      // red alert when access is gated by sign-in.
+      const errorData = await response.json().catch(() => ({}));
+      const message =
+        errorData?.error?.message ||
+        (typeof errorData?.error === "string" ? errorData.error : null) ||
+        errorData?.message ||
+        `Deliverables package history failed: ${response.status}`;
+      const err = new Error(message);
+      err.status = response.status;
+      err.code = errorData?.code || null;
+      throw err;
     }
 
     return response.json();

@@ -440,4 +440,156 @@ describe("ArtifactHistoryPanel", () => {
     ).toHaveLength(1);
     unmount();
   });
+
+  // ---------------------------------------------------------------------
+  // Post-UI-smoke fix — anonymous-mode UX
+  //
+  // The Preview UI smoke ran without Clerk and hit 403 on the history
+  // endpoint with code ARTIFACT_ACCESS_USER_REQUIRED. The panel must
+  // render a neutral info message ("Sign in to view saved packages")
+  // instead of the red "Artifact package is not accessible" alert.
+  // Real 5xx + network failures still surface as the red alert (the
+  // test above continues to lock that path).
+  // ---------------------------------------------------------------------
+  function accessDeniedError(
+    code,
+    message = "Artifact package is not accessible",
+  ) {
+    const err = new Error(message);
+    err.status = 403;
+    err.code = code;
+    return err;
+  }
+
+  test("anonymous mode (403 ARTIFACT_ACCESS_USER_REQUIRED) renders neutral info, NOT red alert", async () => {
+    exportService.listDeliverablesPackageHistory.mockRejectedValueOnce(
+      accessDeniedError("ARTIFACT_ACCESS_USER_REQUIRED"),
+    );
+    const { container, unmount } = renderComponent(
+      <ArtifactHistoryPanel
+        sheet={{ projectId: "proj-anon" }}
+        now={FIXED_NOW}
+      />,
+    );
+    await flushPromises();
+
+    // Red alert must NOT render.
+    expect(
+      container.querySelector('[data-testid="artifact-history-error"]'),
+    ).toBeNull();
+
+    // Neutral info panel MUST render with the sign-in message and the
+    // access code stamped on the element for QA tooling.
+    const infoBox = container.querySelector(
+      '[data-testid="artifact-history-access-info"]',
+    );
+    expect(infoBox).toBeTruthy();
+    expect(infoBox.textContent).toContain("Sign in to view saved packages.");
+    expect(infoBox.getAttribute("data-artifact-access-code")).toBe(
+      "ARTIFACT_ACCESS_USER_REQUIRED",
+    );
+
+    // Scary copy from the API JSON must not leak into the UI in this
+    // branch — the user-facing string is the curated neutral one only.
+    expect(infoBox.textContent).not.toContain(
+      "Artifact package is not accessible",
+    );
+    unmount();
+  });
+
+  test("403 ARTIFACT_ACCESS_DENIED renders neutral info (different copy) — not red alert", async () => {
+    exportService.listDeliverablesPackageHistory.mockRejectedValueOnce(
+      accessDeniedError("ARTIFACT_ACCESS_DENIED"),
+    );
+    const { container, unmount } = renderComponent(
+      <ArtifactHistoryPanel
+        sheet={{ projectId: "proj-denied" }}
+        now={FIXED_NOW}
+      />,
+    );
+    await flushPromises();
+    expect(
+      container.querySelector('[data-testid="artifact-history-error"]'),
+    ).toBeNull();
+    const infoBox = container.querySelector(
+      '[data-testid="artifact-history-access-info"]',
+    );
+    expect(infoBox).toBeTruthy();
+    expect(infoBox.textContent).toContain(
+      "Saved package history is unavailable in anonymous mode.",
+    );
+    expect(infoBox.getAttribute("data-artifact-access-code")).toBe(
+      "ARTIFACT_ACCESS_DENIED",
+    );
+    unmount();
+  });
+
+  test("real 500 errors still render the red alert (defence: gating is 403-only)", async () => {
+    const err = new Error("Internal storage failure");
+    err.status = 500;
+    err.code = null;
+    exportService.listDeliverablesPackageHistory.mockRejectedValueOnce(err);
+    const { container, unmount } = renderComponent(
+      <ArtifactHistoryPanel
+        sheet={{ projectId: "proj-500" }}
+        now={FIXED_NOW}
+      />,
+    );
+    await flushPromises();
+    const errorBox = container.querySelector(
+      '[data-testid="artifact-history-error"]',
+    );
+    expect(errorBox).toBeTruthy();
+    expect(errorBox.textContent).toContain("Internal storage failure");
+    // Neutral info panel must NOT render — 500 is a real problem.
+    expect(
+      container.querySelector('[data-testid="artifact-history-access-info"]'),
+    ).toBeNull();
+    unmount();
+  });
+
+  test("403 with an unknown code falls through to the red alert (defence)", async () => {
+    // A future / unexpected 403 code must NOT be silently swallowed as
+    // neutral info — that would hide real auth bugs. Only the curated
+    // ACCESS_GATED_CODES set renders as neutral.
+    exportService.listDeliverablesPackageHistory.mockRejectedValueOnce(
+      accessDeniedError("SOMETHING_NEW_403"),
+    );
+    const { container, unmount } = renderComponent(
+      <ArtifactHistoryPanel
+        sheet={{ projectId: "proj-unknown" }}
+        now={FIXED_NOW}
+      />,
+    );
+    await flushPromises();
+    const errorBox = container.querySelector(
+      '[data-testid="artifact-history-error"]',
+    );
+    expect(errorBox).toBeTruthy();
+    expect(
+      container.querySelector('[data-testid="artifact-history-access-info"]'),
+    ).toBeNull();
+    unmount();
+  });
+
+  test("anonymous-mode info path leaves the happy-path success unchanged", async () => {
+    exportService.listDeliverablesPackageHistory.mockResolvedValueOnce({
+      history: [RECORD_STORED],
+      storageProvider: "memory",
+    });
+    const { container, unmount } = renderComponent(
+      <ArtifactHistoryPanel sheet={{ projectId: "proj-ok" }} now={FIXED_NOW} />,
+    );
+    await flushPromises();
+    expect(
+      container.querySelector('[data-testid="artifact-history-error"]'),
+    ).toBeNull();
+    expect(
+      container.querySelector('[data-testid="artifact-history-access-info"]'),
+    ).toBeNull();
+    expect(
+      container.querySelectorAll('[data-testid="artifact-history-row"]'),
+    ).toHaveLength(1);
+    unmount();
+  });
 });
