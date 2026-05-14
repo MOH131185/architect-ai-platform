@@ -218,7 +218,7 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
     expect(seed).toBeLessThan(2147483647);
   });
 
-  test("raises unlocked 250 sqm detached-house payloads to two storeys", () => {
+  test("propagates unlocked auto-detected one-storey detached-house payloads", () => {
     const request = buildProjectGraphVerticalSliceRequest({
       designSpec: {
         buildingCategory: "residential",
@@ -232,9 +232,9 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
       },
     });
 
-    expect(request.projectDetails.floorCount).toBe(2);
-    expect(request.brief.target_storeys).toBe(2);
-    expect(request.brief.targetStoreys).toBe(2);
+    expect(request.projectDetails.floorCount).toBe(1);
+    expect(request.brief.target_storeys).toBe(1);
+    expect(request.brief.targetStoreys).toBe(1);
   });
 
   test.each([

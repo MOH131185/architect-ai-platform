@@ -810,15 +810,19 @@ function resolveLevelCountWithMeta(
       siteFitLevelCount,
       { maxFloors: maxLevels },
     );
-    const levelCount = clamp(floorPolicy.floorCount, minLevels, maxLevels);
+    const levelCount = clamp(siteFitLevelCount, minLevels, maxLevels);
     return {
       levelCount,
       requestedLevelCount: null,
       clampedBy: null,
-      source: floorPolicy.applied ? "site-fit-policy" : "site-fit",
+      source: "site-fit",
       maxLevels,
       minLevels,
       floorPolicy,
+      policyRecommendedFloors: floorPolicy.applied
+        ? floorPolicy.floorCount
+        : null,
+      policyReason: floorPolicy.applied ? floorPolicy.reason : null,
     };
   }
 
@@ -1064,6 +1068,8 @@ export function generateResidentialProgramBrief({
     levelCountSource: levelCountMeta.source,
     maxLevels: levelCountMeta.maxLevels,
     minLevels: levelCountMeta.minLevels,
+    policyRecommendedFloors: levelCountMeta.policyRecommendedFloors || null,
+    policyReason: levelCountMeta.policyReason || null,
     entranceDirection,
     circulationRatio: template.circulationRatio,
     adjacency,

@@ -418,12 +418,13 @@ class AutoLevelAssignmentService {
       logger.info(`   Max floors allowed (height): ${maxFloorsAllowed}`);
     }
 
-    // Step 6: Determine optimal floor count. The clamp is the policy
-    // (subtype cap wins over demand), but we record exceedsSubtypeCap so
-    // the UI can surface a warning instead of silently capping.
+    // Step 6: Determine optimal floor count from the programme/site relation.
+    // Subtype and height caps still clamp the result, but residential
+    // professional defaults are advisory only here: they must not turn a
+    // relation-derived one-storey fit into two storeys in auto mode.
     const demandFloors = Math.max(minFloorsNeeded, 1);
     const exceedsSubtypeCap = demandFloors > maxFloorsAllowed;
-    let optimalFloors = Math.min(demandFloors, maxFloorsAllowed);
+    const optimalFloors = Math.min(demandFloors, maxFloorsAllowed);
     const floorPolicy = resolveResidentialFloorCountPolicy(
       {
         buildingType,
@@ -436,11 +437,14 @@ class AutoLevelAssignmentService {
       { maxFloors: maxFloorsAllowed },
     );
     if (floorPolicy.applied) {
-      optimalFloors = floorPolicy.floorCount;
       logger.info(
-        `   Residential floor policy: ${floorPolicy.reason} -> ${optimalFloors} floors`,
+        `   Residential floor policy advisory: ${floorPolicy.reason} -> ${floorPolicy.floorCount} floors`,
       );
     }
+    const policyRecommendedFloors = floorPolicy.applied
+      ? floorPolicy.floorCount
+      : null;
+    const policyReason = floorPolicy.applied ? floorPolicy.reason : null;
 
     // Step 7: Calculate actual footprint needed
     const actualFootprint = totalAreaWithCirculation / optimalFloors;
@@ -479,6 +483,8 @@ class AutoLevelAssignmentService {
       subtypeMaxFloors,
       subType,
       floorPolicy,
+      policyRecommendedFloors,
+      policyReason,
       reasoning: this._generateFloorCountReasoning({
         floors: optimalFloors,
         programArea: safeProgramArea,

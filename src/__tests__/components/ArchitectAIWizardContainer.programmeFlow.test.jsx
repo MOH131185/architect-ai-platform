@@ -223,6 +223,7 @@ async function flushPromises() {
 }
 
 async function clickGenerate(container) {
+  await flushPromises();
   const button = [...container.querySelectorAll("button")].find((entry) =>
     /Generate Program|Compile Program/.test(entry.textContent || ""),
   );

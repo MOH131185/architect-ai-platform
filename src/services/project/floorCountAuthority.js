@@ -60,9 +60,18 @@ export function resolveAuthoritativeFloorCount(
     requested,
     { maxFloors: cap },
   );
-  const policyRequested = Math.max(requested, floorPolicy.floorCount);
+  const applyPolicyToAuthority = source !== "auto";
+  const policyRequested = applyPolicyToAuthority
+    ? Math.max(requested, floorPolicy.floorCount)
+    : requested;
   const clamped = cap ? Math.min(policyRequested, cap) : policyRequested;
-  const policyAdjusted = floorPolicy.applied && clamped > requested;
+  const policyAdjusted =
+    applyPolicyToAuthority && floorPolicy.applied && clamped > requested;
+  const policyRecommendedFloors =
+    !applyPolicyToAuthority && floorPolicy.applied
+      ? floorPolicy.floorCount
+      : null;
+  const policyReason = floorPolicy.applied ? floorPolicy.reason : null;
   return {
     floorCount: clamped,
     requested,
@@ -70,7 +79,9 @@ export function resolveAuthoritativeFloorCount(
     clampedFromUser: cap ? requested > cap : false,
     maxFloors: cap,
     policyAdjusted,
-    policyReason: policyAdjusted ? floorPolicy.reason : null,
+    policyReason: policyAdjusted ? policyReason : null,
+    policyRecommendedFloors,
+    policyAdvisoryReason: policyRecommendedFloors ? policyReason : null,
     policy: floorPolicy,
     sourceBeforePolicy: source,
   };

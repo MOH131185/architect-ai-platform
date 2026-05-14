@@ -43,6 +43,33 @@ describe("autoLevelAssignmentService.calculateOptimalLevels — proportion-based
     expect(result.reasoning).toMatch(/ratio 0\.40/);
   });
 
+  test("detached family house on a large site can auto-detect one storey", () => {
+    const result = autoLevelAssignmentService.calculateOptimalLevels(180, 900, {
+      buildingType: "house",
+      subType: "detached-house",
+      circulationFactor: 1.0,
+    });
+
+    expect(result.demandFloors).toBe(1);
+    expect(result.optimalFloors).toBe(1);
+    expect(result.policyRecommendedFloors).toBe(2);
+    expect(result.policyReason).toBe("two_storey_family_house_default");
+    expect(result.exceedsSubtypeCap).toBe(false);
+  });
+
+  test("dense detached house on a small site auto-detects the subtype cap", () => {
+    const result = autoLevelAssignmentService.calculateOptimalLevels(300, 120, {
+      buildingType: "house",
+      subType: "detached-house",
+      circulationFactor: 1.0,
+    });
+
+    expect(result.demandFloors).toBeGreaterThan(3);
+    expect(result.optimalFloors).toBe(3);
+    expect(result.exceedsSubtypeCap).toBe(true);
+    expect(result.subtypeMaxFloors).toBe(3);
+  });
+
   test("terraced 300m² on 100m² site → demand exceeds subtype cap (4), exceedsSubtypeCap=true", () => {
     const result = autoLevelAssignmentService.calculateOptimalLevels(300, 100, {
       buildingType: "house",

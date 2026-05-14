@@ -94,7 +94,7 @@ describe("resolveAuthoritativeFloorCount", () => {
     expect(result).toMatchObject({ floorCount: 3, source: "auto" });
   });
 
-  test("unlocked detached family-house at 250 sqm defaults to two storeys", () => {
+  test("unlocked auto-detected one-storey detached family-house stays one storey", () => {
     const result = resolveAuthoritativeFloorCount({
       floorCountLocked: false,
       floorCount: 1,
@@ -105,11 +105,13 @@ describe("resolveAuthoritativeFloorCount", () => {
     });
 
     expect(result).toMatchObject({
-      floorCount: 2,
+      floorCount: 1,
       requested: 1,
-      source: "policy",
-      policyAdjusted: true,
-      policyReason: "two_storey_family_house_default",
+      source: "auto",
+      policyAdjusted: false,
+      policyReason: null,
+      policyRecommendedFloors: 2,
+      policyAdvisoryReason: "two_storey_family_house_default",
     });
   });
 
@@ -325,7 +327,7 @@ describe("syncProgramToFloorCount", () => {
     expect(result.changed).toBe(false);
   });
 
-  test("residential compiler applies the two-storey family-house policy when site-fit says one", () => {
+  test("residential compiler keeps relation-first site-fit when policy suggests two storeys", () => {
     const programBrief = generateResidentialProgramBrief({
       subType: "detached-house",
       totalAreaM2: 250,
@@ -333,11 +335,13 @@ describe("syncProgramToFloorCount", () => {
     });
 
     expect(programBrief).toMatchObject({
-      levelCount: 2,
-      levelCountSource: "site-fit-policy",
+      levelCount: 1,
+      levelCountSource: "site-fit",
+      policyRecommendedFloors: 2,
+      policyReason: "two_storey_family_house_default",
     });
     expect(
-      programBrief.spaces.some((space) => Number(space.levelIndex) === 1),
+      programBrief.spaces.every((space) => Number(space.levelIndex) === 0),
     ).toBe(true);
   });
 
