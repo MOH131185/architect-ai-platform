@@ -5,7 +5,7 @@
 ### What Happened
 
 - ✅ Added $10 credits to Together.ai
-- ✅ Got new API key: `tgp_v1_nVvWaBNJbM2SXeLu3xTZlMA0kOd91CDDKbU1Xj7NIHw`
+- ✅ Got new API key: `${TOGETHER_API_KEY}` (redacted)
 - ❌ Still blocked from FLUX.1-kontext-max
 - ❌ API says "You're currently on Build Tier 1"
 
@@ -38,7 +38,7 @@
 
 1. Log in to Together.ai
 2. Check Settings → API Keys
-3. Verify this key exists: `tgp_v1_nVvWaBNJbM2SX...`
+3. Verify this key exists: `${TOGETHER_API_KEY}` (redacted prefix)
 4. Check Settings → Billing for credit balance
 
 ## Immediate Troubleshooting Steps

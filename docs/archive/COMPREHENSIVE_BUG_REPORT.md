@@ -1,4 +1,5 @@
 # Comprehensive Bug Report
+
 **Date**: January 7, 2025
 **Scope**: Total codebase check after Opus 4.1 implementation
 **Status**: 🚨 CRITICAL SECURITY ISSUE FOUND
@@ -28,13 +29,15 @@
 **Impact**: API keys visible in client-side JavaScript bundle
 
 **Details**:
+
 ```bash
 # Found in build/static/js/main.*.js
-"tgp_v1_StUV4Rgg1Qgc6J_TroHa6G4eKVbpylWCoRmG9wNfTvU"
+"<REDACTED_TGP_KEY>"
 # 5 instances total
 ```
 
 **Root Cause**:
+
 ```javascript
 // src/services/togetherAIService.js:17
 const TOGETHER_API_KEY = process.env.TOGETHER_API_KEY;
@@ -43,15 +46,18 @@ const TOGETHER_API_KEY = process.env.TOGETHER_API_KEY;
 This code runs in the browser and webpack includes the actual API key value in the bundle during build.
 
 **Why This Happened**:
+
 - During Opus 4.1 fixes, we migrated `aiModificationService.js` to use `secureApiClient`
 - BUT we did NOT update `togetherAIService.js` which is still imported by many other services
 - The `process.env` references in client-side code get replaced with actual values at build time
 
 **Files Affected**:
+
 - `src/services/togetherAIService.js` (primary violation)
 - All services that import togetherAIService.js
 
 **Impact Assessment**:
+
 - 🔴 API key can be extracted from production bundle
 - 🔴 Anyone can use your Together.ai credits
 - 🔴 Potential for unauthorized API usage and billing fraud
@@ -60,6 +66,7 @@ This code runs in the browser and webpack includes the actual API key value in t
 **Recommended Fix**:
 
 **Option A: Migrate togetherAIService.js to Server-Side Only**
+
 ```javascript
 // src/services/togetherAIService.js
 
@@ -73,7 +80,7 @@ This code runs in the browser and webpack includes the actual API key value in t
 // Example fix for generateA1SheetImage():
 export async function generateA1SheetImage(params) {
   // Check if we're server-side or client-side
-  const isServer = typeof window === 'undefined';
+  const isServer = typeof window === "undefined";
 
   if (isServer) {
     // Server-side: OK to use process.env
@@ -87,6 +94,7 @@ export async function generateA1SheetImage(params) {
 ```
 
 **Option B: Complete Migration to secureApiClient (RECOMMENDED)**
+
 ```javascript
 // src/services/togetherAIService.js
 
@@ -95,7 +103,7 @@ export async function generateA1SheetImage(params) {
 // const TOGETHER_API_URL = 'https://api.together.xyz/v1';
 
 // ADD:
-import secureApiClient from './secureApiClient';
+import secureApiClient from "./secureApiClient";
 
 // UPDATE ALL FUNCTIONS TO USE:
 export async function generateA1SheetImage(params) {
@@ -110,6 +118,7 @@ export async function generateImageWithFlux(params) {
 ```
 
 **Verification Steps After Fix**:
+
 1. Remove build folder: `rm -rf build`
 2. Rebuild: `npm run build`
 3. Search bundle: `grep -r "tgp_v1_" build/`
@@ -126,29 +135,34 @@ export async function generateImageWithFlux(params) {
 **Impact**: Node.js tests cannot import errors.js module
 
 **Details**:
+
 ```bash
 Error: Cannot find module '../utils/errors'
 Referenced from: src/services/aiModificationService.js:22
 ```
 
 **Root Cause**:
+
 - `src/utils/errors.js` is an ES module that imports `logger.js`
 - Node.js test environment doesn't have proper ESM loader configured
 - React webpack handles ESM correctly in browser environment
 
 **Why This is OK**:
+
 - Production React build works fine (webpack handles ESM)
 - Only affects standalone Node.js tests
 - Our main compliance test (`test-opus-4-1-compliance.js`) uses static file analysis instead of runtime imports
 - All 33 tests pass using static analysis approach
 
 **Impact Assessment**:
+
 - ✅ Production builds work correctly
 - ✅ Compliance tests pass (33/33)
 - ⚠️ Cannot unit test aiModificationService.js in isolation with Node.js
 - ⚠️ Limits ability to run detailed runtime tests
 
 **Recommended Fix** (Optional - Not Blocking):
+
 ```json
 // package.json
 {
@@ -160,6 +174,7 @@ Referenced from: src/services/aiModificationService.js:22
 ```
 
 Or use CommonJS format for utility files:
+
 ```javascript
 // src/utils/errors.js - Convert to CommonJS
 const logger = require('./logger');
@@ -188,16 +203,19 @@ module.exports = {
 **Impact**: Build pre-check was failing
 
 **Details**:
+
 ```bash
 ❌ src/services/adapters/replicateAdapter.js - File not found
 ```
 
 **Root Cause**:
+
 - Contract checker still referenced deprecated `replicateAdapter.js`
 - File was removed during Together.ai migration
 - Checker didn't know file was intentionally deprecated
 
 **Fix Applied**:
+
 ```javascript
 // scripts/check-contracts.js
 // REMOVED:
@@ -211,6 +229,7 @@ module.exports = {
 ```
 
 **Verification**:
+
 ```bash
 $ npm run check:contracts
 ✅ src/domain/dna.js
@@ -229,6 +248,7 @@ $ npm run check:contracts
 ## Build Verification
 
 ### Build Output
+
 ```bash
 $ npm run build
 
@@ -244,6 +264,7 @@ The project was built assuming it is hosted at /.
 ```
 
 **Analysis**:
+
 - ✅ Build completes without errors
 - ✅ Bundle size reasonable (543KB)
 - ❌ Contains exposed API keys (critical issue)
@@ -253,6 +274,7 @@ The project was built assuming it is hosted at /.
 ## Test Verification
 
 ### Opus 4.1 Compliance Tests
+
 ```bash
 $ node test-opus-4-1-compliance.js
 
@@ -336,29 +358,33 @@ Pass Rate: 100.0%
 ### API Key Exposure Details
 
 **Found in Bundle**:
+
 ```javascript
 // build/static/js/main.4c8f21ab.js (minified)
-const e = "tgp_v1_StUV4Rgg1Qgc6J_TroHa6G4eKVbpylWCoRmG9wNfTvU"
+const e = "<REDACTED_TGP_KEY>";
 ```
 
 **How to Verify**:
+
 ```bash
 # Search for API key pattern in build
 grep -r "tgp_v1_" build/
 
 # Output:
-build/static/js/main.4c8f21ab.js:tgp_v1_StUV4Rgg1Qgc6J_TroHa6G4eKVbpylWCoRmG9wNfTvU (5 matches)
+build/static/js/main.4c8f21ab.js:<REDACTED_TGP_KEY> (5 matches)
 ```
 
 **Attack Vector**:
+
 1. User visits deployed site
 2. Browser loads main.js bundle
 3. Attacker opens DevTools → Sources → main.js
-4. Searches for "tgp_v1_" or "TOGETHER"
+4. Searches for "tgp*v1*" or "TOGETHER"
 5. Finds API key in plaintext
 6. Uses API key for unlimited Together.ai requests
 
 **Financial Impact**:
+
 - Together.ai charges per request
 - Exposed key = unlimited usage by anyone
 - Could drain account balance in hours/days
@@ -368,12 +394,14 @@ build/static/js/main.4c8f21ab.js:tgp_v1_StUV4Rgg1Qgc6J_TroHa6G4eKVbpylWCoRmG9wNf
 ## Files Requiring Immediate Attention
 
 ### Critical Priority (Security)
+
 1. **src/services/togetherAIService.js**
    - Remove line 17: `const TOGETHER_API_KEY = process.env.TOGETHER_API_KEY;`
    - Migrate all API calls to secureApiClient
    - Add server-side detection if needed
 
 ### High Priority (Related Services)
+
 2. **src/services/fluxAIIntegrationService.js**
    - Verify it imports togetherAIService correctly
    - May need updates after togetherAIService migration
@@ -391,6 +419,7 @@ build/static/js/main.4c8f21ab.js:tgp_v1_StUV4Rgg1Qgc6J_TroHa6G4eKVbpylWCoRmG9wNf
 ## Recommended Action Plan
 
 ### Immediate (Today)
+
 1. ✅ Generate this bug report
 2. 🔴 Fix API key exposure in togetherAIService.js
 3. 🔴 Rebuild and verify no keys in bundle
@@ -398,12 +427,14 @@ build/static/js/main.4c8f21ab.js:tgp_v1_StUV4Rgg1Qgc6J_TroHa6G4eKVbpylWCoRmG9wNf
 5. 🔴 Update .env with new API key
 
 ### Short Term (This Week)
+
 6. Add automated security scanning to pre-commit hooks
 7. Add bundle analysis to CI/CD pipeline
 8. Document secure API patterns in CLAUDE.md
 9. Audit all remaining services for similar issues
 
 ### Long Term (This Month)
+
 10. Implement Content Security Policy (CSP)
 11. Add API key usage monitoring/alerts
 12. Create security checklist for new services
@@ -415,7 +446,7 @@ build/static/js/main.4c8f21ab.js:tgp_v1_StUV4Rgg1Qgc6J_TroHa6G4eKVbpylWCoRmG9wNf
 
 After implementing fixes, verify:
 
-- [ ] No "tgp_v1_" strings in build folder
+- [ ] No "tgp*v1*" strings in build folder
 - [ ] No "process.env.TOGETHER_API_KEY" in client code
 - [ ] All API calls route through secureApiClient
 - [ ] Build completes successfully
@@ -429,18 +460,21 @@ After implementing fixes, verify:
 ## Performance Impact Analysis
 
 **Before Fixes**:
+
 - API calls: ~13 per design generation
 - Average time: ~3 minutes
 - Cache hit rate: 0% (no caching)
 - Cost per design: $0.15-$0.23
 
 **After Opus 4.1 Fixes**:
+
 - API calls: ~10 per design (20-30% reduction via caching)
 - Average time: ~2 minutes (30% faster for cached operations)
 - Cache hit rate: 30-40% (estimated)
 - Cost per design: $0.10-$0.16 (cost savings: $150/month at 1000 designs)
 
 **After Security Fix**:
+
 - No performance impact (routing pattern stays same)
 - Improved security posture
 - Reduced risk of unauthorized usage
@@ -449,15 +483,15 @@ After implementing fixes, verify:
 
 ## Code Quality Metrics
 
-| Metric | Before Opus 4.1 | After Opus 4.1 | Target |
-|--------|----------------|----------------|--------|
-| Security Score | 2/10 | **3/10** ⚠️ | 10/10 |
-| Logging Score | 1/10 | 10/10 ✅ | 10/10 |
-| Error Handling | 5/10 | 10/10 ✅ | 10/10 |
-| Caching | 2/10 | 10/10 ✅ | 10/10 |
-| Testing Coverage | 4/10 | 10/10 ✅ | 10/10 |
-| Documentation | 6/10 | 10/10 ✅ | 10/10 |
-| **OVERALL** | **3.3/10** | **8.8/10** ⚠️ | **10/10** |
+| Metric           | Before Opus 4.1 | After Opus 4.1 | Target    |
+| ---------------- | --------------- | -------------- | --------- |
+| Security Score   | 2/10            | **3/10** ⚠️    | 10/10     |
+| Logging Score    | 1/10            | 10/10 ✅       | 10/10     |
+| Error Handling   | 5/10            | 10/10 ✅       | 10/10     |
+| Caching          | 2/10            | 10/10 ✅       | 10/10     |
+| Testing Coverage | 4/10            | 10/10 ✅       | 10/10     |
+| Documentation    | 6/10            | 10/10 ✅       | 10/10     |
+| **OVERALL**      | **3.3/10**      | **8.8/10** ⚠️  | **10/10** |
 
 **Note**: Security score is 3/10 (not 10/10) because of API key exposure. After fixing togetherAIService.js, overall score will reach 10/10.
 
@@ -468,6 +502,7 @@ After implementing fixes, verify:
 **Status**: 🟡 MOSTLY COMPLETE - One Critical Issue Remaining
 
 **What Went Well**:
+
 - ✅ Successfully implemented 5/6 Opus 4.1 standards
 - ✅ 33/33 compliance tests passing
 - ✅ aiModificationService.js fully compliant
@@ -476,19 +511,23 @@ After implementing fixes, verify:
 - ✅ No breaking changes to functionality
 
 **Critical Blocker**:
+
 - 🔴 API keys exposed in production bundle (togetherAIService.js)
 
 **Impact of Blocker**:
+
 - Cannot deploy to production safely
 - Financial risk from unauthorized API usage
 - Security compliance failure
 
 **Time to Resolution**:
+
 - Estimated 30-60 minutes to fix togetherAIService.js
 - Estimated 5 minutes to rebuild and verify
 - Estimated 5 minutes to rotate API key
 
 **Next Steps**:
+
 1. Fix togetherAIService.js API key exposure
 2. Rebuild and verify bundle is clean
 3. Rotate exposed API key
