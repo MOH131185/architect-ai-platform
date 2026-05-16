@@ -111,7 +111,12 @@ describe("/api/project/export/dwg — handler", () => {
     expect(res.body.guidance).toMatch(/Install ODA/);
   });
 
-  test("converter not installed at configured path ⇒ 502 + DWG_CONVERTER_NOT_INSTALLED", async () => {
+  test("converter not installed at configured path ⇒ 503 + DWG_CONVERTER_NOT_INSTALLED (Codex merge audit blocker B)", async () => {
+    // "Missing converter binary" is a not-installed contract, not a
+    // runtime failure. Even though the env names a path, spawn ENOENT
+    // means the binary is not actually installed at that path — same
+    // 503 semantics as "env unset" so clients can render the same
+    // "Install ODA File Converter" hint for both.
     convertDxfToDwg.mockImplementation(async () => {
       throw new DwgConversionRuntimeError("spawn ENOENT", {
         code: DWG_CONVERTER_NOT_INSTALLED,
@@ -120,8 +125,10 @@ describe("/api/project/export/dwg — handler", () => {
     const req = makeReq({ dxf: SAMPLE_DXF });
     const res = makeRes();
     await handler(req, res);
-    expect(res.statusCode).toBe(502);
+    expect(res.statusCode).toBe(503);
     expect(res.body.code).toBe(DWG_CONVERTER_NOT_INSTALLED);
+    expect(res.body.guidance).toMatch(/Install ODA File Converter/);
+    expect(res.body.docsUrl).toMatch(/opendesign\.com/);
   });
 
   test("runtime failure ⇒ 502 + DWG_CONVERTER_NON_ZERO_EXIT with stderr", async () => {

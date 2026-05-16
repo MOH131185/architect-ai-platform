@@ -59,12 +59,35 @@ const ENGINEERING_EXPORT_KEYS = Object.freeze([
   "glb",
 ]);
 
+// Phase 6 follow-up — Codex final-merge audit blocker A.
+//
+// Engineering rows (DXF / IFC / DWG / GLB) used to render through the
+// default available -> ready path, surfacing as a plain green "READY"
+// chip. That's misleading: every one of those formats is a
+// coordination/preliminary deliverable — they MUST be re-checked by a
+// human or external tool before being used downstream. issueGrade is
+// the signal: ExportPanel maps `coordination` to an amber "COORDINATION"
+// chip with a subtitle explaining the row, instead of solid green.
+//
+//   "for_construction" — release-quality (PNG/PDF of the A1 sheet)
+//   "coordination"     — reference/coordination export (DXF, IFC, GLB,
+//                        DWG, JSON authority bundle)
+//   "preliminary"      — preliminary/draft output (handoff readme/index)
+//   "quantity_only"    — XLSX without rates (quantities present, costs
+//                        not priced — see costSummary.requiresReview)
+//
+// Callers don't have to pass issueGrade; the manifest defaults each row
+// to a sensible grade based on format and is forward-compatible with
+// older clients (which still see `available: true/false`).
 function entry({
   available,
   format,
   blockedReason,
   requiresReview,
   requiresReviewReason,
+  issueGrade,
+  issueGradeLabel,
+  issueGradeReason,
   ...rest
 }) {
   const row = { available: Boolean(available), format, ...rest };
@@ -75,6 +98,11 @@ function entry({
   if (available && requiresReview === true) {
     row.requiresReview = true;
     if (requiresReviewReason) row.requiresReviewReason = requiresReviewReason;
+  }
+  if (available && issueGrade) {
+    row.issueGrade = issueGrade;
+    if (issueGradeLabel) row.issueGradeLabel = issueGradeLabel;
+    if (issueGradeReason) row.issueGradeReason = issueGradeReason;
   }
   return row;
 }
@@ -118,6 +146,14 @@ export function buildClientExportManifest({
     (costSummary.requiresReview === true ||
       Boolean(costSummary.missingRatesWarning) ||
       Boolean(costSummary.rateCardFallbackWarning));
+  // Codex merge-audit blocker A — quantity-only path. Distinguishes a
+  // workbook where NO items are rated (issueGrade: "quantity_only", a
+  // stronger amber than "REQUIRES REVIEW") from one where SOME items
+  // are rated but coverage is partial (still "REQUIRES REVIEW").
+  const xlsxQuantityOnly =
+    costSummary != null &&
+    (Number(costSummary.ratedItemCount) === 0 ||
+      Number(costSummary.costCoveragePercent) === 0);
   const costRequiresReviewReason = (() => {
     if (!costSummary) return null;
     if (
@@ -168,6 +204,10 @@ export function buildClientExportManifest({
         method: "POST",
         endpoint: "/api/project/export/dxf",
         blockedReason: geometryBlockedReason,
+        issueGrade: "coordination",
+        issueGradeLabel: "COORDINATION",
+        issueGradeReason:
+          "DXF is a coordination export. Re-check layers + dimensions + scale against the A1 sheet before issuing to consultants.",
       }),
       ifc: entry({
         available: ifcGeometrySufficient,
@@ -175,6 +215,10 @@ export function buildClientExportManifest({
         method: "POST",
         endpoint: "/api/project/export/ifc",
         blockedReason: ifcGeometrySufficient ? null : ifcBlockedReason(),
+        issueGrade: "coordination",
+        issueGradeLabel: "COORDINATION",
+        issueGradeReason:
+          "IFC carries STRUCTURAL_REVIEW_DISCLAIMER + MEP_REVIEW_DISCLAIMER. Licensed engineer review required before construction use.",
       }),
       json: entry({
         available: hasGeometry,
@@ -182,6 +226,10 @@ export function buildClientExportManifest({
         method: "POST",
         endpoint: "/api/project/export/json",
         blockedReason: hasGeometry ? null : geometryBlockedReason,
+        issueGrade: "coordination",
+        issueGradeLabel: "COORDINATION",
+        issueGradeReason:
+          "Authority JSON bundle is a coordination artifact for downstream tooling. Not a contract document.",
       }),
       xlsx: entry({
         available: hasGeometry && hasTakeoff,
@@ -198,6 +246,33 @@ export function buildClientExportManifest({
         requiresReviewReason: costRequiresReview
           ? costRequiresReviewReason
           : null,
+        // Codex merge-audit blocker A — quantity-only path. When the
+        // workbook would ship with zero rated items the row is
+        // "QUANTITY ONLY" (a stronger, more honest signal than
+        // "REQUIRES REVIEW"). costSummary.ratedItemCount === 0 OR
+        // costSummary.costCoveragePercent === 0 → quantity-only.
+        // requiresReview still wins when SOME items are rated but
+        // coverage is partial.
+        issueGrade:
+          hasGeometry && hasTakeoff
+            ? xlsxQuantityOnly
+              ? "quantity_only"
+              : costRequiresReview
+                ? "coordination"
+                : "coordination"
+            : undefined,
+        issueGradeLabel:
+          hasGeometry && hasTakeoff
+            ? xlsxQuantityOnly
+              ? "QUANTITY ONLY"
+              : "COORDINATION"
+            : undefined,
+        issueGradeReason:
+          hasGeometry && hasTakeoff
+            ? xlsxQuantityOnly
+              ? "Workbook ships with takeoff quantities but no rated items. Add a rate card before treating any totals as priced."
+              : "Cost workbook is a coordination artifact. Rates must be reviewed against the local market before issuing."
+            : undefined,
       }),
       dwg: entry({
         available: Boolean(
@@ -217,6 +292,10 @@ export function buildClientExportManifest({
         docsUrl: dwgConverterCapabilities?.docsUrl || null,
         converterReason: dwgConverterCapabilities?.reason || null,
         converterProvider: dwgConverterCapabilities?.provider || null,
+        issueGrade: "coordination",
+        issueGradeLabel: "COORDINATION",
+        issueGradeReason:
+          "DWG is an AutoCAD-native coordination export. Treat as DXF parity — re-check before issuing.",
       }),
       glb: entry({
         // Phase 5: GLB is available whenever the server can build one
@@ -233,6 +312,10 @@ export function buildClientExportManifest({
           Boolean(glbUrl) || Boolean(hasGeometry)
             ? null
             : geometryBlockedReason,
+        issueGrade: "coordination",
+        issueGradeLabel: "COORDINATION",
+        issueGradeReason:
+          "GLB is a deterministic 3D model for coordination/visualisation tools. Not a fabrication-ready BIM file.",
       }),
     },
   };

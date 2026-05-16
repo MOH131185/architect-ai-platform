@@ -5,6 +5,7 @@ import {
   DwgConversionUnavailableError,
   DwgConversionRuntimeError,
   DWG_CONVERTER_DOCS_URL,
+  DWG_CONVERTER_NOT_INSTALLED,
 } from "../../../src/services/cad/dwgConversionAdapter.js";
 
 /**
@@ -100,7 +101,20 @@ export default async function handler(req, res) {
       });
     }
     if (err instanceof DwgConversionRuntimeError) {
-      return res.status(502).json({
+      // Codex merge-audit blocker B. "Missing converter binary" is a
+      // not-installed contract, not a runtime failure — even though the
+      // env names a path, spawn ENOENT means the binary is not actually
+      // installed at that path. Surface as 503 DWG_CONVERTER_NOT_INSTALLED
+      // alongside the unconfigured path. Real runtime failures (non-zero
+      // exit / timeout / output missing) stay at 502 because the
+      // converter was reachable and did something — it just failed mid-
+      // conversion.
+      const isNotInstalled = err.code === DWG_CONVERTER_NOT_INSTALLED;
+      const statusCode = isNotInstalled ? 503 : 502;
+      const guidance = isNotInstalled
+        ? "ODA_FILE_CONVERTER_PATH is set but no executable exists at that path. Install ODA File Converter and update the path."
+        : undefined;
+      return res.status(statusCode).json({
         error: err.message,
         code: err.code,
         details: {
@@ -111,6 +125,7 @@ export default async function handler(req, res) {
             : null,
         },
         docsUrl: DWG_CONVERTER_DOCS_URL,
+        ...(guidance ? { guidance } : {}),
       });
     }
     return res.status(500).json({

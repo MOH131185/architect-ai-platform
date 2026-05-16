@@ -473,6 +473,39 @@ const ExportPanel = ({
   const requiresReviewReason = (key) =>
     exportsMap?.[key]?.requiresReviewReason || null;
 
+  // Codex merge-audit blocker A — issueGrade is the structured signal
+  // every engineering row needs so the UI doesn't render coordination
+  // exports as plain green READY. Grades:
+  //   "coordination"   — amber chip "COORDINATION" (DXF, IFC, GLB, DWG,
+  //                       JSON authority bundle; cost workbook with rates)
+  //   "quantity_only"  — stronger amber chip "QUANTITY ONLY" (XLSX with no
+  //                       rated items)
+  //   "preliminary"    — amber chip "PRELIMINARY" (reserved for future
+  //                       handoff README/index when no rates resolve)
+  // Maps to the ExportRow's `status="degraded"` track so the row renders
+  // amber, the chip label is the requested label, and the row stays
+  // clickable. requiresReview still wins for backwards compatibility
+  // (so an existing XLSX-requires-review path keeps showing "REQUIRES
+  // REVIEW", not "COORDINATION").
+  const issueGrade = (key) => exportsMap?.[key]?.issueGrade || null;
+  const issueGradeLabel = (key) => exportsMap?.[key]?.issueGradeLabel || null;
+  const issueGradeReason = (key) => exportsMap?.[key]?.issueGradeReason || null;
+  const issueGradeRowProps = (key) => {
+    if (!isAvailable(key, false)) return null;
+    if (requiresReview(key)) {
+      // requiresReview path already amber via the existing logic — defer
+      // to it so the chip says "REQUIRES REVIEW" with the cost reason.
+      return null;
+    }
+    const grade = issueGrade(key);
+    if (!grade) return null;
+    return {
+      status: "degraded",
+      statusLabel: issueGradeLabel(key) || grade.toUpperCase(),
+      subtitle: issueGradeReason(key),
+    };
+  };
+
   // Phase 3 export-fix: when the final-A1 export QA gate flags status
   // "blocked", PNG / PDF / SVG sheet exports must be disabled — the
   // print master failed layout / readability validation and shipping it
@@ -863,7 +896,11 @@ const ExportPanel = ({
         />
       </ExportSection>
 
-      {/* Engineering */}
+      {/* Engineering — Codex merge-audit blocker A. Every row in this
+          section is a coordination/preliminary export; the manifest's
+          issueGrade field drives the amber "COORDINATION" / "QUANTITY
+          ONLY" / "PRELIMINARY" chip + a subtitle explaining why. Plain
+          green READY is reserved for the PNG/PDF sheet rows above. */}
       <ExportSection title="Engineering">
         <ExportRow
           icon={Download}
@@ -871,6 +908,7 @@ const ExportPanel = ({
           formatChip="CAD"
           available={isAvailable("dxf", false)}
           blockedReason={blockedReason("dxf")}
+          {...(issueGradeRowProps("dxf") || {})}
           tooltip="Industry-standard CAD format for AutoCAD / Revit / ArchiCAD."
           onClick={() => void handleExport("dxf", "DXF file")}
         />
@@ -880,6 +918,7 @@ const ExportPanel = ({
           formatChip="BIM"
           available={isAvailable("ifc", false)}
           blockedReason={blockedReason("ifc")}
+          {...(issueGradeRowProps("ifc") || {})}
           tooltip="OpenBIM format for Revit / ArchiCAD / Tekla / Solibri."
           onClick={() => void handleExport("ifc", "IFC file")}
         />
@@ -889,6 +928,7 @@ const ExportPanel = ({
           formatChip="JSON"
           available={isAvailable("json", false)}
           blockedReason={blockedReason("json")}
+          {...(issueGradeRowProps("json") || {})}
           tooltip="Structured authority bundle of the design (DNA + manifest)."
           onClick={() => void handleExport("json", "Authority JSON")}
         />
@@ -898,39 +938,42 @@ const ExportPanel = ({
           formatChip="XLSX"
           available={isAvailable("xlsx", false)}
           blockedReason={blockedReason("xlsx")}
-          // Phase 3 audit response: when the manifest flags `requiresReview`
-          // (missing rates / fallback rate card), render the XLSX row with
-          // the amber degraded chip + "Requires review" subtitle so the
-          // reviewer can't ship a workbook with silent cost gaps.
-          status={
-            isAvailable("xlsx", false) && requiresReview("xlsx")
-              ? "degraded"
-              : undefined
-          }
-          statusLabel={
-            isAvailable("xlsx", false) && requiresReview("xlsx")
-              ? "REQUIRES REVIEW"
-              : undefined
-          }
-          subtitle={
-            isAvailable("xlsx", false) && requiresReview("xlsx")
-              ? requiresReviewReason("xlsx") ||
-                "Cost workbook needs reviewer attention before issuing."
-              : undefined
-          }
+          // requiresReview wins over issueGrade for the XLSX row: the
+          // existing "REQUIRES REVIEW" chip is more specific than the
+          // generic "COORDINATION" chip. issueGrade kicks in only when
+          // requiresReview is false (i.e. no missing rates / no fallback
+          // rate card; clean coordination cost workbook). The
+          // "QUANTITY ONLY" path (zero rated items) is surfaced via
+          // issueGrade directly even when requiresReview is also true.
+          {...(isAvailable("xlsx", false) && requiresReview("xlsx")
+            ? {
+                status: "degraded",
+                statusLabel:
+                  issueGrade("xlsx") === "quantity_only"
+                    ? "QUANTITY ONLY"
+                    : "REQUIRES REVIEW",
+                subtitle:
+                  issueGrade("xlsx") === "quantity_only"
+                    ? issueGradeReason("xlsx") ||
+                      "Workbook has takeoff but no priced rates."
+                    : requiresReviewReason("xlsx") ||
+                      "Cost workbook needs reviewer attention before issuing.",
+              }
+            : issueGradeRowProps("xlsx") || {})}
           tooltip="Cost estimate workbook with quantities and rates."
           onClick={() => void handleExport("xlsx", "Excel estimate")}
         />
         {/* Phase 5 — Codex audit blocker #4. The DWG row is now manifest-
             gated so the UI surfaces "Install ODA File Converter" when the
             server-side adapter is unconfigured, and a ready row when the
-            converter is wired. */}
+            converter is wired. Coordination grade via issueGradeRowProps. */}
         <ExportRow
           icon={Download}
           label="Export as DWG (AutoCAD)"
           formatChip="CAD"
           available={isAvailable("dwg", false)}
           blockedReason={blockedReason("dwg")}
+          {...(issueGradeRowProps("dwg") || {})}
           tooltip="DWG output via ODA File Converter — install on the server to enable."
           onClick={() => void handleExport("dwg", "DWG file")}
         />
@@ -969,6 +1012,7 @@ const ExportPanel = ({
             formatChip="GLB"
             available={isAvailable("glb", false)}
             blockedReason={blockedReason("glb")}
+            {...(issueGradeRowProps("glb") || {})}
             tooltip="glTF binary — opens in three.js / Unreal / Unity / Sketchfab."
             onClick={() => void handleExport("glb", "GLB model")}
           />
