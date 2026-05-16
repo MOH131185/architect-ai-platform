@@ -1183,6 +1183,145 @@ function renderFacadeFeatures(
   };
 }
 
+// Phase 4b — additive ground hatch below the ground line. Off by default.
+// Spec-flagged via showGroundHatch:true from buildPresentationV3SheetPanelSpecs.
+function renderPhase4bGroundHatch(
+  baseX,
+  baseY,
+  widthPx,
+  width,
+  theme,
+  options = {},
+) {
+  const fullWidth = Number(options.fullWidth);
+  const startX =
+    Number.isFinite(fullWidth) && fullWidth > 0 ? 8 : Math.max(0, baseX - 22);
+  const endX =
+    Number.isFinite(fullWidth) && fullWidth > 0
+      ? fullWidth - 8
+      : baseX + widthPx + 22;
+  const bandTop = baseY;
+  const bandHeight =
+    Number(options.bandHeight) > 0 ? Number(options.bandHeight) : 22;
+  const bandBottom = bandTop + bandHeight;
+  const spacing = Number(options.spacing) > 0 ? Number(options.spacing) : 8;
+  const lines = [];
+  // 45° hatch slope: y = x - (startY) means each line slides along x with
+  // step `spacing`. Iterate enough seeds to fill the band.
+  const seedSpan = endX - startX + bandHeight;
+  for (let offset = 0; offset <= seedSpan; offset += spacing) {
+    const x1 = startX + offset;
+    const y1 = bandTop;
+    const x2 = startX + offset - bandHeight;
+    const y2 = bandBottom;
+    const clipX1 = Math.max(startX, x1);
+    const clipX2 = Math.max(startX, Math.min(endX, x2));
+    const adjY1 = y1 + (clipX1 - x1);
+    const adjY2 = y2 + (clipX2 - x2);
+    if (clipX1 >= endX && clipX2 >= endX) continue;
+    if (clipX1 <= startX && clipX2 <= startX) continue;
+    lines.push(
+      `<line x1="${formatNumber(Math.min(clipX1, endX))}" y1="${formatNumber(adjY1)}" x2="${formatNumber(Math.max(clipX2, startX))}" y2="${formatNumber(adjY2)}" stroke="${theme.lineMuted}" stroke-width="0.6"/>`,
+    );
+  }
+  return {
+    markup: `<g id="phase4b-ground-hatch" class="cad-layer-site-ground cad-ground-hatch" data-ground-hatch-spacing="${spacing}">${lines.join("")}</g>`,
+    count: lines.length,
+  };
+}
+
+// Phase 4b — additive 45° shadow polygon offset from the right edge of the
+// building outline. Off by default. Spec-flagged via showShadow:{azimuth,…}.
+// The shadow is a simple parallelogram pointing down-right from the building
+// top-right corner, length proportional to total building height. Deliberately
+// schematic — it's a presentation hint, not a sun-accurate study.
+function renderPhase4bShadow45(
+  baseX,
+  baseY,
+  widthPx,
+  heightPx,
+  ridgeYpx,
+  theme,
+  options = {},
+) {
+  const azimuth = Number(options.azimuth);
+  const elevationAngle = Number(options.elevation);
+  if (!Number.isFinite(azimuth) || !Number.isFinite(elevationAngle)) {
+    return { markup: "", count: 0 };
+  }
+  const topEdgeY = Number.isFinite(ridgeYpx) ? ridgeYpx : baseY - heightPx;
+  const buildingHeightPx = baseY - topEdgeY;
+  const shadowLength =
+    buildingHeightPx * Math.tan(((90 - elevationAngle) * Math.PI) / 180);
+  const direction = Math.cos((azimuth * Math.PI) / 180) >= 0 ? 1 : -1;
+  const topX = baseX + widthPx;
+  const points = [
+    `${formatNumber(topX)},${formatNumber(topEdgeY)}`,
+    `${formatNumber(topX + direction * shadowLength)},${formatNumber(baseY)}`,
+    `${formatNumber(topX + direction * shadowLength + direction * widthPx)},${formatNumber(baseY)}`,
+    `${formatNumber(topX + direction * widthPx)},${formatNumber(topEdgeY)}`,
+  ];
+  return {
+    markup: `<g id="phase4b-shadow-45" class="cad-shadow-45" data-shadow-azimuth="${azimuth}" data-shadow-elevation="${elevationAngle}"><polygon points="${points.join(" ")}" fill="${theme.line}" fill-opacity="0.18" stroke="none"/></g>`,
+    count: 1,
+  };
+}
+
+// Phase 4b — additive material legend strip across the bottom of the panel.
+// Off by default. Spec-flagged via showMaterialLegend:true.
+function renderPhase4bMaterialLegend(width, height, layout, palette, theme) {
+  // The canonical palette exposes `entries` (per-role records with hexColor +
+  // name); legacy/test shapes use `materials` (raw {hex, name} objects).
+  // Accept either so the legend works against both production palettes and
+  // smaller fixture palettes.
+  let items = [];
+  if (Array.isArray(palette?.entries) && palette.entries.length) {
+    items = palette.entries
+      .filter((entry) => entry && entry.name && entry.hexColor)
+      .map((entry) => ({
+        name: entry.name,
+        hex: entry.hexColor,
+      }));
+  } else if (Array.isArray(palette?.materials)) {
+    items = palette.materials;
+  } else if (Array.isArray(palette)) {
+    items = palette;
+  }
+  if (!items.length) return { markup: "", count: 0 };
+  const stripY = height - 16;
+  const swatchW = 14;
+  const swatchH = 8;
+  const itemPad = 4;
+  const textPad = 4;
+  const fontSize = 8;
+  const charWidth = 4.5;
+  const stripStart = layout.left;
+  const maxItems = Math.min(6, items.length);
+  let cursor = stripStart;
+  const tiles = [];
+  for (let i = 0; i < maxItems; i += 1) {
+    const item = items[i] || {};
+    const fill =
+      item.hex ||
+      item.color ||
+      item.fill ||
+      item.swatch ||
+      theme.lineMuted ||
+      "#cccccc";
+    const name = String(item.name || item.id || `mat-${i + 1}`).slice(0, 20);
+    const tileWidth = swatchW + textPad + name.length * charWidth + itemPad;
+    if (cursor + tileWidth > width - layout.right) break;
+    tiles.push(
+      `<g transform="translate(${formatNumber(cursor)}, ${formatNumber(stripY - swatchH)})"><rect x="0" y="0" width="${swatchW}" height="${swatchH}" fill="${fill}" stroke="${theme.line}" stroke-width="0.6"/><text x="${swatchW + textPad}" y="${swatchH - 1}" font-size="${fontSize}" font-family="Arial, sans-serif" fill="${theme.line}">${escapeXml(name)}</text></g>`,
+    );
+    cursor += tileWidth;
+  }
+  return {
+    markup: `<g id="phase4b-material-legend" class="cad-material-legend" data-material-legend-count="${tiles.length}">${tiles.join("")}</g>`,
+    count: tiles.length,
+  };
+}
+
 function renderGroundLine(baseX, baseY, widthPx, theme, options = {}) {
   const fullWidth = Number(options.fullWidth);
   const groundX = Number.isFinite(fullWidth) && fullWidth > 0 ? 8 : baseX - 18;
@@ -1791,6 +1930,35 @@ export function renderElevationSvg(
     ? `<g class="cad-vernacular-pack-attrs" data-vernacular-pack="${escapeXml(packId || "")}" data-pack-parapet="${packParapet}" data-pack-semi-basement="${packSemiBasement}" data-pack-window-language="${escapeXml(packWindowLanguageRaw)}" data-pack-facade-stucco="${packHasStucco}"/>`
     : "";
 
+  // Phase 4b — additive presentation polish. All three groups are off by
+  // default; they are turned on via the presentation-v3 panel spec when
+  // the elevation flags are set. The deterministic SVG output is the
+  // geometry authority either way — these helpers add visible presentation
+  // content within the existing render bounds.
+  const phase4bGroundHatch = options.showGroundHatch
+    ? renderPhase4bGroundHatch(baseX, baseY, widthPx, width, theme, {
+        fullWidth: sheetMode ? width : 0,
+      })
+    : { markup: "", count: 0 };
+  const shadowOpts =
+    options.showShadow && typeof options.showShadow === "object"
+      ? options.showShadow
+      : null;
+  const phase4bShadow45 = shadowOpts
+    ? renderPhase4bShadow45(
+        baseX,
+        baseY,
+        widthPx,
+        heightPx,
+        ridgeInfo?.y ?? null,
+        theme,
+        shadowOpts,
+      )
+    : { markup: "", count: 0 };
+  const phase4bMaterialLegend = options.showMaterialLegend
+    ? renderPhase4bMaterialLegend(width, height, layout, palette, theme)
+    : { markup: "", count: 0 };
+
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-theme="${theme.name}" data-bounds-source="${envelope.source}" data-blueprint-grade="${blueprintGrade ? "true" : "false"}"${packDataAttrs}>
   ${buildMaterialPatternDefs(theme)}
@@ -1808,14 +1976,17 @@ export function renderElevationSvg(
   ${renderGroundLine(baseX, baseY, widthPx, theme, {
     fullWidth: sheetMode ? width : 0,
   })}
+  ${phase4bGroundHatch.markup}
   ${semiBasementMarkup}
   ${materialZones.markup}
   ${articulation.markup}
   ${roof}
+  ${phase4bShadow45.markup}
   ${rhythm.markup}
   ${datums.markup}
   ${openings.markup}
   ${featureMarkup.markup}
+  ${phase4bMaterialLegend.markup}
   ${renderOverallDimensions(
     metrics,
     baseX,
@@ -1924,6 +2095,12 @@ export function renderElevationSvg(
       has_eaves_datum: datums.hasEaves,
       has_ridge_datum: datums.hasRidge,
       has_opening_tags: openings.windowCount + openings.doorCount > 0,
+      // Phase 4b — additive presentation polish.
+      has_phase4b_ground_hatch: phase4bGroundHatch.count > 0,
+      phase4b_ground_hatch_lines: phase4bGroundHatch.count,
+      has_phase4b_shadow_45: phase4bShadow45.count > 0,
+      has_phase4b_material_legend: phase4bMaterialLegend.count > 0,
+      phase4b_material_legend_swatches: phase4bMaterialLegend.count,
     },
   };
 }
