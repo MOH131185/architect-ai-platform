@@ -18,6 +18,12 @@ import {
   getLevelDrawingBoundsWithSource,
 } from "../drawing/drawingBounds.js";
 import { buildProjectQuantityTakeoff } from "./projectQuantityTakeoffService.js";
+// Phase 3 (Track 5): surface a structured costSummary on the pipeline
+// output so the CostSummaryPanel can render total £ + low/high range +
+// £/m² + top drivers without parsing the xlsx workbook client-side.
+// Wrapped in a try/catch downstream so a rate-card-missing or empty
+// takeoff doesn't fail the slice.
+import { buildCostSummary } from "./compiledProjectExportService.js";
 import {
   createAuthorityReadinessManifest,
   createCompiledExportManifest,
@@ -1725,6 +1731,24 @@ export async function buildProjectPipelineV2Bundle({
   const takeoff = buildProjectQuantityTakeoff(compiledProject, {
     pipelineVersion: UK_RESIDENTIAL_V2_PIPELINE_VERSION,
   });
+  // Phase 3 (Track 5): compute the cost summary once, surface it on the
+  // pipeline output. CostSummaryPanel reads this directly so the panel
+  // never has to round-trip through the xlsx export route just to show
+  // total/range/£-per-m². Pass-through fails closed if anything throws.
+  let costSummary = null;
+  try {
+    costSummary = buildCostSummary({
+      compiledProject,
+      takeoff,
+      qualityTier: "mid",
+      region: "uk-average",
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[pipeline-v2] cost summary unavailable: ${err?.message || "unknown"}`,
+    );
+  }
   const exportManifest = createCompiledExportManifest({
     geometryHash: compiledProjectWithDiagnostics.geometryHash,
     pipelineVersion: UK_RESIDENTIAL_V2_PIPELINE_VERSION,
@@ -1814,6 +1838,10 @@ export async function buildProjectPipelineV2Bundle({
     reviewSurface,
     compiledProject: compiledProjectWithDiagnostics,
     projectQuantityTakeoff: takeoff,
+    // Phase 3 (Track 5): costSummary rides on the bundle so the
+    // CostSummaryPanel can render without re-computing. May be null if
+    // the takeoff was empty or the rate-card resolver threw.
+    costSummary,
   };
 }
 

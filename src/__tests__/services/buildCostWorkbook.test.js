@@ -86,7 +86,11 @@ function readSheet(workbook, name) {
 }
 
 describe("buildCostWorkbook", () => {
-  test("produces the six required sheets in order", () => {
+  test("produces the seven required sheets in order", () => {
+    // Phase 3 (Track 5): the workbook now emits a "Risk & Contingency"
+    // sheet between "Cost Estimate" and "Spaces & Areas". Sheet count
+    // went 6 → 7. The previous 6-sheet contract is documented in the
+    // git history; this test is the new authoritative order.
     const result = buildCostWorkbook({
       compiledProject: compiledFixture({
         metadata: { source: "test-fixture", buildingType: "residential" },
@@ -100,6 +104,7 @@ describe("buildCostWorkbook", () => {
       "Summary",
       "Quantity Takeoff",
       "Cost Estimate",
+      "Risk & Contingency",
       "Spaces & Areas",
       "Materials",
       "Assumptions & Exclusions",
@@ -124,7 +129,13 @@ describe("buildCostWorkbook", () => {
     expect(hasNumericSubtotal).toBe(true);
   });
 
-  test("non-residential building type falls back to quantity-only mode with rate-card-missing markers", () => {
+  // Phase 3 (Track 5): the prior "non-residential → quantity-only" test
+  // is replaced by the new fallback contract. selectRateCard maps any
+  // unrecognised type to uk_residential_v2 + RATE_CARD_FALLBACK warning;
+  // cost columns still render with residential rates as a proxy. Truly
+  // matched typologies (office_studio → commercial) get their own
+  // direct rate card with NO fallback warning.
+  test("office building type matches uk_commercial_v1 without a fallback warning", () => {
     const result = buildCostWorkbook({
       compiledProject: compiledFixture({
         metadata: { source: "test-fixture", buildingType: "office_studio" },
@@ -132,15 +143,28 @@ describe("buildCostWorkbook", () => {
       takeoff: residentialTakeoff,
       projectName: "Office Studio",
     });
-    expect(result.rateCardMissing).toBe(true);
-    expect(result.totalGbp).toBeNull();
-    const costRows = readSheet(result.workbook, "Cost Estimate");
-    expect(costRows.length).toBe(residentialTakeoff.items.length);
-    for (const row of costRows) {
-      expect(row["Rate (GBP)"]).toBe("—");
-      expect(row["Subtotal (GBP)"]).toBe("—");
-      expect(row["Rate Source"]).toBe("rate card missing");
-    }
+    expect(result.rateCardMissing).toBe(false);
+    expect(result.rateCard?.id).toBe("uk_commercial_v1");
+    expect(result.rateCardFallbackWarning).toBeNull();
+    expect(result.totalGbp).toBeGreaterThan(0);
+  });
+
+  test("unrecognised building type falls back to residential with RATE_CARD_FALLBACK warning", () => {
+    const result = buildCostWorkbook({
+      compiledProject: compiledFixture({
+        metadata: { source: "test-fixture", buildingType: "industrial_plant" },
+      }),
+      takeoff: residentialTakeoff,
+      projectName: "Industrial Plant",
+    });
+    expect(result.rateCardMissing).toBe(false);
+    expect(result.rateCard?.id).toBe("uk_residential_v2");
+    expect(result.rateCardFallbackWarning).not.toBeNull();
+    expect(result.rateCardFallbackWarning.code).toBe("RATE_CARD_FALLBACK");
+    expect(result.totalGbp).toBeGreaterThan(0);
+    // Risk & Contingency sheet should surface the fallback warning at the top.
+    const riskRows = readSheet(result.workbook, "Risk & Contingency");
+    expect(riskRows[0]["Risk Category"]).toBe("RATE_CARD_FALLBACK");
   });
 
   test("deterministic — identical input produces identical workbook bytes", () => {
@@ -225,5 +249,94 @@ describe("buildCostWorkbook", () => {
         takeoff: { items: [] },
       }),
     ).toThrow(/Compiled project and quantity takeoff/);
+  });
+
+  // Phase 3 (Track 5): confidence-range columns and contingency rollup.
+  test("Cost Estimate sheet carries Rate Low/High + Subtotal Low/High columns with the right ordering", () => {
+    const result = buildCostWorkbook({
+      compiledProject: compiledFixture({
+        metadata: { source: "test-fixture", buildingType: "residential" },
+      }),
+      takeoff: residentialTakeoff,
+      projectName: "Confidence",
+    });
+    const rows = readSheet(result.workbook, "Cost Estimate");
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row).toHaveProperty("Rate Low (GBP)");
+      expect(row).toHaveProperty("Rate High (GBP)");
+      expect(row).toHaveProperty("Subtotal Low (GBP)");
+      expect(row).toHaveProperty("Subtotal High (GBP)");
+      // Low ≤ adjusted ≤ High when all three are numeric.
+      if (
+        typeof row["Rate (GBP)"] === "number" &&
+        typeof row["Rate Low (GBP)"] === "number" &&
+        typeof row["Rate High (GBP)"] === "number"
+      ) {
+        expect(row["Rate Low (GBP)"]).toBeLessThanOrEqual(row["Rate (GBP)"]);
+        expect(row["Rate High (GBP)"]).toBeGreaterThanOrEqual(
+          row["Rate (GBP)"],
+        );
+      }
+    }
+  });
+
+  test("totalLowGbp / totalHighGbp bracket totalGbp on the result object", () => {
+    const result = buildCostWorkbook({
+      compiledProject: compiledFixture({
+        metadata: { source: "test-fixture", buildingType: "residential" },
+      }),
+      takeoff: residentialTakeoff,
+    });
+    expect(result.totalGbp).toBeGreaterThan(0);
+    expect(result.totalLowGbp).toBeLessThanOrEqual(result.totalGbp);
+    expect(result.totalHighGbp).toBeGreaterThanOrEqual(result.totalGbp);
+  });
+
+  test("Risk & Contingency sheet carries a design contingency line tied to the rate-card policy", () => {
+    const result = buildCostWorkbook({
+      compiledProject: compiledFixture({
+        metadata: { source: "test-fixture", buildingType: "residential" },
+      }),
+      takeoff: residentialTakeoff,
+      projectName: "Contingency",
+    });
+    const rows = readSheet(result.workbook, "Risk & Contingency");
+    expect(rows.length).toBeGreaterThan(0);
+    const contingencyRow = rows.find(
+      (row) => row["Risk Category"] === "Design Contingency",
+    );
+    expect(contingencyRow).toBeTruthy();
+    expect(typeof contingencyRow["Allowance (GBP)"]).toBe("number");
+    expect(contingencyRow["Allowance (GBP)"]).toBeGreaterThan(0);
+    expect(typeof contingencyRow["% of Subtotal"]).toBe("number");
+    // Residential default is 10% per the rate-card JSON.
+    expect(contingencyRow["% of Subtotal"]).toBe(10);
+    // Contingent subtotal row sits at the foot.
+    const contingentRow = rows.find(
+      (row) => row["Risk Category"] === "Contingent Subtotal (GBP)",
+    );
+    expect(contingentRow).toBeTruthy();
+    expect(contingentRow["Allowance (GBP)"]).toBeGreaterThan(result.totalGbp);
+  });
+
+  test("result exposes a costSummary object the CostSummaryPanel can render", () => {
+    const result = buildCostWorkbook({
+      compiledProject: compiledFixture({
+        metadata: { source: "test-fixture", buildingType: "residential" },
+      }),
+      takeoff: residentialTakeoff,
+      projectName: "Summary Object",
+    });
+    expect(result.costSummary).toBeTruthy();
+    expect(result.costSummary.schemaVersion).toBe("cost-summary-v1");
+    expect(result.costSummary.totalGbp).toBe(result.totalGbp);
+    expect(result.costSummary.totalLowGbp).toBe(result.totalLowGbp);
+    expect(result.costSummary.totalHighGbp).toBe(result.totalHighGbp);
+    expect(result.costSummary.gia).toBe(80);
+    expect(typeof result.costSummary.costPerSqm).toBe("number");
+    expect(Array.isArray(result.costSummary.topDrivers)).toBe(true);
+    expect(result.costSummary.topDrivers.length).toBeGreaterThan(0);
+    expect(result.costSummary.topDrivers.length).toBeLessThanOrEqual(5);
   });
 });
