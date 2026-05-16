@@ -83,6 +83,13 @@ export function projectFloorPlan(model, floorIndex = 0, options = {}) {
     width: svgWidth = 800,
     height: svgHeight = 600,
     theme = "technical",
+    // Phase 4 (Track 2): when true, draws an additional ENVELOPE-based
+    // outer dimension chain (one dimension per wall segment + overall)
+    // on every side listed in `outerDimensionSides`. Independent of
+    // `showDimensions`, which controls the existing room-partition
+    // chains. Both can be on simultaneously.
+    showOuterDimensionChain = false,
+    outerDimensionSides = ["S", "W"],
   } = options;
 
   const floor = model.getFloor(floorIndex);
@@ -210,6 +217,23 @@ export function projectFloorPlan(model, floorIndex = 0, options = {}) {
   if (showDimensions) {
     svg += '<g id="dimensions">';
     svg += drawPlanDimensions(model, dims, offsetX, offsetY, scale, floor);
+    svg += "</g>";
+  }
+
+  // Phase 4 (Track 2): outer envelope dimension chain. Independent of
+  // the room-partition chains above — presentation-v3 panel specs flip
+  // this on so reviewers see one dimension per wall segment + overall
+  // around the building envelope.
+  if (showOuterDimensionChain) {
+    svg += '<g id="outer-dimension-chain">';
+    svg += drawOuterDimensionChain({
+      model,
+      floor,
+      offsetX,
+      offsetY,
+      scale,
+      sides: outerDimensionSides,
+    });
     svg += "</g>";
   }
 
@@ -2705,6 +2729,143 @@ function adjustBrightness(hex, amount) {
   return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
 }
 
+// =============================================================================
+// PHASE 4 (Track 2) — Outer perimeter dimension chain
+// =============================================================================
+//
+// Walks the building envelope polygon and emits one continuous dimension
+// chain per requested side. Each chain places:
+//   - one wall-segment dimension between consecutive polygon corners on
+//     that side (the "inner" string)
+//   - a single overall dimension covering the whole side at a deeper offset
+//     (the "outer" string)
+//
+// Unlike the existing `drawPlanDimensions` (which is room-partition based),
+// this is purely geometric: it walks the EXTERIOR envelope polygon, so
+// L-shaped / T-shaped buildings get the correct multi-segment chains.
+// Returns "" for malformed inputs — geometry-authoritative, no AI.
+
+/**
+ * @typedef {"N"|"S"|"E"|"W"} OuterDimensionSide
+ */
+
+/**
+ * Draw outer perimeter dimension chains for a floor plan.
+ *
+ * @param {{model:Object, floor:Object, offsetX:number, offsetY:number, scale:number, sides?:OuterDimensionSide[], innerOffsetPx?:number, outerOffsetPx?:number}} options
+ * @returns {string} SVG fragment (may be "")
+ */
+export function drawOuterDimensionChain({
+  model,
+  floor,
+  offsetX,
+  offsetY,
+  scale,
+  sides = ["S", "W"],
+  innerOffsetPx = 25,
+  outerOffsetPx = 55,
+} = {}) {
+  if (!model || !floor) return "";
+  const envelopePolygon = resolveEnvelopePolygonForPlan(model, floor);
+  if (!envelopePolygon || envelopePolygon.length < 3) return "";
+
+  const pxPerMM = scale / MM_PER_M;
+  const dims = model.getDimensionsMeters
+    ? model.getDimensionsMeters()
+    : { width: 0, depth: 0 };
+  const halfWidthPx = (dims.width * scale) / 2;
+  const halfDepthPx = (dims.depth * scale) / 2;
+
+  // Building edge positions in SVG pixel space.
+  const edges = {
+    N: { axis: "horizontal", baseline: offsetY - halfDepthPx, direction: -1 },
+    S: { axis: "horizontal", baseline: offsetY + halfDepthPx, direction: 1 },
+    W: { axis: "vertical", baseline: offsetX - halfWidthPx, direction: -1 },
+    E: { axis: "vertical", baseline: offsetX + halfWidthPx, direction: 1 },
+  };
+
+  const chainPoints = perimeterChainPoints(envelopePolygon);
+
+  let svg = "";
+  const seenSides = new Set();
+  for (const sideRaw of sides) {
+    const side = String(sideRaw || "")
+      .trim()
+      .toUpperCase();
+    if (!edges[side] || seenSides.has(side)) continue;
+    seenSides.add(side);
+    const edge = edges[side];
+    const isHorizontal = edge.axis === "horizontal";
+    const segmentsMM = isHorizontal
+      ? chainPoints.horizontal
+      : chainPoints.vertical;
+    if (!segmentsMM || segmentsMM.length < 2) continue;
+    const pointsPx = isHorizontal
+      ? segmentsMM.map((mm) => offsetX + mm * pxPerMM)
+      : segmentsMM.map((mm) => offsetY - mm * pxPerMM).sort((a, b) => a - b);
+
+    const idPrefix = `plan-dim-${side.toLowerCase()}`;
+    const signedInner = edge.direction * innerOffsetPx;
+    const signedOuter = edge.direction * outerOffsetPx;
+    if (pointsPx.length > 2) {
+      svg += drawDimensionChain(
+        pointsPx,
+        signedInner,
+        edge.baseline,
+        !isHorizontal,
+        pxPerMM,
+        `${idPrefix}-segments`,
+      );
+    }
+    svg += drawDimensionChain(
+      [pointsPx[0], pointsPx[pointsPx.length - 1]],
+      signedOuter,
+      edge.baseline,
+      !isHorizontal,
+      pxPerMM,
+      `${idPrefix}-overall`,
+    );
+  }
+  return svg;
+}
+
+function resolveEnvelopePolygonForPlan(model, floor) {
+  if (Array.isArray(floor?.envelopePolygon) && floor.envelopePolygon.length) {
+    return floor.envelopePolygon;
+  }
+  if (
+    Array.isArray(model?.envelope?.polygon) &&
+    model.envelope.polygon.length
+  ) {
+    return model.envelope.polygon;
+  }
+  if (Array.isArray(model?.footprint?.polygon)) {
+    return model.footprint.polygon;
+  }
+  if (Array.isArray(floor?.boundary)) {
+    return floor.boundary;
+  }
+  return null;
+}
+
+function perimeterChainPoints(polygon) {
+  // Deduplicated sorted unique X and Y coordinates of the polygon corners.
+  // This gives one dimension per wall segment along each axis — the
+  // architectural "outer string" convention.
+  const xs = new Set();
+  const ys = new Set();
+  for (const point of polygon) {
+    const px = Number(point?.x ?? point?.[0]);
+    const py = Number(point?.y ?? point?.[1]);
+    if (Number.isFinite(px)) xs.add(Math.round(px));
+    if (Number.isFinite(py)) ys.add(Math.round(py));
+  }
+  return {
+    horizontal: [...xs].sort((a, b) => a - b),
+    vertical: [...ys].sort((a, b) => a - b),
+  };
+}
+
 export default {
   projectFloorPlan,
   projectElevation,
@@ -2714,4 +2875,5 @@ export default {
   projectAllElevations,
   projectAllSections,
   projectAll2D,
+  drawOuterDimensionChain,
 };
