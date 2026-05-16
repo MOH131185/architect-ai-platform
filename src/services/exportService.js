@@ -298,6 +298,51 @@ class ExportService {
     );
   }
 
+  // Phase 2 audit response (Codex blocker 2): infer structural/MEP
+  // discipline flags from a generated sheet so /api/project/export/dxf
+  // and /api/project/export/ifc honour the same discipline intent the
+  // sheet was generated with. Without this, the server falls back to
+  // env defaults — a generation that asked for arch-only still gets
+  // S-/E-/P-/M- layers and IfcColumn/IfcBeam when env is the production
+  // default true. Returns explicit `true` / `false` only when we have a
+  // signal; `null` lets the route fall through to its own (env-driven)
+  // default, preserving back-compat for pre-Phase-2 history records.
+  resolveDrawingDisciplineFlags(sheet = {}) {
+    const compiled = this.resolveCompiledProject(sheet) || {};
+    const meta = sheet?.metadata || {};
+    const fromAny = (...candidates) => {
+      for (const value of candidates) {
+        if (value === true || value === false) return value;
+      }
+      return null;
+    };
+    const drawingTypes = new Set();
+    const drawingSet =
+      sheet?.drawingSet ||
+      sheet?.artifacts?.drawingSet ||
+      meta?.drawingSet ||
+      compiled?.drawingSet ||
+      null;
+    for (const drawing of drawingSet?.drawings || []) {
+      if (typeof drawing?.type === "string") drawingTypes.add(drawing.type);
+    }
+    const structural = fromAny(
+      sheet?.structuralDrawingsEnabled,
+      meta?.structuralDrawingsEnabled,
+      compiled?.structuralDrawingsEnabled,
+      drawingTypes.has("structural") ? true : null,
+      compiled?.structuralModel ? true : null,
+    );
+    const mep = fromAny(
+      sheet?.mepDrawingsEnabled,
+      meta?.mepDrawingsEnabled,
+      compiled?.mepDrawingsEnabled,
+      drawingTypes.has("mep") ? true : null,
+      compiled?.mepModel ? true : null,
+    );
+    return { structural, mep };
+  }
+
   resolveProjectQuantityTakeoff(sheet = {}) {
     return (
       sheet?.projectQuantityTakeoff ||
@@ -551,6 +596,31 @@ class ExportService {
       schedulesWorkbook:
         artifacts?.schedulesWorkbook || sheet?.schedulesWorkbook || null,
       qaReport: artifacts?.qaReport || sheet?.qaReport || sheet?.qa || null,
+      // Phase 6 — Codex audit blocker #3. Carry the full A1 export QA
+      // surface so the handoff orchestrator can collapse it into
+      // handoff.json.qa.status and the README's "QA Status" section.
+      // Previously the payload dropped it, so "degraded" exports could
+      // not propagate through the API → handoff.json was always
+      // qa.status:"pass" regardless of reality.
+      a1ExportQa:
+        sheet?.a1ExportQa ||
+        sheet?.metadata?.a1ExportQa ||
+        artifacts?.a1ExportQa ||
+        null,
+      // Phase 3 — also carry costSummary so the handoff disclaimers can
+      // surface RATE_CARD_FALLBACK / MISSING_RATES without re-deriving.
+      costSummary:
+        sheet?.costSummary ||
+        sheet?.metadata?.costSummary ||
+        artifacts?.costSummary ||
+        null,
+      // Phase 6 follow-up — pre-resolved DWG capabilities snapshot from
+      // the slice. When present, the handoff endpoint can decide DWG vs.
+      // DWG_UNAVAILABLE.txt without re-resolving from env on the server.
+      dwgConverterCapabilities:
+        sheet?.dwgConverterCapabilities ||
+        artifacts?.dwgConverterCapabilities ||
+        null,
       visualManifest:
         artifacts?.visualManifest || sheet?.visualManifest || null,
       styleBlendManifest:
@@ -625,6 +695,113 @@ class ExportService {
     const url = await this.downloadResponseBlob(response, filename);
     logger.success("Deliverables ZIP export complete", { filename });
     return { success: true, url, filename, format: "ZIP" };
+  }
+
+  /**
+   * Phase 6 — Track 6 handoff ZIP.
+   *
+   * Hits the same /api/project/export/artifact-package endpoint as
+   * exportDeliverablesPackage but adds `{ handoff: true }` to the body
+   * so the handler routes through buildHandoffArtifactPackage. The
+   * resulting ZIP includes GLB + DWG (or DWG_UNAVAILABLE.txt) +
+   * quantity_takeoff.csv + project_graph.json + handoff.json + README.md
+   * on top of the deterministic deliverables.
+   *
+   * QA gate: refuses to issue the handoff when the A1 export QA is
+   * blocked (authority/geometry category). Degraded exports are allowed
+   * — the README + handoff.json both surface qa.status:"degraded" so
+   * the reviewer is warned but not blocked. This mirrors the policy
+   * documented in CLAUDE.md / Phase 1 plan.
+   */
+  async exportHandoffPackage({ sheet }) {
+    if (!this.hasDeliverableArtifacts(sheet)) {
+      throw new Error(
+        "Generate a design before downloading the handoff package.",
+      );
+    }
+    const a1ExportQa = sheet?.a1ExportQa || sheet?.metadata?.a1ExportQa || null;
+    // Phase 6 — Codex audit blocker #2 response. The gate is now:
+    //   (a) Any blocker whose category is in the HARD list
+    //       (authority / geometry / unknown) → refuse.
+    //   (b) `allowed:false` on its own → refuse, even when the blocker
+    //       list is empty (legacy unsoftenable hard veto with no
+    //       categorised blockers attached).
+    //   (c) Readability / graphic categories DO NOT refuse — degraded
+    //       exports ship with qa.status:"degraded" + PRELIMINARY stamp.
+    if (a1ExportQa) {
+      const HANDOFF_HARD_BLOCK_CATEGORIES = new Set([
+        "authority",
+        "geometry",
+        "unknown",
+      ]);
+      const blockers = Array.isArray(a1ExportQa.blockers)
+        ? a1ExportQa.blockers
+        : [];
+      const hardBlockers = blockers.filter((blocker) =>
+        HANDOFF_HARD_BLOCK_CATEGORIES.has(
+          String(blocker?.category || "unknown").toLowerCase(),
+        ),
+      );
+      if (hardBlockers.length > 0) {
+        const codes = hardBlockers
+          .map((b) => `${b.category}/${b.code || "blocker"}`)
+          .join(", ");
+        throw new Error(
+          `Handoff package blocked by hard QA failure(s) [authority/geometry/unknown]: ${codes}.`,
+        );
+      }
+      if (a1ExportQa.allowed === false) {
+        throw new Error(
+          `Handoff package blocked: A1 export QA reports allowed:false. ${
+            blockers.length
+              ? `Soft-category blockers: ${blockers
+                  .map((b) => `${b.category}/${b.code || "blocker"}`)
+                  .join(", ")}.`
+              : "No categorised blockers attached; treat as unsoftenable hard veto."
+          }`,
+        );
+      }
+    }
+    const payload = {
+      ...this.buildArtifactPackagePayload(sheet),
+      handoff: true,
+    };
+    const safeName = this.safeProjectName(payload.projectName);
+    const fallbackFilename = `${safeName}-handoff.zip`;
+    const response = await fetch("/api/project/export/artifact-package", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const message = await this.readJsonError(
+        response,
+        `Handoff ZIP export failed: ${response.status}`,
+      );
+      throw new Error(message);
+    }
+    const filename = this.filenameFromContentDisposition(
+      response.headers?.get?.("content-disposition"),
+      fallbackFilename,
+    );
+    const url = await this.downloadResponseBlob(response, filename);
+    const qaStatus =
+      response.headers?.get?.("x-handoff-qa-status") || "unknown";
+    const dwgAvailable =
+      response.headers?.get?.("x-handoff-dwg-available") === "true";
+    logger.success("Handoff ZIP export complete", {
+      filename,
+      qaStatus,
+      dwgAvailable,
+    });
+    return {
+      success: true,
+      url,
+      filename,
+      format: "HANDOFF",
+      qaStatus,
+      dwgAvailable,
+    };
   }
 
   buildArtifactPackageReference(sheet = {}) {
@@ -788,8 +965,25 @@ class ExportService {
     // with allowed:false but a non-"blocked" status still hits the gate.
     const SHEET_FORMATS = new Set(["PNG", "PDF", "SVG"]);
     const qa = sheet?.a1ExportQa;
+    // Codex audit response: three QA states drive this gate.
+    //   - hard-block   : allowed:false OR legacy status:"blocked" without
+    //                    degradedExport:true. Sheet exports refuse outright.
+    //   - degraded     : degradedExport:true OR status:"degraded". The
+    //                    pre-built stamped PDF is the ONLY permitted sheet
+    //                    artifact. PNG/SVG refuse (no watermarked variants
+    //                    exist on this branch) and PDF refuses if no
+    //                    stamped pre-built file is available — defence in
+    //                    depth against the server falling back to
+    //                    unstamped SVG/PNG-derived PDFs.
+    //   - pass/warning : sheet exports proceed normally.
     const sheetExportBlocked =
-      qa && (qa.status === "blocked" || qa.allowed === false);
+      qa &&
+      (qa.allowed === false ||
+        (qa.status === "blocked" && qa.degradedExport !== true));
+    const sheetExportDegraded =
+      qa &&
+      !sheetExportBlocked &&
+      (qa.degradedExport === true || qa.status === "degraded");
     if (SHEET_FORMATS.has(fmt) && sheetExportBlocked) {
       const blockerCount = Array.isArray(qa.blockers) ? qa.blockers.length : 0;
       const detail = blockerCount
@@ -798,6 +992,28 @@ class ExportService {
       throw new Error(
         `A1 export blocked — sheet failed final layout/readability QA${detail}.`,
       );
+    }
+    if (SHEET_FORMATS.has(fmt) && sheetExportDegraded) {
+      if (fmt === "PNG" || fmt === "SVG") {
+        throw new Error(
+          `A1 export degraded — ${fmt} cannot ship without a watermarked variant. ` +
+            "Use the PDF export (carries the PRELIMINARY stamp) or fix the " +
+            "readability/graphic blockers and re-run.",
+        );
+      }
+      if (fmt === "PDF") {
+        const stampedPdfPath = resolvePdfArtifactPath(sheet);
+        if (!stampedPdfPath) {
+          throw new Error(
+            "A1 export degraded — stamped PDF artifact not available. " +
+              "Regenerate the design to produce a watermarked PDF; unstamped " +
+              "fallback PDFs are not permitted in degraded mode.",
+          );
+        }
+        // Falls through to the server-side route; the request body below
+        // forwards `degradedExport:true` so the API mirrors this refusal
+        // even if a malicious caller skips the client-side gate.
+      }
     }
 
     // Route DXF to CAD export path
@@ -823,6 +1039,14 @@ class ExportService {
 
     if (fmt === "ZIP" || fmt === "DELIVERABLES" || fmt === "ARTIFACT_PACKAGE") {
       return this.exportDeliverablesPackage({ sheet, env: effectiveEnv });
+    }
+
+    // Phase 6 — Track 6. The handoff ZIP is a superset of the
+    // deliverables ZIP: same base artifacts (DXF, IFC, A1 sheets, cost
+    // workbook) PLUS GLB, DWG (or DWG_UNAVAILABLE.txt), takeoff CSV,
+    // project_graph.json, handoff.json, README.md.
+    if (fmt === "HANDOFF" || fmt === "HANDOFF_PACKAGE") {
+      return this.exportHandoffPackage({ sheet, env: effectiveEnv });
     }
 
     // Determine export method based on environment
@@ -889,6 +1113,17 @@ class ExportService {
       if (pdfArtifactPath) {
         body.pdfArtifactPath = pdfArtifactPath;
       }
+    }
+    // Codex audit response: forward the degraded flag to the server so the
+    // /api/a1/export handler can mirror the client refusal — defence in
+    // depth in case a programmatic caller bypasses exportService.
+    const qa = sheet?.a1ExportQa;
+    if (
+      qa &&
+      (qa.degradedExport === true || qa.status === "degraded") &&
+      qa.allowed !== false
+    ) {
+      body.degradedExport = true;
     }
     return body;
   }
@@ -1140,9 +1375,57 @@ class ExportService {
       return this.exportDXF(sheet);
     }
 
+    if (format === "DWG" || format === "dwg") {
+      return this.exportDWG(sheet);
+    }
+
     throw new Error(
       `${format} export requires a configured DWG conversion provider. DXF is the guaranteed CAD output.`,
     );
+  }
+
+  /**
+   * Phase 5 — DWG export. Posts to /api/project/export/dwg which spawns the
+   * ODA File Converter on the server. On 503 (env not configured) we
+   * surface a clear "Install ODA File Converter" message with the docs
+   * link instead of a generic failure, matching the api/project/export/
+   * dwg.js handler contract.
+   */
+  async exportDWG(sheet) {
+    const compiledProject = this.resolveCompiledProject(sheet);
+    if (!compiledProject?.geometryHash) {
+      throw new Error(
+        "A compiled project is required for DWG export. Generate a design first.",
+      );
+    }
+    const filename = this.generateFilename(sheet, "dwg");
+    const { structural, mep } = this.resolveDrawingDisciplineFlags(sheet);
+    const requestBody = {
+      compiledProject,
+      projectName: this.resolveProjectName(sheet),
+    };
+    if (structural !== null) requestBody.structuralDrawingsEnabled = structural;
+    if (mep !== null) requestBody.mepDrawingsEnabled = mep;
+    const response = await fetch("/api/project/export/dwg", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      const reason =
+        err.code === "DWG_CONVERSION_UNAVAILABLE"
+          ? `${err.error} See ${err.docsUrl}.`
+          : err.error || `DWG export failed: ${response.status}`;
+      const exportError = new Error(reason);
+      exportError.code = err.code || null;
+      exportError.docsUrl = err.docsUrl || null;
+      exportError.statusCode = response.status;
+      throw exportError;
+    }
+    const url = await this.downloadResponseBlob(response, filename);
+    logger.success("DWG export complete", { filename });
+    return { success: true, url, filename, format: "DWG" };
   }
 
   /**
@@ -1153,13 +1436,21 @@ class ExportService {
     const compiledProject = this.resolveCompiledProject(sheet);
     if (compiledProject?.geometryHash) {
       const filename = this.generateFilename(sheet, "dxf");
+      // Phase 2 audit response: thread the same discipline flags the
+      // sheet was generated with into the DXF request so the artifact
+      // matches the IFC + A1 sheets. `null` defers to server env.
+      const { structural, mep } = this.resolveDrawingDisciplineFlags(sheet);
+      const requestBody = {
+        compiledProject,
+        projectName: this.resolveProjectName(sheet),
+      };
+      if (structural !== null)
+        requestBody.structuralDrawingsEnabled = structural;
+      if (mep !== null) requestBody.mepDrawingsEnabled = mep;
       const response = await fetch("/api/project/export/dxf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          compiledProject,
-          projectName: this.resolveProjectName(sheet),
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -1270,13 +1561,21 @@ class ExportService {
     }
 
     const filename = this.generateFilename(sheet, "ifc");
+    // Phase 2 audit response: thread the discipline flags through so the
+    // IFC honours the same intent as the DXF + A1 sheets. `null` defers
+    // to server env-defaults.
+    const { structural, mep } = this.resolveDrawingDisciplineFlags(sheet);
+    const ifcRequestBody = {
+      compiledProject,
+      projectName: this.resolveProjectName(sheet),
+    };
+    if (structural !== null)
+      ifcRequestBody.structuralDrawingsEnabled = structural;
+    if (mep !== null) ifcRequestBody.mepDrawingsEnabled = mep;
     const response = await fetch("/api/project/export/ifc", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        compiledProject,
-        projectName: this.resolveProjectName(sheet),
-      }),
+      body: JSON.stringify(ifcRequestBody),
     });
 
     if (!response.ok) {
@@ -1335,6 +1634,13 @@ class ExportService {
   }
 
   async exportGLB({ sheet }) {
+    const filename = this.generateFilename(sheet, "glb");
+    const compiledProject = this.resolveCompiledProject(sheet);
+
+    // Phase 5 — when the sheet already carries a pre-baked GLB URL (legacy
+    // path / Meshy3D), download it directly. Otherwise, build the GLB on
+    // demand via the server endpoint so the deterministic compiledProject
+    // path produces an artifact even when no pre-rendered model exists.
     const modelUrl =
       sheet?.compiledProject?.artifacts?.glbUrl ||
       sheet?.compiledProject?.artifacts?.modelUrl ||
@@ -1342,20 +1648,37 @@ class ExportService {
       sheet?.masterDNA?.meshy3D?.modelUrl ||
       null;
 
-    if (!modelUrl) {
+    if (modelUrl) {
+      const link = document.createElement("a");
+      link.href = modelUrl;
+      link.download = filename;
+      link.click();
+      logger.success("GLB export complete (pre-baked)", { filename });
+      return { success: true, url: modelUrl, filename, format: "GLB" };
+    }
+
+    if (!compiledProject?.geometryHash) {
       throw new Error(
-        "No GLB model is available for this result. Generate a compiled-project 3D artifact first.",
+        "A compiled project is required for GLB export. Generate a design first.",
       );
     }
 
-    const filename = this.generateFilename(sheet, "glb");
-    const link = document.createElement("a");
-    link.href = modelUrl;
-    link.download = filename;
-    link.click();
-
-    logger.success("GLB export complete", { filename });
-    return { success: true, url: modelUrl, filename, format: "GLB" };
+    const requestBody = {
+      compiledProject,
+      projectName: this.resolveProjectName(sheet),
+    };
+    const response = await fetch("/api/project/export/glb", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || `GLB export failed: ${response.status}`);
+    }
+    const url = await this.downloadResponseBlob(response, filename);
+    logger.success("GLB export complete (compiled-project)", { filename });
+    return { success: true, url, filename, format: "GLB" };
   }
 }
 
