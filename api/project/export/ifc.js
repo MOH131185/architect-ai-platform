@@ -10,14 +10,41 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { compiledProject, projectName = "ArchiAI_Project" } = req.body || {};
+    // Phase 2 audit response: thread the structural/MEP flags from the
+    // request body so the IFC artifact honours caller intent and stays
+    // in sync with the companion DXF + A1 sheets. Previously the route
+    // discarded these fields so structural/MEP-aware callers fell back
+    // to server env defaults. The exporter applies the
+    // explicit-false-wins rule documented at
+    // compiledProjectExportService.exportCompiledProjectToIFC.
+    const {
+      compiledProject,
+      projectName = "ArchiAI_Project",
+      // Phase 2 re-audit fix: accept BOTH alias names so a caller can
+      // veto structural/MEP IFC output with `includeStructuralDrawings:
+      // false` (matches the DXF route + slice service contract). The
+      // exporter applies explicit-false-wins across either alias.
+      structuralDrawingsEnabled,
+      includeStructuralDrawings,
+      mepDrawingsEnabled,
+      includeMepDrawings,
+      jurisdictionPack,
+    } = req.body || {};
     if (!compiledProject?.geometryHash) {
       return res.status(400).json({
         error: "compiledProject with geometryHash is required",
         code: "GEOMETRY_HASH_MISSING",
       });
     }
-    const ifc = exportCompiledProjectToIFC({ compiledProject, projectName });
+    const ifc = exportCompiledProjectToIFC({
+      compiledProject,
+      projectName,
+      structuralDrawingsEnabled,
+      includeStructuralDrawings,
+      mepDrawingsEnabled,
+      includeMepDrawings,
+      jurisdictionPack,
+    });
     const safeName = String(projectName)
       .replace(/[^a-zA-Z0-9_-]/g, "_")
       .slice(0, 80);

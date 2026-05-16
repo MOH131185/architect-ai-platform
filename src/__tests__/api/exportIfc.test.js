@@ -190,4 +190,162 @@ describe("api/project/export/ifc", () => {
     expect(res.statusCode).toBe(400);
     expect(res.body?.code).toBe("GEOMETRY_HASH_MISSING");
   });
+
+  // Phase 2 audit response: the route threads structural/MEP flags into
+  // the IFC export. Explicit false in the body MUST override env true.
+  test("forwards structuralDrawingsEnabled false and suppresses IfcColumn/IfcBeam even when env is true", async () => {
+    const originalStructural = process.env.STRUCTURAL_DRAWINGS_ENABLED;
+    process.env.STRUCTURAL_DRAWINGS_ENABLED = "true";
+    try {
+      const req = {
+        method: "POST",
+        headers: {},
+        body: {
+          compiledProject: fixture({
+            columns: [
+              {
+                id: "c1",
+                memberId: "C1",
+                levelId: "L0",
+                type: "preliminary",
+                position: { x: 5, y: 5 },
+                width_m: 0.3,
+                depth_m: 0.3,
+              },
+            ],
+            beams: [
+              {
+                id: "b1",
+                memberId: "B1",
+                levelId: "L0",
+                type: "preliminary",
+                start: { x: 0, y: 5 },
+                end: { x: 10, y: 5 },
+              },
+            ],
+          }),
+          projectName: "AuditResponseIfc",
+          structuralDrawingsEnabled: false,
+        },
+      };
+      const res = createMockResponse();
+      await handler(req, res);
+      expect(res.statusCode).toBe(200);
+      const body = String(res.body || "");
+      expect(body).not.toContain("IFCCOLUMN(");
+      expect(body).not.toContain("IFCBEAM(");
+    } finally {
+      if (originalStructural === undefined)
+        delete process.env.STRUCTURAL_DRAWINGS_ENABLED;
+      else process.env.STRUCTURAL_DRAWINGS_ENABLED = originalStructural;
+    }
+  });
+
+  // Re-audit fix: the route now forwards BOTH alias names. Codex caught
+  // that `includeStructuralDrawings` / `includeMepDrawings` in the
+  // request body were ignored, so an arch-only request still emitted
+  // IfcColumn/IfcBeam when env was true.
+  test("forwards includeStructuralDrawings:false and suppresses IfcColumn/IfcBeam even when env is true", async () => {
+    const originalStructural = process.env.STRUCTURAL_DRAWINGS_ENABLED;
+    process.env.STRUCTURAL_DRAWINGS_ENABLED = "true";
+    try {
+      const req = {
+        method: "POST",
+        headers: {},
+        body: {
+          compiledProject: fixture({
+            columns: [
+              {
+                id: "c1",
+                memberId: "C1",
+                levelId: "L0",
+                type: "preliminary",
+                position: { x: 5, y: 5 },
+                width_m: 0.3,
+                depth_m: 0.3,
+              },
+            ],
+          }),
+          projectName: "AuditAliasIfc",
+          includeStructuralDrawings: false,
+        },
+      };
+      const res = createMockResponse();
+      await handler(req, res);
+      expect(res.statusCode).toBe(200);
+      const body = String(res.body || "");
+      expect(body).not.toContain("IFCCOLUMN(");
+    } finally {
+      if (originalStructural === undefined)
+        delete process.env.STRUCTURAL_DRAWINGS_ENABLED;
+      else process.env.STRUCTURAL_DRAWINGS_ENABLED = originalStructural;
+    }
+  });
+
+  test("forwards includeMepDrawings:false and suppresses MEP_REVIEW_DISCLAIMER even when env is true", async () => {
+    const originalMep = process.env.MEP_DRAWINGS_ENABLED;
+    process.env.MEP_DRAWINGS_ENABLED = "true";
+    try {
+      const req = {
+        method: "POST",
+        headers: {},
+        body: {
+          compiledProject: fixture(),
+          projectName: "AuditAliasIfc",
+          includeMepDrawings: false,
+        },
+      };
+      const res = createMockResponse();
+      await handler(req, res);
+      expect(res.statusCode).toBe(200);
+      const body = String(res.body || "");
+      expect(body).not.toContain("MEP_REVIEW_DISCLAIMER");
+    } finally {
+      if (originalMep === undefined) delete process.env.MEP_DRAWINGS_ENABLED;
+      else process.env.MEP_DRAWINGS_ENABLED = originalMep;
+    }
+  });
+
+  test("structuralDrawingsEnabled true emits IfcColumn/IfcBeam with IfcExtrudedAreaSolid representation", async () => {
+    const req = {
+      method: "POST",
+      headers: {},
+      body: {
+        compiledProject: fixture({
+          columns: [
+            {
+              id: "c1",
+              memberId: "C1",
+              levelId: "L0",
+              type: "preliminary_column",
+              position: { x: 5, y: 5 },
+              width_m: 0.3,
+              depth_m: 0.3,
+            },
+          ],
+          beams: [
+            {
+              id: "b1",
+              memberId: "B1",
+              levelId: "L0",
+              type: "preliminary_beam",
+              start: { x: 0, y: 5 },
+              end: { x: 10, y: 5 },
+            },
+          ],
+        }),
+        projectName: "AuditResponseIfc",
+        structuralDrawingsEnabled: true,
+      },
+    };
+    const res = createMockResponse();
+    await handler(req, res);
+    expect(res.statusCode).toBe(200);
+    const body = String(res.body || "");
+    expect(body).toContain("IFCCOLUMN(");
+    expect(body).toContain("IFCBEAM(");
+    expect(body).toContain("IFCEXTRUDEDAREASOLID(");
+    expect(body).toContain("'SweptSolid'");
+    expect(body).toContain("PRELIMINARY");
+  });
 });

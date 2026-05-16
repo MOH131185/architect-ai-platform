@@ -278,4 +278,48 @@ describe("exportCompiledProjectToDXF (Tier 3.6)", () => {
     });
     expect(dxf).toMatch(/L00-A-STAIR/);
   });
+
+  // Phase 2 (Track 3): exportCompiledProjectToDXF now threads
+  // structuralDrawingsEnabled / mepDrawingsEnabled through to the
+  // canonical drawing model so structural / MEP layers ride into the DXF
+  // when callers opt in. The architectural-only default path must NOT
+  // leak any S-/E-/P-/M- entities — only the architectural A-* layers
+  // belong by default.
+  test("structural / MEP entities are absent in the architectural-only default", () => {
+    const dxf = exportCompiledProjectToDXF({
+      compiledProject: fixtureCompiledProject(),
+      projectName: "TestProject",
+    });
+    const entityLayers = extractEntityLayers(dxf);
+    expect(entityLayers).not.toEqual(
+      expect.arrayContaining([
+        "S-FOUNDATION",
+        "S-COLUMN",
+        "S-BEAM",
+        "E-LIGHT",
+        "P-WATER",
+        "M-DUCT",
+      ]),
+    );
+  });
+
+  // Phase 2 (Track 3): when structuralDrawingsEnabled is passed through,
+  // the DXF must carry the structural S-* layer set alongside the
+  // architectural A-* layers. Previously exportCompiledProjectToDXF only
+  // threaded the detail-drawings flag, so structural geometry was visible
+  // in IFC but missing in DXF — breaking the handoff contract where both
+  // artifacts share one geometryHash. (MEP plumbing/duct entities require
+  // wet-room / kitchen tagging on the rooms[], which the minimal fixture
+  // here lacks. The full architectural + structural + MEP layer presence
+  // is exercised in handoff-layers.contract.test.js with a richer
+  // fixture.)
+  test("structural layers survive into the DXF when structuralDrawingsEnabled is true", () => {
+    const dxf = exportCompiledProjectToDXF({
+      compiledProject: fixtureCompiledProject(),
+      projectName: "TestProject",
+      structuralDrawingsEnabled: true,
+    });
+    const entityLayers = extractEntityLayers(dxf);
+    expect(entityLayers.some((name) => name.startsWith("S-"))).toBe(true);
+  });
 });
