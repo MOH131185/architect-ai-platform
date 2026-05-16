@@ -138,6 +138,10 @@ export default async function handler(req, res) {
       exportManifest: bundle.exportManifest || null,
       reviewSurface: bundle.reviewSurface || null,
       projectQuantityTakeoff: bundle.projectQuantityTakeoff,
+      // Phase 3 (Track 5): structured cost summary for the
+      // CostSummaryPanel UI. Optional — null when the rate-card resolver
+      // returned no card (pre-Phase-3 path) or the takeoff was empty.
+      costSummary: bundle.costSummary || null,
       blendedStyle: bundle.blendedStyle,
       confidence: bundle.confidence,
       validation: bundle.validation,
@@ -182,6 +186,7 @@ export default async function handler(req, res) {
         reviewSurface: bundle.reviewSurface,
         compiledProject: bundle.compiledProject,
         projectQuantityTakeoff: bundle.projectQuantityTakeoff,
+        costSummary: bundle.costSummary || null,
       },
     });
   } catch (error) {

@@ -24,9 +24,13 @@ const SOURCE = fs.readFileSync(
 );
 
 describe("ExportPanel — inline blocked reason rendering", () => {
-  test("ExportRow declares an inline reason data-testid that is gated on showInlineReason", () => {
+  test("ExportRow declares an inline reason data-testid that is gated on showBlockedReason", () => {
+    // Track 1 (Phase 1) renamed `showInlineReason` → `showBlockedReason`
+    // and introduced a separate `showSubtitle` for the always-visible
+    // degraded "NOT FINAL — not for issue or construction" line. Either
+    // path must still be conditional, not always rendered.
     expect(SOURCE).toMatch(
-      /const\s+showInlineReason\s*=\s*!available\s*&&\s*Boolean\(blockedReason\)/,
+      /const\s+showBlockedReason\s*=\s*isBlocked\s*&&\s*Boolean\(blockedReason\)/,
     );
     expect(SOURCE).toMatch(/data-testid="export-blocked-reason"/);
   });
@@ -34,7 +38,7 @@ describe("ExportPanel — inline blocked reason rendering", () => {
   test("ExportRow short-circuits the inline reason when no blockedReason", () => {
     // The block must be conditional, not always rendered — otherwise we'd
     // print "Not yet generated" under every READY row.
-    expect(SOURCE).toMatch(/showInlineReason\s*&&\s*\(/);
+    expect(SOURCE).toMatch(/showBlockedReason\s*&&\s*\(/);
   });
 
   test("BLOCKED_REASON_LABELS still maps the structured codes ExportPanel cares about", () => {
@@ -113,15 +117,17 @@ describe("ExportPanel — inline blocked reason rendering", () => {
 
   test("ExportPanel reads a1ExportQa.status from designData", () => {
     expect(SOURCE).toMatch(/designData\?\.a1ExportQa/);
-    // Post-UI-smoke QA-wiring fix: sheetQaBlocked must also fire on
-    // `allowed === false`, not only `status === "blocked"`. The
-    // multiline + flexible whitespace allows either ordering after
-    // prettier wraps the line.
+    // Track 1 (Phase 1): sheetQaBlocked now distinguishes hard blocks
+    // from degraded exports. It must fire on `allowed === false` (the
+    // gate's most explicit veto, never softenable) and on legacy
+    // status:"blocked" records without `degradedExport === true`. A
+    // status:"blocked" + degradedExport:true record means the PDF was
+    // emitted with a PRELIMINARY watermark — sheet exports stay open.
     expect(SOURCE).toMatch(
-      /sheetQaBlocked\s*=\s*\n?\s*a1ExportQa\?\.status\s*===\s*"blocked"\s*\|\|\s*a1ExportQa\?\.allowed\s*===\s*false/,
+      /sheetQaBlocked\s*=[\s\S]{0,80}a1ExportQa\?\.allowed\s*===\s*false[\s\S]{0,160}a1ExportQa\?\.status\s*===\s*"blocked"[\s\S]{0,160}a1ExportQa\?\.degradedExport\s*!==\s*true/,
     );
     expect(SOURCE).toMatch(
-      /sheetQaWarning\s*=\s*!sheetQaBlocked\s*&&\s*a1ExportQa\?\.status\s*===\s*"warning"/,
+      /sheetQaWarning\s*=[\s\S]{0,200}a1ExportQa\?\.status\s*===\s*"warning"/,
     );
   });
 
@@ -130,6 +136,16 @@ describe("ExportPanel — inline blocked reason rendering", () => {
     // `allowed: false` but leaves `status: "pass"` or "warning". Without
     // this, exports could slip past the banner + service refusal.
     expect(SOURCE).toMatch(/a1ExportQa\?\.allowed\s*===\s*false/);
+  });
+
+  test("sheetQaDegraded is computed and is mutually exclusive with sheetQaBlocked", () => {
+    // Track 1 (Phase 1) + Codex audit: degraded exports must be a third
+    // state (status "degraded" or degradedExport:true), distinct from
+    // blocked. The two predicates must NEVER both be true for the same
+    // a1ExportQa — `sheetQaDegraded` is gated on `!sheetQaBlocked`.
+    expect(SOURCE).toMatch(
+      /sheetQaDegraded\s*=\s*\n?\s*!sheetQaBlocked\s*&&[\s\S]{0,200}a1ExportQa\?\.degradedExport\s*===\s*true/,
+    );
   });
 
   test("sheet export rows (PNG/PDF) route through the QA-gated helpers", () => {
@@ -158,13 +174,80 @@ describe("ExportPanel — inline blocked reason rendering", () => {
 
   test("QA-blocked banner is rendered with the required testid + role copy", () => {
     expect(SOURCE).toMatch(
-      /data-testid="a1-qa-blocked-banner"[\s\S]{0,300}A1 export blocked — sheet failed final layout\/readability QA\./,
+      /data-testid="a1-qa-blocked-banner"[\s\S]{0,400}A1 export blocked — sheet failed final QA\./,
     );
   });
 
   test("QA-warning banner is rendered when status === 'warning' and not blocked", () => {
     expect(SOURCE).toMatch(/data-testid="a1-qa-warning-banner"/);
-    expect(SOURCE).toMatch(/\{sheetQaWarning\s*&&\s*!sheetQaBlocked\s*&&/);
+    // Track 1 (Phase 1): `sheetQaWarning` is itself defined as
+    // `!sheetQaBlocked && !sheetQaDegraded && status === "warning"`, so
+    // the JSX condition is now just `{sheetQaWarning && (`. The
+    // exclusivity used to be re-asserted in the JSX expression; that
+    // duplication is gone.
+    expect(SOURCE).toMatch(/\{sheetQaWarning\s*&&\s*\(/);
+  });
+
+  // --------------------------------------------------------------------
+  // Track 1 (Phase 1) + Codex audit: degraded export contract
+  // --------------------------------------------------------------------
+
+  test("QA-degraded banner is rendered with PRELIMINARY copy when degradedExport is true", () => {
+    expect(SOURCE).toMatch(/data-testid="a1-qa-degraded-banner"/);
+    expect(SOURCE).toMatch(
+      /data-testid="a1-qa-degraded-banner"[\s\S]{0,500}Export degraded — PDF emitted with PRELIMINARY stamp\./,
+    );
+  });
+
+  test("Copy QA report button is reachable from every QA banner", () => {
+    // The Copy button uses a single internal `CopyQaReportButton` helper
+    // — must be invoked from blocked, degraded, and warning banner JSX.
+    const matches = SOURCE.match(/<CopyQaReportButton\s+tone=/g) || [];
+    expect(matches.length).toBeGreaterThanOrEqual(3);
+    expect(SOURCE).toMatch(/data-testid="a1-qa-copy-report"/);
+  });
+
+  test("sheet export rows (PDF/PNG) receive degraded status + NOT-FINAL subtitle", () => {
+    // Codex audit blocker: degraded sheet rows must NEVER render as plain
+    // green READY. The PDF/PNG rows must take `status` + `subtitle` props
+    // wired to the QA-aware helpers; ExportRow then renders an amber
+    // PRELIMINARY chip + the "NOT FINAL — not for issue or construction"
+    // subtitle line.
+    expect(SOURCE).toMatch(
+      /label="Export as PDF"[\s\S]{0,400}status=\{sheetExportStatus\("pdf"\)\}/,
+    );
+    expect(SOURCE).toMatch(
+      /label="Export as PDF"[\s\S]{0,400}subtitle=\{sheetExportSubtitle\("pdf"\)\}/,
+    );
+    expect(SOURCE).toMatch(
+      /label="Export as PNG"[\s\S]{0,400}status=\{sheetExportStatus\("png"\)\}/,
+    );
+    expect(SOURCE).toMatch(
+      /label="Export as PNG"[\s\S]{0,400}subtitle=\{sheetExportSubtitle\("png"\)\}/,
+    );
+    expect(SOURCE).toMatch(
+      /sheetExportSubtitle\s*=[\s\S]{0,200}NOT FINAL — not for issue or construction/,
+    );
+  });
+
+  test("ExportRow renders a degraded subtitle data-testid when status is 'degraded'", () => {
+    // Confirms the ExportRow component itself exposes a regression marker
+    // so QA / a11y tooling can detect the degraded visual without
+    // inspecting style classes.
+    expect(SOURCE).toMatch(
+      /data-testid=\{[\s\S]{0,80}"export-degraded-subtitle"[\s\S]{0,80}\}/,
+    );
+    expect(SOURCE).toMatch(
+      /data-export-degraded=\{isDegraded\s*\?\s*"true"\s*:\s*undefined\}/,
+    );
+  });
+
+  test("ExportRow disables the button only for hard-blocked rows; degraded stays clickable", () => {
+    // The watermarked PDF is still meant to be downloadable. ExportRow
+    // must not flip `disabled` on degraded rows.
+    expect(SOURCE).toMatch(
+      /const\s+isDisabled\s*=\s*isBlocked\s*\|\|\s*\(!available\s*&&\s*!isDegraded\)/,
+    );
   });
 
   test("engineering rows still use the Phase-2 helpers — QA gate is sheet-scoped only", () => {
