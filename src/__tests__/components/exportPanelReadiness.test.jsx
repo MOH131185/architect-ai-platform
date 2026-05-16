@@ -138,7 +138,13 @@ describe("ExportPanel readiness rendering", () => {
     unmount();
   });
 
-  test("no DWG row is rendered", () => {
+  test("DWG row is rendered, blocked when converter capabilities are missing (Phase 5 — Codex audit)", () => {
+    // Phase 5 introduced an explicit DWG row gated by the manifest's
+    // `dwgConverterCapabilities` snapshot. Phase 6 merge-audit blocker B
+    // tightened the error contract: "no DWG row" is no longer the right
+    // behaviour — the row is always rendered, and the manifest decides
+    // available vs blocked. When no capabilities are passed (this case),
+    // the row should be BLOCKED with DWG_CONVERSION_UNAVAILABLE.
     const designData = {
       compiledProject: compiledWithGeometry(),
       exportManifest: buildClientExportManifest({
@@ -150,8 +156,10 @@ describe("ExportPanel readiness rendering", () => {
       <ExportPanel designData={designData} onExport={jest.fn()} />,
     );
 
-    const dwgRow = rowByLabel(container, "DWG");
-    expect(dwgRow).toBeUndefined();
+    const dwgRow = rowByLabel(container, "Export as DWG");
+    expect(dwgRow).toBeTruthy();
+    expect(dwgRow.disabled).toBe(true);
+    expect(dwgRow.getAttribute("data-export-status")).toBe("blocked");
 
     unmount();
   });

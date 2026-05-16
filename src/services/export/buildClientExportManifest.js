@@ -17,8 +17,15 @@
  *   - IFC  : exportCompiledProjectToIFC  (requires geometryHash, IFC4)
  *   - JSON : compiled project authority bundle (requires geometryHash)
  *   - XLSX : cost workbook (requires geometryHash + non-empty takeoff)
- *   - DWG  : no real converter — always blocked
- *   - GLB  : surfaced only when compiledProject.artifacts.glbUrl exists
+ *   - DWG  : Phase 5 — available when the server has ODA File Converter
+ *           configured (signalled by `dwgConverterCapabilities.available`
+ *           passed in from the caller). When unconfigured, blocked with
+ *           DWG_CONVERSION_UNAVAILABLE + docsUrl so the UI can render
+ *           "Install ODA File Converter (link)".
+ *   - GLB  : Phase 5 — available on demand whenever a compiledProject with
+ *           geometryHash is in scope; on-demand build via
+ *           /api/project/export/glb. Pre-baked artifacts.glbUrl is still
+ *           honoured for legacy callers and history-restored designs.
  */
 
 const BLOCKED_REASONS = Object.freeze({
@@ -37,20 +44,81 @@ const BLOCKED_REASONS = Object.freeze({
 // `compiledProject` payload. ExportPanel uses this list to gate restored
 // history designs (PNG / PDF / SVG continue to work via the A1 sheet
 // artifact which IS persisted).
-const ENGINEERING_EXPORT_KEYS = Object.freeze(["dxf", "ifc", "json", "xlsx"]);
+//
+// Phase 5 — Codex audit blocker #3. GLB is now an on-demand build from
+// the full compiledProject, so it also belongs in the engineering list:
+// without the in-scope compiledProject body, the on-demand build cannot
+// run. Restored-history designs with a pre-baked `artifacts.glbUrl`
+// short-circuit this gate inside applyHistoryRestoreGate (the entry's
+// `url` survives history).
+const ENGINEERING_EXPORT_KEYS = Object.freeze([
+  "dxf",
+  "ifc",
+  "json",
+  "xlsx",
+  "glb",
+]);
 
-function entry({ available, format, blockedReason, ...rest }) {
+// Phase 6 follow-up — Codex final-merge audit blocker A.
+//
+// Engineering rows (DXF / IFC / DWG / GLB) used to render through the
+// default available -> ready path, surfacing as a plain green "READY"
+// chip. That's misleading: every one of those formats is a
+// coordination/preliminary deliverable — they MUST be re-checked by a
+// human or external tool before being used downstream. issueGrade is
+// the signal: ExportPanel maps `coordination` to an amber "COORDINATION"
+// chip with a subtitle explaining the row, instead of solid green.
+//
+//   "for_construction" — release-quality (PNG/PDF of the A1 sheet)
+//   "coordination"     — reference/coordination export (DXF, IFC, GLB,
+//                        DWG, JSON authority bundle)
+//   "preliminary"      — preliminary/draft output (handoff readme/index)
+//   "quantity_only"    — XLSX without rates (quantities present, costs
+//                        not priced — see costSummary.requiresReview)
+//
+// Callers don't have to pass issueGrade; the manifest defaults each row
+// to a sensible grade based on format and is forward-compatible with
+// older clients (which still see `available: true/false`).
+function entry({
+  available,
+  format,
+  blockedReason,
+  requiresReview,
+  requiresReviewReason,
+  issueGrade,
+  issueGradeLabel,
+  issueGradeReason,
+  ...rest
+}) {
   const row = { available: Boolean(available), format, ...rest };
   if (!available && blockedReason) row.blockedReason = blockedReason;
+  // Phase 3 audit response: `requiresReview` is a non-blocking degrade
+  // signal — the row stays available, but the UI flags it as requiring
+  // manual review before downloading.
+  if (available && requiresReview === true) {
+    row.requiresReview = true;
+    if (requiresReviewReason) row.requiresReviewReason = requiresReviewReason;
+  }
+  if (available && issueGrade) {
+    row.issueGrade = issueGrade;
+    if (issueGradeLabel) row.issueGradeLabel = issueGradeLabel;
+    if (issueGradeReason) row.issueGradeReason = issueGradeReason;
+  }
   return row;
 }
 
 export function buildClientExportManifest({
   compiledProject = null,
   projectQuantityTakeoff = null,
+  costSummary = null,
   geometryHash = null,
   projectName = "ArchiAI Project",
   pipelineVersion = "project-graph-vertical-slice-v1",
+  // Phase 5 — Codex audit blocker #3. The vertical-slice caller threads
+  // the DWG capability summary in so the manifest can render DWG as
+  // available when the server's ODA File Converter is configured, and
+  // blocked with the docsUrl when it isn't.
+  dwgConverterCapabilities = null,
 } = {}) {
   const resolvedHash = geometryHash || compiledProject?.geometryHash || null;
   const hasCompiledProject = Boolean(compiledProject);
@@ -68,6 +136,40 @@ export function buildClientExportManifest({
     compiledProject?.artifacts?.modelGlb ||
     compiledProject?.artifacts?.modelUrl ||
     null;
+  // Phase 3 audit response: cost coverage / rate-card-fallback signals
+  // downgrade the XLSX row to "requires review" (amber) instead of
+  // showing READY when the workbook would ship with missing rates or a
+  // proxy rate card. ExportPanel renders this as an amber chip + a
+  // "Requires review" subtitle.
+  const costRequiresReview =
+    costSummary != null &&
+    (costSummary.requiresReview === true ||
+      Boolean(costSummary.missingRatesWarning) ||
+      Boolean(costSummary.rateCardFallbackWarning));
+  // Codex merge-audit blocker A — quantity-only path. Distinguishes a
+  // workbook where NO items are rated (issueGrade: "quantity_only", a
+  // stronger amber than "REQUIRES REVIEW") from one where SOME items
+  // are rated but coverage is partial (still "REQUIRES REVIEW").
+  const xlsxQuantityOnly =
+    costSummary != null &&
+    (Number(costSummary.ratedItemCount) === 0 ||
+      Number(costSummary.costCoveragePercent) === 0);
+  const costRequiresReviewReason = (() => {
+    if (!costSummary) return null;
+    if (
+      costSummary.missingRatesWarning &&
+      costSummary.rateCardFallbackWarning
+    ) {
+      return `${costSummary.rateCardFallbackWarning.code} + ${costSummary.missingRatesWarning.code}: rate card is a proxy and ${costSummary.missingRateItems?.length || 0} takeoff items are unpriced (coverage ${costSummary.costCoveragePercent}%).`;
+    }
+    if (costSummary.missingRatesWarning) {
+      return `${costSummary.missingRatesWarning.code}: ${costSummary.missingRateItems?.length || 0} takeoff items are unpriced (coverage ${costSummary.costCoveragePercent}%) — reviewer must price manually.`;
+    }
+    if (costSummary.rateCardFallbackWarning) {
+      return `${costSummary.rateCardFallbackWarning.code}: rate card is a residential proxy — adjust rates before issuing.`;
+    }
+    return null;
+  })();
 
   const geometryBlockedReason = hasCompiledProject
     ? BLOCKED_REASONS.GEOMETRY_HASH_MISSING
@@ -102,6 +204,10 @@ export function buildClientExportManifest({
         method: "POST",
         endpoint: "/api/project/export/dxf",
         blockedReason: geometryBlockedReason,
+        issueGrade: "coordination",
+        issueGradeLabel: "COORDINATION",
+        issueGradeReason:
+          "DXF is a coordination export. Re-check layers + dimensions + scale against the A1 sheet before issuing to consultants.",
       }),
       ifc: entry({
         available: ifcGeometrySufficient,
@@ -109,6 +215,10 @@ export function buildClientExportManifest({
         method: "POST",
         endpoint: "/api/project/export/ifc",
         blockedReason: ifcGeometrySufficient ? null : ifcBlockedReason(),
+        issueGrade: "coordination",
+        issueGradeLabel: "COORDINATION",
+        issueGradeReason:
+          "IFC carries STRUCTURAL_REVIEW_DISCLAIMER + MEP_REVIEW_DISCLAIMER. Licensed engineer review required before construction use.",
       }),
       json: entry({
         available: hasGeometry,
@@ -116,6 +226,10 @@ export function buildClientExportManifest({
         method: "POST",
         endpoint: "/api/project/export/json",
         blockedReason: hasGeometry ? null : geometryBlockedReason,
+        issueGrade: "coordination",
+        issueGradeLabel: "COORDINATION",
+        issueGradeReason:
+          "Authority JSON bundle is a coordination artifact for downstream tooling. Not a contract document.",
       }),
       xlsx: entry({
         available: hasGeometry && hasTakeoff,
@@ -125,16 +239,83 @@ export function buildClientExportManifest({
         blockedReason: hasGeometry
           ? BLOCKED_REASONS.QUANTITY_TAKEOFF_UNAVAILABLE
           : geometryBlockedReason,
+        // Phase 3 audit response: when the workbook would emit with
+        // missing rates or a fallback rate card, mark the row as
+        // requiring review. ExportPanel renders this as an amber chip.
+        requiresReview: hasGeometry && hasTakeoff && costRequiresReview,
+        requiresReviewReason: costRequiresReview
+          ? costRequiresReviewReason
+          : null,
+        // Codex merge-audit blocker A — quantity-only path. When the
+        // workbook would ship with zero rated items the row is
+        // "QUANTITY ONLY" (a stronger, more honest signal than
+        // "REQUIRES REVIEW"). costSummary.ratedItemCount === 0 OR
+        // costSummary.costCoveragePercent === 0 → quantity-only.
+        // requiresReview still wins when SOME items are rated but
+        // coverage is partial.
+        issueGrade:
+          hasGeometry && hasTakeoff
+            ? xlsxQuantityOnly
+              ? "quantity_only"
+              : costRequiresReview
+                ? "coordination"
+                : "coordination"
+            : undefined,
+        issueGradeLabel:
+          hasGeometry && hasTakeoff
+            ? xlsxQuantityOnly
+              ? "QUANTITY ONLY"
+              : "COORDINATION"
+            : undefined,
+        issueGradeReason:
+          hasGeometry && hasTakeoff
+            ? xlsxQuantityOnly
+              ? "Workbook ships with takeoff quantities but no rated items. Add a rate card before treating any totals as priced."
+              : "Cost workbook is a coordination artifact. Rates must be reviewed against the local market before issuing."
+            : undefined,
       }),
       dwg: entry({
-        available: false,
+        available: Boolean(
+          hasGeometry && dwgConverterCapabilities?.available === true,
+        ),
         format: "DWG",
-        blockedReason: BLOCKED_REASONS.DWG_CONVERSION_UNAVAILABLE,
+        method: "POST",
+        endpoint: "/api/project/export/dwg",
+        blockedReason: hasGeometry
+          ? dwgConverterCapabilities?.available === true
+            ? null
+            : BLOCKED_REASONS.DWG_CONVERSION_UNAVAILABLE
+          : geometryBlockedReason,
+        // Surface the docsUrl + provider info so the ExportPanel can
+        // render a "Install ODA File Converter" hint instead of a blunt
+        // BLOCKED chip.
+        docsUrl: dwgConverterCapabilities?.docsUrl || null,
+        converterReason: dwgConverterCapabilities?.reason || null,
+        converterProvider: dwgConverterCapabilities?.provider || null,
+        issueGrade: "coordination",
+        issueGradeLabel: "COORDINATION",
+        issueGradeReason:
+          "DWG is an AutoCAD-native coordination export. Treat as DXF parity — re-check before issuing.",
       }),
       glb: entry({
-        available: Boolean(glbUrl),
+        // Phase 5: GLB is available whenever the server can build one
+        // on demand from a compiledProject + geometryHash. Pre-baked
+        // glbUrl is kept as a stronger signal (legacy / Meshy3D path)
+        // but is no longer required for available:true.
+        available: Boolean(glbUrl) || Boolean(hasGeometry),
         format: "GLB",
+        method: glbUrl ? "GET" : "POST",
+        endpoint: glbUrl ? null : "/api/project/export/glb",
         url: glbUrl,
+        source: glbUrl ? "pre_baked_artifact" : "on_demand_compiled_project",
+        blockedReason:
+          Boolean(glbUrl) || Boolean(hasGeometry)
+            ? null
+            : geometryBlockedReason,
+        issueGrade: "coordination",
+        issueGradeLabel: "COORDINATION",
+        issueGradeReason:
+          "GLB is a deterministic 3D model for coordination/visualisation tools. Not a fabrication-ready BIM file.",
       }),
     },
   };
@@ -238,11 +419,16 @@ export function buildExportManifestFromSummary({
  * Rule: when `restoredFromHistory === true` AND no `compiledProject` is in
  * scope, force every engineering key (`ENGINEERING_EXPORT_KEYS`) to
  * `available: false` with the structured reason
- * `REGENERATE_REQUIRED_FOR_ENGINEERING_EXPORT`. PNG / PDF / SVG / GLB / DWG
+ * `REGENERATE_REQUIRED_FOR_ENGINEERING_EXPORT`. PNG / PDF / SVG / DWG
  * are not touched — sheet exports flow through the Phase 1 compact-
- * reference route and survive history reload; the DWG row stays blocked
- * for its own reason (no converter); GLB requires a glbUrl that's already
- * lost when compiledProject is.
+ * reference route and survive history reload; the DWG row already
+ * carries its own structured blocked reason set by buildClientExportManifest.
+ *
+ * Phase 5 — Codex audit follow-up — GLB IS gated by this function because
+ * the on-demand build path needs the full compiledProject body. The only
+ * exception is when the restored manifest preserves a pre-baked
+ * `glb.url` (legacy / Meshy3D path): that download URL survives history
+ * even when the compiledProject does not, so we keep that row available.
  *
  * The function preserves the input manifest's other fields (geometryHash,
  * schema_version, projectName, etc.) so the Authority chip in the panel
@@ -261,6 +447,11 @@ export function applyHistoryRestoreGate({
   const exportsOut = { ...exportsIn };
   for (const key of ENGINEERING_EXPORT_KEYS) {
     if (!exportsOut[key]) continue;
+    // GLB exception: if the restored manifest already carries a pre-baked
+    // glbUrl from a prior generation, leave that row available. The
+    // on-demand build path needs compiledProject; the pre-baked path does
+    // not.
+    if (key === "glb" && exportsOut.glb?.url) continue;
     exportsOut[key] = {
       ...exportsOut[key],
       available: false,

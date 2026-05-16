@@ -475,6 +475,162 @@ export function generateSVGStyles(style) {
   `;
 }
 
+// =============================================================================
+// PHASE 4 (Track 2) — Elevation SVG helpers
+// =============================================================================
+//
+// Deterministic SVG fragments that elevation rendering can append to enrich
+// the presentation without compromising geometry authority:
+//   - groundHatch(...)         : diagonal earth hatch below the ground line
+//   - shadowStyle45(...)       : 45° drop-shadow path styling (eaves / reveals)
+//   - materialLegendStrip(...) : per-material swatch row keyed off the
+//                                materialDNA / vernacular pack
+//
+// All three are PURE — they take inputs and return SVG strings. No I/O, no
+// side effects, no dependency on the building model. The elevation
+// projection chooses when to call them via panel-spec flags
+// (`showGroundHatch`, `showShadow`, `showMaterialLegend`).
+
+/**
+ * Diagonal earth/ground hatch fragment.
+ *
+ * Renders parallel 45° lines covering the area BELOW the ground line of an
+ * elevation panel. The hatch is purely cosmetic — it does NOT shift the
+ * ground line itself, which remains the architectural datum.
+ *
+ * @param {object} opts
+ * @param {number} opts.x        - left edge of the hatch band (px)
+ * @param {number} opts.y        - top edge of the hatch band (px, == ground line y)
+ * @param {number} opts.width    - hatch band width (px)
+ * @param {number} opts.height   - hatch band depth below ground line (px)
+ * @param {number} [opts.spacing=10]  - distance between hatch lines (px)
+ * @param {string} [opts.color="#9A8870"] - hatch line colour
+ * @param {number} [opts.strokeWidth=0.5] - hatch line stroke width (px)
+ * @returns {string} SVG fragment
+ */
+export function groundHatch({
+  x,
+  y,
+  width,
+  height,
+  spacing = 10,
+  color = "#9A8870",
+  strokeWidth = 0.5,
+} = {}) {
+  if (!(width > 0) || !(height > 0)) return "";
+  const lines = [];
+  // Draw lines whose start sits along the top edge and bottom edge to
+  // produce a continuous 45° pattern across the whole rectangle.
+  const total = Math.ceil((width + height) / spacing);
+  for (let i = 0; i <= total; i += 1) {
+    const offset = i * spacing;
+    const x1 = x + offset;
+    const y1 = y;
+    const x2 = x + offset - height;
+    const y2 = y + height;
+    const clampedX1 = Math.min(Math.max(x1, x), x + width);
+    const clampedY1 = clampedX1 === x1 ? y1 : y1 + (x1 - clampedX1);
+    const clampedX2 = Math.max(Math.min(x2, x + width), x);
+    const clampedY2 = clampedX2 === x2 ? y2 : y2 - (clampedX2 - x2);
+    if (clampedX1 === clampedX2 && clampedY1 === clampedY2) continue;
+    lines.push(
+      `<line x1="${clampedX1.toFixed(2)}" y1="${clampedY1.toFixed(2)}" ` +
+        `x2="${clampedX2.toFixed(2)}" y2="${clampedY2.toFixed(2)}" ` +
+        `stroke="${color}" stroke-width="${strokeWidth}"/>`,
+    );
+  }
+  return `<g class="ground-hatch" data-spacing="${spacing}">${lines.join("")}</g>`;
+}
+
+/**
+ * 45° drop-shadow style helper.
+ *
+ * Returns SVG `<style>` + class definitions that elevation rendering can
+ * apply to roof eaves and window reveals to cast a 45° shadow polygon
+ * below the projecting feature. The geometry of the shadow polygon must
+ * be computed by the elevation rendering itself (it knows the eave and
+ * reveal projections); this helper only standardises the look.
+ *
+ * @param {object} opts
+ * @param {number} [opts.azimuth=45]    - shadow azimuth in degrees (sun)
+ * @param {number} [opts.elevation=30]  - sun altitude in degrees
+ * @param {number} [opts.opacity=0.18]  - shadow fill opacity (0-1)
+ * @param {string} [opts.color="#1f2a3a"] - shadow fill colour
+ * @returns {string} SVG <defs>+<style> fragment
+ */
+export function shadowStyle45({
+  azimuth = 45,
+  elevation = 30,
+  opacity = 0.18,
+  color = "#1f2a3a",
+} = {}) {
+  return (
+    `<defs data-shadow-azimuth="${azimuth}" data-shadow-elevation="${elevation}">` +
+    `<style><![CDATA[` +
+    `.elevation-shadow{fill:${color};fill-opacity:${opacity};stroke:none;}` +
+    `.elevation-shadow-line{stroke:${color};stroke-opacity:${opacity};stroke-width:0.6;fill:none;}` +
+    `]]></style>` +
+    `</defs>`
+  );
+}
+
+/**
+ * Material legend strip — small swatch row keyed off the vernacular /
+ * materialDNA palette. Renders horizontally along the foot of the
+ * elevation panel.
+ *
+ * @param {Array<{name:string,color:string,role?:string}>} materials
+ * @param {object} opts
+ * @param {number} opts.x         - left edge (px)
+ * @param {number} opts.y         - top edge (px)
+ * @param {number} [opts.width=420]    - total width (px)
+ * @param {number} [opts.height=22]    - strip height (px)
+ * @param {number} [opts.swatchWidth=24]   - per-swatch width (px)
+ * @param {string} [opts.background="#fafafa"]
+ * @param {string} [opts.border="#cccccc"]
+ * @returns {string} SVG fragment
+ */
+export function materialLegendStrip(
+  materials = [],
+  {
+    x,
+    y,
+    width = 420,
+    height = 22,
+    swatchWidth = 24,
+    background = "#fafafa",
+    border = "#cccccc",
+  } = {},
+) {
+  if (!Array.isArray(materials) || materials.length === 0) return "";
+  const entries = materials.filter(Boolean).slice(0, Math.floor(width / 60));
+  const rowY = y + 2;
+  const labelY = y + height - 5;
+  let cursorX = x + 6;
+  const items = entries
+    .map((m) => {
+      const fill = String(m?.color || m?.fill || "#dddddd");
+      const label = String(m?.label || m?.name || m?.role || "material");
+      const swatch = `<rect x="${cursorX.toFixed(2)}" y="${rowY.toFixed(2)}" width="${swatchWidth}" height="${(height - 8).toFixed(2)}" fill="${fill}" stroke="${border}" stroke-width="0.5"/>`;
+      const text = `<text x="${(cursorX + swatchWidth + 4).toFixed(2)}" y="${labelY.toFixed(2)}" font-family="EmbeddedSans, Arial, sans-serif" font-size="8" fill="#333">${escapeXmlChars(label)}</text>`;
+      cursorX += swatchWidth + 4 + Math.min(120, label.length * 5 + 10);
+      return swatch + text;
+    })
+    .join("");
+  const frame = `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="${background}" stroke="${border}" stroke-width="0.5"/>`;
+  return `<g class="material-legend">${frame}${items}</g>`;
+}
+
+function escapeXmlChars(str) {
+  if (str == null) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
 export default {
   getStylePreset,
   generateSVGStyles,
@@ -482,4 +638,7 @@ export default {
   CONVENTIONS,
   LINE_WEIGHTS_MM,
   lineWeightToPx,
+  groundHatch,
+  shadowStyle45,
+  materialLegendStrip,
 };

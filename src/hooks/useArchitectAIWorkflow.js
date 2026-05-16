@@ -1470,6 +1470,13 @@ async function runProjectGraphVerticalSliceWorkflow({
     // fields to preserve rather than a moving artifacts tree shape).
     projectQuantityTakeoff:
       verticalSlice.artifacts?.projectQuantityTakeoff || null,
+    // Phase 3 audit response: surface costSummary at the top-level
+    // workflow output so ExportPanel renders the CostSummaryPanel on
+    // the ProjectGraph path (the production surface). Reads from both
+    // the slice's top-level and artifacts to keep design-history
+    // hydration robust.
+    costSummary:
+      verticalSlice.costSummary || verticalSlice.artifacts?.costSummary || null,
     sheetArtifactManifest:
       verticalSlice.artifacts?.sheetArtifactManifest ||
       verticalSlice.sheetArtifactManifest ||
@@ -1501,6 +1508,23 @@ async function runProjectGraphVerticalSliceWorkflow({
       compiledProject: verticalSlice.artifacts?.compiledProject || null,
       projectQuantityTakeoff:
         verticalSlice.artifacts?.projectQuantityTakeoff || null,
+      // Phase 3 audit response: thread costSummary into the manifest so
+      // the XLSX row downgrades to amber "requires review" when the
+      // workbook would ship with missing rates or a fallback rate card.
+      costSummary:
+        verticalSlice.costSummary ||
+        verticalSlice.artifacts?.costSummary ||
+        null,
+      // Phase 5 — thread the server-resolved DWG capability snapshot.
+      // When the server has ODA File Converter wired, this carries
+      // `available:true`; the manifest then marks the DWG row READY.
+      // When unset (no server response or no env), DWG stays blocked
+      // with DWG_CONVERSION_UNAVAILABLE + docsUrl. The capabilities
+      // probe lives in src/services/cad/dwgConversionAdapter.js.
+      dwgConverterCapabilities:
+        verticalSlice.dwgConverterCapabilities ||
+        verticalSlice.artifacts?.dwgConverterCapabilities ||
+        null,
       geometryHash: verticalSlice.geometryHash || null,
       projectName:
         verticalSlice.projectName ||
@@ -1775,6 +1799,14 @@ export function useArchitectAIWorkflow() {
                 compiledProject,
                 projectQuantityTakeoff,
                 geometryHash,
+                // Phase 5 — pass through any DWG capability snapshot the
+                // server attached to the result so the DWG row reflects
+                // the real adapter state instead of being permanently
+                // blocked. Default null → blocked + DWG_CONVERSION_UNAVAILABLE.
+                dwgConverterCapabilities:
+                  multiPanelResult?.dwgConverterCapabilities ||
+                  multiPanelResult?.artifacts?.dwgConverterCapabilities ||
+                  null,
                 projectName:
                   params.designSpec?.projectName ||
                   multiPanelResult?.projectName ||

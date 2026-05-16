@@ -1,0 +1,79 @@
+{
+  "schema_version": "cost-rate-card-v2",
+  "id": "uk_commercial_v1",
+  "version": "1.0.0",
+  "currency": "GBP",
+  "region": "uk-average",
+  "disclaimer": "Preliminary indicative rates for UK commercial typologies (office, retail, hospitality, mixed-use). NOT a contractor quotation. Excludes VAT, professional fees, statutory fees, contingency, fit-out beyond shell-and-core, abnormals, and ground / infrastructure works unless explicitly stated. Use as Stage 2 order-of-magnitude only.",
+  "buildingTypes": {
+    "commercial": {
+      "confidence": "low",
+      "confidenceWidths": {
+        "areas": { "low": 0.88, "high": 1.15 },
+        "envelope": { "low": 0.85, "high": 1.2 },
+        "finishes": { "low": 0.75, "high": 1.3 },
+        "counts": { "low": 0.85, "high": 1.18 },
+        "fitOut": { "low": 0.7, "high": 1.4 },
+        "mep": { "low": 0.8, "high": 1.25 }
+      },
+      "rates": {
+        "areas": {
+          "Gross Floor Area": 2200,
+          "Slab Area": 180,
+          "Roof Area": 180
+        },
+        "envelope": {
+          "External Wall Area": 180,
+          "External Wall Length": 0,
+          "Glazing Area": 750,
+          "Envelope Perimeter": 58
+        },
+        "finishes": {
+          "Internal Floor Finish": 78
+        },
+        "counts": {
+          "Doors": 520,
+          "Windows": 950,
+          "Stairs": 6800,
+          "Doors (small)": 440,
+          "Doors (medium)": 520,
+          "Doors (large)": 740,
+          "Windows (small)": 700,
+          "Windows (medium)": 950,
+          "Windows (large)": 1320
+        },
+        "fitOut": {
+          "Kitchen": 12000,
+          "Bathroom": 7400
+        },
+        "mep": {
+          "Lighting Point": 125,
+          "Power Socket": 75,
+          "Switch": 55,
+          "Data Outlet": 140,
+          "Sanitary Fixture": 680,
+          "Drainage Outlet": 260,
+          "Ventilation Extract": 540
+        }
+      }
+    }
+  },
+  "regionFactors": {
+    "london": 1.18,
+    "south-east": 1.08,
+    "uk-average": 1.0,
+    "midlands": 0.97,
+    "northern": 0.93,
+    "scotland": 0.95,
+    "wales": 0.94
+  },
+  "qualityFactors": {
+    "baseline": 0.88,
+    "mid": 1.0,
+    "premium": 1.22
+  },
+  "contingency": {
+    "defaultPercent": 12,
+    "rationale": "Stage 2 design contingency for commercial typologies. Commercial schemes have wider rate variance than residential (fit-out scope, tenant brief), so contingency runs slightly higher than the residential default."
+  }
+}

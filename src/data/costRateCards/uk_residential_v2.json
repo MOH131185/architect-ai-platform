@@ -1,0 +1,79 @@
+{
+  "schema_version": "cost-rate-card-v2",
+  "id": "uk_residential_v2",
+  "version": "2.0.0",
+  "currency": "GBP",
+  "region": "uk-average",
+  "disclaimer": "Preliminary indicative rates for UK residential typologies (detached, semi-detached, terraced, apartment). NOT a contractor quotation. Excludes VAT, professional fees, statutory fees, contingency, abnormals, and ground / infrastructure works unless explicitly stated. Use as Stage 2 order-of-magnitude only.",
+  "buildingTypes": {
+    "residential": {
+      "confidence": "medium",
+      "confidenceWidths": {
+        "areas": { "low": 0.92, "high": 1.1 },
+        "envelope": { "low": 0.88, "high": 1.15 },
+        "finishes": { "low": 0.8, "high": 1.25 },
+        "counts": { "low": 0.9, "high": 1.12 },
+        "fitOut": { "low": 0.8, "high": 1.25 },
+        "mep": { "low": 0.85, "high": 1.2 }
+      },
+      "rates": {
+        "areas": {
+          "Gross Floor Area": 1650,
+          "Slab Area": 140,
+          "Roof Area": 155
+        },
+        "envelope": {
+          "External Wall Area": 125,
+          "External Wall Length": 0,
+          "Glazing Area": 520,
+          "Envelope Perimeter": 42
+        },
+        "finishes": {
+          "Internal Floor Finish": 48
+        },
+        "counts": {
+          "Doors": 420,
+          "Windows": 860,
+          "Stairs": 4800,
+          "Doors (small)": 360,
+          "Doors (medium)": 420,
+          "Doors (large)": 580,
+          "Windows (small)": 620,
+          "Windows (medium)": 860,
+          "Windows (large)": 1180
+        },
+        "fitOut": {
+          "Kitchen": 8400,
+          "Bathroom": 6200
+        },
+        "mep": {
+          "Lighting Point": 95,
+          "Power Socket": 65,
+          "Switch": 45,
+          "Data Outlet": 110,
+          "Sanitary Fixture": 540,
+          "Drainage Outlet": 220,
+          "Ventilation Extract": 380
+        }
+      }
+    }
+  },
+  "regionFactors": {
+    "london": 1.14,
+    "south-east": 1.06,
+    "uk-average": 1.0,
+    "midlands": 0.98,
+    "northern": 0.94,
+    "scotland": 0.95,
+    "wales": 0.95
+  },
+  "qualityFactors": {
+    "baseline": 0.92,
+    "mid": 1.0,
+    "premium": 1.15
+  },
+  "contingency": {
+    "defaultPercent": 10,
+    "rationale": "Stage 2 design contingency for residential schemes. Applies on top of estimated subtotals to absorb design development, statutory compliance fluctuation, and minor scope evolution. Excludes construction contingency, which is procured downstream."
+  }
+}

@@ -1,5 +1,6 @@
 import { setCorsHeaders, handlePreflight } from "../../_shared/cors.js";
 import { buildArtifactPackageWithPdfStitching } from "../../../src/services/export/artifactPackageService.js";
+import { buildHandoffArtifactPackage } from "../../../src/services/export/handoffPackageService.js";
 import { exportCompiledProjectToDXF } from "../../../src/services/project/compiledProjectExportService.js";
 
 function safeProjectName(value, fallback = "ArchiAI_Project") {
@@ -69,6 +70,14 @@ function buildDxfArtifact({
   projectName,
   includeDetailDrawings,
   detailDrawingsEnabled,
+  // Phase 2 audit response: thread structural/MEP flags into the on-demand
+  // DXF build so the packaged DXF honours the same caller intent as the
+  // IFC, the A1-S1 sheet, and the project graph itself. Without this the
+  // package quietly fell back to server env defaults.
+  includeStructuralDrawings,
+  structuralDrawingsEnabled,
+  includeMepDrawings,
+  mepDrawingsEnabled,
 }) {
   if (!compiledProject?.geometryHash) return null;
   const dxf = exportCompiledProjectToDXF({
@@ -76,6 +85,10 @@ function buildDxfArtifact({
     projectName,
     includeDetailDrawings,
     detailDrawingsEnabled,
+    includeStructuralDrawings,
+    structuralDrawingsEnabled,
+    includeMepDrawings,
+    mepDrawingsEnabled,
   });
   return {
     type: "dxf",
@@ -100,6 +113,18 @@ function buildPackageInput(body = {}) {
     payload.result?.projectName,
     "ArchiAI_Project",
   );
+  // Phase 2 audit response: read structural/MEP discipline flags from
+  // wherever the client put them. exportService.buildArtifactPackagePayload
+  // emits them under `flags.structuralEnabled` / `flags.mepEnabled`;
+  // direct callers may also send the top-level field names.
+  const payloadFlags = payload.flags || {};
+  const resolveBooleanField = (...candidates) => {
+    for (const value of candidates) {
+      if (value === true) return true;
+      if (value === false) return false;
+    }
+    return undefined;
+  };
   const dxfArtifact =
     payload.dxfArtifact ||
     artifacts.dxf ||
@@ -108,6 +133,20 @@ function buildPackageInput(body = {}) {
       projectName,
       includeDetailDrawings: payload.includeDetailDrawings === true,
       detailDrawingsEnabled: payload.detailDrawingsEnabled === true,
+      includeStructuralDrawings: resolveBooleanField(
+        payload.includeStructuralDrawings,
+      ),
+      structuralDrawingsEnabled: resolveBooleanField(
+        payload.structuralDrawingsEnabled,
+        payloadFlags.structuralDrawingsEnabled,
+        payloadFlags.structuralEnabled,
+      ),
+      includeMepDrawings: resolveBooleanField(payload.includeMepDrawings),
+      mepDrawingsEnabled: resolveBooleanField(
+        payload.mepDrawingsEnabled,
+        payloadFlags.mepDrawingsEnabled,
+        payloadFlags.mepEnabled,
+      ),
     });
   const structuralArtifacts = firstValue(
     payload.structuralArtifacts,
@@ -200,6 +239,21 @@ function buildPackageInput(body = {}) {
       artifacts.schedulesWorkbook,
     ),
     qaReport: firstValue(payload.qaReport, artifacts.qaReport, payload.qa),
+    // Phase 6 — Codex audit blocker #3. The handoff path needs the full
+    // A1 export QA surface to collapse into handoff.json.qa.status
+    // ("degraded"/"warning"/"blocked"/"pass"). Without this passthrough,
+    // exportService can mark a sheet "degradedExport:true" but the API
+    // payload silently drops it and handoff.json always reports "pass".
+    a1ExportQa: firstValue(
+      payload.a1ExportQa,
+      artifacts.a1ExportQa,
+      payload.a1Export?.qa,
+    ),
+    costSummary: firstValue(payload.costSummary, artifacts.costSummary),
+    dwgConverterCapabilities: firstValue(
+      payload.dwgConverterCapabilities,
+      artifacts.dwgConverterCapabilities,
+    ),
     visualManifest: firstValue(
       payload.visualManifest,
       artifacts.visualManifest,
@@ -253,15 +307,27 @@ export default async function handler(req, res) {
       });
     }
 
-    const packageResult =
-      await buildArtifactPackageWithPdfStitching(packageInput);
+    // Phase 6 — when the caller asks for the handoff package (Track 6),
+    // route through buildHandoffArtifactPackage which adds GLB, DWG (or
+    // DWG_UNAVAILABLE.txt), quantity_takeoff.csv, project_graph.json,
+    // README.md, and a schema-versioned handoff.json. The legacy path
+    // stays available for callers that just want the bare deterministic
+    // package.
+    const wantsHandoff =
+      req.body?.handoff === true ||
+      req.body?.format === "handoff" ||
+      packageInput.flags?.handoff === true;
+    const packageResult = wantsHandoff
+      ? await buildHandoffArtifactPackage(packageInput)
+      : await buildArtifactPackageWithPdfStitching(packageInput);
     const safeName = safeProjectName(packageInput.projectName);
     const zipBuffer = Buffer.from(packageResult.zipBytes);
+    const downloadSuffix = wantsHandoff ? "handoff" : "deliverables";
 
     res.setHeader("Content-Type", "application/zip");
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename="${safeName}-deliverables.zip"`,
+      `attachment; filename="${safeName}-${downloadSuffix}.zip"`,
     );
     res.setHeader("X-Artifact-Package-Id", packageResult.packageId);
     res.setHeader("X-Artifact-Package-Hash", packageResult.packageHash);
@@ -269,6 +335,17 @@ export default async function handler(req, res) {
       "X-Artifact-Source-Gap-Count",
       String(packageResult.sourceGaps.length),
     );
+    if (wantsHandoff) {
+      res.setHeader("X-Handoff-Package", "true");
+      res.setHeader(
+        "X-Handoff-Qa-Status",
+        String(packageResult.qa?.status || "unknown"),
+      );
+      res.setHeader(
+        "X-Handoff-Dwg-Available",
+        String(Boolean(packageResult.dwgAvailable)),
+      );
+    }
     return res.status(200).send(zipBuffer);
   } catch (error) {
     return res.status(500).json({

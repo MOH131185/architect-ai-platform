@@ -2,7 +2,7 @@ import {
   polygonToLocalXY,
   computeCentroid as computeGeoCentroid,
 } from "../../utils/geometry.js";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import {
   CANONICAL_PROJECT_GEOMETRY_VERSION,
   buildBoundingBoxFromPolygon,
@@ -36,6 +36,11 @@ import {
 } from "../validation/drawingConsistencyChecks.js";
 import { validateProgrammeAdjacency } from "../validation/programmeAdjacencyValidator.js";
 import { computeQuantitativeMetrics } from "../validation/qaScorers/quantitativeScorer.js";
+import {
+  categorizeBlocker,
+  blockersAreDegradable,
+  BLOCKER_CATEGORIES,
+} from "../qa/blockerCategories.js";
 import {
   rasteriseSheetArtifact,
   isRasterStubModeAllowed,
@@ -121,6 +126,12 @@ import {
   buildReasoningChainBlock,
 } from "../a1/panelPromptBuilders.js";
 import { renderProjectGraphPanelImage } from "../render/projectGraphImageRenderer.js";
+import {
+  composeMaskedRender as composeMaskedRenderViaSilhouetteIoU,
+  DEFAULT_IOU_THRESHOLD as SILHOUETTE_IOU_DEFAULT_THRESHOLD,
+  SILHOUETTE_IOU_GATE_VERSION,
+} from "../render/silhouetteIoUGate.js";
+import { resolveDwgConversionCapabilities } from "../cad/dwgConversionAdapter.js";
 import { analyseRenderedTextProof } from "../render/renderedTextProof.js";
 import {
   LEVEL_NAME_TO_INDEX as CANONICAL_LEVEL_NAME_TO_INDEX,
@@ -136,6 +147,11 @@ import {
 } from "./projectTypeSupportRegistry.js";
 import { resolveMainEntryDirection } from "../site/mainEntryDirectionService.js";
 import { buildProjectQuantityTakeoff } from "./projectQuantityTakeoffService.js";
+// Phase 3 audit response: the ProjectGraph slice (the PRODUCTION path)
+// must surface costSummary so CostSummaryPanel renders on the real
+// design surface, not just the legacy V2 path. buildCostSummary shares
+// math with buildCostWorkbook via computeCostBreakdown.
+import { buildCostSummary } from "./compiledProjectExportService.js";
 
 export const PROJECT_GRAPH_SCHEMA_VERSION = "project-graph-v1";
 export const PROJECT_GRAPH_VERTICAL_SLICE_VERSION =
@@ -5904,27 +5920,66 @@ function drawingTypeForPanel(panelType) {
   return "diagram";
 }
 
+// Phase 2 audit response: explicit `false` from a caller MUST override an
+// env-default `true`. Previously these helpers returned true whenever env
+// was "true", regardless of an explicit `false` option — so a request that
+// asked for an architectural-only export would silently get structural/MEP
+// because env defaults are on. Resolution order is now:
+//   1. explicit option === false  → false (caller wins, can't be overridden)
+//   2. explicit option === true   → true
+//   3. env "true"                 → true
+//   4. otherwise                  → false
 function structuralDrawingsEnabled(options = {}) {
-  return (
+  if (
+    options.structuralDrawingsEnabled === false ||
+    options.includeStructuralDrawings === false
+  ) {
+    return false;
+  }
+  if (
     options.structuralDrawingsEnabled === true ||
-    options.includeStructuralDrawings === true ||
+    options.includeStructuralDrawings === true
+  ) {
+    return true;
+  }
+  return (
     String(process.env.STRUCTURAL_DRAWINGS_ENABLED || "").toLowerCase() ===
-      "true"
+    "true"
   );
 }
 
 function mepDrawingsEnabled(options = {}) {
-  return (
+  if (
+    options.mepDrawingsEnabled === false ||
+    options.includeMepDrawings === false
+  ) {
+    return false;
+  }
+  if (
     options.mepDrawingsEnabled === true ||
-    options.includeMepDrawings === true ||
+    options.includeMepDrawings === true
+  ) {
+    return true;
+  }
+  return (
     String(process.env.MEP_DRAWINGS_ENABLED || "").toLowerCase() === "true"
   );
 }
 
 function detailDrawingsEnabled(options = {}) {
-  return (
+  if (
+    options.detailDrawingsEnabled === false ||
+    options.includeDetailDrawings === false
+  ) {
+    return false;
+  }
+  if (
     options.detailDrawingsEnabled === true ||
-    options.includeDetailDrawings === true ||
+    options.includeDetailDrawings === true
+  ) {
+    return true;
+  }
+  return (
     String(process.env.DETAIL_DRAWINGS_ENABLED || "").toLowerCase() === "true"
   );
 }
@@ -6003,10 +6058,27 @@ function buildDrawingSet(compiledProject, options = {}) {
   });
   const jurisdictionPack = jurisdictionResolution.pack;
   const jurisdictionPackSummary = summarizeJurisdictionPack(jurisdictionPack);
+  // Phase 4b — build the per-panel rendering-flags lookup from the
+  // decorated presentation panel specs and pass it into the technical pack
+  // builder so the deterministic SVG renderers can opt in to the outer
+  // dimension chain, ground hatch, 45° shadow, material legend, and
+  // section labels.
+  const targetStoreysForSpecs = Math.max(
+    1,
+    Number(options.targetStoreys || compiledProject?.levels?.length || 1) || 1,
+  );
+  const decoratedPanelSpecs =
+    layoutTemplate === "presentation-v3"
+      ? buildPresentationV3SheetPanelSpecs(targetStoreysForSpecs)
+      : buildSheetPanelSpecs(targetStoreysForSpecs);
+  const panelSpecsByType = Object.fromEntries(
+    (decoratedPanelSpecs || []).map((spec) => [spec.panelType, spec]),
+  );
   const technicalBuild = buildCompiledProjectTechnicalPanels(compiledProject, {
     layoutTemplate,
     vernacularPack: options.vernacularPack || null,
     jurisdictionPack: jurisdictionPackSummary,
+    panelSpecsByType,
   });
   const structuralBuild = structuralDrawingsEnabled(options)
     ? buildStructuralDrawingPanelsFromCompiledProject({
@@ -9287,6 +9359,20 @@ export async function buildVisual3DPanelArtifacts({
   // and identity metadata propagation.
   sheetDesignContext = null,
   materialPaletteHash = null,
+  // Phase 4 — Track 2 rendering quality:
+  //   'presentation' (default): may invoke image gen (still gated by
+  //     PROJECT_GRAPH_IMAGE_GEN_ENABLED) and runs the silhouette-IoU gate
+  //     when a PNG comes back. Authority remains the deterministic SVG.
+  //   'technical': skip image generation entirely; deterministic SVG only.
+  //     Use for technical-pack consumers (A1-S1, downloadable cost workbook
+  //     QA visuals, etc.) that must never include AI-generated pixels.
+  renderQualityTier = "presentation",
+  // Phase 4 — Track 2 silhouette IoU gate. Defaults match
+  // src/services/render/silhouetteIoUGate.js. Caller may override to tune
+  // the threshold or supply a stubbed gate function in tests.
+  silhouetteIoUThreshold = SILHOUETTE_IOU_DEFAULT_THRESHOLD,
+  silhouetteIoUMaxRetries = 1,
+  silhouetteIoUGateOverride = null,
 }) {
   // Phase 4 — feature flag gate. Default off; production behaviour
   // unchanged. Server-side env override is `PROJECT_GRAPH_AXONOMETRIC_CUTAWAY_ENABLED=true`.
@@ -9363,12 +9449,29 @@ export async function buildVisual3DPanelArtifacts({
       // the panel SVG with the photoreal PNG wrapped in an SVG <image>.
       // Falls back cleanly to the deterministic SVG when disabled or
       // when the image-gen call fails.
+      //
+      // Phase 4 — Track 2: when renderQualityTier === 'technical' we
+      // skip image generation entirely. Technical-pack consumers (A1-S1,
+      // QA visuals) must never carry AI-generated pixels.
+      //
+      // Phase 4 — Track 2: after a successful image render, run the
+      // silhouette-IoU gate (defense-in-depth) before accepting the PNG.
+      // The gate hard-clips the rendered PNG against the deterministic
+      // silhouette and reports an IoU score; on a sub-threshold IoU we
+      // fall back to the deterministic SVG. The compiled-geometry SVG
+      // remains the only authority for the silhouette envelope.
       let svgString = deterministicSvgString;
       let renderProvenance = null;
       let imageRenderByteLength = null;
-      let imageRenderFallbackReason = "gate_disabled";
+      let imageRenderFallbackReason =
+        renderQualityTier === "technical"
+          ? "render_quality_tier_technical"
+          : "gate_disabled";
       let renderResult = null;
-      if (deterministicSvgString) {
+      let silhouetteIoUResult = null;
+      let silhouetteIoUAttempts = [];
+      const skipImageRender = renderQualityTier === "technical";
+      if (deterministicSvgString && !skipImageRender) {
         prompt = buildProjectGraphRenderPrompt({
           panelType,
           brief,
@@ -9388,37 +9491,118 @@ export async function buildVisual3DPanelArtifacts({
           visualManifestHash: visualManifest?.manifestHash || null,
           prompt,
         });
-        try {
-          renderResult = await renderProjectGraphPanelImage({
-            panelType,
-            deterministicSvg: deterministicSvgString,
-            prompt,
-            geometryHash,
-          });
-        } catch (renderErr) {
-          if (renderErr?.strictImageGeneration === true) {
-            throw renderErr;
+        const composeMaskedRenderFn =
+          silhouetteIoUGateOverride || composeMaskedRenderViaSilhouetteIoU;
+        const clampedRetries = Math.max(
+          0,
+          Math.min(2, Number(silhouetteIoUMaxRetries) || 0),
+        );
+        let attempt = 0;
+        let bestResult = null;
+        while (attempt <= clampedRetries) {
+          try {
+            renderResult = await renderProjectGraphPanelImage({
+              panelType,
+              deterministicSvg: deterministicSvgString,
+              prompt,
+              geometryHash,
+            });
+          } catch (renderErr) {
+            if (renderErr?.strictImageGeneration === true) {
+              throw renderErr;
+            }
+            console.warn(
+              `[projectGraphVerticalSlice] image renderer threw for ${panelType}:`,
+              renderErr?.message,
+            );
+            renderResult = null;
+            imageRenderFallbackReason =
+              renderErr?.fallbackReason || "openai_error";
           }
-          // The renderer normally returns null on failure, but if it ever
-          // throws we still want to capture the reason for QA.
-          console.warn(
-            `[projectGraphVerticalSlice] image renderer threw for ${panelType}:`,
-            renderErr?.message,
-          );
-          renderResult = null;
-          imageRenderFallbackReason =
-            renderErr?.fallbackReason || "openai_error";
+          if (!renderResult?.pngBuffer) {
+            if (renderResult?.imageRenderFallbackReason) {
+              imageRenderFallbackReason =
+                renderResult.imageRenderFallbackReason;
+            }
+            break;
+          }
+          let gateResult = null;
+          try {
+            gateResult = await composeMaskedRenderFn({
+              silhouetteSvg: deterministicSvgString,
+              renderPng: renderResult.pngBuffer,
+              threshold: silhouetteIoUThreshold,
+            });
+          } catch (gateErr) {
+            console.warn(
+              `[projectGraphVerticalSlice] silhouette IoU gate threw for ${panelType}:`,
+              gateErr?.message,
+            );
+            gateResult = null;
+          }
+          silhouetteIoUAttempts.push({
+            attempt,
+            iou: gateResult?.iou ?? null,
+            passes: gateResult?.passes ?? false,
+            reason: gateResult?.reason ?? "GATE_EXCEPTION",
+            silhouetteForegroundPixels:
+              gateResult?.silhouetteForegroundPixels ?? null,
+            renderForegroundPixels: gateResult?.renderForegroundPixels ?? null,
+            intersectionPixels: gateResult?.intersectionPixels ?? null,
+            unionPixels: gateResult?.unionPixels ?? null,
+          });
+          if (
+            bestResult === null ||
+            (gateResult && gateResult.iou > (bestResult.gate?.iou ?? -1))
+          ) {
+            bestResult = {
+              renderResult,
+              gate: gateResult,
+            };
+          }
+          if (gateResult?.passes === true) {
+            break;
+          }
+          attempt += 1;
         }
-        if (renderResult?.pngBuffer) {
-          imageRenderByteLength = renderResult.pngBuffer.length;
-          svgString = wrapPngAsSvgPanel(
-            renderResult.pngBuffer,
-            viewBox,
-            width,
-            height,
-          );
-          renderProvenance = renderResult.provenance;
+        if (bestResult?.gate?.passes && bestResult.gate.maskedPng) {
+          // Successful render + IoU pass. Hard-clipped masked PNG is the
+          // authoritative output (any out-of-envelope pixels were dropped
+          // by the gate's dest-in composite). Wrap as SVG panel.
+          const maskedPng = bestResult.gate.maskedPng;
+          imageRenderByteLength = maskedPng.length;
+          svgString = wrapPngAsSvgPanel(maskedPng, viewBox, width, height);
+          renderProvenance = bestResult.renderResult?.provenance || null;
+          renderResult = bestResult.renderResult;
+          silhouetteIoUResult = bestResult.gate;
           imageRenderFallbackReason = null;
+        } else if (bestResult?.gate && !bestResult.gate.passes) {
+          // The renderer produced a PNG but the IoU gate rejected it.
+          // Fall back to the deterministic SVG and surface the reason.
+          silhouetteIoUResult = bestResult.gate;
+          imageRenderFallbackReason =
+            bestResult.gate.reason || "silhouette_iou_gate_failed";
+          if (strictImageGeneration) {
+            throw createStrictVisualImageError({
+              panelType,
+              reason: imageRenderFallbackReason,
+              message: `Silhouette IoU gate failed under strict image generation. iou=${bestResult.gate.iou?.toFixed?.(3) ?? "n/a"} threshold=${silhouetteIoUThreshold}`,
+            });
+          }
+        } else if (bestResult && !bestResult.gate) {
+          // Renderer produced a PNG but the gate threw an exception. In
+          // production this is an infrastructure failure — fall back to the
+          // deterministic SVG with a structured reason so the panel still
+          // ships. Strict-image-gen surfaces the failure.
+          imageRenderFallbackReason = "silhouette_iou_gate_exception";
+          if (strictImageGeneration) {
+            throw createStrictVisualImageError({
+              panelType,
+              reason: imageRenderFallbackReason,
+              message:
+                "Silhouette IoU gate threw an exception under strict image generation.",
+            });
+          }
         } else if (renderResult?.imageRenderFallbackReason) {
           if (strictImageGeneration) {
             throw createStrictVisualImageError({
@@ -9431,7 +9615,7 @@ export async function buildVisual3DPanelArtifacts({
           }
           imageRenderFallbackReason = renderResult.imageRenderFallbackReason;
         }
-      } else {
+      } else if (!deterministicSvgString) {
         imageRenderFallbackReason = "missing_control_svg";
         if (strictImageGeneration) {
           throw createStrictVisualImageError({
@@ -9623,6 +9807,38 @@ export async function buildVisual3DPanelArtifacts({
                 ? axonometricCutawayEnabled === true
                 : false,
             renderPromptIdentityVersion: RENDER_PROMPT_IDENTITY_VERSION,
+            // Phase 4 — Track 2 render quality + silhouette IoU gate.
+            // renderQualityTier records whether image gen was even allowed
+            // for this panel ("technical" panels skip image gen entirely).
+            // silhouetteIoUGate surfaces the IoU score against the
+            // deterministic silhouette + every attempt for QA drilldown.
+            // Authority remains the deterministic SVG; this metadata is
+            // diagnostic only.
+            renderQualityTier,
+            silhouetteIoUGate: silhouetteIoUResult
+              ? {
+                  version: SILHOUETTE_IOU_GATE_VERSION,
+                  iou: silhouetteIoUResult.iou,
+                  threshold: silhouetteIoUResult.threshold,
+                  passes: silhouetteIoUResult.passes,
+                  reason: silhouetteIoUResult.reason,
+                  silhouetteForegroundPixels:
+                    silhouetteIoUResult.silhouetteForegroundPixels,
+                  renderForegroundPixels:
+                    silhouetteIoUResult.renderForegroundPixels,
+                  intersectionPixels: silhouetteIoUResult.intersectionPixels,
+                  unionPixels: silhouetteIoUResult.unionPixels,
+                  width: silhouetteIoUResult.width,
+                  height: silhouetteIoUResult.height,
+                  attempts: silhouetteIoUAttempts,
+                }
+              : skipImageRender
+                ? {
+                    version: SILHOUETTE_IOU_GATE_VERSION,
+                    skipped: true,
+                    reason: "render_quality_tier_technical",
+                  }
+                : null,
           },
         },
       ];
@@ -9830,25 +10046,68 @@ export function buildA1ExportQaFromGate({
   const gateStatusRaw = exportGate?.status
     ? String(exportGate.status).toLowerCase()
     : null;
-  const gateBlocked =
-    exportGate?.allowed === false ||
+  // Two distinct hard-veto channels: gate.allowed:false is the gate's most
+  // explicit decision and is NEVER softened. gateStatusBlocked / panelQaFailed
+  // can be softened to "degraded" iff every collected blocker is in
+  // DEGRADABLE_BLOCKER_CATEGORIES (graphic | readability). See Phase 1 plan.
+  const gateAllowedFalseHard = exportGate?.allowed === false;
+  const gateStatusBlocked =
     gateStatusRaw === "blocked" ||
     gateStatusRaw === "fail" ||
     gateStatusRaw === "failed";
 
-  const blocked = Boolean(panelQaFailed || gateBlocked);
-
+  // Clone gate blockers/warnings (shallow + per-element) so we can stamp
+  // `category` without mutating the caller's input. Immutability is asserted
+  // by projectGraphVerticalSliceServiceA1ExportQaFromGate.test.js.
+  //
+  // Codex audit response: the returned blocker's `.category` is ALWAYS the
+  // authoritative `categorizeBlocker(item)` result — we never echo the
+  // caller's raw claimed category. If the caller supplied a `category` that
+  // disagrees with the authoritative derivation (e.g. spoofed
+  // `{ code: "GEOMETRY_HASH_MISSING", category: "graphic" }`) we preserve
+  // the raw claim under `claimedCategory` for forensic value but the
+  // surfaced `category` reflects what the gate actually decided.
+  const tagCategory = (item) => {
+    const authoritative = categorizeBlocker(item);
+    if (!item || typeof item !== "object") {
+      const text = String(item || "");
+      const colonIdx = text.indexOf(":");
+      const code = colonIdx > 0 ? text.slice(0, colonIdx) : text;
+      const message = colonIdx > 0 ? text.slice(colonIdx + 1).trim() : "";
+      return {
+        code,
+        message,
+        category: authoritative,
+      };
+    }
+    const claimed =
+      typeof item.category === "string" && item.category.trim().length > 0
+        ? item.category.trim()
+        : null;
+    const tagged = { ...item, category: authoritative };
+    if (claimed && claimed !== authoritative) {
+      tagged.claimedCategory = claimed;
+    }
+    return tagged;
+  };
   const blockers = Array.isArray(exportGate?.blockers)
-    ? [...exportGate.blockers]
+    ? exportGate.blockers.map(tagCategory)
     : [];
   const warnings = Array.isArray(exportGate?.warnings)
-    ? [...exportGate.warnings]
+    ? exportGate.warnings.map((w) =>
+        w && typeof w === "object" ? { ...w } : w,
+      )
     : [];
 
   if (panelQaFailed) {
+    // Bare PANEL_QA_FAILED carries no subtype — categorizeBlocker returns
+    // UNKNOWN (non-degradable) so panel-QA-driven failures continue to be
+    // hard-blocked unless the gate also emitted explicit readability/graphic
+    // codes (which a future panel QA reducer will).
     blockers.push({
       code: "PANEL_QA_FAILED",
       severity: "blocker",
+      category: BLOCKER_CATEGORIES.UNKNOWN,
       message: "Sheet failed final layout/readability QA.",
     });
   } else if (panelQaWarning) {
@@ -9859,15 +10118,25 @@ export function buildA1ExportQaFromGate({
     });
   }
 
-  const status = blocked
+  const softenableBlockSignal =
+    !gateAllowedFalseHard && (gateStatusBlocked || panelQaFailed);
+  const isDegradable = blockersAreDegradable(blockers);
+  const blockedFinal =
+    gateAllowedFalseHard || (softenableBlockSignal && !isDegradable);
+  const degraded = !blockedFinal && softenableBlockSignal && isDegradable;
+
+  const status = blockedFinal
     ? "blocked"
-    : warnings.length || gateStatusRaw === "warning"
-      ? "warning"
-      : "pass";
+    : degraded
+      ? "degraded"
+      : warnings.length || gateStatusRaw === "warning"
+        ? "warning"
+        : "pass";
 
   return {
     status,
-    allowed: !blocked,
+    allowed: !blockedFinal,
+    degradedExport: degraded,
     demotedToPreview: exportGate?.demotedToPreview === true,
     blockers,
     warnings,
@@ -10137,7 +10406,41 @@ export function buildPresentationV3SheetPanelSpecs(targetStoreys = 1) {
       scale: "A1",
       required: true,
     },
-  ];
+  ].map(decoratePresentationPanelSpecRenderingFlags);
+}
+
+// Phase 4 — Track 2 rendering quality flags. Carries the deterministic-SVG
+// rendering options down to whichever consumer ultimately calls the
+// drawing primitives in src/geometry/. The flags are diagnostic /
+// instructional metadata on the panel spec — downstream SVG builders
+// read them when present, and ignore them when absent (backwards
+// compatible). The deterministic SVG renderer remains the geometry
+// authority either way; these flags govern presentation polish only.
+function decoratePresentationPanelSpecRenderingFlags(spec) {
+  const panelType = spec?.panelType || "";
+  if (panelType.startsWith("floor_plan_")) {
+    return {
+      ...spec,
+      showOuterDimensionChain: true,
+      outerDimensionSides: ["S", "W"],
+    };
+  }
+  if (panelType.startsWith("elevation_")) {
+    return {
+      ...spec,
+      showGroundHatch: true,
+      showShadow: { azimuth: 45, elevation: 30 },
+      showMaterialLegend: true,
+    };
+  }
+  if (panelType.startsWith("section_")) {
+    return {
+      ...spec,
+      showFloorToFloorLabels: true,
+      showRidgeLabel: true,
+    };
+  }
+  return spec;
 }
 
 function buildSheetPanelSpecs(targetStoreys = 1) {
@@ -10283,7 +10586,75 @@ function buildSheetPanelSpecs(targetStoreys = 1) {
     required: true,
   }));
 
-  return [...specs, ...floorPlans, ...elevations];
+  return [...specs, ...floorPlans, ...elevations].map(
+    decoratePresentationPanelSpecRenderingFlags,
+  );
+}
+
+// Phase 2 (Track 3) — A1-S1 technical companion sheet panel specs.
+// Layout: 3 × 3 grid of preliminary structural & MEP plans, with a full-
+// width title block at the foot. Same A1 landscape (841×594mm) and same
+// A1_CONTENT_TOP_MM (16mm) safe band as the architectural sheets so the
+// title bar at y=0..16mm doesn't overlap row 1. Panels are marked
+// `required:false` so missing artifacts (e.g. MEP flag off, structural on)
+// degrade gracefully — buildPanelPlacements drops slots without artifacts.
+//
+// The sheet is appended to splitDecision.sheets when both
+// STRUCTURAL_DRAWINGS_ENABLED and MEP_DRAWINGS_ENABLED are on; the title
+// block carries the "Structural & MEP (Preliminary)" label so reviewers
+// distinguish it from the architectural A1-00 / A1-01.
+function buildA1Sheet02PanelSpecs(_targetStoreys = 1) {
+  const SHEET_W = 841;
+  const SHEET_H = 594;
+  const MARGIN_X = 10;
+  const CONTENT_TOP = 16;
+  const FOOTER_H = 60;
+  const FOOTER_GAP = 6;
+  const ROW_GAP = 8;
+  const COL_GAP = 8;
+  const ROWS = 3;
+  const COLS = 3;
+
+  const contentWidth = SHEET_W - MARGIN_X * 2;
+  const colWidth = (contentWidth - COL_GAP * (COLS - 1)) / COLS;
+  const bodyHeight = SHEET_H - CONTENT_TOP - FOOTER_H - FOOTER_GAP;
+  const rowHeight = (bodyHeight - ROW_GAP * (ROWS - 1)) / ROWS;
+
+  const slots = [];
+  const sequence = [
+    "foundation_plan",
+    "structural_ground_floor",
+    "structural_section",
+    "roof_framing_plan",
+    "mep_lighting_plan",
+    "mep_power_plan",
+    "mep_plumbing_plan",
+    "mep_drainage_plan",
+    "mep_ventilation_plan",
+  ];
+  for (let i = 0; i < sequence.length; i += 1) {
+    const col = i % COLS;
+    const row = Math.floor(i / COLS);
+    slots.push({
+      panelType: sequence[i],
+      x: MARGIN_X + col * (colWidth + COL_GAP),
+      y: CONTENT_TOP + row * (rowHeight + ROW_GAP),
+      width: colWidth,
+      height: rowHeight,
+      scale: "1:100",
+      required: false,
+    });
+  }
+  slots.push({
+    panelType: "title_block",
+    x: MARGIN_X,
+    y: SHEET_H - FOOTER_H - FOOTER_GAP,
+    width: contentWidth,
+    height: FOOTER_H,
+    scale: "A1",
+    required: true,
+  });
+  return slots;
 }
 
 function buildPanelPlacements({
@@ -10297,10 +10668,19 @@ function buildPanelPlacements({
 }) {
   const artifactIndex = buildPanelArtifactIndex(panelArtifacts);
   const allowed = allowedPanelTypes ? new Set(allowedPanelTypes) : null;
-  const baseSpecs =
-    layoutTemplate === "presentation-v3"
-      ? buildPresentationV3SheetPanelSpecs(targetStoreys)
-      : buildSheetPanelSpecs(targetStoreys);
+  // Phase 2 (Track 3): the A1-S1 technical companion sheet routes through
+  // its own builder so structural/MEP panels lay out cleanly on a 3×3
+  // grid rather than getting squeezed into the architectural elevation
+  // column. Other layouts route to the existing presentation-v3 /
+  // board-v2 builders.
+  let baseSpecs;
+  if (layoutTemplate === "presentation-v3") {
+    baseSpecs = buildPresentationV3SheetPanelSpecs(targetStoreys);
+  } else if (layoutTemplate === "technical-companion-v1") {
+    baseSpecs = buildA1Sheet02PanelSpecs(targetStoreys);
+  } else {
+    baseSpecs = buildSheetPanelSpecs(targetStoreys);
+  }
   const specs = baseSpecs.filter((spec) =>
     allowed ? allowed.has(spec.panelType) : true,
   );
@@ -11764,6 +12144,8 @@ async function buildA1PdfArtifact({
   sheetArtifact,
   qaStatus = "pending",
   renderIntent = "final_a1",
+  degradedExport = false,
+  a1ExportQa = null,
 }) {
   const __a1pdfStart = Date.now();
   const __a1pdfLog = (step, sinceMs, extra = "") => {
@@ -11791,9 +12173,23 @@ async function buildA1PdfArtifact({
         "bundled fonts upstream.",
     );
   }
-  if (!rawSheetSvg.includes('data-raster-text-mode="font-paths"')) {
-    throw new Error(
-      "A1 sheet SVG reached PDF rasterisation without raster-safe font paths.",
+  // Track 1 (Phase 1): the font-paths marker indicates that text was
+  // converted to vector paths upstream — the safest mode for the librsvg
+  // rasteriser. When the marker is missing we fall back to the @font-face
+  // embedding asserted above; analyseRenderedTextProof below still gates
+  // on the actual rendered PNG, so tofu glyphs cannot ship. Previously this
+  // was a hard throw, which meant readability-class regressions blocked
+  // every export instead of routing into degradedExport.
+  const hasFontPathsMarker = rawSheetSvg.includes(
+    'data-raster-text-mode="font-paths"',
+  );
+  const fontFallbackUsed = !hasFontPathsMarker;
+  if (fontFallbackUsed) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[A1PDF] data-raster-text-mode=font-paths missing; falling back to " +
+        "@font-face data-URI embedding. analyseRenderedTextProof will still " +
+        "gate the rendered PNG for tofu glyphs.",
     );
   }
 
@@ -11994,6 +12390,58 @@ async function buildA1PdfArtifact({
     width: widthPt,
     height: heightPt,
   });
+  // Track 1 (Phase 1) + Codex audit response: when buildA1ExportQaFromGate
+  // decided the export is degraded — readability/graphic blockers only —
+  // overlay a high-contrast multi-line watermark near the top-right title-
+  // block area so anyone viewing the PDF understands it is NOT FINAL and
+  // NOT FOR ISSUE OR CONSTRUCTION. Geometry/authority blockers never reach
+  // here (hard-block returns earlier in the export flow).
+  //
+  // Fail-closed: any failure to draw the stamp throws out of the artifact
+  // builder. A degraded PDF without the warning watermark is unsafe and
+  // must never ship — Codex audit specifically flagged the prior try/catch
+  // that only logged the error.
+  if (degradedExport) {
+    let stampFont;
+    try {
+      stampFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    } catch (fontErr) {
+      throw new Error(
+        "REFUSING_TO_EMIT_UNWATERMARKED_DEGRADED_PDF: failed to embed " +
+          `Helvetica-Bold for the PRELIMINARY watermark: ${
+            fontErr?.message || "unknown"
+          }`,
+      );
+    }
+    const stampLines = [
+      { text: "PRELIMINARY — QA WARNINGS", size: 22 },
+      { text: "NOT FINAL", size: 16 },
+      { text: "NOT FOR ISSUE OR CONSTRUCTION", size: 12 },
+    ];
+    const marginPt = 24;
+    const lineGap = 6;
+    const stampColor = rgb(0.78, 0.12, 0.12);
+    let cursorY = heightPt - marginPt;
+    try {
+      for (const { text, size } of stampLines) {
+        cursorY -= size;
+        const lineWidth = stampFont.widthOfTextAtSize(text, size);
+        page.drawText(text, {
+          x: widthPt - lineWidth - marginPt,
+          y: cursorY,
+          size,
+          font: stampFont,
+          color: stampColor,
+        });
+        cursorY -= lineGap;
+      }
+    } catch (drawErr) {
+      throw new Error(
+        "REFUSING_TO_EMIT_UNWATERMARKED_DEGRADED_PDF: pdf-lib drawText " +
+          `failed mid-watermark: ${drawErr?.message || "unknown"}`,
+      );
+    }
+  }
   if (
     typeof pdfDoc.attach === "function" &&
     typeof TextEncoder !== "undefined"
@@ -12007,6 +12455,24 @@ async function buildA1PdfArtifact({
       creationDate: new Date(0),
       modificationDate: new Date(0),
     });
+    // Track 1 (Phase 1) + Codex audit response: travel the full A1 export QA
+    // report alongside the rasterised sheet. Reviewers opening the PDF can
+    // extract `a1-export-qa.json` to see every blocker / warning the gate
+    // produced — including the new `category`, `degradedExport` flag, and
+    // panelQaStatus — without having to re-derive them from the rendered
+    // image. Mandatory whenever a1ExportQa was folded.
+    if (a1ExportQa) {
+      const qaBytes = new TextEncoder().encode(
+        JSON.stringify(a1ExportQa, null, 2),
+      );
+      await pdfDoc.attach(qaBytes, "a1-export-qa.json", {
+        mimeType: "application/json",
+        description:
+          "A1 export QA report (status, blockers with category, warnings, degradedExport flag).",
+        creationDate: new Date(0),
+        modificationDate: new Date(0),
+      });
+    }
   }
 
   const pdfDataUri = await pdfDoc.saveAsBase64({ dataUri: true });
@@ -12049,8 +12515,10 @@ async function buildA1PdfArtifact({
     heightPx: renderedHeightPx || null,
     widthPt: round(widthPt, 3),
     heightPt: round(heightPt, 3),
-    textRenderMode: "font_paths",
+    textRenderMode: fontFallbackUsed ? "font_face_fallback" : "font_paths",
+    fontFallbackUsed,
     rasterIntegrityStatus: rasterGlyphIntegrity?.status || "not_run",
+    degradedExport: degradedExport === true,
     hybridVectorPdfFollowUp: true,
     ...buildA1PdfSourceMetadata(sheetArtifact),
   };
@@ -14518,6 +14986,35 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
   // Plan §6.11: split into A1-01/02/03 when programme/storey/regulation
   // density exceeds the legibility threshold; otherwise emit a single sheet.
   const splitDecision = decideSheetSplit({ brief, programme, regulations });
+  // Phase 2 (Track 3): append the A1-S1 technical companion sheet
+  // (Structural & MEP) when BOTH flags are on. Independent of the
+  // architectural splitter — A1-S1 always sits at the END of the
+  // deliverable so reviewers see the architectural master first, then
+  // the supplementary technical companion. Skipped silently when either
+  // flag is off so the architectural-only flow is unchanged.
+  if (structuralDrawingsEnabled(input) && mepDrawingsEnabled(input)) {
+    splitDecision.sheets.push({
+      sheet_number: "A1-S1",
+      label: "Structural & MEP (Preliminary)",
+      panel_types: [
+        "foundation_plan",
+        "structural_ground_floor",
+        "structural_section",
+        "roof_framing_plan",
+        "mep_lighting_plan",
+        "mep_power_plan",
+        "mep_plumbing_plan",
+        "mep_drainage_plan",
+        "mep_ventilation_plan",
+        "title_block",
+      ],
+      rationale:
+        "Preliminary structural framing + MEP coordination diagrams. " +
+        "NOT FOR CONSTRUCTION — review by licensed engineers required.",
+      layoutTemplate: "technical-companion-v1",
+      is_technical_companion: true,
+    });
+  }
   // Phase 4 reasoning chain inputs: condense the programme into a per-level
   // summary so render prompts can reference room counts + level areas.
   const programmeSummary = buildProgrammeSummaryForRender(brief, programme);
@@ -14654,6 +15151,15 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     __vsMark = __vsLog(`build_a1_sheet[${sheetTag}]`, __vsMark);
     const pdfStart = Date.now();
     const pdfRenderIntent = sheetIndex === 0 ? "final_a1" : "preview";
+    // Track 1 (Phase 1): fold the per-sheet export gate the same way the
+    // slice-level a1ExportQa is folded further down so the PDF builder
+    // knows whether to overlay the PRELIMINARY stamp. The slice-level fold
+    // happens later but uses identical inputs — running this here is a
+    // cheap synchronous map and avoids a chicken-and-egg with the stamp.
+    const perSheetA1ExportQa = buildA1ExportQaFromGate({
+      exportGate: sheetResult.sheetArtifact?.quality?.exportGate || null,
+      panelQaSummary: sheetResult?.qaSummary || null,
+    });
     const pdf = await buildA1PdfArtifact({
       projectGraphId,
       brief,
@@ -14666,6 +15172,8 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       // the metadata of the reviewed A1 PDF.
       qaStatus:
         (sheetResult?.qaSummary && sheetResult.qaSummary.status) || "unknown",
+      degradedExport: perSheetA1ExportQa?.degradedExport === true,
+      a1ExportQa: perSheetA1ExportQa || null,
     });
     __vsMark = __vsLog(
       `build_a1_pdf[${sheetTag}]`,
@@ -15311,11 +15819,37 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     ...initialGraph,
     project_id: projectGraphId,
   };
+  // Phase 3 audit response: pass the real mepModel from the drawing-set
+  // build so the takeoff can emit MEP lines (lighting points, sockets,
+  // sanitary, ventilation extracts, etc.). Previously the takeoff ran
+  // with no mepModel even when STRUCTURAL_DRAWINGS_ENABLED /
+  // MEP_DRAWINGS_ENABLED were on — so MEP rows were always zero.
+  const productionMepModel = technicalBuild?.mepModel || null;
   const projectQuantityTakeoff = compiledProject?.geometryHash
     ? buildProjectQuantityTakeoff(compiledProject, {
         pipelineVersion: PROJECT_GRAPH_VERTICAL_SLICE_VERSION,
+        mepModel: productionMepModel,
       })
     : null;
+  // Phase 3 audit response: produce a structured costSummary for the
+  // CostSummaryPanel. Failure-tolerant — never blocks the slice. The
+  // panel renders an empty state when null.
+  let projectCostSummary = null;
+  if (compiledProject?.geometryHash && projectQuantityTakeoff?.items?.length) {
+    try {
+      projectCostSummary = buildCostSummary({
+        compiledProject,
+        takeoff: projectQuantityTakeoff,
+        qualityTier: "mid",
+        region: "uk-average",
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[ProjectGraph slice] cost summary unavailable: ${err?.message || "unknown"}`,
+      );
+    }
+  }
   const artifacts = {
     drawings: drawingArtifacts,
     panelArtifacts: primary.panelArtifacts || {},
@@ -15345,6 +15879,9 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     openaiUsage: openaiQaMetadata.openaiUsage,
     compiledProject,
     projectQuantityTakeoff,
+    // Phase 3 audit response: surface costSummary on the artifacts tree
+    // so design-history hydration and ExportPanel both see it.
+    costSummary: projectCostSummary,
     projectGeometry,
     sheetSeries: renderedSheets.map(
       ({ sheetPlan, sheetArtifact: sa, pdf }) => ({
@@ -15653,6 +16190,11 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     generationLifecycle,
     engineeringExportReadiness,
     a1ExportQa,
+    // Phase 3 audit response: top-level costSummary so
+    // useArchitectAIWorkflow + ExportPanel can surface preliminary cost
+    // figures without diving into artifacts. Null when no rate card or
+    // empty takeoff.
+    costSummary: projectCostSummary,
     metadata: {
       generationSeed: generationLifecycle.generationSeed,
       seedSource: generationLifecycle.seedSource,
@@ -15674,6 +16216,15 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     provenanceManifest,
     architectReasoningManifest,
     styleBlendManifest,
+    // Phase 6 follow-up (Codex audit) — surface the resolved DWG
+    // converter capability snapshot so buildClientExportManifest can
+    // gate the DWG row honestly. When the server has ODA File Converter
+    // configured, the snapshot reports `available:true` and the manifest
+    // marks DWG READY. When unset, DWG stays blocked with
+    // DWG_CONVERSION_UNAVAILABLE + docsUrl. Resolved once per slice and
+    // safe to cache on the result; the resolver is pure-function over
+    // process.env.
+    dwgConverterCapabilities: resolveDwgConversionCapabilities(),
     artifacts: {
       ...artifacts,
       styleBlendManifest,
@@ -15740,6 +16291,12 @@ export const __projectGraphVerticalSliceInternals = Object.freeze({
   // (A1_CONTENT_TOP_MM in composeCore.js). presentation-v3 is already
   // exported via buildPresentationV3SheetPanelSpecs above.
   buildSheetPanelSpecs,
+  // Phase 2 (Track 3): exposed for unit testing the A1-S1 technical
+  // companion sheet layout (Structural & MEP) and the flag helpers that
+  // gate it on/off.
+  buildA1Sheet02PanelSpecs,
+  structuralDrawingsEnabled,
+  mepDrawingsEnabled,
   // Post-UI-smoke fix: A1 QA fold helper. Tests import via internals so
   // they don't depend on the rest of this very large module surface.
   buildA1ExportQaFromGate,

@@ -601,6 +601,14 @@ export default async function handler(req, res) {
     body && typeof body.artifactRef === "object" && body.artifactRef
       ? body.artifactRef
       : null;
+  // Codex audit response: server-side degraded enforcement mirrors the
+  // exportService refusal so a programmatic caller cannot bypass the
+  // client-side gate. When the request flags `degradedExport: true`:
+  //   - PNG/SVG refuse outright (no watermarked variants on this branch).
+  //   - PDF requires a pre-built stamped PDF (pdfArtifactPath); fallback
+  //     paths that build a PDF from SVG/PNG are disallowed because they
+  //     would emit unstamped output.
+  const degradedExport = body && body.degradedExport === true;
 
   if (!designId) {
     return jsonError(res, 400, "DESIGN_ID_REQUIRED", "Missing designId.");
@@ -611,6 +619,25 @@ export default async function handler(req, res) {
       400,
       "UNSUPPORTED_FORMAT",
       "format must be one of: png, pdf, svg.",
+    );
+  }
+  if (degradedExport && (formatRaw === "png" || formatRaw === "svg")) {
+    return jsonError(
+      res,
+      400,
+      "DEGRADED_SHEET_NO_STAMPED_VARIANT",
+      `A1 export degraded — ${formatRaw.toUpperCase()} cannot ship without a watermarked variant. ` +
+        "Request the PDF export (carries the PRELIMINARY stamp) or fix the " +
+        "readability/graphic blockers and re-run.",
+    );
+  }
+  if (degradedExport && formatRaw === "pdf" && !pdfArtifactPath) {
+    return jsonError(
+      res,
+      400,
+      "DEGRADED_PDF_REQUIRES_STAMPED_ARTIFACT",
+      "A1 export degraded — pdfArtifactPath (pre-built stamped PDF) is required. " +
+        "Unstamped SVG-derived or PNG-derived fallback PDFs are not permitted in degraded mode.",
     );
   }
   if (!artifactPath && !pdfArtifactPath && !artifactRef) {
@@ -627,7 +654,9 @@ export default async function handler(req, res) {
 
   // For PDF output, prefer pdfArtifactPath (a pre-built print-ready PDF on
   // disk) over rasterising on the fly. Falls through to artifactPath when
-  // unset or unresolvable.
+  // unset or unresolvable — UNLESS the request is degraded, in which case
+  // the stamped pre-built PDF is the ONLY permitted path (Codex audit
+  // response: unstamped fallback PDFs would leak past the watermark).
   if (formatRaw === "pdf" && pdfArtifactPath) {
     const pdfRead = readArtifactBytes(pdfArtifactPath, outputDir);
     if (pdfRead.ok && pdfRead.kind === "pdf") {
@@ -650,6 +679,19 @@ export default async function handler(req, res) {
         durationMs: Date.now() - startedAt,
       });
       return;
+    }
+    if (degradedExport) {
+      const detail =
+        pdfRead.error?.details ||
+        pdfRead.error?.code ||
+        "pdfArtifactPath did not resolve to a readable PDF.";
+      return jsonError(
+        res,
+        400,
+        "DEGRADED_PDF_REQUIRES_STAMPED_ARTIFACT",
+        `A1 export degraded — pre-built stamped PDF was unreadable (${detail}). ` +
+          "Unstamped fallback PDFs (SVG→PDF / PNG→PDF) are not permitted in degraded mode.",
+      );
     }
     // Fall through to artifactPath logic.
   }

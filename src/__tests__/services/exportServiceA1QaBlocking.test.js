@@ -190,3 +190,130 @@ describe("exportService.exportSheet — A1 QA blocking (Phase 3)", () => {
     }
   });
 });
+
+// --------------------------------------------------------------------------
+// Codex audit (Phase 1, second pass) — degraded sheet exports must refuse
+// unstamped PNG/SVG and require a pre-built stamped PDF.
+// --------------------------------------------------------------------------
+
+function sheetWithQaDegraded({ pdfUrl = null, pdfOutputFile = null } = {}) {
+  return {
+    metadata: {
+      designId: "d-degraded",
+      sheetType: "ARCH",
+      versionId: "base",
+      ...(pdfOutputFile ? { pdfOutputFile } : {}),
+    },
+    geometryHash: "geom-degraded",
+    artifacts: { a1Sheet: { svgString: "<svg/>" } },
+    ...(pdfUrl ? { pdfUrl } : {}),
+    a1ExportQa: {
+      status: "degraded",
+      allowed: true,
+      degradedExport: true,
+      blockers: [
+        {
+          code: "TEXT_PROOF_TOFU",
+          category: "readability",
+          severity: "blocker",
+          message: "Sample readability blocker.",
+        },
+      ],
+      warnings: [],
+    },
+  };
+}
+
+describe("exportService.exportSheet — degraded mode (Codex audit)", () => {
+  for (const fmt of ["PNG", "SVG", "png", "svg"]) {
+    test(`refuses degraded ${fmt} export (no watermarked variant exists)`, async () => {
+      const sheet = sheetWithQaDegraded({
+        pdfUrl: "data:application/pdf;base64,JVBERi0=",
+      });
+      await expect(
+        exportService.exportSheet({ sheet, format: fmt }),
+      ).rejects.toThrow(/cannot ship without a watermarked variant/i);
+    });
+  }
+
+  test("refuses degraded PDF when no stamped pre-built PDF is available", async () => {
+    const sheet = sheetWithQaDegraded({ pdfUrl: null, pdfOutputFile: null });
+    await expect(
+      exportService.exportSheet({ sheet, format: "PDF" }),
+    ).rejects.toThrow(/stamped PDF artifact not available/i);
+  });
+
+  test("allows degraded PDF when a stamped pre-built PDF data URL is present", async () => {
+    const sheet = sheetWithQaDegraded({
+      pdfUrl: "data:application/pdf;base64,JVBERi0xLjcgYTFwZGY=",
+    });
+    const spy = jest
+      .spyOn(exportService, "exportSheetServerSide")
+      .mockResolvedValue({ success: true, format: "PDF", filename: "x.pdf" });
+    try {
+      const result = await exportService.exportSheet({
+        sheet,
+        format: "PDF",
+      });
+      expect(result.success).toBe(true);
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("degraded mode does NOT prevent engineering exports", async () => {
+    const sheet = sheetWithQaDegraded();
+    const spy = jest
+      .spyOn(exportService, "exportCAD")
+      .mockResolvedValue({ success: true, format: "DXF", filename: "x.dxf" });
+    try {
+      const result = await exportService.exportSheet({
+        sheet,
+        format: "DXF",
+      });
+      expect(result.success).toBe(true);
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("buildA1ExportRequestBody forwards degradedExport:true for PDF route", () => {
+    const sheet = sheetWithQaDegraded({
+      pdfUrl: "data:application/pdf;base64,JVBERi0=",
+    });
+    // Add an artifactPath so the body builder doesn't throw on missing
+    // transport. (The PDF passthrough uses pdfArtifactPath when present,
+    // falling back to artifactPath; for body shape the path itself is
+    // unimportant — we're asserting the degraded flag flows.)
+    sheet.metadata.sheetOutputFile = "smoke-sheet.svg";
+    sheet.metadata.pdfOutputFile = "smoke-sheet-final.pdf";
+    const body = exportService.buildA1ExportRequestBody(sheet, "pdf");
+    expect(body.degradedExport).toBe(true);
+    // PDF passthrough path is also wired.
+    expect(typeof body.pdfArtifactPath).toBe("string");
+    expect(body.pdfArtifactPath.length).toBeGreaterThan(0);
+  });
+
+  test("buildA1ExportRequestBody does NOT set degradedExport when QA is clean", () => {
+    const sheet = {
+      metadata: {
+        designId: "d-clean",
+        sheetOutputFile: "smoke-sheet.svg",
+        pdfOutputFile: "smoke-sheet-final.pdf",
+      },
+      geometryHash: "geom-clean",
+      artifacts: { a1Sheet: { svgString: "<svg/>" } },
+      a1ExportQa: {
+        status: "pass",
+        allowed: true,
+        degradedExport: false,
+        blockers: [],
+        warnings: [],
+      },
+    };
+    const body = exportService.buildA1ExportRequestBody(sheet, "pdf");
+    expect(body.degradedExport).toBeUndefined();
+  });
+});

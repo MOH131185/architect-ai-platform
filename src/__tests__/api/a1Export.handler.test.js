@@ -1005,3 +1005,109 @@ describe("/api/a1/export — magic-byte classification (data URLs and blobs)", (
     );
   });
 });
+
+// --------------------------------------------------------------------------
+// Codex audit response: server-side degraded enforcement. The handler must
+// mirror the client-side refusal in exportService so a programmatic caller
+// cannot bypass the gate.
+// --------------------------------------------------------------------------
+
+describe("/api/a1/export — degraded enforcement (Codex audit)", () => {
+  test("degradedExport:true rejects format=png with DEGRADED_SHEET_NO_STAMPED_VARIANT", async () => {
+    const req = makeRequest({
+      designId: "deg-png",
+      format: "png",
+      artifactPath: VALID_SVG_STRING,
+      degradedExport: true,
+    });
+    const res = captureResponse();
+    await handler(req, res);
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error.code).toBe("DEGRADED_SHEET_NO_STAMPED_VARIANT");
+    // Sharp must NOT have been invoked — we refuse BEFORE rasterising.
+    expect(mockSharpFactory).not.toHaveBeenCalled();
+  });
+
+  test("degradedExport:true rejects format=svg with DEGRADED_SHEET_NO_STAMPED_VARIANT", async () => {
+    const dataUrl = `data:image/svg+xml;utf8,${VALID_SVG_STRING}`;
+    const req = makeRequest({
+      designId: "deg-svg",
+      format: "svg",
+      artifactPath: dataUrl,
+      degradedExport: true,
+    });
+    const res = captureResponse();
+    await handler(req, res);
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error.code).toBe("DEGRADED_SHEET_NO_STAMPED_VARIANT");
+  });
+
+  test("degradedExport:true rejects PDF when pdfArtifactPath is absent", async () => {
+    const req = makeRequest({
+      designId: "deg-pdf-no-stamped",
+      format: "pdf",
+      artifactPath: VALID_SVG_STRING,
+      degradedExport: true,
+    });
+    const res = captureResponse();
+    await handler(req, res);
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error.code).toBe("DEGRADED_PDF_REQUIRES_STAMPED_ARTIFACT");
+    // The vector PDF builder must NOT have been invoked — degraded PDFs
+    // are not permitted to fall through to the SVG→PDF builder.
+    expect(mockBuildVectorPdf).not.toHaveBeenCalled();
+  });
+
+  test("degradedExport:true PDF with a pre-built stamped PDF on disk PASSES (passthrough)", async () => {
+    const ref = writeArtifact("a1-deg-stamped.pdf", VALID_PDF_BYTES);
+    const req = makeRequest({
+      designId: "deg-pdf-ok",
+      format: "pdf",
+      artifactPath: VALID_SVG_STRING,
+      pdfArtifactPath: ref,
+      degradedExport: true,
+    });
+    const res = captureResponse();
+    await handler(req, res);
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["Content-Type"]).toBe("application/pdf");
+    expect(res.headers["X-A1-Export-Builder"]).toBe("passthrough");
+    // Defence in depth: the SVG→PDF builder must not run on the degraded
+    // PDF path, even when artifactPath is also provided.
+    expect(mockBuildVectorPdf).not.toHaveBeenCalled();
+  });
+
+  test("degradedExport:true PDF refuses fallback when stamped PDF read fails", async () => {
+    // pdfArtifactPath points at a name that does NOT exist on disk; the
+    // passthrough read will fail. Non-degraded mode would fall through to
+    // the SVG-derived vector PDF — degraded mode must refuse instead.
+    const req = makeRequest({
+      designId: "deg-pdf-bad-stamp",
+      format: "pdf",
+      artifactPath: VALID_SVG_STRING,
+      pdfArtifactPath: "/api/a1/compose-output/does-not-exist.pdf",
+      degradedExport: true,
+    });
+    const res = captureResponse();
+    await handler(req, res);
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error.code).toBe("DEGRADED_PDF_REQUIRES_STAMPED_ARTIFACT");
+    expect(mockBuildVectorPdf).not.toHaveBeenCalled();
+  });
+
+  test("clean (non-degraded) requests still work unchanged", async () => {
+    // Regression guard: the new degraded enforcement must not affect
+    // normal export flows.
+    const dataUrl = `data:image/svg+xml;utf8,${VALID_SVG_STRING}`;
+    const req = makeRequest({
+      designId: "clean-svg",
+      format: "svg",
+      artifactPath: dataUrl,
+      // No degradedExport flag — falls through default-false.
+    });
+    const res = captureResponse();
+    await handler(req, res);
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["Content-Type"]).toBe("image/svg+xml; charset=utf-8");
+  });
+});

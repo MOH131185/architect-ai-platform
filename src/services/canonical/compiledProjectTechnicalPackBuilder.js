@@ -1193,6 +1193,37 @@ export function buildCompiledProjectTechnicalPanels(source = {}, options = {}) {
     compiledProjectSource,
   );
 
+  // Phase 4b — per-panel rendering flags. The slice service decorates panel
+  // specs with deterministic-SVG rendering polish flags (outer dimension
+  // chain, ground hatch, 45° shadow, material legend, floor-to-floor +
+  // ridge labels). Pass them through to renderPlanSvg / renderElevationSvg /
+  // renderSectionSvg via this lookup so the renderer can opt in. Missing
+  // entries → renderer behaves exactly as before.
+  const panelSpecsByType =
+    options.panelSpecsByType && typeof options.panelSpecsByType === "object"
+      ? options.panelSpecsByType
+      : {};
+  const specFlagsFor = (panelType) => {
+    const spec = panelSpecsByType[panelType];
+    if (!spec || typeof spec !== "object") return {};
+    const flags = {};
+    if (spec.showOuterDimensionChain === true) {
+      flags.showOuterDimensionChain = true;
+      if (Array.isArray(spec.outerDimensionSides)) {
+        flags.outerDimensionSides = spec.outerDimensionSides;
+      }
+    }
+    if (spec.showGroundHatch === true) flags.showGroundHatch = true;
+    if (spec.showShadow && typeof spec.showShadow === "object") {
+      flags.showShadow = spec.showShadow;
+    }
+    if (spec.showMaterialLegend === true) flags.showMaterialLegend = true;
+    if (spec.showFloorToFloorLabels === true)
+      flags.showFloorToFloorLabels = true;
+    if (spec.showRidgeLabel === true) flags.showRidgeLabel = true;
+    return flags;
+  };
+
   levels.forEach((level, index) => {
     const panelType = technicalFloorPanelType(index);
     const slotRenderSize = getTechnicalPanelRenderSize(
@@ -1218,6 +1249,7 @@ export function buildCompiledProjectTechnicalPanels(source = {}, options = {}) {
       showRoomLabels: true,
       sheetMode: true,
       sections: planSections,
+      ...specFlagsFor(panelType),
     });
     const normalized = buildPanelRecord(
       panelType,
@@ -1258,6 +1290,7 @@ export function buildCompiledProjectTechnicalPanels(source = {}, options = {}) {
         sheetMode: true,
         allowWeakFacadeFallback: true,
         vernacularPack: options.vernacularPack || null,
+        ...specFlagsFor(panelType),
       });
       const normalized = buildPanelRecord(
         panelType,
@@ -1303,6 +1336,7 @@ export function buildCompiledProjectTechnicalPanels(source = {}, options = {}) {
         sectionProfile,
         sheetMode: true,
         vernacularPack: options.vernacularPack || null,
+        ...specFlagsFor(panelType),
       });
       const normalized = buildPanelRecord(
         panelType,

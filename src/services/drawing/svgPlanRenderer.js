@@ -994,6 +994,101 @@ function renderVerticalChain({ bounds, rooms, project, rightX, theme }) {
   return { markup: parts.join(""), segmentCount: allStops.length - 1 };
 }
 
+// Phase 4b — additive outer perimeter chain. Emitted on the requested sides
+// (default S + W) below the existing N + E external-dimension chain produced
+// by renderExternalDimensions. Result is a clearly-identifiable
+// <g id="plan-outer-perimeter-dimensions"> group with one extension line per
+// corner + a baseline + a midpoint label. Tests grep the id / data attrs.
+function renderOuterPerimeterChain(
+  bounds,
+  project,
+  layout,
+  width,
+  height,
+  theme,
+  options = {},
+) {
+  if (!bounds?.width || !bounds?.height) {
+    return { markup: "", emittedSides: [] };
+  }
+  const sides =
+    Array.isArray(options.sides) && options.sides.length
+      ? options.sides
+      : ["S", "W"];
+  const topLeft = project({ x: bounds.min_x, y: bounds.min_y });
+  const topRight = project({ x: bounds.max_x, y: bounds.min_y });
+  const bottomLeft = project({ x: bounds.min_x, y: bounds.max_y });
+  const bottomRight = project({ x: bounds.max_x, y: bounds.max_y });
+  const bottomY = height - layout.bottom + 18;
+  const leftX = layout.left - 22;
+  const segments = [];
+  const seen = new Set();
+  for (const sideRaw of sides) {
+    const side = String(sideRaw || "")
+      .trim()
+      .toUpperCase();
+    if (seen.has(side)) continue;
+    if (!["N", "S", "E", "W"].includes(side)) continue;
+    seen.add(side);
+    if (side === "S") {
+      const baselineY = bottomY;
+      const labelMid = (bottomLeft.x + bottomRight.x) / 2;
+      segments.push(`
+        <g data-perimeter-side="S">
+          <line x1="${formatNumber(bottomLeft.x)}" y1="${formatNumber(bottomLeft.y)}" x2="${formatNumber(bottomLeft.x)}" y2="${formatNumber(baselineY)}" stroke="${theme.lineMuted}" stroke-width="0.9"/>
+          <line x1="${formatNumber(bottomRight.x)}" y1="${formatNumber(bottomRight.y)}" x2="${formatNumber(bottomRight.x)}" y2="${formatNumber(baselineY)}" stroke="${theme.lineMuted}" stroke-width="0.9"/>
+          <line x1="${formatNumber(bottomLeft.x)}" y1="${formatNumber(baselineY)}" x2="${formatNumber(bottomRight.x)}" y2="${formatNumber(baselineY)}" stroke="${theme.line}" stroke-width="1.1"/>
+          <line x1="${formatNumber(bottomLeft.x)}" y1="${formatNumber(baselineY - 3)}" x2="${formatNumber(bottomLeft.x)}" y2="${formatNumber(baselineY + 3)}" stroke="${theme.line}" stroke-width="1.1"/>
+          <line x1="${formatNumber(bottomRight.x)}" y1="${formatNumber(baselineY - 3)}" x2="${formatNumber(bottomRight.x)}" y2="${formatNumber(baselineY + 3)}" stroke="${theme.line}" stroke-width="1.1"/>
+          <text x="${formatNumber(labelMid)}" y="${formatNumber(baselineY + 12)}" font-size="10" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">${escapeXml(formatMeters(bounds.width))}</text>
+        </g>
+      `);
+    } else if (side === "W") {
+      const baselineX = leftX;
+      const labelMid = (topLeft.y + bottomLeft.y) / 2;
+      segments.push(`
+        <g data-perimeter-side="W">
+          <line x1="${formatNumber(topLeft.x)}" y1="${formatNumber(topLeft.y)}" x2="${formatNumber(baselineX)}" y2="${formatNumber(topLeft.y)}" stroke="${theme.lineMuted}" stroke-width="0.9"/>
+          <line x1="${formatNumber(bottomLeft.x)}" y1="${formatNumber(bottomLeft.y)}" x2="${formatNumber(baselineX)}" y2="${formatNumber(bottomLeft.y)}" stroke="${theme.lineMuted}" stroke-width="0.9"/>
+          <line x1="${formatNumber(baselineX)}" y1="${formatNumber(topLeft.y)}" x2="${formatNumber(baselineX)}" y2="${formatNumber(bottomLeft.y)}" stroke="${theme.line}" stroke-width="1.1"/>
+          <line x1="${formatNumber(baselineX - 3)}" y1="${formatNumber(topLeft.y)}" x2="${formatNumber(baselineX + 3)}" y2="${formatNumber(topLeft.y)}" stroke="${theme.line}" stroke-width="1.1"/>
+          <line x1="${formatNumber(baselineX - 3)}" y1="${formatNumber(bottomLeft.y)}" x2="${formatNumber(baselineX + 3)}" y2="${formatNumber(bottomLeft.y)}" stroke="${theme.line}" stroke-width="1.1"/>
+          <text x="${formatNumber(baselineX - 8)}" y="${formatNumber(labelMid)}" font-size="10" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" transform="rotate(-90 ${formatNumber(baselineX - 8)} ${formatNumber(labelMid)})">${escapeXml(formatMeters(bounds.height))}</text>
+        </g>
+      `);
+    } else if (side === "N") {
+      const baselineY = layout.top - 30;
+      const labelMid = (topLeft.x + topRight.x) / 2;
+      segments.push(`
+        <g data-perimeter-side="N">
+          <line x1="${formatNumber(topLeft.x)}" y1="${formatNumber(topLeft.y)}" x2="${formatNumber(topLeft.x)}" y2="${formatNumber(baselineY)}" stroke="${theme.lineMuted}" stroke-width="0.9"/>
+          <line x1="${formatNumber(topRight.x)}" y1="${formatNumber(topRight.y)}" x2="${formatNumber(topRight.x)}" y2="${formatNumber(baselineY)}" stroke="${theme.lineMuted}" stroke-width="0.9"/>
+          <line x1="${formatNumber(topLeft.x)}" y1="${formatNumber(baselineY)}" x2="${formatNumber(topRight.x)}" y2="${formatNumber(baselineY)}" stroke="${theme.line}" stroke-width="1.1"/>
+          <text x="${formatNumber(labelMid)}" y="${formatNumber(baselineY - 4)}" font-size="10" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">${escapeXml(formatMeters(bounds.width))}</text>
+        </g>
+      `);
+    } else if (side === "E") {
+      const baselineX = width - layout.right + 34;
+      const labelMid = (topRight.y + bottomRight.y) / 2;
+      segments.push(`
+        <g data-perimeter-side="E">
+          <line x1="${formatNumber(topRight.x)}" y1="${formatNumber(topRight.y)}" x2="${formatNumber(baselineX)}" y2="${formatNumber(topRight.y)}" stroke="${theme.lineMuted}" stroke-width="0.9"/>
+          <line x1="${formatNumber(bottomRight.x)}" y1="${formatNumber(bottomRight.y)}" x2="${formatNumber(baselineX)}" y2="${formatNumber(bottomRight.y)}" stroke="${theme.lineMuted}" stroke-width="0.9"/>
+          <line x1="${formatNumber(baselineX)}" y1="${formatNumber(topRight.y)}" x2="${formatNumber(baselineX)}" y2="${formatNumber(bottomRight.y)}" stroke="${theme.line}" stroke-width="1.1"/>
+          <text x="${formatNumber(baselineX + 14)}" y="${formatNumber(labelMid)}" font-size="10" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" transform="rotate(90 ${formatNumber(baselineX + 14)} ${formatNumber(labelMid)})">${escapeXml(formatMeters(bounds.height))}</text>
+        </g>
+      `);
+    }
+  }
+  if (!segments.length) {
+    return { markup: "", emittedSides: [] };
+  }
+  return {
+    markup: `<g id="plan-outer-perimeter-dimensions" class="cad-layer-dimensions cad-dimension-chain-outer-perimeter cad-lineweight-detail" data-outer-perimeter-sides="${[...seen].join(",")}">${segments.join("")}</g>`,
+    emittedSides: [...seen],
+  };
+}
+
 function renderExternalDimensions(
   bounds,
   project,
@@ -1419,6 +1514,16 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
     { rooms: levelRooms },
   );
   const dimensionMarkup = dimensionResult.markup;
+  // Phase 4b — additive outer perimeter chain on the sides the existing
+  // N+E external dimension chain doesn't cover. Off by default; turned on
+  // by the presentation-v3 panel spec via showOuterDimensionChain:true.
+  const outerPerimeterChain = options.showOuterDimensionChain
+    ? renderOuterPerimeterChain(bounds, project, layout, width, height, theme, {
+        sides: Array.isArray(options.outerDimensionSides)
+          ? options.outerDimensionSides
+          : ["S", "W"],
+      })
+    : { markup: "", emittedSides: [] };
   const scaleBar = renderScaleBar(
     transform.scale,
     width,
@@ -1527,6 +1632,7 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
   ${roomLabelMarkup ? `<g id="plan-room-labels" class="cad-layer-annotations">${roomLabelMarkup}</g>` : ""}
   ${sectionMarkers.markup}
   ${dimensionMarkup}
+  ${outerPerimeterChain.markup}
   ${renderNorthArrow(width, layout, theme, geometry.site?.north_orientation_deg || 0)}
   ${titleBlock}
   ${scaleBar.markup}
@@ -1573,6 +1679,9 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
         dimensionResult.chain.horizontalSegmentCount,
       dimension_chain_vertical_segments:
         dimensionResult.chain.verticalSegmentCount,
+      // Phase 4b — additive outer perimeter chain.
+      has_outer_perimeter_chain: outerPerimeterChain.emittedSides.length > 0,
+      outer_perimeter_chain_sides: outerPerimeterChain.emittedSides,
       cad_grade_renderer: blueprintGrade,
       cad_layer_classes: [
         "cad-layer-rooms",

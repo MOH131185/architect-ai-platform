@@ -589,6 +589,67 @@ function renderOverallSectionDimensions(
   `;
 }
 
+// Phase 4b — additive floor-to-floor labels next to each storey boundary
+// in the section. Off by default; spec-flagged via
+// showFloorToFloorLabels:true. Labels are placed on the right edge of the
+// section body so they do not collide with the existing level datum tags
+// on the left.
+function renderPhase4bFloorToFloorLabels(
+  baseX,
+  baseY,
+  sectionWidthPx,
+  levelProfiles,
+  scale,
+  theme,
+) {
+  if (!Array.isArray(levelProfiles) || levelProfiles.length === 0) {
+    return { markup: "", count: 0 };
+  }
+  const rightX = baseX + sectionWidthPx + 6;
+  const labels = [];
+  for (let index = 0; index < levelProfiles.length; index += 1) {
+    const level = levelProfiles[index];
+    const heightM = Number(level?.height_m);
+    if (!Number.isFinite(heightM) || heightM <= 0) continue;
+    const bottomM = Number(level?.bottom_m || 0);
+    const topM = bottomM + heightM;
+    const bottomY = baseY - bottomM * scale;
+    const topY = baseY - topM * scale;
+    const midY = (bottomY + topY) / 2;
+    labels.push(
+      `<g data-floor-to-floor-level="${index}"><line x1="${formatNumber(rightX)}" y1="${formatNumber(bottomY)}" x2="${formatNumber(rightX + 8)}" y2="${formatNumber(bottomY)}" stroke="${(theme && theme.line) || "#222"}" stroke-width="0.6"/><line x1="${formatNumber(rightX)}" y1="${formatNumber(topY)}" x2="${formatNumber(rightX + 8)}" y2="${formatNumber(topY)}" stroke="${(theme && theme.line) || "#222"}" stroke-width="0.6"/><line x1="${formatNumber(rightX + 4)}" y1="${formatNumber(topY)}" x2="${formatNumber(rightX + 4)}" y2="${formatNumber(bottomY)}" stroke="${(theme && theme.line) || "#222"}" stroke-width="0.6"/><text x="${formatNumber(rightX + 10)}" y="${formatNumber(midY)}" font-size="9" font-family="Arial, sans-serif" font-weight="700" fill="${(theme && theme.line) || "#222"}" dominant-baseline="middle">${escapeXml(`F2F ${heightM.toFixed(2)}m`)}</text></g>`,
+    );
+  }
+  return {
+    markup: `<g id="phase4b-floor-to-floor-labels" class="cad-floor-to-floor-labels" data-floor-to-floor-count="${labels.length}">${labels.join("")}</g>`,
+    count: labels.length,
+  };
+}
+
+// Phase 4b — additive ridge height label. Off by default; spec-flagged via
+// showRidgeLabel:true. Placed at the top-right of the section body so it
+// sits next to the existing ridge datum on the left edge.
+function renderPhase4bRidgeLabel(
+  baseX,
+  baseY,
+  sectionWidthPx,
+  ridgeHeightM,
+  scale,
+  theme,
+) {
+  if (!Number.isFinite(Number(ridgeHeightM)) || Number(ridgeHeightM) <= 0) {
+    return { markup: "", count: 0 };
+  }
+  const ridgeM = Number(ridgeHeightM);
+  const ridgeY = baseY - ridgeM * scale;
+  const rightX = baseX + sectionWidthPx + 6;
+  const fill = (theme && theme.line) || "#222";
+  return {
+    markup: `<g id="phase4b-ridge-label" class="cad-ridge-label" data-ridge-height-m="${ridgeM.toFixed(2)}"><line x1="${formatNumber(rightX)}" y1="${formatNumber(ridgeY)}" x2="${formatNumber(rightX + 18)}" y2="${formatNumber(ridgeY)}" stroke="${fill}" stroke-width="0.8"/><text x="${formatNumber(rightX + 22)}" y="${formatNumber(ridgeY)}" font-size="9" font-family="Arial, sans-serif" font-weight="700" fill="${fill}" dominant-baseline="middle">${escapeXml(`Ridge ${ridgeM.toFixed(2)}m`)}</text></g>`,
+    count: 1,
+  };
+}
+
 function renderLevelDatums(
   baseX,
   baseY,
@@ -1597,6 +1658,48 @@ export function renderSectionSvg(
       foundationDepthM: 1,
     },
   );
+  // Phase 4b — additive presentation polish. Off by default; spec-flagged
+  // via showFloorToFloorLabels:true / showRidgeLabel:true.
+  const phase4bFloorToFloorLabels = options.showFloorToFloorLabels
+    ? renderPhase4bFloorToFloorLabels(
+        baseX,
+        baseY,
+        horizontalExtent * scale,
+        levelProfiles,
+        scale,
+        SECTION_THEME,
+      )
+    : { markup: "", count: 0 };
+  // Resolve ridge height with the section's primary computed value, then
+  // fall back to canonical roof metadata so the Phase 4b ridge label still
+  // shows for geometries where `roofPitchInfoBase.riseM` is unknown but the
+  // roof carries an explicit `ridge_height_m` / `peak_height_m`. When the
+  // canonical metadata also lacks ridge data but a real envelope exists,
+  // fall back to totalHeight + a presentation allowance so the label is
+  // still useful as a section annotation.
+  let ridgeLabelMeters = Number.isFinite(Number(sectionRidgeHeightM))
+    ? Number(sectionRidgeHeightM)
+    : Number(geometry?.roof?.ridge_height_m) ||
+      Number(geometry?.roof?.peak_height_m) ||
+      Number(
+        geometry?.metadata?.canonical_construction_truth?.roof?.ridge_height_m,
+      ) ||
+      null;
+  if (!Number.isFinite(ridgeLabelMeters) || ridgeLabelMeters <= 0) {
+    if (totalHeight > 0) {
+      ridgeLabelMeters = totalHeight + 1.0;
+    }
+  }
+  const phase4bRidgeLabel = options.showRidgeLabel
+    ? renderPhase4bRidgeLabel(
+        baseX,
+        baseY,
+        horizontalExtent * scale,
+        ridgeLabelMeters,
+        scale,
+        SECTION_THEME,
+      )
+    : { markup: "", count: 0 };
   const foundation = renderFoundation(
     baseX,
     baseY,
@@ -1838,6 +1941,8 @@ export function renderSectionSvg(
   ${foundation}
   ${roof}
   ${datums.markup}
+  ${phase4bFloorToFloorLabels.markup}
+  ${phase4bRidgeLabel.markup}
   ${slabMarkup.markup}
   ${cutRoomMarkup.markup}
   ${
@@ -1890,6 +1995,10 @@ export function renderSectionSvg(
       foundation_datum_count: 1,
       ground_hatch_band_lines: groundHatch.count,
       ground_hatch_visible: groundHatch.count > 0,
+      // Phase 4b — additive presentation polish.
+      has_phase4b_floor_to_floor_labels: phase4bFloorToFloorLabels.count > 0,
+      phase4b_floor_to_floor_label_count: phase4bFloorToFloorLabels.count,
+      has_phase4b_ridge_label: phase4bRidgeLabel.count > 0,
       vertical_dimension_chain_count: 1,
       eaves_datum_count: datums.hasEaves ? 1 : 0,
       ridge_datum_count: datums.hasRidge ? 1 : 0,

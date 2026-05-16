@@ -141,4 +141,71 @@ describe("api/project/export/dxf", () => {
     await handler(req, res);
     expect(res.statusCode).toBe(405);
   });
+
+  // Phase 2 audit response: the route must thread the structural/MEP
+  // flags from the request body. Without this, a generation that asked
+  // for arch-only still gets S-/E-/P-/M- layers from server env. The
+  // exporter applies the explicit-false-wins rule end-to-end.
+  test("forwards structuralDrawingsEnabled / mepDrawingsEnabled from request body", async () => {
+    const originalStructural = process.env.STRUCTURAL_DRAWINGS_ENABLED;
+    const originalMep = process.env.MEP_DRAWINGS_ENABLED;
+    process.env.STRUCTURAL_DRAWINGS_ENABLED = "true";
+    process.env.MEP_DRAWINGS_ENABLED = "true";
+    try {
+      const req = {
+        method: "POST",
+        headers: {},
+        body: {
+          compiledProject: compiledProjectFixture(),
+          projectName: "AuditResponse",
+          structuralDrawingsEnabled: false,
+          mepDrawingsEnabled: false,
+        },
+      };
+      const res = createMockResponse();
+      await handler(req, res);
+      expect(res.statusCode).toBe(200);
+      const body = String(res.body || "");
+      // With explicit-false flags, no S-/E-/P-/M- layer entries should
+      // appear in the entity stream — even though env says both are on.
+      expect(body).not.toMatch(/^  8\nS-FOUNDATION$/m);
+      expect(body).not.toMatch(/^  8\nE-LIGHT$/m);
+      expect(body).not.toMatch(/^  8\nM-DUCT$/m);
+    } finally {
+      if (originalStructural === undefined)
+        delete process.env.STRUCTURAL_DRAWINGS_ENABLED;
+      else process.env.STRUCTURAL_DRAWINGS_ENABLED = originalStructural;
+      if (originalMep === undefined) delete process.env.MEP_DRAWINGS_ENABLED;
+      else process.env.MEP_DRAWINGS_ENABLED = originalMep;
+    }
+  });
+
+  test("emits structural/MEP DXF disclaimer comments inside HEADER when the flags are on", async () => {
+    const req = {
+      method: "POST",
+      headers: {},
+      body: {
+        compiledProject: compiledProjectFixture(),
+        projectName: "AuditResponse",
+        structuralDrawingsEnabled: true,
+        mepDrawingsEnabled: true,
+      },
+    };
+    const res = createMockResponse();
+    await handler(req, res);
+    expect(res.statusCode).toBe(200);
+    const body = String(res.body || "");
+    // Re-audit fix: file still starts with "  0\nSECTION" (parser
+    // contract). Disclaimers now live INSIDE the HEADER section as
+    // group-code 999 comment lines.
+    expect(body.startsWith("  0\nSECTION")).toBe(true);
+    const headerStart = body.indexOf("  2\nHEADER\n");
+    const headerEnd = body.indexOf("  0\nENDSEC\n", headerStart);
+    expect(headerStart).toBeGreaterThan(-1);
+    expect(headerEnd).toBeGreaterThan(headerStart);
+    const headerBlock = body.slice(headerStart, headerEnd);
+    expect(headerBlock).toMatch(/  999\n/);
+    expect(headerBlock).toContain("STRUCTURAL_REVIEW_DISCLAIMER");
+    expect(headerBlock).toContain("MEP_REVIEW_DISCLAIMER");
+  });
 });

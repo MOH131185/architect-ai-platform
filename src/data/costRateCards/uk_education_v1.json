@@ -1,0 +1,79 @@
+{
+  "schema_version": "cost-rate-card-v2",
+  "id": "uk_education_v1",
+  "version": "1.0.0",
+  "currency": "GBP",
+  "region": "uk-average",
+  "disclaimer": "Preliminary indicative rates for UK education sector buildings (primary / secondary schools, sixth form colleges, university teaching blocks). NOT a contractor quotation. Excludes VAT, professional fees, statutory fees, contingency, FF&E, IT/AV beyond core data, abnormals, and ground / infrastructure works unless explicitly stated. Use as Stage 2 order-of-magnitude only.",
+  "buildingTypes": {
+    "education": {
+      "confidence": "medium",
+      "confidenceWidths": {
+        "areas": { "low": 0.9, "high": 1.12 },
+        "envelope": { "low": 0.88, "high": 1.16 },
+        "finishes": { "low": 0.78, "high": 1.28 },
+        "counts": { "low": 0.88, "high": 1.15 },
+        "fitOut": { "low": 0.78, "high": 1.3 },
+        "mep": { "low": 0.85, "high": 1.2 }
+      },
+      "rates": {
+        "areas": {
+          "Gross Floor Area": 2400,
+          "Slab Area": 165,
+          "Roof Area": 165
+        },
+        "envelope": {
+          "External Wall Area": 150,
+          "External Wall Length": 0,
+          "Glazing Area": 650,
+          "Envelope Perimeter": 50
+        },
+        "finishes": {
+          "Internal Floor Finish": 62
+        },
+        "counts": {
+          "Doors": 480,
+          "Windows": 890,
+          "Stairs": 5800,
+          "Doors (small)": 410,
+          "Doors (medium)": 480,
+          "Doors (large)": 660,
+          "Windows (small)": 660,
+          "Windows (medium)": 890,
+          "Windows (large)": 1240
+        },
+        "fitOut": {
+          "Kitchen": 14500,
+          "Bathroom": 7800
+        },
+        "mep": {
+          "Lighting Point": 115,
+          "Power Socket": 70,
+          "Switch": 50,
+          "Data Outlet": 145,
+          "Sanitary Fixture": 620,
+          "Drainage Outlet": 240,
+          "Ventilation Extract": 480
+        }
+      }
+    }
+  },
+  "regionFactors": {
+    "london": 1.12,
+    "south-east": 1.05,
+    "uk-average": 1.0,
+    "midlands": 0.98,
+    "northern": 0.95,
+    "scotland": 0.96,
+    "wales": 0.96
+  },
+  "qualityFactors": {
+    "baseline": 0.92,
+    "mid": 1.0,
+    "premium": 1.16
+  },
+  "contingency": {
+    "defaultPercent": 11,
+    "rationale": "Stage 2 design contingency for education buildings. Slightly above residential to reflect statutory accessibility and Building Bulletin (BB101 ventilation, BB104 SEND, BB103 area guidelines) compliance variance."
+  }
+}
