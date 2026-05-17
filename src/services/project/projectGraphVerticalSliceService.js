@@ -87,6 +87,12 @@ import {
 } from "./ndssValidator.js";
 import { buildLocalStylePackV2 } from "../style/localStylePack.js";
 import {
+  computeStylePackHash,
+  extractStylePack,
+} from "../style/stylePackExtractor.js";
+import { applyStylePackToBrief } from "../style/stylePackConstraintApplier.js";
+import { STYLE_PACK_VERSION } from "../../schemas/stylePack.js";
+import {
   buildStyleBlendManifest,
   evaluateStyleBlendQA,
 } from "../style/styleBlendManifestService.js";
@@ -168,6 +174,28 @@ const MAX_TARGET_STOREYS = Math.max(
   1,
   Number.parseInt(process.env.MAX_TARGET_STOREYS, 10) || 8,
 );
+
+function isStylePackEnabled(env = process.env) {
+  const flag = String(env.STYLE_PACK_ENABLED || "")
+    .trim()
+    .toLowerCase();
+  if (flag === "true") return true;
+  if (flag === "false") return false;
+  return !(env.VERCEL || env.NODE_ENV === "production");
+}
+
+function collectStylePackPortfolioFiles(input = {}) {
+  return [
+    ...(Array.isArray(input.portfolioFiles) ? input.portfolioFiles : []),
+    ...(Array.isArray(input.portfolioBlend?.portfolioFiles)
+      ? input.portfolioBlend.portfolioFiles
+      : []),
+    ...(Array.isArray(input.brief?.portfolioFiles)
+      ? input.brief.portfolioFiles
+      : []),
+  ];
+}
+
 const REQUIRED_A1_PANEL_TYPES_BASE = [
   "floor_plan_ground",
   "elevation_north",
@@ -735,7 +763,7 @@ const PROJECT_GRAPH_BUILDING_TYPE_ALIASES = Object.freeze({
   shop: "commercial_retail",
   "retail-store": "commercial_retail",
   "commercial-mixed-use": "commercial_mixed_use",
-  "mixed-use": "commercial_mixed_use",
+  "mixed-use": "mixed_use",
   "commercial-shopping-mall": "commercial_shopping_mall",
   "shopping-mall": "commercial_shopping_mall",
   mall: "commercial_shopping_mall",
@@ -4884,11 +4912,7 @@ async function resolveSiteMapSnapshot({ input = {}, brief, site }) {
         lng: Number(center?.lng ?? center?.lon ?? site.lon),
       },
       polygon: polygon.length >= 3 ? polygon : null,
-      // Always draw the polygon overlay when we have one — the user needs
-      // to see the auto-detected boundary even when it is non-authoritative.
-      // The visual style and the `boundaryEstimated` metadata flag below
-      // continue to differentiate the two states.
-      drawPolygonOverlay: polygon.length >= 3,
+      drawPolygonOverlay: boundaryAuthoritative && polygon.length >= 3,
       polygonStyle: boundaryAuthoritative ? blueAuthoritative : amberEstimated,
       zoom: Number(input.siteSnapshot?.zoom || 18),
       size: [1200, 780],
@@ -5140,7 +5164,13 @@ function applyRegulationRules(regulations, ctx) {
   };
 }
 
-function buildLocalStylePack(brief, site, climate, jurisdictionPack = null) {
+function buildLocalStylePack(
+  brief,
+  site,
+  climate,
+  jurisdictionPack = null,
+  { stylePack = null } = {},
+) {
   // Plan §6.5 weighted blend: local 40 / user 25 / climate 20 / portfolio 15
   // modulated by user_intent.local_blend_strength and innovation_strength.
   return buildLocalStylePackV2({
@@ -5148,6 +5178,7 @@ function buildLocalStylePack(brief, site, climate, jurisdictionPack = null) {
     site,
     climate,
     jurisdictionPack,
+    stylePack,
     createStableId,
     paletteSize: 6,
   });
@@ -5233,6 +5264,8 @@ function addRoomWallsAndOpenings({
   windows,
   mainEntryOrientation = null,
   layoutSeed = null,
+  openingRhythm = null,
+  windowToWallRatio = null,
 }) {
   const polygon = room.polygon;
   const edges = [
@@ -5332,6 +5365,30 @@ function addRoomWallsAndOpenings({
             })();
       const start = exteriorWall.start || { x: 0, y: 0 };
       const end = exteriorWall.end || { x: 0, y: 0 };
+      const orientationKey = {
+        north: "N",
+        south: "S",
+        east: "E",
+        west: "W",
+      }[exteriorWall.orientation];
+      const openingRatio = Number(
+        windowToWallRatio?.byElevation?.[orientationKey] ??
+          windowToWallRatio?.overall,
+      );
+      const rhythmModuleM = Number(openingRhythm?.moduleMm) / 1000;
+      const hasOpeningConstraint = Boolean(openingRhythm || windowToWallRatio);
+      const targetWidth = Number.isFinite(openingRatio)
+        ? length * Math.max(0.12, Math.min(0.7, openingRatio))
+        : length * 0.36;
+      const windowWidthM =
+        Number.isFinite(rhythmModuleM) && rhythmModuleM > 0
+          ? rhythmModuleM
+          : targetWidth;
+      const sillHeightM =
+        Number.isFinite(Number(openingRhythm?.sillHeightMm)) &&
+        Number(openingRhythm.sillHeightMm) >= 0
+          ? Number(openingRhythm.sillHeightMm) / 1000
+          : 0.85;
       const position = {
         x: round(
           Number(start.x || 0) +
@@ -5347,8 +5404,10 @@ function addRoomWallsAndOpenings({
         level_id: levelId,
         wall_id: exteriorWall.id,
         room_ids: [room.id],
-        width_m: Math.max(0.9, Math.min(2.6, length * 0.36)),
-        sill_height_m: 0.85,
+        width_m: hasOpeningConstraint
+          ? round(Math.max(0.9, Math.min(2.6, windowWidthM)))
+          : Math.max(0.9, Math.min(2.6, length * 0.36)),
+        sill_height_m: openingRhythm ? round(sillHeightM) : 0.85,
         head_height_m: 2.2,
         position,
         kind: "window",
@@ -5370,6 +5429,8 @@ function layoutRoomsForLevel({
   mainEntryOrientation = null,
   layoutSeed = null,
   buildingType = null,
+  openingRhythm = null,
+  windowToWallRatio = null,
   enforceNDSS = false,
   // PR6 (post-audit): optional Set used by the warn-only NDSS path to
   // dedup violation log lines across multiple levels in a single build.
@@ -5438,6 +5499,8 @@ function layoutRoomsForLevel({
         windows,
         mainEntryOrientation,
         layoutSeed,
+        openingRhythm,
+        windowToWallRatio,
       });
       rooms.push(room);
       cursorX += roomWidth;
@@ -5545,6 +5608,41 @@ function buildProjectGeometryFromProgramme({
   climate = null,
 }) {
   const levelCount = Number(brief.target_storeys || 1);
+  const stylePack = localStyle?.portfolio_style_pack || null;
+  const hasStylePackConstraints = Boolean(
+    stylePack || brief.style_pack_hash || localStyle?.portfolio_style_pack_hash,
+  );
+  const floorHeightM =
+    hasStylePackConstraints && Number(brief.floor_height_mm) > 0
+      ? round(
+          Math.max(2.4, Math.min(4.5, Number(brief.floor_height_mm) / 1000)),
+        )
+      : 3.2;
+  const roofPitchDominant = hasStylePackConstraints
+    ? String(brief.roof_pitch_dominant || "").trim()
+    : "";
+  const roofSlopeDeg =
+    roofPitchDominant === "flat"
+      ? 2
+      : roofPitchDominant === "low"
+        ? 8
+        : roofPitchDominant === "medium"
+          ? 28
+          : roofPitchDominant === "steep"
+            ? 45
+            : brief.building_type === "community"
+              ? 8
+              : 35;
+  const roofPrimitiveType =
+    roofPitchDominant === "flat"
+      ? "flat_roof"
+      : roofPitchDominant === "low"
+        ? "low_pitch_roof"
+        : roofPitchDominant
+          ? "gable"
+          : brief.building_type === "community"
+            ? "low_pitch_roof"
+            : "gable";
   const groups = groupSpacesByLevel(programme.spaces, levelCount);
   const levelAreas = Object.values(groups).map((spaces) =>
     spaces.reduce((sum, space) => sum + Number(space.target_area_m2 || 0), 0),
@@ -5567,9 +5665,10 @@ function buildProjectGeometryFromProgramme({
     site,
     levelAreas,
     archetype: archetypeKey,
+    stylePack,
   });
   const scoredOptions = candidateOptions.map((option) =>
-    scoreOption({ option, brief, site, climate, programme }),
+    scoreOption({ option, brief, site, climate, programme, stylePack }),
   );
   const designOptionSelection =
     selectDesignOptionForRun(scoredOptions, brief) || {};
@@ -5618,6 +5717,12 @@ function buildProjectGeometryFromProgramme({
       mainEntryOrientation: site?.main_entry?.orientation || null,
       layoutSeed: normalizeGenerationSeed(brief.generation_seed),
       buildingType: brief?.building_type || null,
+      openingRhythm: hasStylePackConstraints
+        ? brief.opening_rhythm || null
+        : null,
+      windowToWallRatio: hasStylePackConstraints
+        ? brief.window_to_wall_ratio_target || null
+        : null,
       // PR2: NDSS hard-throw is opt-in until existing dwelling fixtures are
       // migrated to NDSS-compliant sizes. Brief opts in via enforce_ndss.
       enforceNDSS: brief?.enforce_ndss === true || brief?.enforceNDSS === true,
@@ -5637,8 +5742,8 @@ function buildProjectGeometryFromProgramme({
       id: levelId,
       name: `${levelName(levelIndex)} Floor`,
       level_number: levelIndex,
-      elevation_m: round(levelIndex * 3.2),
-      height_m: 3.2,
+      elevation_m: round(levelIndex * floorHeightM),
+      height_m: floorHeightM,
       room_ids: layout.rooms.map((room) => room.id),
       wall_ids: walls
         .filter((wall) => wall.level_id === levelId)
@@ -5660,6 +5765,8 @@ function buildProjectGeometryFromProgramme({
     footprints[footprints.length - 1]?.polygon || baseFootprint;
   const roofBbox = buildBoundingBoxFromPolygon(roofFootprint);
   const ridgeY = round((roofBbox.min_y + roofBbox.max_y) / 2);
+  const stylePackHash =
+    brief.style_pack_hash || localStyle?.portfolio_style_pack_hash || null;
   const projectGeometry = {
     schema_version: CANONICAL_PROJECT_GEOMETRY_VERSION,
     project_id: createStableId("project", brief.project_name),
@@ -5684,10 +5791,10 @@ function buildProjectGeometryFromProgramme({
       {
         id: createStableId("roof-plane", roofFootprint),
         primitive_family: "roof_plane",
-        type: brief.building_type === "community" ? "low_pitch_roof" : "gable",
+        type: roofPrimitiveType,
         support_mode: "explicit_generated",
         polygon: roofFootprint,
-        slope_deg: brief.building_type === "community" ? 8 : 35,
+        slope_deg: roofSlopeDeg,
         eave_depth_m: 0.35,
       },
       {
@@ -5696,13 +5803,18 @@ function buildProjectGeometryFromProgramme({
         type: "ridge",
         start: { x: roofBbox.min_x, y: ridgeY },
         end: { x: roofBbox.max_x, y: ridgeY },
-        ridge_height_m: round(levelCount * 3.2 + 1.4),
+        ridge_height_m: round(levelCount * floorHeightM + 1.4),
       },
     ],
     foundations: [],
     base_conditions: [],
     roof: {
-      type: brief.building_type === "community" ? "low_pitch" : "gable",
+      type:
+        roofPitchDominant === "flat"
+          ? "flat"
+          : roofPitchDominant === "low"
+            ? "low_pitch"
+            : "gable",
       polygon: roofFootprint,
     },
     footprints,
@@ -5721,6 +5833,7 @@ function buildProjectGeometryFromProgramme({
           brief.building_type === "community"
             ? "civic low pitch"
             : "domestic gable",
+        ...(stylePackHash ? { portfolio_style_pack_hash: stylePackHash } : {}),
       },
       canonical_construction_truth: {
         roof: {
@@ -5770,6 +5883,9 @@ function buildProjectGeometryFromProgramme({
     // detected; populated only on dwelling briefs (NDSS is dwelling-scope).
     ndss_warnings: ndssWarnSink.violations.slice(),
   };
+  if (stylePackHash) {
+    projectGeometry.metadata.portfolio_style_pack_hash = stylePackHash;
+  }
 
   return projectGeometry;
 }
@@ -7011,11 +7127,9 @@ function buildSiteContextPanelArtifact({
   <path d="M 64 642 C 186 600 272 620 354 574 C 440 526 552 540 806 488" fill="none" stroke="#c8c8c8" stroke-width="28" opacity="0.55"/>
   <path d="M 64 642 C 186 600 272 620 354 574 C 440 526 552 540 806 488" fill="none" stroke="#ffffff" stroke-width="18" opacity="0.85"/>
   <text x="450" y="104" font-family="Arial, sans-serif" font-size="26" font-weight="700" text-anchor="middle" fill="#111111">${boundaryLabel}</text>`;
-  // User-facing label keeps only site area + main entry direction. Source,
-  // confidence and inferred/fallback flags remain available on the wrapping
-  // <svg data-boundary-source data-boundary-confidence data-main-entry-…>
-  // attributes for QA without leaking pipeline uncertainty onto the sheet.
-  const areaLabel = `Site area: ${site.area_m2} m² | Main entry: ${site.main_entry?.orientation || "north"}`;
+  const boundarySourceLabel =
+    site.boundary_source || site.boundarySource || "Unknown";
+  const areaLabel = `Site area: ${site.area_m2} m² | Main entry: ${site.main_entry?.orientation || "north"} | Boundary source: ${boundarySourceLabel}`;
   const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="site_context" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-site-map-source="${escapeXml(mapSource)}" data-site-map-image="${hasMapImage ? "true" : "false"}" data-boundary-source="${escapeXml(manualVerifiedBoundary ? "manual_verified" : site.boundary_source || "")}" data-boundary-confidence="${escapeXml(String(site.boundary_confidence ?? ""))}" data-main-entry-orientation="${escapeXml(site.main_entry?.orientation || "")}">
   <defs>
     <marker id="main-entry-arrowhead" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
@@ -8409,7 +8523,12 @@ function normalizeAddressCasing(address) {
     postcode,
     after ? titleCaseAddressSegment(after) : "",
   ].filter(Boolean);
-  return parts.join(" ").replace(/\s+,/g, ",").replace(/\s+/g, " ").trim();
+  return parts
+    .join(" ")
+    .replace(/\s+,/g, ",")
+    .replace(/\s+/g, " ")
+    .replace(/\bUk\b/g, "UK")
+    .trim();
 }
 
 function resolveBriefAddress(brief = {}, projectContext = null) {
@@ -14643,7 +14762,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     return now;
   };
   let __vsMark = __vsRunStart;
-  const brief = normalizeBrief(input);
+  let brief = normalizeBrief(input);
   __vsMark = __vsLog("normalize_brief", __vsMark);
   // Programme preflight gate. Mirrors the UI-layer gate in
   // ArchitectAIWizardContainer so API-submitted requests cannot bypass
@@ -14736,11 +14855,27 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
   const jurisdictionPackSummary = summarizeJurisdictionPack(jurisdictionPack);
   const climate = buildClimatePack(brief, site, { weather });
   const regulationsMetadata = buildRegulationPack(brief);
+  const portfolioFilesForStylePack = collectStylePackPortfolioFiles(input);
+  const stylePack = isStylePackEnabled()
+    ? extractStylePack({
+        portfolioFiles: portfolioFilesForStylePack,
+        briefHints: {
+          buildingType: brief.building_type,
+          target_storeys: brief.target_storeys,
+          climate,
+          jurisdictionPack,
+        },
+        extractorVersion: STYLE_PACK_VERSION,
+      })
+    : null;
+  const stylePackHash = stylePack ? computeStylePackHash(stylePack) : null;
+  brief = applyStylePackToBrief({ brief, stylePack });
   const localStyle = buildLocalStylePack(
     brief,
     site,
     climate,
     jurisdictionPack,
+    { stylePack },
   );
   const draftProgramme = buildProgramme({
     brief,
@@ -16183,6 +16318,8 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     success: qa.status === "pass",
     pipelineVersion: PROJECT_GRAPH_VERTICAL_SLICE_VERSION,
     geometryHash: compiledProject.geometryHash,
+    style_pack: stylePack || null,
+    stylePackHash: stylePackHash || null,
     seed: generationLifecycle.generationSeed,
     generationSeed: generationLifecycle.generationSeed,
     seedSource: generationLifecycle.seedSource,
@@ -16201,6 +16338,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       variationMode: generationLifecycle.variationMode,
       generationLifecycle,
       geometryHash: compiledProject.geometryHash,
+      ...(stylePackHash ? { portfolio_style_pack_hash: stylePackHash } : {}),
       visualManifestHash: visualManifest.manifestHash,
       styleBlendManifestHash: styleBlendManifest.manifestHash,
       engineeringExportReadiness,
@@ -16213,8 +16351,10 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     },
     projectTypeSupport: brief.project_type_support || null,
     projectGraph: finalGraph,
+    stylePack: stylePack || null,
     provenanceManifest,
     architectReasoningManifest,
+    visualManifest,
     styleBlendManifest,
     // Phase 6 follow-up (Codex audit) — surface the resolved DWG
     // converter capability snapshot so buildClientExportManifest can

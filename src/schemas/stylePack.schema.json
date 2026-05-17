@@ -1,0 +1,149 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://architect-ai-platform/schemas/stylePack/1.0.0",
+  "title": "StylePack",
+  "type": "object",
+  "required": [
+    "version",
+    "windowToWallRatio",
+    "roofPitchDistribution",
+    "openingRhythm",
+    "materialFamilies",
+    "massingTendency",
+    "facadeModule",
+    "layout_archetype",
+    "provenance"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": "1.0.0" },
+    "windowToWallRatio": {
+      "type": "object",
+      "required": ["overall", "byElevation"],
+      "properties": {
+        "overall": { "type": "number", "minimum": 0, "maximum": 0.95 },
+        "byElevation": {
+          "type": "object",
+          "required": ["N", "S", "E", "W"],
+          "properties": {
+            "N": { "type": "number", "minimum": 0, "maximum": 0.95 },
+            "S": { "type": "number", "minimum": 0, "maximum": 0.95 },
+            "E": { "type": "number", "minimum": 0, "maximum": 0.95 },
+            "W": { "type": "number", "minimum": 0, "maximum": 0.95 }
+          }
+        }
+      }
+    },
+    "roofPitchDistribution": {
+      "type": "object",
+      "required": ["flatPct", "lowPct", "mediumPct", "steepPct", "dominant"],
+      "properties": {
+        "flatPct": { "type": "number", "minimum": 0, "maximum": 1 },
+        "lowPct": { "type": "number", "minimum": 0, "maximum": 1 },
+        "mediumPct": { "type": "number", "minimum": 0, "maximum": 1 },
+        "steepPct": { "type": "number", "minimum": 0, "maximum": 1 },
+        "dominant": { "enum": ["flat", "low", "medium", "steep"] }
+      }
+    },
+    "openingRhythm": {
+      "type": "object",
+      "required": ["moduleMm", "repetition", "sillHeightMm"],
+      "properties": {
+        "moduleMm": { "type": "integer", "minimum": 600, "maximum": 6000 },
+        "repetition": { "enum": ["regular", "asymmetric", "paired"] },
+        "sillHeightMm": { "type": "integer", "minimum": 0, "maximum": 2200 }
+      }
+    },
+    "materialFamilies": {
+      "type": "object",
+      "required": ["primary", "secondary", "accents"],
+      "properties": {
+        "primary": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "maxItems": 4
+        },
+        "secondary": {
+          "type": "array",
+          "items": { "type": "string" },
+          "maxItems": 6
+        },
+        "accents": {
+          "type": "array",
+          "items": { "type": "string" },
+          "maxItems": 6
+        }
+      }
+    },
+    "massingTendency": {
+      "type": "object",
+      "required": ["form", "floorCount", "aspectRatioRange"],
+      "properties": {
+        "form": {
+          "enum": ["compact", "L", "U", "courtyard", "articulated"]
+        },
+        "floorCount": {
+          "type": "object",
+          "required": ["min", "mode", "max"],
+          "properties": {
+            "min": { "type": "integer", "minimum": 1, "maximum": 12 },
+            "mode": { "type": "integer", "minimum": 1, "maximum": 12 },
+            "max": { "type": "integer", "minimum": 1, "maximum": 12 }
+          }
+        },
+        "aspectRatioRange": {
+          "type": "array",
+          "items": { "type": "number", "minimum": 0.2, "maximum": 6 },
+          "minItems": 2,
+          "maxItems": 2
+        }
+      }
+    },
+    "facadeModule": {
+      "type": "object",
+      "required": ["baySpacingMm", "floorHeightMm"],
+      "properties": {
+        "baySpacingMm": {
+          "type": "integer",
+          "minimum": 1200,
+          "maximum": 9000
+        },
+        "floorHeightMm": {
+          "type": "integer",
+          "minimum": 2400,
+          "maximum": 4500
+        }
+      }
+    },
+    "layout_archetype": {
+      "type": ["string", "null"],
+      "description": "Optional alignment with the existing localStyle archetype vocabulary. Null when portfolio is ambiguous."
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "sourceFiles",
+        "extractedAt",
+        "extractorVersion",
+        "confidence",
+        "seed"
+      ],
+      "properties": {
+        "sourceFiles": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "extractedAt": { "type": "string", "format": "date-time" },
+        "extractorVersion": { "type": "string" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "seed": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Per-field evidence breadcrumbs."
+        }
+      }
+    }
+  }
+}

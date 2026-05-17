@@ -8,6 +8,8 @@
  * that doesn't fit the buildable polygon is disqualified outright).
  */
 
+import { applyStylePackToOptionScorerWeights } from "../style/stylePackConstraintApplier.js";
+
 export const CATEGORY_WEIGHTS = Object.freeze({
   programmeFit: 0.25,
   siteFit: 0.2,
@@ -15,6 +17,7 @@ export const CATEGORY_WEIGHTS = Object.freeze({
   daylightPotential: 0.15,
   circulationEfficiency: 0.1,
   regulationRisk: 0.1,
+  styleAlignment: 0,
 });
 
 function clamp01(value) {
@@ -95,12 +98,56 @@ function scoreRegulationRisk(option, climate) {
   return clamp01(base);
 }
 
+function dominantRoofMatches(brief, stylePack) {
+  const expected = stylePack?.roofPitchDistribution?.dominant || null;
+  if (!expected) return false;
+  return String(brief?.roof_pitch_dominant || "").trim() === expected;
+}
+
+function scoreStyleAlignment(option, brief, stylePack) {
+  if (!stylePack) return 0;
+  const checks = [];
+  const archetype = stylePack.layout_archetype || null;
+  if (archetype) {
+    checks.push(
+      option.archetype_preferred === true ||
+        String(option.typology || "").includes(String(archetype)),
+    );
+  }
+  const form = stylePack.massingTendency?.form || null;
+  if (form) {
+    const normalizedForm = String(form).toLowerCase();
+    checks.push(
+      String(option.typology || "").includes(normalizedForm) ||
+        (normalizedForm === "compact" && option.typology === "compact"),
+    );
+  }
+  const range = stylePack.massingTendency?.aspectRatioRange;
+  if (Array.isArray(range) && range.length === 2) {
+    const aspect = Number(option.aspect || 0);
+    checks.push(aspect >= Number(range[0]) && aspect <= Number(range[1]));
+  }
+  const floorCount = stylePack.massingTendency?.floorCount || null;
+  if (floorCount) {
+    const storeys = Number(brief?.target_storeys || 0);
+    checks.push(storeys >= floorCount.min && storeys <= floorCount.max);
+  }
+  checks.push(dominantRoofMatches(brief, stylePack));
+  if (!checks.length) return 0;
+  return clamp01(checks.filter(Boolean).length / checks.length);
+}
+
+export function scaleWeightsForStylePack(weights, stylePack) {
+  return applyStylePackToOptionScorerWeights({ weights, stylePack });
+}
+
 export function scoreOption({
   option,
-  brief, // eslint-disable-line no-unused-vars -- reserved for future programme-density signals
+  brief,
   site, // eslint-disable-line no-unused-vars
   climate,
   programme,
+  stylePack = null,
 }) {
   if (!option) throw new Error("scoreOption requires {option}");
   const subscores = {
@@ -110,9 +157,11 @@ export function scoreOption({
     daylightPotential: round(scoreDaylightPotential(option), 3),
     circulationEfficiency: round(scoreCirculationEfficiency(option), 3),
     regulationRisk: round(scoreRegulationRisk(option, climate), 3),
+    styleAlignment: round(scoreStyleAlignment(option, brief, stylePack), 3),
   };
+  const weights = scaleWeightsForStylePack(CATEGORY_WEIGHTS, stylePack);
   let aggregate = 0;
-  for (const [cat, weight] of Object.entries(CATEGORY_WEIGHTS)) {
+  for (const [cat, weight] of Object.entries(weights)) {
     aggregate += (subscores[cat] || 0) * weight;
   }
   if (option.archetype_preferred === true) {
@@ -130,7 +179,7 @@ export function scoreOption({
     footprint_bbox: option.footprint_bbox,
     subscores,
     aggregate_score: round(clamp01(aggregate), 3),
-    weights: CATEGORY_WEIGHTS,
+    weights,
   };
 }
 
@@ -147,4 +196,9 @@ export function selectBestOption(scoredOptions = []) {
   );
 }
 
-export default { scoreOption, selectBestOption, CATEGORY_WEIGHTS };
+export default {
+  scoreOption,
+  selectBestOption,
+  CATEGORY_WEIGHTS,
+  scaleWeightsForStylePack,
+};

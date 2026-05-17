@@ -1099,9 +1099,9 @@ function validateCadGradeTechnicalQa({ drawings = {}, projectGeometry = {} }) {
     }
   });
 
-  const expectedOpenings =
-    (projectGeometry.windows || []).length +
-    (projectGeometry.doors || []).length;
+  const expectedWindows = (projectGeometry.windows || []).length;
+  const expectedDoors = (projectGeometry.doors || []).length;
+  const expectedOpenings = expectedWindows + expectedDoors;
   const planOpenings = planEntries.reduce(
     (sum, entry) =>
       sum +
@@ -1109,17 +1109,22 @@ function validateCadGradeTechnicalQa({ drawings = {}, projectGeometry = {} }) {
       numberFromEntry(entry, ["door_count"]),
     0,
   );
-  const elevationOpenings = elevationEntries.reduce(
-    (sum, entry) =>
-      sum +
-      Number(entry?.window_count || 0) +
-      numberFromEntry(entry, ["door_count"]),
+  const elevationWindows = elevationEntries.reduce(
+    (sum, entry) => sum + Number(entry?.window_count || 0),
     0,
   );
+  const elevationDoors = elevationEntries.reduce(
+    (sum, entry) => sum + numberFromEntry(entry, ["door_count"]),
+    0,
+  );
+  const elevationOpenings = elevationWindows + elevationDoors;
+  const expectedElevationOpenings =
+    elevationDoors > 0 ? expectedOpenings : expectedWindows;
   if (
     expectedOpenings > 0 &&
     ((planOpenings > 0 && planOpenings !== expectedOpenings) ||
-      (elevationOpenings > 0 && elevationOpenings !== expectedOpenings))
+      (elevationOpenings > 0 &&
+        elevationOpenings !== expectedElevationOpenings))
   ) {
     warnings.push(
       `CAD_QA_OPENING_COUNT_ALIGNMENT: ProjectGraph has ${expectedOpenings} openings, plans report ${planOpenings}, elevations report ${elevationOpenings}.`,

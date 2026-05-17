@@ -151,6 +151,13 @@ const ARCHETYPE_OPTION_SPECS = Object.freeze({
   ],
 });
 
+const STYLE_PACK_ARCHETYPE_ALIASES = Object.freeze({
+  terrace: "linear_side_hall",
+  bar: null,
+  courtyard: null,
+  pavilion: null,
+});
+
 /**
  * Generate ≥3 rectangular design options with different aspect/orientation.
  * Returns an array of OptionSpec; pass to optionScorer.scoreOption.
@@ -167,6 +174,7 @@ export function generateRectangularOptions({
   site,
   levelAreas = [],
   archetype = null,
+  stylePack = null,
 } = {}) {
   if (!brief || !site) {
     throw new Error("generateRectangularOptions requires {brief, site}");
@@ -182,12 +190,26 @@ export function generateRectangularOptions({
   );
 
   // Default aspect from brief building type, used as the reference option.
-  const defaultAspect = brief.building_type === "community" ? 1.45 : 1.25;
+  const aspectRange = Array.isArray(
+    stylePack?.massingTendency?.aspectRatioRange,
+  )
+    ? stylePack.massingTendency.aspectRatioRange
+    : null;
+  const defaultAspect =
+    stylePack && Number(brief.aspect_ratio_target) > 0
+      ? Number(brief.aspect_ratio_target)
+      : brief.building_type === "community"
+        ? 1.45
+        : 1.25;
 
   const archetypeKey =
     typeof archetype === "string" && archetype.trim().length > 0
       ? archetype.trim()
-      : null;
+      : typeof stylePack?.layout_archetype === "string" &&
+          stylePack.layout_archetype.trim().length > 0
+        ? (STYLE_PACK_ARCHETYPE_ALIASES[stylePack.layout_archetype.trim()] ??
+          stylePack.layout_archetype.trim())
+        : null;
   const archetypeSpecs = archetypeKey
     ? ARCHETYPE_OPTION_SPECS[archetypeKey] || []
     : [];
@@ -203,6 +225,26 @@ export function generateRectangularOptions({
       preserveAspect: true,
     }),
   );
+  const massingForm = stylePack?.massingTendency?.form || null;
+  const stylePackAspect = aspectRange
+    ? Number(((Number(aspectRange[0]) + Number(aspectRange[1])) / 2).toFixed(3))
+    : null;
+  const stylePackOptions =
+    massingForm && stylePackAspect
+      ? [
+          makeOption({
+            optionId: `option-style-pack-${String(massingForm).toLowerCase()}`,
+            label: `Style Pack ${massingForm} massing`,
+            typology: `style_pack_${String(massingForm).toLowerCase()}`,
+            aspect: stylePackAspect,
+            longAxis: stylePackAspect >= 1 ? "ew" : "ns",
+            footprintArea,
+            buildableBbox,
+            // PLAN-AMBIGUITY: the current placer only emits rectangles, so non-rectangular Style Pack forms are represented as aspect-aligned deterministic proxies.
+            preserveAspect: true,
+          }),
+        ]
+      : [];
 
   return [
     // Archetype-specific candidates lead so the scorer can promote them
@@ -210,6 +252,7 @@ export function generateRectangularOptions({
     // four if no archetype is supplied or the buildable polygon rejects
     // them.
     ...archetypeOptions,
+    ...stylePackOptions,
     makeOption({
       optionId: "option-bar-ew",
       label: "Bar — long axis east-west",

@@ -1,0 +1,70 @@
+{
+  "version": "1.0.0",
+  "windowToWallRatio": {
+    "overall": 0.42,
+    "byElevation": {
+      "N": 0.32,
+      "S": 0.52,
+      "E": 0.42,
+      "W": 0.42
+    }
+  },
+  "roofPitchDistribution": {
+    "flatPct": 0,
+    "lowPct": 0,
+    "mediumPct": 1,
+    "steepPct": 0,
+    "dominant": "medium"
+  },
+  "openingRhythm": {
+    "moduleMm": 1200,
+    "repetition": "paired",
+    "sillHeightMm": 450
+  },
+  "materialFamilies": {
+    "primary": ["timber", "brick", "slate"],
+    "secondary": ["stone", "stone sill", "glass"],
+    "accents": ["red", "dark green", "dark", "green"]
+  },
+  "massingTendency": {
+    "form": "compact",
+    "floorCount": {
+      "min": 3,
+      "mode": 3,
+      "max": 3
+    },
+    "aspectRatioRange": [0.35, 0.75]
+  },
+  "facadeModule": {
+    "baySpacingMm": 2400,
+    "floorHeightMm": 3400
+  },
+  "layout_archetype": "linear_side_hall",
+  "provenance": {
+    "sourceFiles": ["victorian-terrace-shopfront.pdf"],
+    "extractedAt": "1970-01-01T00:00:00.000Z",
+    "extractorVersion": "1.0.0",
+    "confidence": 0.95,
+    "seed": "21ff23208373c8ebe963f27f31f2a1e8419675a02140f549c6f63c07c60b647d",
+    "evidence": {
+      "materials": ["timber", "brick", "slate", "stone", "stone sill", "glass"],
+      "colours": ["red", "dark green", "dark", "green"],
+      "styleKeywords": [
+        "shopfront",
+        "terrace",
+        "gable",
+        "paired",
+        "paired bays",
+        "pitched",
+        "pitched gable roof",
+        "regular",
+        "regular sash windows",
+        "sash",
+        "shopfront base",
+        "three storey"
+      ],
+      "buildingTypes": ["mixed use terrace"],
+      "drawingTypes": ["elevation", "section"]
+    }
+  }
+}

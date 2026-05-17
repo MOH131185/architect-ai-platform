@@ -317,6 +317,17 @@ function deriveEntranceOrientation({ compiledProject, projectGraph }) {
   );
 }
 
+function deriveMainEntry({ compiledProject, projectGraph }) {
+  const entry =
+    projectGraph?.site?.main_entry ||
+    projectGraph?.site?.mainEntry ||
+    compiledProject?.site?.main_entry ||
+    compiledProject?.site?.mainEntry ||
+    compiledProject?.entrance ||
+    null;
+  return entry && typeof entry === "object" ? clone(entry) : null;
+}
+
 function deriveClimateResponse({ climate }) {
   if (!climate || typeof climate !== "object") return null;
   return {
@@ -734,6 +745,7 @@ export function buildVisualManifest({
       compiledProject,
       projectGraph,
     }),
+    mainEntry: deriveMainEntry({ compiledProject, projectGraph }),
     climateResponse: deriveClimateResponse({ climate }),
     localStyle: deriveLocalStyleLabel({ localStyle, styleDNA }),
     styleKeywords: deriveStyleKeywords({ styleDNA, localStyle }),

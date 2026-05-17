@@ -1,0 +1,27 @@
+[
+  {
+    "name": "victorian-terrace-shopfront.pdf",
+    "type": "application/pdf",
+    "bytesOrTextDigest": "portfolio-textPDF-fixture-v1",
+    "text": "Victorian terrace with a three storey narrow frontage and deep plot. Red brick facade, timber shopfront base, dark green painted timber, regular sash windows in paired bays, slate pitched gable roof and detailed stone sill courses. Elevation and section drawings show repeated bay rhythm and shopfront glazing.",
+    "portfolioStyleEvidence": {
+      "materials": [
+        "red brick",
+        "timber shopfront",
+        "slate roof",
+        "stone sill"
+      ],
+      "colours": ["red", "dark green"],
+      "styleKeywords": [
+        "victorian terrace",
+        "shopfront base",
+        "regular sash windows",
+        "paired bays",
+        "pitched gable roof",
+        "three storey"
+      ],
+      "buildingTypes": ["mixed use terrace"],
+      "drawingTypes": ["elevation", "section"]
+    }
+  }
+]

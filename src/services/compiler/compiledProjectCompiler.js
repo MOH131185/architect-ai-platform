@@ -1238,7 +1238,7 @@ function buildValidationSummary({
   };
 }
 
-function buildGeometryHashPayload(compiledProject = {}) {
+export function buildGeometryHashPayload(compiledProject = {}) {
   const levelNumbers = new Map(
     toArray(compiledProject.levels).map((level) => [
       level.id,
@@ -1246,7 +1246,7 @@ function buildGeometryHashPayload(compiledProject = {}) {
     ]),
   );
 
-  return {
+  const payload = {
     footprint: {
       polygon: compiledProject.footprint?.polygon || [],
       bbox: compiledProject.footprint?.bbox || null,
@@ -1345,6 +1345,12 @@ function buildGeometryHashPayload(compiledProject = {}) {
       })),
     },
   };
+  const stylePackHash = compiledProject.metadata?.portfolio_style_pack_hash;
+  if (stylePackHash) {
+    // PLAN-AMBIGUITY: PLAN.md says audit-only, but the implementation prompt requires the Style Pack hash in the geometryHash input set.
+    payload.portfolio_style_pack_hash = stylePackHash;
+  }
+  return payload;
 }
 
 export function compileProject(input = {}, options = {}) {
@@ -1353,9 +1359,16 @@ export function compileProject(input = {}, options = {}) {
   const styleDNA = resolveStyleDNA(input);
   const locationData = resolveLocationData(input);
   const geometrySeed = cloneData(resolveGeometrySeed(input));
+  const portfolioStylePackHash =
+    styleDNA?.portfolio_style_pack_hash ||
+    geometrySeed?.metadata?.portfolio_style_pack_hash ||
+    null;
 
   geometrySeed.metadata = deepMerge(geometrySeed.metadata || {}, {
     style_dna: styleDNA,
+    ...(portfolioStylePackHash
+      ? { portfolio_style_pack_hash: portfolioStylePackHash }
+      : {}),
   });
   if (locationData?.climate && !geometrySeed.site?.climate) {
     geometrySeed.site = deepMerge(geometrySeed.site || {}, {
@@ -1531,6 +1544,9 @@ export function compileProject(input = {}, options = {}) {
       canonical_geometry_schema: projectGeometry.schema_version || null,
       geometry_source_path: sourcePath,
       compiler: "compiledProjectCompiler",
+      ...(portfolioStylePackHash
+        ? { portfolio_style_pack_hash: portfolioStylePackHash }
+        : {}),
     },
     geometryHash: "",
     site: cloneData(projectGeometry.site || {}),
@@ -1613,4 +1629,5 @@ export function compileProject(input = {}, options = {}) {
 export default {
   COMPILED_PROJECT_SCHEMA_VERSION,
   compileProject,
+  buildGeometryHashPayload,
 };
