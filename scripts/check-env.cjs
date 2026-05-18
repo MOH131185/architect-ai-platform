@@ -140,6 +140,13 @@ const OPTIONAL_PRESENTATION = [
       "Set true to enable the photoreal-render vs ProjectGraph vision-QA loop (PR5). Off by default; opting in adds one STEP_09_3D_QA_MODEL call per panel plus up to 2 retries on geometry drift.",
   },
   {
+    name: "STYLE_PACK_ENABLED",
+    description:
+      "Enables Style Pack extraction plus STEP 06 and STEP 11 constraints",
+    expected: "true|false",
+    optional: true,
+  },
+  {
     name: "A1_SHOW_PROVENANCE_BADGES",
     description:
       "Set true to render the IMAGE2 EDIT provenance badge on photoreal panels (dev/QA only). Default off so the badge does not leak onto client-facing sheets.",
@@ -186,7 +193,23 @@ function checkGroup(title, entries, { required = true } = {}) {
       if (required) missing.push(entry.name);
       continue;
     }
-    if (entry.expected && String(value).toLowerCase() !== entry.expected) {
+    if (
+      entry.expected &&
+      String(entry.expected).includes("|") &&
+      !String(entry.expected)
+        .split("|")
+        .map((part) => part.trim().toLowerCase())
+        .includes(String(value).toLowerCase())
+    ) {
+      console.log(`  ⚠️  ${entry.name} must be ${entry.expected}`);
+      invalid.push(entry.name);
+      continue;
+    }
+    if (
+      entry.expected &&
+      !String(entry.expected).includes("|") &&
+      String(value).toLowerCase() !== entry.expected
+    ) {
       console.log(`  ⚠️  ${entry.name} must be ${entry.expected}`);
       invalid.push(entry.name);
       continue;
@@ -239,6 +262,17 @@ function checkLocalDevProviderHint() {
   );
 }
 
+function buildProductionStrictEnv() {
+  const env = { ...process.env };
+  if (!env.AWS_ACCESS_KEY_ID && env.ARTIFACT_STORAGE_ACCESS_KEY_ID) {
+    env.AWS_ACCESS_KEY_ID = env.ARTIFACT_STORAGE_ACCESS_KEY_ID;
+  }
+  if (!env.AWS_SECRET_ACCESS_KEY && env.ARTIFACT_STORAGE_SECRET_ACCESS_KEY) {
+    env.AWS_SECRET_ACCESS_KEY = env.ARTIFACT_STORAGE_SECRET_ACCESS_KEY;
+  }
+  return env;
+}
+
 function main() {
   console.log("Environment Variable Validation: RIBA A1 ProjectGraph pipeline");
   console.log("Secrets are redacted by design.");
@@ -285,7 +319,7 @@ function main() {
   // and non-integer retention/concurrency env values. Non-production runs
   // surface the same checks but only the warnings section.
   const { errors: prodErrors, warnings: prodWarnings } =
-    runProductionStrictChecks(process.env);
+    runProductionStrictChecks(buildProductionStrictEnv());
   if (prodErrors.length > 0) {
     console.log("\nProduction-strict errors");
     console.log("────────────────────────");

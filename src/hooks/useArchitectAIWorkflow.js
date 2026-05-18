@@ -1453,6 +1453,7 @@ async function runProjectGraphVerticalSliceWorkflow({
     sheetSeries: verticalSlice.artifacts?.sheetSeries || [],
     sheetSplitDecision: verticalSlice.artifacts?.sheetSplitDecision || null,
     projectGraph: verticalSlice.projectGraph,
+    style_pack: verticalSlice.style_pack || verticalSlice.stylePack || null,
     projectGraphId:
       verticalSlice.projectGraph?.project_graph_id ||
       verticalSlice.projectGraph?.project_id ||
@@ -1547,6 +1548,10 @@ async function runProjectGraphVerticalSliceWorkflow({
         verticalSlice.projectGraph?.project_id ||
         null,
       geometryHash: verticalSlice.geometryHash,
+      stylePackHash:
+        verticalSlice.stylePackHash ||
+        verticalSlice.metadata?.portfolio_style_pack_hash ||
+        null,
       panelCount: Object.keys(panelMap).length,
       sourceOfTruth: "ProjectGraph",
       sheetSizeMm: verticalSlice.artifacts?.a1Sheet?.sheet_size_mm || {

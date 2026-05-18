@@ -86,6 +86,7 @@ build_active_*/
 build_active_ci/
 build_phase*/
 genarch/tmp_*/
+outputs/style-pack-smoke/
 .codex-push-gitdata/
 .codex-write-test/
 .codex-git-publish/

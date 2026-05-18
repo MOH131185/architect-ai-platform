@@ -11,6 +11,10 @@ import {
   A1_TEST_RASTER_MODE_ENV,
   A1_TEST_RASTER_STUB_VALUE,
 } from "../../services/render/svgRasteriser.js";
+import expectedStylePack from "../fixtures/stylePack/expected-pack-portfolio-textPDF.json" with { type: "json" };
+import { computeStylePackHash } from "../../services/style/stylePackExtractor.js";
+import { applyStylePackToBrief } from "../../services/style/stylePackConstraintApplier.js";
+import { buildGeometryHashPayload } from "../../services/compiler/compiledProjectCompiler.js";
 
 jest.setTimeout(420000);
 
@@ -64,6 +68,56 @@ function createReadingRoomBrief() {
       ],
     },
   };
+}
+
+function compileReadingRoomStylePackFixture(stylePack = null) {
+  const input = { ...createReadingRoomBrief(), seed: 13579 };
+  let brief = __projectGraphVerticalSliceInternals.normalizeBrief(input);
+  brief = applyStylePackToBrief({ brief, stylePack });
+  const site = __projectGraphVerticalSliceInternals.buildSiteContext({
+    brief,
+    sitePolygon: input.sitePolygon,
+    siteMetrics: input.siteMetrics,
+  });
+  const climate = __projectGraphVerticalSliceInternals.buildClimatePack(
+    brief,
+    site,
+  );
+  const localStyle = __projectGraphVerticalSliceInternals.buildLocalStylePack(
+    brief,
+    site,
+    climate,
+    null,
+    { stylePack },
+  );
+  const programme = __projectGraphVerticalSliceInternals.buildProgramme({
+    brief,
+    programSpaces: [],
+  });
+  const projectGeometry =
+    __projectGraphVerticalSliceInternals.buildProjectGeometryFromProgramme({
+      brief,
+      site,
+      programme,
+      localStyle,
+      climate,
+    });
+  const compiledProject = __projectGraphVerticalSliceInternals.compileProject({
+    projectGeometry,
+    masterDNA: {
+      projectName: brief.project_name,
+      projectID: projectGeometry.project_id,
+      styleDNA: projectGeometry.metadata.style_dna,
+      rooms: programme.spaces,
+    },
+    locationData: {
+      address: brief.site_input.address,
+      coordinates: { lat: site.lat, lng: site.lon },
+      climate: { type: climate.weather_source },
+      localMaterials: localStyle.material_palette,
+    },
+  });
+  return { brief, localStyle, programme, projectGeometry, compiledProject };
 }
 
 function createKensingtonReferenceMatchBrief() {
@@ -527,6 +581,7 @@ describe("projectGraphVerticalSliceService", () => {
     process.env.PROJECT_GRAPH_IMAGE_GEN_ENABLED;
   const originalOpenAIStrictImageGen = process.env.OPENAI_STRICT_IMAGE_GEN;
   const originalA1TestRasterMode = process.env[A1_TEST_RASTER_MODE_ENV];
+  const originalStylePackEnabled = process.env.STYLE_PACK_ENABLED;
   const originalFetch = global.fetch;
 
   beforeEach(() => {
@@ -538,6 +593,7 @@ describe("projectGraphVerticalSliceService", () => {
     delete process.env.OPENAI_REASONING_API_KEY;
     process.env.PROJECT_GRAPH_IMAGE_GEN_ENABLED = "false";
     process.env.OPENAI_STRICT_IMAGE_GEN = "false";
+    delete process.env.STYLE_PACK_ENABLED;
     delete process.env.GOOGLE_MAPS_API_KEY;
     delete process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
     // PR-D follow-up: opt the whole suite into the lightweight raster /
@@ -605,6 +661,11 @@ describe("projectGraphVerticalSliceService", () => {
       delete process.env[A1_TEST_RASTER_MODE_ENV];
     } else {
       process.env[A1_TEST_RASTER_MODE_ENV] = originalA1TestRasterMode;
+    }
+    if (originalStylePackEnabled === undefined) {
+      delete process.env.STYLE_PACK_ENABLED;
+    } else {
+      process.env.STYLE_PACK_ENABLED = originalStylePackEnabled;
     }
     global.fetch = originalFetch;
   });
@@ -2853,6 +2914,31 @@ describe("projectGraphVerticalSliceService", () => {
     expect(qa.status).toBe("fail");
     expect(qa.issues.map((issue) => issue.code)).toContain(
       "TECHNICAL_DRAWING_PANEL_ID_MISMATCH",
+    );
+  });
+
+  test("Style Pack is deterministic, upstream of geometry, and hash-addressed", async () => {
+    const noPack = compileReadingRoomStylePackFixture(null);
+    const first = compileReadingRoomStylePackFixture(expectedStylePack);
+    const second = compileReadingRoomStylePackFixture(expectedStylePack);
+    const expectedStylePackHash = computeStylePackHash(expectedStylePack);
+
+    expect(noPack.compiledProject.geometryHash).toBe("5cfd1cb6242bdf27");
+    expect(second.compiledProject.geometryHash).toBe(
+      first.compiledProject.geometryHash,
+    );
+    expect(first.compiledProject.geometryHash).not.toBe(
+      noPack.compiledProject.geometryHash,
+    );
+    expect(first.compiledProject.metadata.portfolio_style_pack_hash).toBe(
+      expectedStylePackHash,
+    );
+    expect(buildGeometryHashPayload(noPack.compiledProject)).not.toHaveProperty(
+      "portfolio_style_pack_hash",
+    );
+    expect(buildGeometryHashPayload(first.compiledProject)).toHaveProperty(
+      "portfolio_style_pack_hash",
+      expectedStylePackHash,
     );
   });
 

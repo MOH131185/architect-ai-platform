@@ -14,6 +14,9 @@
  * shares stay near their plan-mandated values.
  */
 
+import { computeStylePackHash } from "./stylePackExtractor.js";
+import { applyStylePackToMaterialPaletteInputs } from "./stylePackConstraintApplier.js";
+
 const PLAN_WEIGHTS = Object.freeze({
   local: 0.4,
   user: 0.25,
@@ -304,6 +307,53 @@ function normaliseMaterialName(name) {
     .toLowerCase();
 }
 
+function stylePackMaterialGroups(stylePackMaterialFamilies = null) {
+  if (!stylePackMaterialFamilies) return null;
+  const groups = [
+    { key: "primary", weight: 1 },
+    { key: "secondary", weight: 0.5 },
+    { key: "accents", weight: 0.25 },
+  ];
+  return groups.flatMap(({ key, weight }) =>
+    (Array.isArray(stylePackMaterialFamilies[key])
+      ? stylePackMaterialFamilies[key]
+      : []
+    )
+      .map((value) => normaliseMaterialName(value))
+      .filter(Boolean)
+      .map((token) => ({ token, weight, source: key })),
+  );
+}
+
+function stylePackMatch(entry, groups) {
+  const material = normaliseMaterialName(entry?.material || entry);
+  if (!material || !Array.isArray(groups) || groups.length === 0) return null;
+  return groups.find(({ token }) => {
+    if (!token) return false;
+    return (
+      material === token || material.includes(token) || token.includes(material)
+    );
+  });
+}
+
+function biasMaterialWeightsForStylePack(weights, confidence) {
+  if (!(Number(confidence) > 0.6)) return weights;
+  const nextPortfolio = Math.min(0.25, Number(weights.portfolio || 0) + 0.1);
+  const delta = nextPortfolio - Number(weights.portfolio || 0);
+  if (!(delta > 0)) return weights;
+  const next = { ...weights, portfolio: round(nextPortfolio, 4) };
+  const donorKeys = ["local", "user", "climate"];
+  const donorTotal = donorKeys.reduce(
+    (sum, key) => sum + Number(next[key] || 0),
+    0,
+  );
+  donorKeys.forEach((key) => {
+    const share = donorTotal > 0 ? Number(next[key] || 0) / donorTotal : 0;
+    next[key] = round(Math.max(0, Number(next[key] || 0) - delta * share), 4);
+  });
+  return next;
+}
+
 /**
  * Compute the weighted material palette. Each candidate material gets a score
  * proportional to the sum of source weights it appears in; the top N highest-
@@ -315,6 +365,8 @@ export function computeMaterialPalette({
   climate,
   jurisdictionPack = null,
   paletteSize = 6,
+  stylePackMaterialFamilies = null,
+  stylePackConfidence = null,
 }) {
   const sourcePalettes = {
     local: localContextPalette(brief, site, jurisdictionPack),
@@ -327,7 +379,10 @@ export function computeMaterialPalette({
     innovationStrength: brief?.user_intent?.innovation_strength,
     portfolioStyleStrength: brief?.user_intent?.portfolio_style_strength,
   });
-  const materialWeights = computeMaterialBlendWeights(brief);
+  const materialWeights = biasMaterialWeightsForStylePack(
+    computeMaterialBlendWeights(brief),
+    stylePackConfidence,
+  );
 
   const scoreByName = new Map();
   const displayByName = new Map();
@@ -345,21 +400,50 @@ export function computeMaterialPalette({
     }
   }
 
-  const ranked = [...scoreByName.entries()]
+  const rankedBase = [...scoreByName.entries()]
     .map(([key, score]) => ({
       material: displayByName.get(key) || key,
       score: round(score, 4),
       sources: [...(sourcesByName.get(key) || [])].sort(),
     }))
     .sort((a, b) => b.score - a.score || a.material.localeCompare(b.material));
+  const stylePackGroups = stylePackMaterialGroups(stylePackMaterialFamilies);
+  let stylePackWarning = null;
+  let ranked = rankedBase;
+  if (stylePackGroups && stylePackGroups.length > 0) {
+    const constrained = rankedBase
+      .map((entry) => {
+        const match = stylePackMatch(entry, stylePackGroups);
+        return match
+          ? {
+              ...entry,
+              score: round(entry.score + match.weight, 4),
+              sources: [
+                ...new Set([...entry.sources, `style_pack_${match.source}`]),
+              ].sort(),
+            }
+          : null;
+      })
+      .filter(Boolean)
+      .sort(
+        (a, b) => b.score - a.score || a.material.localeCompare(b.material),
+      );
+    if (constrained.length > 0) {
+      ranked = constrained;
+    } else {
+      stylePackWarning = "palette_disjoint";
+    }
+  }
 
-  return {
+  const result = {
     palette: ranked.slice(0, paletteSize).map((entry) => entry.material),
     palette_with_provenance: ranked.slice(0, paletteSize),
     source_palettes: sourcePalettes,
     weights: styleWeights,
     material_weights: materialWeights,
   };
+  if (stylePackWarning) result.style_pack_warning = stylePackWarning;
+  return result;
 }
 
 export function buildLocalStylePackV2({
@@ -367,16 +451,21 @@ export function buildLocalStylePackV2({
   site,
   climate,
   jurisdictionPack = null,
+  stylePack = null,
   createStableId,
   paletteSize = 6,
 } = {}) {
-  const blend = computeMaterialPalette({
-    brief,
-    site,
-    climate,
-    jurisdictionPack,
-    paletteSize,
+  const paletteInputs = applyStylePackToMaterialPaletteInputs({
+    inputs: {
+      brief,
+      site,
+      climate,
+      jurisdictionPack,
+      paletteSize,
+    },
+    stylePack,
   });
+  const blend = computeMaterialPalette(paletteInputs);
   const styleKeywords = Array.isArray(brief?.user_intent?.style_keywords)
     ? brief.user_intent.style_keywords
     : [];
@@ -458,7 +547,19 @@ export function buildLocalStylePackV2({
           : [],
       }
     : null;
-  return {
+  const stylePackHash = stylePack ? computeStylePackHash(stylePack) : null;
+  const styleProvenanceWithPack = stylePack
+    ? {
+        ...styleProvenance,
+        portfolio_style_pack_hash: stylePackHash,
+        portfolio_style_pack_confidence:
+          stylePack.provenance?.confidence ?? null,
+        ...(blend.style_pack_warning
+          ? { style_pack_warning: blend.style_pack_warning }
+          : {}),
+      }
+    : styleProvenance;
+  const result = {
     style_pack_id: createStableId
       ? createStableId(
           "local-style",
@@ -489,10 +590,16 @@ export function buildLocalStylePackV2({
     local_blend_strength: brief?.user_intent?.local_blend_strength ?? 0.5,
     innovation_strength: brief?.user_intent?.innovation_strength ?? 0.5,
     data_quality: Array.isArray(site?.data_quality) ? site.data_quality : [],
-    style_provenance: styleProvenance,
+    style_provenance: styleProvenanceWithPack,
     jurisdictionEvidence,
     jurisdiction_style_defaults: jurisdictionPack?.localStyleDefaults || null,
   };
+  if (stylePack) {
+    // PLAN-AMBIGUITY: null Style Pack audit fields would change no-portfolio outputs, so v1 only emits these fields when a pack exists.
+    result.portfolio_style_pack = stylePack;
+    result.portfolio_style_pack_hash = stylePackHash;
+  }
+  return result;
 }
 
 export default {
