@@ -31,6 +31,7 @@ import { createPrecisionPolygonEditor } from "./PrecisionPolygonEditor.js";
 import { createPolygonDrawingManager } from "./PolygonDrawingManager.js";
 import { BoundaryNumericEditor } from "./BoundaryNumericEditor.jsx";
 import { BoundaryDiagnostics } from "./BoundaryDiagnostics.jsx";
+import { BoundaryDynamicInput } from "./BoundaryDynamicInput.jsx";
 import {
   fetchAutoBoundary,
   calculateBounds,
@@ -45,12 +46,14 @@ import {
 import { buildManualVerifiedBoundary } from "../../services/site/boundaryPolicy.js";
 import logger from "../../utils/logger.js";
 
-// Editor modes
+// Editor modes. SELECTED is the unified "polygon present" state — auto-detect
+// and fresh-draw both land here. Inside SELECTED, `isPolygonFocused` controls
+// whether vertex/midpoint/edge-label markers are visible. DRAW is the active
+// drawing state. IDLE means no polygon yet.
 const MODES = {
-  SELECT: "select",
-  EDIT: "edit",
+  IDLE: "idle",
+  SELECTED: "selected",
   DRAW: "draw",
-  TABLE: "table",
 };
 
 /**
@@ -69,6 +72,7 @@ export function SiteBoundaryEditorV2({
   boundarySource = null,
   contextualBoundarySource = null,
   contextualBoundaryRole = null,
+  orthoSnapDegrees = 90,
 }) {
   // OGL v3.0 attribution: when the boundary comes from HM Land Registry
   // (via either the bundled INSPIRE fixture or Digital Land's
@@ -79,15 +83,26 @@ export function SiteBoundaryEditorV2({
     typeof boundarySource === "string" &&
     (boundarySource.startsWith("hm-land-registry-inspire") ||
       boundarySource.startsWith("digital-land-title-boundary"));
+  // When the property-boundary service falls through to a remote-site
+  // placeholder (no parcel + no buildings + no roads within 200 m), the
+  // editor renders the polygon dashed amber and surfaces a banner asking
+  // the user to draw or refine the boundary manually.
+  const isBoundaryRemotePlaceholder =
+    typeof boundarySource === "string" &&
+    /remote-site placeholder/i.test(boundarySource);
   // Refs
   const mapContainerRef = useRef(null);
   const polygonEditorRef = useRef(null);
   const drawingManagerRef = useRef(null);
   const polygonOverlayRef = useRef(null);
   const contextualBoundaryOverlayRef = useRef(null);
+  const contextualBoundaryClickListenerRef = useRef(null);
 
   // State
-  const [mode, setMode] = useState(MODES.SELECT);
+  const [mode, setMode] = useState(MODES.IDLE);
+  // When SELECTED, controls whether the polygon is the user's current focus
+  // (markers visible, drag enabled) or latent (dimmed, click-to-promote).
+  const [isPolygonFocused, setIsPolygonFocused] = useState(false);
   const [isLoadingBoundary, setIsLoadingBoundary] = useState(false);
   const [selectedVertexIndex, setSelectedVertexIndex] = useState(null);
   const [showDiagnostics, setShowDiagnostics] = useState(true);
@@ -104,10 +119,67 @@ export function SiteBoundaryEditorV2({
   const brownfieldMarkersRef = useRef([]);
   const brownfieldInfoWindowRef = useRef(null);
 
+  // AutoCAD-style dynamic-input overlay state. The drawing manager and
+  // precision editor stream cursor / live-dimension events here via
+  // RAF-coalesced callbacks (Guardrail 7). Keeping length state in the host
+  // is what lets the manager's `_handleKeyDown` route digit keystrokes
+  // through `onDynamicInputKey` without having to know about React.
+  const [dynamicInput, setDynamicInput] = useState({
+    visible: false,
+    anchorPx: null,
+    mode: "draw", // 'draw' | 'drag'
+    lengthValue: "",
+    liveLengthM: 0,
+    liveBearingDeg: 0,
+    snapHint: null,
+  });
+  const dynamicInputRef = useRef(null);
+  const dynamicInputPendingRef = useRef(false);
+  const dynamicInputModeRef = useRef("draw");
+
   const handleMapContainerRef = useCallback((element) => {
     mapContainerRef.current = element;
     setMapContainerElement(element);
   }, []);
+
+  const handleDynamicInputChange = useCallback((next) => {
+    const value = String(next ?? "");
+    dynamicInputPendingRef.current = value.trim() !== "";
+    setDynamicInput((prev) => ({ ...prev, lengthValue: value }));
+  }, []);
+
+  const clearDynamicInput = useCallback(() => {
+    dynamicInputPendingRef.current = false;
+    setDynamicInput((prev) => ({ ...prev, lengthValue: "" }));
+  }, []);
+
+  const handleDynamicInputCommit = useCallback(
+    (lengthM) => {
+      const parsed = Number(lengthM);
+      if (!Number.isFinite(parsed) || parsed <= 0) return;
+      const manager = drawingManagerRef.current;
+      if (!manager || typeof manager.commitLength !== "function") return;
+      manager.commitLength(parsed);
+      // Clear the field after a successful commit so the user can keep
+      // chaining vertices without manually deleting digits each time.
+      clearDynamicInput();
+    },
+    [clearDynamicInput],
+  );
+
+  const handleDynamicInputCancel = useCallback(() => {
+    clearDynamicInput();
+    if (
+      mapContainerRef.current &&
+      typeof mapContainerRef.current.focus === "function"
+    ) {
+      try {
+        mapContainerRef.current.focus({ preventScroll: true });
+      } catch (e) {
+        // older browsers
+      }
+    }
+  }, [clearDynamicInput]);
 
   // Google Maps hook
   const {
@@ -201,7 +273,10 @@ export function SiteBoundaryEditorV2({
         }
       }
 
-      setMode(MODES.SELECT);
+      // Auto-detected boundary lands focused so the user can immediately
+      // drag a corner — no toolbar dance required.
+      setMode(MODES.SELECTED);
+      setIsPolygonFocused(true);
     } catch (err) {
       logger.error("Auto-detect failed:", err);
       setValidationWarning(
@@ -266,6 +341,22 @@ export function SiteBoundaryEditorV2({
     map,
     polygonLength,
   ]);
+
+  // Normalize mode based on polygon presence. Picks up the case where
+  // `initialBoundaryPolygon` is provided as a prop (the user already had
+  // a boundary from a previous session) — without this effect the editor
+  // would stay in IDLE and the polygon would never get rendered with
+  // markers. Conversely, when the polygon is cleared from outside, fall
+  // back to IDLE so the editor doesn't sit in SELECTED with no shape.
+  useEffect(() => {
+    if (polygonLength >= 3 && mode === MODES.IDLE) {
+      setMode(MODES.SELECTED);
+      setIsPolygonFocused(true);
+    } else if (polygonLength === 0 && mode === MODES.SELECTED) {
+      setMode(MODES.IDLE);
+      setIsPolygonFocused(false);
+    }
+  }, [polygonLength, mode]);
 
   // ============================================================
   // NOTIFY PARENT OF CHANGES
@@ -483,6 +574,10 @@ export function SiteBoundaryEditorV2({
       // stroke + lower fill opacity than the authoritative blue overlay so
       // the user can tell at a glance it is non-authoritative — colour
       // matches the A1 site-plan boundary for end-to-end consistency.
+      // Clickable: a confirm dialog lets the user *adopt* the contextual
+      // outline as their editable site boundary so they don't need to
+      // redraw it from scratch. Adoption is opt-in (never silent) because
+      // the contextual shape is non-authoritative.
       contextualBoundaryOverlayRef.current = new google.maps.Polygon({
         paths: contextualBoundaryPolygon,
         strokeColor: "#1976D2",
@@ -490,13 +585,38 @@ export function SiteBoundaryEditorV2({
         strokeWeight: 2,
         fillColor: "#1976D2",
         fillOpacity: 0.08,
-        clickable: false,
+        clickable: true,
+        cursor: "pointer",
         zIndex: 1,
         map,
       });
+      contextualBoundaryClickListenerRef.current =
+        contextualBoundaryOverlayRef.current.addListener("click", () => {
+          if (
+            !Array.isArray(contextualBoundaryPolygon) ||
+            contextualBoundaryPolygon.length < 3
+          ) {
+            return;
+          }
+          const ok = window.confirm(
+            "Adopt this contextual outline as your site boundary?\n\n" +
+              "It becomes a draggable polygon you can refine corner-by-corner. " +
+              "The original detection is preserved for context.",
+          );
+          if (!ok) return;
+          setPolygon(contextualBoundaryPolygon);
+          setMode(MODES.SELECTED);
+          setIsPolygonFocused(true);
+        });
     }
 
     return () => {
+      if (contextualBoundaryClickListenerRef.current && google?.maps?.event) {
+        google.maps.event.removeListener(
+          contextualBoundaryClickListenerRef.current,
+        );
+        contextualBoundaryClickListenerRef.current = null;
+      }
       if (contextualBoundaryOverlayRef.current) {
         contextualBoundaryOverlayRef.current.setMap(null);
         contextualBoundaryOverlayRef.current = null;
@@ -510,43 +630,25 @@ export function SiteBoundaryEditorV2({
     map,
     polygon,
     polygonLength,
+    setPolygon,
   ]);
 
+  // The PrecisionPolygonEditor now renders ANY present polygon (auto-detected
+  // or freshly drawn). The previous SELECT-mode latent google.maps.Polygon
+  // (clickable: false) has been removed — it created the asymmetry where
+  // auto-detected boundaries could not be dragged.
   useEffect(() => {
-    if (!map || !google || !isLoaded) return;
-
-    // Remove existing overlay
+    if (!map || !google || !isLoaded) return undefined;
     if (polygonOverlayRef.current) {
       polygonOverlayRef.current.setMap(null);
       polygonOverlayRef.current = null;
     }
-
-    // Create new overlay if polygon exists and not in edit/draw mode
-    if (polygonLength >= 3 && mode === MODES.SELECT) {
-      polygonOverlayRef.current = new google.maps.Polygon({
-        paths: polygon,
-        strokeColor: "#3B82F6",
-        strokeOpacity: 1,
-        strokeWeight: 3,
-        fillColor: "#3B82F6",
-        fillOpacity: 0.2,
-        clickable: false,
-        zIndex: 2,
-        map,
-      });
-    }
-
-    return () => {
-      if (polygonOverlayRef.current) {
-        polygonOverlayRef.current.setMap(null);
-        polygonOverlayRef.current = null;
-      }
-    };
-  }, [google, isLoaded, map, mode, polygon, polygonLength]);
+    return undefined;
+  }, [google, isLoaded, map]);
 
   // Fit bounds when polygon changes significantly
   useEffect(() => {
-    if (map && google && fitBoundaryLength >= 3 && mode === MODES.SELECT) {
+    if (map && google && fitBoundaryLength >= 3 && mode === MODES.SELECTED) {
       const bounds = calculateBounds(fitBoundaryPolygon);
       if (bounds) {
         const googleBounds = boundsToGoogleBounds(bounds, google);
@@ -568,7 +670,7 @@ export function SiteBoundaryEditorV2({
       polygonEditorRef.current = null;
     }
 
-    if (mode === MODES.EDIT && vertices.length >= 3) {
+    if (mode === MODES.SELECTED && vertices.length >= 3) {
       polygonEditorRef.current = createPrecisionPolygonEditor(map, google, {
         onPolygonChange: (newVertices) => {
           // Convert from [lng, lat] to {lat, lng} and update state
@@ -583,6 +685,14 @@ export function SiteBoundaryEditorV2({
           // Commit to history after drag
           const newRing = closeRing(allVertices);
           setRing(newRing);
+          // Hide the live-dimension overlay once the drag commits.
+          dynamicInputModeRef.current = "draw";
+          setDynamicInput((prev) => ({
+            ...prev,
+            visible: false,
+            anchorPx: null,
+            snapHint: null,
+          }));
         },
         onVertexAdd: (index, position, allVertices) => {
           const newRing = closeRing(allVertices);
@@ -599,6 +709,43 @@ export function SiteBoundaryEditorV2({
           setValidationWarning(message);
           setTimeout(() => setValidationWarning(null), 3000);
         },
+        // AutoCAD-style live dimension tooltip while dragging a corner. Read-only
+        // in v1 — the host renders the same overlay component used for DRAW
+        // mode but switches it into 'drag' mode (no input field).
+        onDragLiveDimension: (info) => {
+          if (!info) {
+            setDynamicInput((prev) => ({
+              ...prev,
+              visible: false,
+              anchorPx: null,
+            }));
+            return;
+          }
+          dynamicInputModeRef.current = "drag";
+          setDynamicInput((prev) => ({
+            ...prev,
+            visible: true,
+            anchorPx: info.anchorPx,
+            mode: "drag",
+            lengthValue: "",
+            liveLengthM: Number.isFinite(info.lengthM) ? info.lengthM : 0,
+            liveBearingDeg: Number.isFinite(info.bearingDeg)
+              ? info.bearingDeg
+              : 0,
+          }));
+        },
+        onSnapHint: (hint) => {
+          setDynamicInput((prev) => ({ ...prev, snapHint: hint }));
+        },
+        // Click on the polygon body when latent promotes the polygon to
+        // focused so the user can immediately drag a vertex. This is the
+        // seam that lets auto-detected boundaries be edited without
+        // clicking a toolbar button.
+        onPolygonBodyClick: () => setIsPolygonFocused(true),
+        focused: isPolygonFocused,
+        placeholder: isBoundaryRemotePlaceholder,
+        showEdgeLabels: true,
+        angleSnapDegrees: orthoSnapDegrees,
         preventSelfIntersection: true,
         minVertices: 3,
       });
@@ -612,15 +759,68 @@ export function SiteBoundaryEditorV2({
         polygonEditorRef.current.destroy();
         polygonEditorRef.current = null;
       }
+      // Drop overlay visibility on mode-change cleanup so a stale anchor from
+      // a previous drag never sticks around.
+      setDynamicInput((prev) => ({
+        ...prev,
+        visible: false,
+        anchorPx: null,
+        snapHint: null,
+      }));
     };
-  }, [google, isLoaded, map, mode, setRing, updateVertexTransient, vertices]);
+    // isPolygonFocused / isBoundaryRemotePlaceholder are intentionally omitted
+    // from the dep array — they are forwarded to the editor via setFocused /
+    // setPlaceholder below without tearing the editor down. Including them
+    // here would rebuild markers on every focus toggle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    google,
+    isLoaded,
+    map,
+    mode,
+    orthoSnapDegrees,
+    setRing,
+    updateVertexTransient,
+    vertices,
+  ]);
 
   // Update editor vertices when they change externally (e.g., from table)
   useEffect(() => {
-    if (polygonEditorRef.current && mode === MODES.EDIT) {
+    if (polygonEditorRef.current && mode === MODES.SELECTED) {
       polygonEditorRef.current.setVertices(vertices);
     }
   }, [vertices, mode]);
+
+  // Sync focused / placeholder state to the editor without tearing it down.
+  useEffect(() => {
+    if (polygonEditorRef.current && mode === MODES.SELECTED) {
+      polygonEditorRef.current.setFocused(isPolygonFocused);
+    }
+  }, [isPolygonFocused, mode]);
+
+  useEffect(() => {
+    if (polygonEditorRef.current && mode === MODES.SELECTED) {
+      polygonEditorRef.current.setPlaceholder(isBoundaryRemotePlaceholder);
+    }
+  }, [isBoundaryRemotePlaceholder, mode]);
+
+  // Click on the map outside any polygon defocuses the polygon (markers
+  // dim, drag affordance hides). Click on the polygon itself promotes it
+  // back to focused — handled inside PrecisionPolygonEditor via
+  // onPolygonBodyClick. The map-level listener fires for any click that
+  // does NOT hit a polygon/marker (Google Maps fires polygon click first
+  // when overlapping, so this only triggers on truly-outside clicks).
+  useEffect(() => {
+    if (!map || !google || !isLoaded) return undefined;
+    const listener = google.maps.event.addListener(map, "click", () => {
+      if (mode !== MODES.SELECTED) return;
+      if (!isPolygonFocused) return;
+      setIsPolygonFocused(false);
+    });
+    return () => {
+      google.maps.event.removeListener(listener);
+    };
+  }, [google, isLoaded, isPolygonFocused, map, mode]);
 
   // ============================================================
   // DRAWING MANAGER (Draw Mode)
@@ -640,12 +840,20 @@ export function SiteBoundaryEditorV2({
         onDrawingComplete: (newVertices) => {
           const newRing = closeRing(newVertices);
           setRing(newRing);
-          setMode(MODES.EDIT); // Switch to edit mode after drawing
+          // Fresh-draw lands focused so the user can immediately drag a
+          // corner to refine — same as auto-detect.
+          setMode(MODES.SELECTED);
+          setIsPolygonFocused(true);
         },
         onDrawingCancel: () => {
-          // If we had a polygon before, stay in select mode
+          // If we had a polygon before, return to SELECTED with focus
+          // restored. If not, fall back to IDLE.
           if (polygonLength >= 3) {
-            setMode(MODES.SELECT);
+            setMode(MODES.SELECTED);
+            setIsPolygonFocused(true);
+          } else {
+            setMode(MODES.IDLE);
+            setIsPolygonFocused(false);
           }
         },
         onValidationError: (errors) => {
@@ -656,8 +864,66 @@ export function SiteBoundaryEditorV2({
           setValidationWarning(errors.join("; "));
           setTimeout(() => setValidationWarning(null), 15000);
         },
+        // RAF-coalesced cursor stream from the manager. Fires at most once
+        // per frame regardless of mousemove rate (Guardrail 7).
+        onDynamicCursor: ({ anchorPx, lengthM, bearingDeg, hasAnchor }) => {
+          dynamicInputModeRef.current = "draw";
+          setDynamicInput((prev) => ({
+            ...prev,
+            visible: hasAnchor && Boolean(anchorPx),
+            anchorPx: anchorPx || null,
+            mode: "draw",
+            liveLengthM: Number.isFinite(lengthM) ? lengthM : 0,
+            liveBearingDeg: Number.isFinite(bearingDeg) ? bearingDeg : 0,
+          }));
+        },
+        // Manager routes digit/dot/comma/Backspace keystrokes here so the user
+        // can start typing without first clicking the floating input.
+        onDynamicInputKey: ({ key }) => {
+          if (dynamicInputModeRef.current !== "draw") return false;
+          if (key === "Backspace" || key === "Delete") {
+            setDynamicInput((prev) => {
+              const next = prev.lengthValue.slice(0, -1);
+              dynamicInputPendingRef.current = next.trim() !== "";
+              return { ...prev, lengthValue: next };
+            });
+            // Focus the input so subsequent native keystrokes flow naturally.
+            if (
+              dynamicInputRef.current &&
+              document.activeElement !== dynamicInputRef.current
+            ) {
+              dynamicInputRef.current.focus({ preventScroll: true });
+            }
+            return true;
+          }
+          if (key && key.length === 1 && /[0-9.,]/.test(key)) {
+            setDynamicInput((prev) => {
+              const next = (prev.lengthValue || "") + key;
+              dynamicInputPendingRef.current = next.trim() !== "";
+              return { ...prev, lengthValue: next };
+            });
+            if (
+              dynamicInputRef.current &&
+              document.activeElement !== dynamicInputRef.current
+            ) {
+              dynamicInputRef.current.focus({ preventScroll: true });
+            }
+            return true;
+          }
+          return false;
+        },
+        onSnapHint: (hint) => {
+          setDynamicInput((prev) => ({ ...prev, snapHint: hint }));
+        },
+        angleSnapDegrees: orthoSnapDegrees,
         minVertices: 3,
       });
+
+      // Manager peeks at this on Enter/Esc so it doesn't fight the dynamic
+      // input over keystrokes (Guardrail 8: typed-length commits route
+      // through the same `_appendVertex` path as a normal click).
+      drawingManagerRef.current.isDynamicInputPending = () =>
+        dynamicInputPendingRef.current;
 
       drawingManagerRef.current.start();
     }
@@ -667,8 +933,18 @@ export function SiteBoundaryEditorV2({
         drawingManagerRef.current.destroy();
         drawingManagerRef.current = null;
       }
+      dynamicInputPendingRef.current = false;
+      setDynamicInput({
+        visible: false,
+        anchorPx: null,
+        mode: "draw",
+        lengthValue: "",
+        liveLengthM: 0,
+        liveBearingDeg: 0,
+        snapHint: null,
+      });
     };
-  }, [google, isLoaded, map, mode, polygonLength, setRing]);
+  }, [google, isLoaded, map, mode, orthoSnapDegrees, polygonLength, setRing]);
 
   // ============================================================
   // EVENT HANDLERS
@@ -683,8 +959,16 @@ export function SiteBoundaryEditorV2({
 
       setMode(newMode);
       setSelectedVertexIndex(null);
+      // Returning to SELECTED from DRAW restores focus (the user just
+      // finished drawing, they want the polygon active).
+      if (newMode === MODES.SELECTED && polygonLength >= 3) {
+        setIsPolygonFocused(true);
+      }
+      if (newMode === MODES.IDLE) {
+        setIsPolygonFocused(false);
+      }
     },
-    [mode],
+    [mode, polygonLength],
   );
 
   const handleFitBounds = useCallback(() => {
@@ -702,8 +986,8 @@ export function SiteBoundaryEditorV2({
       const newRing = closeRing(newVertices);
       setRing(newRing);
 
-      // Update editor if in edit mode
-      if (polygonEditorRef.current && mode === MODES.EDIT) {
+      // Update editor if a polygon is loaded
+      if (polygonEditorRef.current && mode === MODES.SELECTED) {
         polygonEditorRef.current.setVertices(newVertices);
       }
     },
@@ -713,7 +997,8 @@ export function SiteBoundaryEditorV2({
   const handleClear = useCallback(() => {
     if (window.confirm("Clear the boundary? This cannot be undone.")) {
       clearPolygon();
-      setMode(MODES.SELECT);
+      setMode(MODES.IDLE);
+      setIsPolygonFocused(false);
     }
   }, [clearPolygon]);
 
@@ -743,14 +1028,18 @@ export function SiteBoundaryEditorV2({
         redo();
       }
 
-      // E = Toggle edit mode
+      // E = Toggle polygon focus (when a polygon is present). Promotes a
+      // latent polygon to focused (markers + drag) or dims a focused one.
       if (e.key === "e" && !e.ctrlKey && !e.metaKey) {
-        handleModeChange(mode === MODES.EDIT ? MODES.SELECT : MODES.EDIT);
+        if (mode === MODES.SELECTED && polygonLength >= 3) {
+          setIsPolygonFocused((prev) => !prev);
+        }
       }
 
       // D = Toggle draw mode
       if (e.key === "d" && !e.ctrlKey && !e.metaKey) {
-        handleModeChange(mode === MODES.DRAW ? MODES.SELECT : MODES.DRAW);
+        const fallback = polygonLength >= 3 ? MODES.SELECTED : MODES.IDLE;
+        handleModeChange(mode === MODES.DRAW ? fallback : MODES.DRAW);
       }
 
       // T = Toggle table editor
@@ -761,7 +1050,7 @@ export function SiteBoundaryEditorV2({
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [mode, undo, redo, handleModeChange]);
+  }, [mode, polygonLength, undo, redo, handleModeChange]);
 
   // ============================================================
   // RENDER
@@ -794,28 +1083,31 @@ export function SiteBoundaryEditorV2({
             {isLoadingBoundary ? "Detecting..." : "🔍 Auto-Detect"}
           </button>
 
-          {/* Mode buttons */}
+          {/* Mode buttons. SELECT+EDIT are collapsed into a single Focus
+              toggle that's only meaningful when a polygon is present.
+              Drawing is the only state-machine transition the user makes
+              explicitly via toolbar. */}
           <div className="flex rounded-lg border border-slate-300 overflow-hidden">
             <button
-              onClick={() => handleModeChange(MODES.SELECT)}
+              onClick={() => setIsPolygonFocused((prev) => !prev)}
+              disabled={mode !== MODES.SELECTED || polygon.length < 3}
               className={`px-3 py-2 text-sm font-medium transition-colors ${
-                mode === MODES.SELECT
-                  ? "bg-slate-700 text-white"
-                  : "bg-white text-slate-700 hover:bg-slate-100"
-              }`}
-            >
-              👆 Select
-            </button>
-            <button
-              onClick={() => handleModeChange(MODES.EDIT)}
-              disabled={polygon.length < 3}
-              className={`px-3 py-2 text-sm font-medium transition-colors border-l border-slate-300 ${
-                mode === MODES.EDIT
+                mode === MODES.SELECTED && isPolygonFocused
                   ? "bg-green-600 text-white"
                   : "bg-white text-slate-700 hover:bg-slate-100 disabled:bg-slate-100 disabled:text-slate-400"
               }`}
+              title={
+                mode === MODES.SELECTED
+                  ? isPolygonFocused
+                    ? "Polygon focused — click to dim and pan map freely"
+                    : "Click polygon body or press E to focus and edit"
+                  : "Auto-detect or draw a polygon first"
+              }
+              data-testid="focus-toggle"
             >
-              ✏️ Edit (E)
+              {mode === MODES.SELECTED && isPolygonFocused
+                ? "✏️ Editing (E)"
+                : "👆 Focus (E)"}
             </button>
             <button
               onClick={() => handleModeChange(MODES.DRAW)}
@@ -910,7 +1202,7 @@ export function SiteBoundaryEditorV2({
 
         {/* Mode instructions */}
         <AnimatePresence>
-          {mode === MODES.EDIT && (
+          {mode === MODES.SELECTED && isPolygonFocused && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
@@ -918,16 +1210,22 @@ export function SiteBoundaryEditorV2({
               className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-900"
               data-testid="edit-mode-instructions"
             >
-              <strong className="block mb-1">Edit Mode</strong>
+              <strong className="block mb-1">Editing site boundary</strong>
               <ul className="grid gap-1 sm:grid-cols-2">
-                <li>Drag blue corner points to adjust the boundary</li>
+                <li>Drag blue corner points to reshape the boundary</li>
+                <li>Drag the polygon body to translate the whole site</li>
                 <li>Click midpoint dots to add a corner</li>
                 <li>Select a corner and press Delete/Backspace to remove it</li>
                 <li>
-                  <span className="font-mono">Shift</span> = angle snap
+                  <span className="font-mono">Shift</span> = {orthoSnapDegrees}°
+                  snap (ortho) — works during drag and translate
                 </li>
                 <li>
                   <span className="font-mono">Alt</span> = free movement
+                </li>
+                <li className="sm:col-span-2">
+                  Click outside the polygon to dim handles; click the polygon
+                  body to focus again.
                 </li>
               </ul>
             </motion.div>
@@ -946,9 +1244,47 @@ export function SiteBoundaryEditorV2({
                 <li>Double-click or Enter to finish</li>
                 <li>Esc/Backspace to undo last point</li>
                 <li>
-                  <span className="font-mono">Shift</span> = 45° snap
+                  <span className="font-mono">Shift</span> = {orthoSnapDegrees}°
+                  snap
+                </li>
+                <li className="sm:col-span-2">
+                  Type a number to place the next corner at exact distance —
+                  <span className="font-mono">Enter</span> places,{" "}
+                  <span className="font-mono">Esc</span> cancels.
                 </li>
               </ul>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Remote-site placeholder banner — surfaced when the proxy
+            returned a 50 m × 50 m amber placeholder because no OSM
+            buildings + parcels + highways were found within 200 m of
+            the site (true desert / unmapped area). The user is prompted
+            to draw or refine the boundary manually. */}
+        <AnimatePresence>
+          {isBoundaryRemotePlaceholder && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mt-3 p-3 bg-amber-50 border border-amber-300 rounded-lg text-sm text-amber-900 flex flex-wrap items-center gap-3"
+              data-testid="boundary-remote-placeholder-banner"
+            >
+              <span className="flex-1 min-w-[200px]">
+                <strong className="block mb-0.5">No parcel data found</strong>
+                The dashed amber outline is a 50 m × 50 m placeholder centred on
+                this address. Draw or drag corners to refine the real site
+                boundary.
+              </span>
+              <button
+                type="button"
+                onClick={() => handleModeChange(MODES.DRAW)}
+                className="px-3 py-1.5 bg-amber-600 text-white rounded hover:bg-amber-700 text-xs font-semibold"
+                data-testid="boundary-remote-placeholder-draw"
+              >
+                🖊️ Draw boundary
+              </button>
             </motion.div>
           )}
         </AnimatePresence>
@@ -1018,6 +1354,23 @@ export function SiteBoundaryEditorV2({
             ref={handleMapContainerRef}
             className="h-[320px] w-full bg-slate-100 md:h-[390px]"
             style={{ minHeight: "300px" }}
+          />
+
+          {/* AutoCAD-style dynamic length / live-dimension overlay. Anchored
+              to the cursor while drawing, anchored to the dragged corner
+              while editing. Hidden on coarse pointers. */}
+          <BoundaryDynamicInput
+            visible={dynamicInput.visible}
+            anchorPx={dynamicInput.anchorPx}
+            mode={dynamicInput.mode}
+            lengthValue={dynamicInput.lengthValue}
+            liveLengthM={dynamicInput.liveLengthM}
+            liveBearingDeg={dynamicInput.liveBearingDeg}
+            snapHint={dynamicInput.snapHint}
+            inputRef={dynamicInputRef}
+            onLengthChange={handleDynamicInputChange}
+            onCommit={handleDynamicInputCommit}
+            onCancel={handleDynamicInputCancel}
           />
         </div>
 

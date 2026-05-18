@@ -30,7 +30,32 @@ function hasEstimatedBoundarySource(locationData = {}) {
       "",
   );
 
-  return /intelligent fallback|fallback/i.test(source);
+  return /intelligent fallback|fallback|remote-site placeholder/i.test(source);
+}
+
+/**
+ * True when the site boundary is the dashed-amber 50 m × 50 m placeholder
+ * surfaced by `/api/site/boundary` for remote/desert/unmapped locations.
+ * Distinct from the "intelligent fallback" path because this placeholder
+ * is generated server-side after both OSM evidence AND a highway-density
+ * probe come back empty — strongest signal we have for "no data here".
+ */
+export function hasRemoteSitePlaceholder(locationData = {}) {
+  if (!locationData) return false;
+  if (
+    locationData.placeholder === true ||
+    locationData.siteAnalysis?.placeholder === true ||
+    locationData.metadata?.placeholder === true
+  ) {
+    return true;
+  }
+  const source = String(
+    locationData.boundarySource ||
+      locationData.siteAnalysis?.boundarySource ||
+      locationData.metadata?.boundarySource ||
+      "",
+  );
+  return /remote-site placeholder/i.test(source);
 }
 
 export function shouldEnableBoundaryAutoDetect(locationData = null) {

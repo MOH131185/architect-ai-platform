@@ -5,12 +5,14 @@
  *
  * Features:
  * - Click to place vertices
- * - Live preview line following cursor
+ * - Live preview line following cursor (RAF-throttled)
  * - Double-click or Enter to finish
  * - Auto-close when clicking near first point
- * - SHIFT for angle snapping (45° increments)
+ * - SHIFT for angle snapping (default 90° / ortho; configurable)
  * - ESC to cancel current drawing
  * - Real-time validation feedback
+ * - AutoCAD-style dynamic length input (type a number to place the next
+ *   vertex at exact distance along the snapped/cursor bearing)
  *
  * @module PolygonDrawingManager
  */
@@ -19,10 +21,12 @@ import {
   roundCoord,
   snapToVertex,
   constrainToAngle,
+  destinationFromBearing,
+  liveLengthAndBearing,
   validatePolygon,
   closeRing,
   SNAP_PIXEL_THRESHOLD,
-  ANGLE_SNAP_DEGREES,
+  ORTHO_SNAP_DEGREES,
 } from "./boundaryGeometry.js";
 
 /**
@@ -40,10 +44,15 @@ export class PolygonDrawingManager {
       onDrawingCancel: null, // () => void
       onValidationError: null, // (errors) => void
       onCursorMove: null, // (position) => void
+      // Dynamic-input callbacks — RAF-coalesced (one emit/frame max).
+      onDynamicCursor: null, // ({ anchorPx, lengthM, bearingDeg, locked, hasAnchor }) => void
+      onDynamicInputKey: null, // ({ key, ctrl, shift, meta, alt }) => boolean (true => consumed)
+      onSnapHint: null, // ('vertex' | 'ortho' | null) => void
       minVertices: 3,
       autoCloseThresholdPx: 15,
       snapThresholdPx: SNAP_PIXEL_THRESHOLD,
-      angleSnapDegrees: ANGLE_SNAP_DEGREES,
+      // Default to 90° ortho (AutoCAD-style). Callers can pass 45 to opt back.
+      angleSnapDegrees: ORTHO_SNAP_DEGREES,
       strokeColor: "#8B5CF6",
       fillColor: "#8B5CF6",
       previewStrokeColor: "#A78BFA",
@@ -55,10 +64,23 @@ export class PolygonDrawingManager {
     this.isDrawing = false;
     this.vertices = [];
     this.cursorPosition = null;
+    this.lastSnapHint = null;
 
     // Keyboard state
     this.shiftPressed = false;
     this.altPressed = false;
+
+    // RAF throttle state
+    this.rafHandle = null;
+    this.pendingMovePosition = null;
+
+    // Click suppression after a typed-length commit so the Enter keystroke's
+    // synthetic map click doesn't spawn a duplicate vertex.
+    this._suppressNextClick = false;
+    this._suppressClickTimeout = null;
+
+    // Cached projection (invalidated on bounds/zoom/projection changes).
+    this._projectionCache = null;
 
     // Google Maps objects
     this.polyline = null; // Committed edges
@@ -75,28 +97,49 @@ export class PolygonDrawingManager {
     this.mapClickListener = null;
     this.mapMoveListener = null;
     this.mapDblClickListener = null;
+    this.boundsListener = null;
+    this.zoomListener = null;
+    this.projectionListener = null;
     this.keydownHandler = null;
     this.keyupHandler = null;
+
+    // Test/host hook to ask "is the dynamic input pending non-empty input?"
+    // SiteBoundaryEditorV2 sets this at runtime so Enter/Esc gating is correct.
+    // Default: always false (legacy behavior).
+    this.isDynamicInputPending = () => false;
   }
 
   /**
-   * Initialize OverlayView for projection access
+   * Initialize OverlayView for projection access. `draw` is called by Google
+   * Maps whenever the projection changes (pan/zoom/etc.) — we use that signal
+   * to invalidate the projection cache cheaply.
    * @private
    */
   _initOverlayView() {
     this.overlayView = new this.google.maps.OverlayView();
     this.overlayView.onAdd = function () {};
-    this.overlayView.draw = function () {};
-    this.overlayView.onRemove = function () {};
+    const self = this;
+    this.overlayView.draw = function () {
+      self._projectionCache = null;
+    };
+    this.overlayView.onRemove = function () {
+      self._projectionCache = null;
+    };
     this.overlayView.setMap(this.map);
   }
 
   /**
-   * Get projection
+   * Get projection (cached). The cache is invalidated by `OverlayView.draw`
+   * and by the explicit map listeners attached in `_attachMapListeners`.
    * @private
    */
   _getProjection() {
-    return this.overlayView.getProjection();
+    if (this._projectionCache) return this._projectionCache;
+    const projection = this.overlayView.getProjection();
+    if (projection) {
+      this._projectionCache = projection;
+    }
+    return projection;
   }
 
   /**
@@ -133,7 +176,8 @@ export class PolygonDrawingManager {
   }
 
   /**
-   * Stop drawing mode
+   * Stop drawing mode (Guardrail 5: cancel pending RAF + drop the projection
+   * cache so we don't leak frames or stale projections after mode changes).
    */
   stop() {
     if (!this.isDrawing) return;
@@ -142,6 +186,31 @@ export class PolygonDrawingManager {
 
     // Restore cursor
     this.map.setOptions({ draggableCursor: null });
+
+    // Cancel any pending animation frame from the throttled mousemove path.
+    if (this.rafHandle != null) {
+      cancelAnimationFrame(this.rafHandle);
+      this.rafHandle = null;
+    }
+    this.pendingMovePosition = null;
+    if (this._suppressClickTimeout) {
+      clearTimeout(this._suppressClickTimeout);
+      this._suppressClickTimeout = null;
+    }
+    this._suppressNextClick = false;
+    this.lastSnapHint = null;
+    if (this.options.onSnapHint) {
+      this.options.onSnapHint(null);
+    }
+    if (this.options.onDynamicCursor) {
+      this.options.onDynamicCursor({
+        anchorPx: null,
+        lengthM: 0,
+        bearingDeg: 0,
+        locked: false,
+        hasAnchor: false,
+      });
+    }
 
     // Cleanup
     this._detachMapListeners();
@@ -232,6 +301,19 @@ export class PolygonDrawingManager {
       e.stop(); // Prevent zoom
       this.complete();
     });
+
+    // Invalidate the projection cache when the map view actually changes.
+    // OverlayView.draw also nulls it, but listening here is cheaper and
+    // covers the cases where draw is debounced.
+    const invalidate = () => {
+      this._projectionCache = null;
+    };
+    this.boundsListener = this.map.addListener("bounds_changed", invalidate);
+    this.zoomListener = this.map.addListener("zoom_changed", invalidate);
+    this.projectionListener = this.map.addListener(
+      "projection_changed",
+      invalidate,
+    );
   }
 
   _detachMapListeners() {
@@ -246,6 +328,18 @@ export class PolygonDrawingManager {
     if (this.mapDblClickListener) {
       this.google.maps.event.removeListener(this.mapDblClickListener);
       this.mapDblClickListener = null;
+    }
+    if (this.boundsListener) {
+      this.google.maps.event.removeListener(this.boundsListener);
+      this.boundsListener = null;
+    }
+    if (this.zoomListener) {
+      this.google.maps.event.removeListener(this.zoomListener);
+      this.zoomListener = null;
+    }
+    if (this.projectionListener) {
+      this.google.maps.event.removeListener(this.projectionListener);
+      this.projectionListener = null;
     }
   }
 
@@ -269,96 +363,201 @@ export class PolygonDrawingManager {
   }
 
   _handleMapClick(e) {
-    let coord = [roundCoord(e.latLng.lng()), roundCoord(e.latLng.lat())];
+    // Guardrail 8: typed-length commits trigger Enter, which Maps may relay as
+    // a click; skip exactly one click after a programmatic commit so we don't
+    // double-place a vertex.
+    if (this._suppressNextClick) {
+      this._suppressNextClick = false;
+      return;
+    }
 
-    // Apply snapping
-    if (!this.altPressed) {
-      // Check if clicking near first vertex to auto-close
-      if (this.vertices.length >= this.options.minVertices) {
-        const firstVertex = this.vertices[0];
-        const firstPixel = this.latLngToPixel(firstVertex);
-        const clickPixel = this.latLngToPixel(coord);
+    const rawCoord = [roundCoord(e.latLng.lng()), roundCoord(e.latLng.lat())];
+    const placement = this._resolvePlacement(rawCoord, { isClick: true });
+    if (placement.autoClosed) {
+      this.complete();
+      return;
+    }
+    this._appendVertex(placement.coord);
+  }
 
-        if (firstPixel && clickPixel) {
-          const dx = clickPixel.x - firstPixel.x;
-          const dy = clickPixel.y - firstPixel.y;
-          const distPx = Math.sqrt(dx * dx + dy * dy);
+  /**
+   * Compute the snapped/constrained position for a candidate coord, plus an
+   * optional auto-close flag for click handling. Used by both the click path
+   * and the RAF-driven preview path so the math stays in one place.
+   * @private
+   */
+  _resolvePlacement(rawCoord, { isClick = false } = {}) {
+    let coord = rawCoord;
+    let snapHint = null;
+    let lockedToOrtho = false;
 
-          if (distPx <= this.options.autoCloseThresholdPx) {
-            // Auto-close: complete the polygon
-            this.complete();
-            return;
-          }
-        }
-      }
+    if (this.altPressed || this.vertices.length === 0) {
+      return { coord, snapHint, lockedToOrtho, autoClosed: false };
+    }
 
-      // SHIFT = angle snapping
-      if (this.shiftPressed && this.vertices.length > 0) {
-        const lastVertex = this.vertices[this.vertices.length - 1];
-        coord = constrainToAngle(
-          lastVertex,
-          coord,
-          this.options.angleSnapDegrees,
-        );
-      }
-
-      // Vertex snapping
-      if (this.vertices.length > 0) {
-        const vertexSnap = snapToVertex(
-          coord,
-          this.vertices,
-          this._getSnapThresholdMeters(),
-        );
-        if (
-          vertexSnap.snapped &&
-          vertexSnap.snapIndex !== this.vertices.length - 1
-        ) {
-          coord = vertexSnap.point;
+    // Auto-close detection (click path only).
+    if (isClick && this.vertices.length >= this.options.minVertices) {
+      const firstVertex = this.vertices[0];
+      const firstPixel = this.latLngToPixel(firstVertex);
+      const clickPixel = this.latLngToPixel(coord);
+      if (firstPixel && clickPixel) {
+        const dx = clickPixel.x - firstPixel.x;
+        const dy = clickPixel.y - firstPixel.y;
+        const distPx = Math.sqrt(dx * dx + dy * dy);
+        if (distPx <= this.options.autoCloseThresholdPx) {
+          return { coord, snapHint: "vertex", lockedToOrtho, autoClosed: true };
         }
       }
     }
 
-    // Add vertex
+    // SHIFT = angle snapping (default 90° / ortho).
+    if (this.shiftPressed) {
+      const lastVertex = this.vertices[this.vertices.length - 1];
+      coord = constrainToAngle(
+        lastVertex,
+        coord,
+        this.options.angleSnapDegrees,
+      );
+      lockedToOrtho = true;
+      snapHint = "ortho";
+    }
+
+    // Vertex snapping.
+    const vertexSnap = snapToVertex(
+      coord,
+      this.vertices,
+      this._getSnapThresholdMeters(),
+    );
+    if (vertexSnap.snapped) {
+      const allowSnapToLast = !isClick;
+      const isLast = vertexSnap.snapIndex === this.vertices.length - 1;
+      if (!isLast || allowSnapToLast) {
+        coord = vertexSnap.point;
+        snapHint = "vertex";
+      }
+    }
+
+    return { coord, snapHint, lockedToOrtho, autoClosed: false };
+  }
+
+  _appendVertex(coord) {
     this.vertices.push(coord);
     this._updateVisuals();
-
     if (this.options.onVertexAdded) {
       this.options.onVertexAdded([...this.vertices]);
     }
   }
 
   _handleMapMove(e) {
-    let coord = [roundCoord(e.latLng.lng()), roundCoord(e.latLng.lat())];
+    // RAF throttle: store the latest cursor coord and schedule one frame.
+    // Discards every intermediate move event — only the most recent matters.
+    this.pendingMovePosition = [
+      roundCoord(e.latLng.lng()),
+      roundCoord(e.latLng.lat()),
+    ];
+    if (this.rafHandle != null) return;
+    this.rafHandle = requestAnimationFrame(() => {
+      this.rafHandle = null;
+      const pending = this.pendingMovePosition;
+      this.pendingMovePosition = null;
+      if (!pending || !this.isDrawing) return;
+      this._processMove(pending);
+    });
+  }
 
-    // Apply preview snapping
-    if (!this.altPressed && this.vertices.length > 0) {
-      // SHIFT = angle snapping
-      if (this.shiftPressed) {
-        const lastVertex = this.vertices[this.vertices.length - 1];
-        coord = constrainToAngle(
-          lastVertex,
-          coord,
-          this.options.angleSnapDegrees,
-        );
-      }
-
-      // Vertex snapping
-      const vertexSnap = snapToVertex(
-        coord,
-        this.vertices,
-        this._getSnapThresholdMeters(),
-      );
-      if (vertexSnap.snapped) {
-        coord = vertexSnap.point;
-      }
-    }
-
-    this.cursorPosition = coord;
+  _processMove(rawCoord) {
+    const placement = this._resolvePlacement(rawCoord, { isClick: false });
+    this.cursorPosition = placement.coord;
     this._updatePreviewLine();
 
     if (this.options.onCursorMove) {
-      this.options.onCursorMove(coord);
+      this.options.onCursorMove(placement.coord);
     }
+    this._emitDynamicCursor(placement);
+    this._emitSnapHint(placement.snapHint);
+  }
+
+  _emitDynamicCursor(placement) {
+    if (!this.options.onDynamicCursor) return;
+    const anchorPx = this.latLngToPixel(placement.coord);
+    const hasAnchor = this.vertices.length > 0;
+    let lengthM = 0;
+    let bearingDeg = 0;
+    if (hasAnchor) {
+      const prev = this.vertices[this.vertices.length - 1];
+      const live = liveLengthAndBearing(prev, placement.coord);
+      lengthM = live.lengthM;
+      bearingDeg = live.bearingDeg;
+    }
+    this.options.onDynamicCursor({
+      anchorPx: anchorPx ? { x: anchorPx.x, y: anchorPx.y } : null,
+      lengthM,
+      bearingDeg,
+      locked: placement.lockedToOrtho,
+      hasAnchor,
+    });
+  }
+
+  _emitSnapHint(hint) {
+    if (this.lastSnapHint === hint) return;
+    this.lastSnapHint = hint;
+    if (this.options.onSnapHint) {
+      this.options.onSnapHint(hint);
+    }
+  }
+
+  /**
+   * Programmatically place the next vertex at exactly `lengthM` meters from
+   * the previous vertex, along either (a) the Shift-snapped ortho bearing, or
+   * (b) the live cursor bearing. Routes through the same `onVertexAdded`
+   * callback as a normal map click so undo/redo history is identical.
+   *
+   * Guardrail 3: rejects non-finite, zero, or negative lengths.
+   * Guardrail 4: returns/emits `[lng, lat]`, never lat/lng-swapped.
+   * Guardrail 8: shares the click commit path (`_appendVertex`).
+   *
+   * @param {number} lengthM
+   * @returns {boolean} true on commit, false on validation failure
+   */
+  commitLength(lengthM) {
+    const distance = Number(lengthM);
+    if (!Number.isFinite(distance) || distance <= 0) {
+      if (this.options.onValidationError) {
+        this.options.onValidationError([
+          "Length must be a positive number greater than zero.",
+        ]);
+      }
+      return false;
+    }
+    if (this.vertices.length === 0) return false;
+    if (!this.cursorPosition) return false;
+
+    const prev = this.vertices[this.vertices.length - 1];
+    let bearingDeg;
+    if (this.shiftPressed) {
+      const constrained = constrainToAngle(
+        prev,
+        this.cursorPosition,
+        this.options.angleSnapDegrees,
+      );
+      bearingDeg = liveLengthAndBearing(prev, constrained).bearingDeg;
+    } else {
+      bearingDeg = liveLengthAndBearing(prev, this.cursorPosition).bearingDeg;
+    }
+
+    const next = destinationFromBearing(prev, distance, bearingDeg);
+    if (!next) return false;
+
+    // Suppress the synthetic click that Maps may fire after the Enter keystroke.
+    this._suppressNextClick = true;
+    if (this._suppressClickTimeout) clearTimeout(this._suppressClickTimeout);
+    this._suppressClickTimeout = setTimeout(() => {
+      this._suppressNextClick = false;
+      this._suppressClickTimeout = null;
+    }, 100);
+
+    this._appendVertex(next);
+    return true;
   }
 
   _handleKeyDown(e) {
@@ -371,29 +570,85 @@ export class PolygonDrawingManager {
       e.preventDefault();
     }
 
-    // Enter to complete
-    if (e.key === "Enter") {
-      e.preventDefault();
-      this.complete();
+    // Modifier-bearing keystrokes (Ctrl/Cmd-anything) are not draw input —
+    // let the host page (e.g. Ctrl+Z undo) handle them.
+    const hasModifier = e.ctrlKey || e.metaKey;
+    const targetTag = e.target?.tagName || "";
+    const focusInForm = targetTag === "INPUT" || targetTag === "TEXTAREA";
+
+    // Route numeric/decimal/sign characters to the dynamic-input overlay so
+    // the user can start typing without first clicking the floating field.
+    if (
+      !hasModifier &&
+      this.vertices.length > 0 &&
+      this.options.onDynamicInputKey &&
+      this._isDynamicInputCharacter(e.key) &&
+      !focusInForm
+    ) {
+      const consumed = this.options.onDynamicInputKey({
+        key: e.key,
+        ctrl: e.ctrlKey,
+        shift: e.shiftKey,
+        meta: e.metaKey,
+        alt: e.altKey,
+      });
+      if (consumed) {
+        e.preventDefault();
+        return;
+      }
     }
 
-    // Escape to cancel
+    // Enter: if the dynamic input has a pending value, the host has already
+    // handled it (and called `commitLength`). Otherwise fall through to the
+    // legacy "finish polygon" behavior.
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (this.isDynamicInputPending && this.isDynamicInputPending()) {
+        return;
+      }
+      this.complete();
+      return;
+    }
+
+    // Escape: if the dynamic input has a pending value, host clears it; we
+    // skip the undo/cancel chain so the user doesn't accidentally lose
+    // vertices while editing the length field.
     if (e.key === "Escape") {
       e.preventDefault();
+      if (this.isDynamicInputPending && this.isDynamicInputPending()) {
+        return;
+      }
       if (this.vertices.length > 0) {
         this.undoLastVertex();
       } else {
         this.cancel();
       }
+      return;
     }
 
-    // Backspace/Delete to undo last vertex
+    // Backspace/Delete to undo last vertex (unless typing in a real form
+    // field, or the dynamic input has a pending value).
     if (e.key === "Backspace" || e.key === "Delete") {
-      if (e.target.tagName !== "INPUT" && e.target.tagName !== "TEXTAREA") {
-        e.preventDefault();
-        this.undoLastVertex();
+      if (focusInForm) return;
+      if (this.isDynamicInputPending && this.isDynamicInputPending()) {
+        // Let the dynamic-input overlay handle the keystroke itself.
+        return;
       }
+      e.preventDefault();
+      this.undoLastVertex();
     }
+  }
+
+  /**
+   * Whether a key would meaningfully contribute to a length value.
+   * @private
+   */
+  _isDynamicInputCharacter(key) {
+    if (!key) return false;
+    if (key.length === 1) {
+      return /[0-9.,]/.test(key);
+    }
+    return key === "Backspace" || key === "Delete";
   }
 
   _handleKeyUp(e) {
@@ -589,10 +844,32 @@ export class PolygonDrawingManager {
   }
 
   /**
-   * Clean up resources
+   * Clean up resources. Idempotent — safe to call after `stop()` or on a
+   * never-started instance. Guardrail 5: ensures no listeners, RAF, or
+   * timers outlive the instance.
    */
   destroy() {
+    // `stop()` only runs its body when isDrawing; force the cleanup path to
+    // run regardless so callers that never started drawing still tear down
+    // cleanly.
+    this.isDrawing = true;
     this.stop();
+    this.isDrawing = false;
+
+    // Defensive: if stop() short-circuited for some reason, ensure listeners
+    // and timers are gone.
+    this._detachMapListeners();
+    this._detachKeyboardListeners();
+    if (this.rafHandle != null) {
+      cancelAnimationFrame(this.rafHandle);
+      this.rafHandle = null;
+    }
+    if (this._suppressClickTimeout) {
+      clearTimeout(this._suppressClickTimeout);
+      this._suppressClickTimeout = null;
+    }
+    this._projectionCache = null;
+    this.isDynamicInputPending = () => false;
 
     if (this.overlayView) {
       this.overlayView.setMap(null);

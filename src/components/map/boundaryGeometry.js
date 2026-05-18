@@ -21,7 +21,30 @@ export const EARTH_RADIUS_METERS = 6371000;
 export const COORDINATE_PRECISION = 7; // ~1cm precision
 export const MIN_VERTICES = 3;
 export const SNAP_PIXEL_THRESHOLD = 12;
+// Legacy diagonal snap (kept for back-compat; new editors default to ORTHO).
 export const ANGLE_SNAP_DEGREES = 45;
+// AutoCAD-style orthogonal snap used by the dynamic-input draw / drag UX.
+export const ORTHO_SNAP_DEGREES = 90;
+
+function toRadians(value) {
+  return (Number(value) * Math.PI) / 180;
+}
+
+function toDegrees(value) {
+  return (Number(value) * 180) / Math.PI;
+}
+
+/**
+ * Normalize a bearing into the [0, 360) range. Returns null for non-finite
+ * inputs so callers can branch deterministically.
+ * @param {number} value
+ * @returns {number | null}
+ */
+export function normalizeBearing(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return ((numeric % 360) + 360) % 360;
+}
 
 function toFiniteNumber(value) {
   const numeric = Number(value);
@@ -631,6 +654,85 @@ export function constrainToAngle(
   return destination.geometry.coordinates;
 }
 
+/**
+ * Compute the geodesic destination [lng, lat] from a start point given a
+ * length (meters) and bearing (degrees). Uses the spherical-Earth haversine
+ * formula. Returns null when inputs are invalid.
+ *
+ * Single source of truth for AutoCAD-style "type a length to place the next
+ * vertex" placements and for the existing numeric-tab length/bearing edits in
+ * BoundaryNumericEditor.
+ *
+ * @param {[number, number]} start - [lng, lat]
+ * @param {number} lengthM - distance in meters
+ * @param {number} bearingDeg - bearing in degrees (will be normalized into [0, 360))
+ * @returns {[number, number] | null}
+ */
+export function destinationFromBearing(start, lengthM, bearingDeg) {
+  const distance = Number(lengthM);
+  const bearing = normalizeBearing(bearingDeg);
+  if (!Array.isArray(start) || !Number.isFinite(distance) || bearing === null) {
+    return null;
+  }
+
+  const lng1 = toRadians(start[0]);
+  const lat1 = toRadians(start[1]);
+  const theta = toRadians(bearing);
+  const delta = distance / EARTH_RADIUS_METERS;
+
+  const sinLat1 = Math.sin(lat1);
+  const cosLat1 = Math.cos(lat1);
+  const sinDelta = Math.sin(delta);
+  const cosDelta = Math.cos(delta);
+
+  const lat2 = Math.asin(
+    sinLat1 * cosDelta + cosLat1 * sinDelta * Math.cos(theta),
+  );
+  const lng2 =
+    lng1 +
+    Math.atan2(
+      Math.sin(theta) * sinDelta * cosLat1,
+      cosDelta - sinLat1 * Math.sin(lat2),
+    );
+
+  return [
+    roundCoord(((toDegrees(lng2) + 540) % 360) - 180),
+    roundCoord(toDegrees(lat2)),
+  ];
+}
+
+/**
+ * Compute live length (meters) and forward bearing (degrees) from a previous
+ * vertex to the current cursor position. Used by the dynamic-input draw
+ * overlay and by the corner-drag length tooltip. Returns zeros when inputs
+ * are invalid so the overlay can render placeholders without branching.
+ *
+ * @param {[number, number]} prev - [lng, lat] previous vertex
+ * @param {[number, number]} cursor - [lng, lat] cursor position
+ * @returns {{ lengthM: number, bearingDeg: number }}
+ */
+export function liveLengthAndBearing(prev, cursor) {
+  if (
+    !Array.isArray(prev) ||
+    !Array.isArray(cursor) ||
+    !Number.isFinite(Number(prev[0])) ||
+    !Number.isFinite(Number(prev[1])) ||
+    !Number.isFinite(Number(cursor[0])) ||
+    !Number.isFinite(Number(cursor[1]))
+  ) {
+    return { lengthM: 0, bearingDeg: 0 };
+  }
+  const from = turf.point(prev);
+  const to = turf.point(cursor);
+  const lengthM = turf.distance(from, to, { units: "meters" });
+  const rawBearing = turf.bearing(from, to);
+  const bearingDeg = normalizeBearing(rawBearing) ?? 0;
+  return {
+    lengthM: roundCoord(lengthM, 3),
+    bearingDeg: roundCoord(bearingDeg, 2),
+  };
+}
+
 // ============================================================
 // VALIDATION SUITE
 // ============================================================
@@ -907,6 +1009,11 @@ export default {
   snapBearing,
   constrainToAngle,
 
+  // Bearing math
+  normalizeBearing,
+  destinationFromBearing,
+  liveLengthAndBearing,
+
   // Format conversion
   toGeoJSON,
   fromGeoJSON,
@@ -923,4 +1030,5 @@ export default {
   MIN_VERTICES,
   SNAP_PIXEL_THRESHOLD,
   ANGLE_SNAP_DEGREES,
+  ORTHO_SNAP_DEGREES,
 };
