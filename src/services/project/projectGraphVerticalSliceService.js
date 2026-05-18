@@ -9758,6 +9758,20 @@ export async function buildVisual3DPanelArtifacts({
       const providerUsed = renderProvenance ? "openai" : "deterministic";
       const imageProviderUsed = renderProvenance ? "openai" : "deterministic";
       const imageRenderFallback = renderProvenance === null;
+      // CL-1 (audit re-fix): structured source gaps from the render provider
+      // must surface on the visual artifact so downstream consumers (UI,
+      // QA, manifest validators) can explain WHY a panel landed on
+      // deterministic fallback — e.g. ["MOCK_PROVIDER_NO_RENDER"],
+      // ["IMAGE_GEN_DISABLED"], ["PROVIDER_NOT_IMPLEMENTED"], or
+      // ["UNKNOWN_PROVIDER:foo"]. Empty array when the renderer succeeded or
+      // when image gen is skipped via renderQualityTier.
+      const sourceGaps =
+        Array.isArray(renderResult?.sourceGaps) &&
+        renderResult.sourceGaps.length > 0
+          ? [...renderResult.sourceGaps]
+          : Array.isArray(renderResult?.provenance?.sourceGaps)
+            ? [...renderResult.provenance.sourceGaps]
+            : [];
       const renderModel =
         renderProvenance?.model || renderResult?.model || null;
       const requestId =
@@ -9828,6 +9842,7 @@ export async function buildVisual3DPanelArtifacts({
           imageProviderUsed,
           imageRenderFallback,
           imageRenderFallbackReason,
+          sourceGaps,
           model: renderModel,
           requestId,
           usage,
@@ -9866,6 +9881,7 @@ export async function buildVisual3DPanelArtifacts({
             providerUsed,
             imageRenderFallback,
             imageRenderFallbackReason,
+            sourceGaps: [...sourceGaps],
             imageRenderModel: renderModel,
             model: renderModel,
             imageRenderSize: renderProvenance?.size || null,
@@ -12193,7 +12209,7 @@ function svgToDataUrl(svgString = "") {
   return svgToSanitizedDataUrl(String(svgString || ""));
 }
 
-function buildResultPanelMap(panelArtifacts = {}) {
+export function buildResultPanelMap(panelArtifacts = {}) {
   return Object.fromEntries(
     artifactArray(panelArtifacts)
       .filter((artifact) => artifact?.panel_type || artifact?.panelType)
@@ -12229,6 +12245,13 @@ function buildResultPanelMap(panelArtifacts = {}) {
             variationMode: artifact.variationMode || null,
             source_model_hash: artifact.source_model_hash || null,
             svgHash: artifact.svgHash || null,
+            // CL-1 (audit re-fix): expose render-provider source gaps on the
+            // result panel projection so UI/QA consumers can see WHY a panel
+            // is on deterministic fallback (e.g. ["MOCK_PROVIDER_NO_RENDER"],
+            // ["IMAGE_GEN_DISABLED"], ["PROVIDER_NOT_IMPLEMENTED"]).
+            sourceGaps: Array.isArray(artifact.sourceGaps)
+              ? [...artifact.sourceGaps]
+              : [],
             metadata: cloneData(artifact.metadata || {}),
           },
         ];
