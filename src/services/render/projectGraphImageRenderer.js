@@ -8,9 +8,9 @@
  *   1. Rasterising the deterministic SVG to a PNG silhouette / massing
  *      reference (preserves geometry: footprint, opening positions, roof
  *      shape, storey count).
- *   2. Calling OpenAI's `/v1/images/edits` endpoint with the PNG as the
- *      reference image plus a climate + style + programme aware prompt
- *      (built by `panelPromptBuilders.js`).
+ *   2. Dispatching the rasterised reference + prompt to a selected render
+ *      provider (openai / mock / replicate-stub) via the provider registry
+ *      in `./providers/renderProviderRegistry.js`.
  *   3. Returning the rendered PNG bytes plus provenance.
  *
  * The reference-image approach is critical: text-only prompts cannot
@@ -19,163 +19,47 @@
  * compiled-geometry silhouette, the generated render shares the SAME
  * geometry hash as every other panel.
  *
- * Pipeline mode gating: only runs when `PIPELINE_MODE=project_graph` (or
- * unset → default project_graph) AND `PROJECT_GRAPH_IMAGE_GEN_ENABLED=true`.
- * Falls back to the deterministic SVG cleanly when disabled or on failure.
+ * Provider selection — CL-1:
+ *   - `PROJECT_GRAPH_RENDER_PROVIDER` explicit values: `openai|mock|replicate`.
+ *   - When unset and `PROJECT_GRAPH_IMAGE_GEN_ENABLED=true`, legacy implicit
+ *     `openai` (byte-identical to pre-CL-1 production behaviour).
+ *   - When unset and `PROJECT_GRAPH_IMAGE_GEN_ENABLED=false`, deterministic
+ *     fallback with `imageRenderFallbackReason: "gate_disabled"`.
+ *   - `replicate` is a stub returning `PROVIDER_NOT_IMPLEMENTED` until CL-4.
+ *
+ * Hard invariants (per the approved plan):
+ *   - ProjectGraph / compiledProject is the only geometry authority.
+ *     Image-model output never feeds back into deterministic SVG / DXF /
+ *     IFC / JSON / XLSX. Enforced by `drawingConsistencyChecks.js`.
+ *   - `geometryHash` is the cross-artifact identity key; CL-2 will add
+ *     `controlSvgHash`, `footprintMaskHash`, `depthHash`, `lineartHash`
+ *     and CL-3 `reduxReferenceSetHash`, all carried through the request /
+ *     result shape defined in `renderProviderRegistry.js`. None of those
+ *     enter `geometryHash`.
  *
  * @module services/render/projectGraphImageRenderer
  */
 
 import logger from "../../utils/logger.js";
-import openaiEnv from "../openaiProviderEnv.cjs";
 import { rasteriseSvgToPng } from "./svgRasteriser.js";
+import openaiImageEditProvider, {
+  getConfig as getOpenAIProviderConfig,
+  resolveImageGenEnabled,
+  resolveStrictImageGen,
+  resolveSize,
+  resolveImageModel,
+  PANEL_TYPE_TO_SIZE,
+} from "./providers/openaiImageEditProvider.js";
+import { selectProvider } from "./providers/renderProviderRegistry.js";
 
-const RENDERER_VERSION = "project-graph-image-renderer-v1";
+const RENDERER_VERSION = "project-graph-image-renderer-v2";
 
-const PANEL_TYPE_TO_SIZE = Object.freeze({
-  hero_3d: "1536x1024",
-  exterior_render: "1536x1024",
-  axonometric: "1024x1024",
-  interior_3d: "1280x1024",
-});
-
-const ALLOWED_OPENAI_SIZES = new Set([
-  "256x256",
-  "512x512",
-  "1024x1024",
-  "1024x1536",
-  "1536x1024",
-  "1024x1792",
-  "1792x1024",
-]);
-
-function parsePositiveInt(value, fallback, { min = 1 } = {}) {
-  const parsed = Number.parseInt(value || "", 10);
-  if (!Number.isFinite(parsed) || parsed < min) {
-    return fallback;
-  }
-  return parsed;
-}
-
-function createOpenAIRequestTimeoutSignal(timeoutMs, externalSignal) {
-  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
-    return {
-      signal: externalSignal,
-      dispose: () => {},
-    };
-  }
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => {
-    controller.abort(
-      Object.assign(
-        new Error(`OpenAI request timed out after ${timeoutMs}ms`),
-        {
-          name: "AbortError",
-          code: "OPENAI_REQUEST_TIMEOUT",
-        },
-      ),
-    );
-  }, timeoutMs);
-
-  if (externalSignal) {
-    if (externalSignal.aborted) {
-      clearTimeout(timeoutId);
-      controller.abort(externalSignal.reason);
-    } else {
-      externalSignal.addEventListener(
-        "abort",
-        () => {
-          clearTimeout(timeoutId);
-          controller.abort(externalSignal.reason);
-        },
-        { once: true },
-      );
-    }
-  }
-
-  return {
-    signal: controller.signal,
-    dispose: () => clearTimeout(timeoutId),
-  };
-}
-
-async function fetchWithTimeout(
-  url,
-  options = {},
-  timeoutMs = 120_000,
-  { fetchImpl = global.fetch } = {},
-) {
-  const { signal: externalSignal, ...restOptions } = options;
-  const requestTimeout = createOpenAIRequestTimeoutSignal(
-    timeoutMs,
-    externalSignal,
-  );
-  try {
-    return await fetchImpl(url, {
-      ...restOptions,
-      signal: requestTimeout.signal,
-    });
-  } finally {
-    requestTimeout.dispose();
-  }
-}
-
-function resolveImageGenEnabled(env = process.env) {
-  return openaiEnv.isTruthy(
-    openaiEnv.readEnv(env, "PROJECT_GRAPH_IMAGE_GEN_ENABLED"),
-  );
-}
-
-function resolveStrictImageGen(env = process.env) {
-  return openaiEnv.isTruthy(openaiEnv.readEnv(env, "OPENAI_STRICT_IMAGE_GEN"));
-}
-
-function resolveImageModel(env = process.env) {
-  return (
-    openaiEnv.readEnv(env, "STEP_10_IMAGE_MODEL") ||
-    openaiEnv.readEnv(env, "OPENAI_IMAGE_MODEL") ||
-    "gpt-image-2"
-  ).trim();
-}
-
-function resolveSize(panelType) {
-  const target = PANEL_TYPE_TO_SIZE[panelType] || "1024x1024";
-  return ALLOWED_OPENAI_SIZES.has(target) ? target : "1024x1024";
-}
-
-function resolveOpenAIImageTimeoutMs(env = process.env) {
-  return parsePositiveInt(
-    openaiEnv.readEnv(env, "OPENAI_IMAGE_FETCH_TIMEOUT_MS"),
-    parsePositiveInt(
-      openaiEnv.readEnv(env, "OPENAI_REASONING_FETCH_TIMEOUT_MS"),
-      120_000,
-    ),
-    { min: 1000 },
-  );
-}
-
-function resolveOpenAIImageDownloadTimeoutMs(env = process.env) {
-  return parsePositiveInt(
-    openaiEnv.readEnv(env, "OPENAI_IMAGE_DOWNLOAD_TIMEOUT_MS"),
-    resolveOpenAIImageTimeoutMs(env),
-    { min: 1000 },
-  );
-}
-
+/**
+ * Legacy diagnostics export — returns the OpenAI provider snapshot so
+ * pre-CL-1 callers (tests, status endpoints) see the same shape.
+ */
 export function getProjectGraphImageProviderConfig(env = process.env) {
-  const keyInfo = openaiEnv.resolveOpenAIImageApiKeyInfo(env);
-  const orgProject = openaiEnv.getOpenAIOrgProjectDiagnostics(env);
-  return {
-    imageGenEnabled: resolveImageGenEnabled(env),
-    strictImageGen: resolveStrictImageGen(env),
-    openaiConfigured: keyInfo.hasKey,
-    keySource: keyInfo.keySource,
-    keyLast4: keyInfo.keyLast4,
-    warning: keyInfo.warning,
-    model: resolveImageModel(env),
-    ...orgProject,
-  };
+  return getOpenAIProviderConfig(env);
 }
 
 function createStrictImageError({ panelType, reason, error }) {
@@ -197,10 +81,12 @@ function createFallbackResult({
   reason,
   config,
   error,
+  providerName = "openai",
+  sourceGaps = [],
 }) {
   return {
     pngBuffer: null,
-    provider: "openai",
+    provider: providerName,
     providerUsed: "deterministic",
     imageProviderUsed: "deterministic",
     imageRenderFallback: true,
@@ -216,10 +102,11 @@ function createFallbackResult({
     usage: error?.usage || null,
     status: error?.status || null,
     error: error?.message || null,
+    sourceGaps,
     provenance: {
       renderer: RENDERER_VERSION,
       panelType,
-      provider: "openai",
+      provider: providerName,
       providerUsed: "deterministic",
       imageProviderUsed: "deterministic",
       imageRenderFallback: true,
@@ -235,22 +122,42 @@ function createFallbackResult({
       requestId: error?.requestId || null,
       usage: error?.usage || null,
       error: error?.message || null,
+      sourceGaps,
     },
   };
 }
 
-function handleFallback({ panelType, geometryHash, reason, config, error }) {
-  logger.warn(`[OpenAI] SKIP image edit panel=${panelType} reason=${reason}`, {
-    panelType,
-    reason,
-    strictImageGen: config.strictImageGen,
-    openaiConfigured: config.openaiConfigured,
-    keySource: config.keySource,
-    orgConfigured: config.orgConfigured,
-    projectConfigured: config.projectConfigured,
-    error: error?.message || null,
-  });
-  if (config.strictImageGen) {
+/**
+ * Strict-mode promotion applies ONLY when the intended provider was OpenAI
+ * (explicit `PROJECT_GRAPH_RENDER_PROVIDER=openai` or the legacy implicit
+ * gate). Selecting `mock` or `replicate` explicitly never escalates a
+ * fallback into a thrown error.
+ */
+function handleFallback({
+  panelType,
+  geometryHash,
+  reason,
+  config,
+  error,
+  providerName = "openai",
+  sourceGaps = [],
+}) {
+  logger.warn(
+    `[${providerName}] SKIP render panel=${panelType} reason=${reason}`,
+    {
+      panelType,
+      reason,
+      providerName,
+      strictImageGen: config.strictImageGen,
+      openaiConfigured: config.openaiConfigured,
+      keySource: config.keySource,
+      orgConfigured: config.orgConfigured,
+      projectConfigured: config.projectConfigured,
+      error: error?.message || null,
+      sourceGaps,
+    },
+  );
+  if (config.strictImageGen && providerName === "openai") {
     throw createStrictImageError({ panelType, reason, error });
   }
   return createFallbackResult({
@@ -259,154 +166,73 @@ function handleFallback({ panelType, geometryHash, reason, config, error }) {
     reason,
     config,
     error,
+    providerName,
+    sourceGaps,
   });
 }
 
-/**
- * Build a multipart/form-data body for the OpenAI images edit endpoint.
- * Uses the global FormData / Blob (Node 18+ supports both natively).
- */
-function buildImageEditFormData({ imageBuffer, prompt, model, size }) {
-  if (typeof FormData === "undefined" || typeof Blob === "undefined") {
-    throw new Error(
-      "FormData/Blob unavailable in this runtime; OpenAI images.edit requires Node 18+ or fetch polyfill.",
-    );
-  }
-  const form = new FormData();
-  form.set("model", model);
-  form.set("prompt", prompt);
-  form.set("size", size);
-  form.set("n", "1");
-  form.set(
-    "image",
-    new Blob([imageBuffer], { type: "image/png" }),
-    "reference.png",
-  );
-  return form;
-}
-
-/**
- * Call OpenAI `/v1/images/edits` with the reference image + prompt and
- * return the rendered PNG bytes. Throws on non-200 or empty response so the
- * caller can fall back to the deterministic SVG.
- */
-async function callOpenAIImageEdit({ imageBuffer, prompt, panelType, env }) {
-  const keyInfo = openaiEnv.resolveOpenAIImageApiKeyInfo(env);
-  if (!keyInfo.hasKey) {
-    const error = new Error(
-      "OPENAI_IMAGES_API_KEY, OPENAI_API_KEY, or OPENAI_REASONING_API_KEY is not set.",
-    );
-    error.fallbackReason = "missing_api_key";
-    throw error;
-  }
-  const model = resolveImageModel(env);
-  const size = resolveSize(panelType);
-  const form = buildImageEditFormData({ imageBuffer, prompt, model, size });
-
-  logger.info(`[OpenAI] START image edit panel=${panelType} model=${model}`, {
-    panelType,
-    model,
-    size,
-    keySource: keyInfo.keySource,
-    keyLast4: keyInfo.keyLast4,
-    ...openaiEnv.getOpenAIOrgProjectDiagnostics(env),
-  });
-
-  const response = await fetchWithTimeout(
-    "https://api.openai.com/v1/images/edits",
-    {
-      method: "POST",
-      headers: openaiEnv.buildOpenAIRequestHeaders(keyInfo, env),
-      body: form,
-    },
-    resolveOpenAIImageTimeoutMs(env),
-    { fetchImpl: global.fetch },
-  );
-
-  const requestId =
-    response.headers?.get?.("x-request-id") ||
-    response.headers?.get?.("openai-request-id") ||
-    null;
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const error = new Error(
-      `OpenAI images.edit failed (${response.status}): ${data?.error?.message || "unknown"}`,
-    );
-    error.status = response.status;
-    error.requestId = requestId;
-    error.usage = data?.usage || null;
-    error.fallbackReason = "openai_error";
-    logger.warn(`[OpenAI] FAIL image edit panel=${panelType}`, {
-      panelType,
-      model,
-      status: response.status,
-      requestId,
-      reason: data?.error?.message || "unknown",
-    });
-    throw error;
-  }
-
-  const entry = (data.data || [])[0];
-  if (!entry?.b64_json && !entry?.url) {
-    const error = new Error("OpenAI images.edit returned no image payload.");
-    error.requestId = requestId;
-    error.usage = data?.usage || null;
-    error.fallbackReason = "empty_response";
-    throw error;
-  }
-
-  let pngBuffer;
-  if (entry.b64_json) {
-    pngBuffer = Buffer.from(entry.b64_json, "base64");
-  } else {
-    const fetchResp = await fetchWithTimeout(
-      entry.url,
-      { method: "GET" },
-      resolveOpenAIImageDownloadTimeoutMs(env),
-      { fetchImpl: global.fetch },
-    );
-    if (!fetchResp.ok) {
-      throw new Error(
-        `Failed to download generated image: ${fetchResp.status}`,
-      );
-    }
-    const arrayBuffer = await fetchResp.arrayBuffer();
-    pngBuffer = Buffer.from(arrayBuffer);
-  }
-
-  logger.info(`[OpenAI] OK image edit panel=${panelType}`, {
-    panelType,
-    model,
-    requestId,
-    bytes: pngBuffer.length,
-    usage: data?.usage || null,
-  });
-
+function assembleSuccessResult({
+  panelType,
+  geometryHash,
+  providerResult,
+  qaAttemptLog,
+}) {
+  const meta = providerResult.providerMetadata || {};
+  const providerName = meta.provider || "openai";
   return {
-    pngBuffer,
-    model,
-    size,
-    revisedPrompt: entry.revised_prompt || null,
-    requestId,
-    usage: data?.usage || null,
-    keySource: keyInfo.keySource,
-    keyLast4: keyInfo.keyLast4,
-    ...openaiEnv.getOpenAIOrgProjectDiagnostics(env),
+    pngBuffer: providerResult.pngBuffer,
+    provider: providerName,
+    providerUsed: meta.providerUsed || providerName,
+    imageProviderUsed: meta.imageProviderUsed || providerName,
+    imageRenderFallback: Boolean(meta.imageRenderFallback),
+    imageRenderFallbackReason: meta.imageRenderFallbackReason || null,
+    fallbackReason: meta.imageRenderFallbackReason || null,
+    openaiConfigured: providerName === "openai" ? true : null,
+    requestId: providerResult.requestId || null,
+    usage: providerResult.usage || null,
+    sourceGaps: providerResult.sourceGaps || [],
+    provenance: {
+      renderer: RENDERER_VERSION,
+      panelType,
+      provider: providerName,
+      providerUsed: meta.providerUsed || providerName,
+      imageProviderUsed: meta.imageProviderUsed || providerName,
+      imageRenderFallback: Boolean(meta.imageRenderFallback),
+      imageRenderFallbackReason: meta.imageRenderFallbackReason || null,
+      model: providerResult.model || null,
+      size: providerResult.size || null,
+      revisedPrompt: providerResult.revisedPrompt || null,
+      requestId: providerResult.requestId || null,
+      usage: providerResult.usage || null,
+      keySource: meta.keySource || null,
+      keyLast4: meta.keyLast4 || null,
+      orgConfigured: meta.orgConfigured ?? null,
+      projectConfigured: meta.projectConfigured ?? null,
+      sourceGeometryHash: geometryHash,
+      referenceSource: meta.referenceSource || "compiled_3d_control_svg",
+      sourceGaps: providerResult.sourceGaps || [],
+      qaAttempts: qaAttemptLog.length > 0 ? qaAttemptLog : null,
+    },
   };
 }
 
 /**
  * Render a single 3D panel (hero_3d / exterior_render / axonometric /
- * interior_3d) by anchoring an OpenAI image-edit call on the deterministic
+ * interior_3d) by anchoring the active provider on the deterministic
  * ProjectGraph SVG silhouette.
+ *
+ * Public API is unchanged from pre-CL-1.
  *
  * @param {object} args
  * @param {string} args.panelType                  - One of the 3D panel types.
  * @param {string} args.deterministicSvg           - Compiled-geometry control SVG.
  * @param {string} args.prompt                     - Climate+style+programme aware prompt.
  * @param {string} args.geometryHash               - For provenance.
- * @returns {Promise<{ pngBuffer: Buffer, provenance: object } | null>}
- *   Rendered PNG plus provenance, or null when image-gen is disabled / fails.
+ * @param {object} [args.env]                      - Defaults to process.env.
+ * @param {object} [args.projectGeometry]          - PR5 vision-QA input.
+ * @param {number} [args.maxQARetries]             - PR5 opt-in retry count.
+ * @param {Function} [args.qaVerifier]             - PR5 verifier injection.
+ * @returns {Promise<object|null>}                 - Render result + provenance.
  */
 export async function renderProjectGraphPanelImage({
   panelType,
@@ -414,24 +240,18 @@ export async function renderProjectGraphPanelImage({
   prompt,
   geometryHash,
   env = process.env,
-  // PR5 (A1 defect remediation): optional ProjectGraph geometry used by
-  // the vision-QA verifier to score the rendered image against canonical
-  // properties. When omitted, QA is skipped silently (same behaviour as
-  // pre-PR5).
+  // PR5 inputs preserved unchanged.
   projectGeometry = null,
-  // PR5: opt-in retry-on-drift count. Default 0 keeps pre-PR5 behaviour;
-  // production opts in via the renderer caller passing `maxQARetries: 2`
-  // when A1_RENDER_GEOMETRY_QA_ENABLED=true. Capped at 2 to bound cost.
   maxQARetries = 0,
-  // PR5: testable verifier injection. When supplied, used in place of
-  // the default OpenAI vision call. Tests pass mocks; production leaves
-  // this null and the verifier resolves STEP_09_3D_QA_MODEL itself.
   qaVerifier = null,
 } = {}) {
-  const config = getProjectGraphImageProviderConfig(env);
-  if (!config.imageGenEnabled) {
+  const config = getOpenAIProviderConfig(env);
+  const selection = selectProvider({ env });
+
+  // ─── Selection outcomes that short-circuit before rasterisation ──────
+  if (selection.reason === "gate_disabled") {
     logger.info(
-      `[OpenAI] SKIP image edit panel=${panelType || "unknown"} reason=gate_disabled PROJECT_GRAPH_IMAGE_GEN_ENABLED=false`,
+      `[render] SKIP panel=${panelType || "unknown"} reason=gate_disabled PROJECT_GRAPH_IMAGE_GEN_ENABLED=false`,
       {
         panelType,
         model: config.model,
@@ -444,8 +264,26 @@ export async function renderProjectGraphPanelImage({
       geometryHash,
       reason: "gate_disabled",
       config,
+      providerName: "openai",
+      sourceGaps: ["IMAGE_GEN_DISABLED"],
     });
   }
+
+  if (selection.reason === "unknown_provider") {
+    return handleFallback({
+      panelType,
+      geometryHash,
+      reason: "unknown_provider",
+      config,
+      providerName: selection.explicitRequest || "openai",
+      sourceGaps: [`UNKNOWN_PROVIDER:${selection.explicitRequest}`],
+    });
+  }
+
+  const provider = selection.provider;
+  const providerName = provider.name;
+
+  // ─── Input validation (same ordering as pre-CL-1) ────────────────────
   if (
     !panelType ||
     typeof deterministicSvg !== "string" ||
@@ -456,6 +294,7 @@ export async function renderProjectGraphPanelImage({
       geometryHash,
       reason: "missing_control_svg",
       config,
+      providerName,
     });
   }
   if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
@@ -464,14 +303,20 @@ export async function renderProjectGraphPanelImage({
       geometryHash,
       reason: "missing_prompt",
       config,
+      providerName,
     });
   }
-  if (!config.openaiConfigured) {
+
+  // ─── Provider availability gate ──────────────────────────────────────
+  const availability = provider.validateAvailable(env);
+  if (!availability.available) {
     return handleFallback({
       panelType,
       geometryHash,
-      reason: "missing_api_key",
+      reason: availability.fallbackReason || "provider_unavailable",
       config,
+      providerName,
+      sourceGaps: availability.sourceGaps || [],
     });
   }
 
@@ -487,13 +332,7 @@ export async function renderProjectGraphPanelImage({
       },
     });
 
-    // PR5: render-then-verify-then-retry loop. Default maxQARetries=0
-    // preserves the pre-PR5 single-shot behaviour. When the caller opts
-    // in (maxQARetries>=1) AND the env gate A1_RENDER_GEOMETRY_QA_ENABLED
-    // is set, each render is scored against the canonical ProjectGraph
-    // properties; on a sub-threshold score we amend the prompt with the
-    // mismatch list and re-render up to `maxQARetries` times before
-    // falling back to the deterministic SVG.
+    // ─── Render-then-verify-then-retry loop (provider-agnostic) ──────
     const clampedRetries = Math.max(0, Math.min(2, Number(maxQARetries) || 0));
     let activePrompt = prompt;
     let lastResult = null;
@@ -503,20 +342,18 @@ export async function renderProjectGraphPanelImage({
 
     while (attempts <= clampedRetries) {
       attempts += 1;
-      lastResult = await callOpenAIImageEdit({
-        imageBuffer: referencePng,
-        prompt: activePrompt,
+      lastResult = await provider.render({
         panelType,
+        referencePng,
+        prompt: activePrompt,
+        geometryHash,
         env,
       });
 
       if (clampedRetries === 0) {
-        // QA loop opted out — keep pre-PR5 single-call behaviour.
         break;
       }
 
-      // Lazy-import to keep the verifier optional. When the env gate is
-      // disabled the module returns ok:true / skipped:true immediately.
       const { verifyRenderAgainstGeometry, amendPromptForRetry } =
         await import("./renderGeometryQA.js");
       lastQa = await verifyRenderAgainstGeometry({
@@ -536,17 +373,13 @@ export async function renderProjectGraphPanelImage({
       });
       if (lastQa.ok || lastQa.skipped) break;
       if (attempts > clampedRetries) break;
-      // Amend the prompt with the mismatch list and try again.
       const expected = lastQa.expected || null;
       activePrompt = amendPromptForRetry(prompt, lastQa.mismatches, expected);
     }
 
     if (lastQa && !lastQa.ok && !lastQa.skipped) {
-      // Exhausted retries with sub-threshold scores — fall back to the
-      // deterministic SVG axonometric. The badge flips to
-      // "DETERMINISTIC FALLBACK" via the artifact metadata flag.
       logger.warn(
-        `[OpenAI] FALLBACK panel=${panelType} reason=geometry_drift score=${lastQa.score}`,
+        `[${providerName}] FALLBACK panel=${panelType} reason=geometry_drift score=${lastQa.score}`,
         {
           panelType,
           attempts,
@@ -559,54 +392,27 @@ export async function renderProjectGraphPanelImage({
         geometryHash,
         reason: "geometry_drift",
         config,
+        providerName,
         error: new Error(
           `Render QA failed after ${attempts} attempts; mismatches: ${(lastQa.mismatches || []).join("; ") || "(none)"}`,
         ),
       });
     }
 
-    return {
-      pngBuffer: lastResult.pngBuffer,
-      provider: "openai",
-      providerUsed: "openai",
-      imageProviderUsed: "openai",
-      imageRenderFallback: false,
-      imageRenderFallbackReason: null,
-      fallbackReason: null,
-      openaiConfigured: true,
-      requestId: lastResult.requestId,
-      usage: lastResult.usage,
-      provenance: {
-        renderer: RENDERER_VERSION,
-        panelType,
-        provider: "openai",
-        providerUsed: "openai",
-        imageProviderUsed: "openai",
-        imageRenderFallback: false,
-        imageRenderFallbackReason: null,
-        model: lastResult.model,
-        size: lastResult.size,
-        revisedPrompt: lastResult.revisedPrompt,
-        requestId: lastResult.requestId,
-        usage: lastResult.usage,
-        keySource: lastResult.keySource,
-        keyLast4: lastResult.keyLast4,
-        orgConfigured: lastResult.orgConfigured,
-        projectConfigured: lastResult.projectConfigured,
-        sourceGeometryHash: geometryHash,
-        referenceSource: "compiled_3d_control_svg",
-        // PR5 provenance: QA loop attempt history. Absent when
-        // maxQARetries === 0 (pre-PR5 default).
-        qaAttempts: qaAttemptLog.length > 0 ? qaAttemptLog : null,
-      },
-    };
+    return assembleSuccessResult({
+      panelType,
+      geometryHash,
+      providerResult: lastResult,
+      qaAttemptLog,
+    });
   } catch (error) {
     return handleFallback({
       panelType,
       geometryHash,
-      reason: error?.fallbackReason || "openai_error",
+      reason: error?.fallbackReason || `${providerName}_error`,
       config,
       error,
+      providerName,
     });
   }
 }
@@ -618,4 +424,5 @@ export const __test = {
   resolveImageModel,
   getProjectGraphImageProviderConfig,
   PANEL_TYPE_TO_SIZE,
+  RENDERER_VERSION,
 };

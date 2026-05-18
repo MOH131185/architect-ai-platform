@@ -125,6 +125,11 @@ const OPTIONAL_PRESENTATION = [
       "Set true to call OpenAI image generation for ProjectGraph visual panels",
   },
   {
+    name: "PROJECT_GRAPH_RENDER_PROVIDER",
+    description:
+      "CL-1 explicit render-provider selector (mock | openai | replicate). When unset the renderer falls back to the legacy behaviour: implicit openai if PROJECT_GRAPH_IMAGE_GEN_ENABLED=true, else deterministic. `replicate` is a stub until CL-4.",
+  },
+  {
     name: "OPENAI_STRICT_IMAGE_GEN",
     description:
       "Set true to fail visual panels instead of falling back after OpenAI image errors",
